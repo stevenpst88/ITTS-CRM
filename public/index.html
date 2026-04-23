@@ -1,0 +1,1850 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>東捷資訊ERP 業務部 Account Profile</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 手機側邊遮罩 -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <div class="app-layout">
+
+    <!-- ── 左側導覽列 ── -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img src="/itts-logo.png" alt="ITTS Logo" style="height:36px; max-width:120px; object-fit:contain;">
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="sidebar-nav-item active" id="navHome" data-section="home">
+          <span class="nav-icon">&#127968;</span>
+          <span class="nav-label">首頁</span>
+        </div>
+        <div class="sidebar-nav-item" id="navProspects" data-section="prospects">
+          <span class="nav-icon">&#128270;</span>
+          <span class="nav-label">潛在客戶</span>
+        </div>
+        <div class="sidebar-nav-item" id="navContacts" data-section="contacts">
+          <span class="nav-icon">&#127942;</span>
+          <span class="nav-label">我的客戶</span>
+        </div>
+        <div class="sidebar-nav-item" id="navVisits" data-section="visits">
+          <span class="nav-icon">&#128203;</span>
+          <span class="nav-label">業務日報</span>
+        </div>
+        <div class="sidebar-nav-item" id="navTargets" data-section="targets">
+          <span class="nav-icon">&#127919;</span>
+          <span class="nav-label">業務年度目標</span>
+        </div>
+        <div class="sidebar-nav-item" id="navPipeline" data-section="pipeline">
+          <span class="nav-icon">&#128202;</span>
+          <span class="nav-label">商機推進進度</span>
+        </div>
+        <div class="sidebar-nav-item" id="navForecast" data-section="forecast">
+          <span class="nav-icon">&#128200;</span>
+          <span class="nav-label">銷售預測報表</span>
+        </div>
+
+        <div class="sidebar-nav-item" id="navPipelineReport" data-section="pipelineReport">
+          <span class="nav-icon">&#127775;</span>
+          <span class="nav-label">商機動態報表</span>
+        </div>
+
+        <div class="sidebar-nav-item" id="navLostOpp" data-section="lostOpp">
+          <span class="nav-icon">&#128197;</span>
+          <span class="nav-label">流失商機分析</span>
+        </div>
+
+        <div class="sidebar-nav-item" id="navQuotations" data-section="quotations">
+          <span class="nav-icon">&#128203;</span>
+          <span class="nav-label">報價單管理</span>
+        </div>
+
+        <!-- 合約管理群組 -->
+        <div class="sidebar-nav-group" id="navGroupContract">
+          <div class="sidebar-nav-item sidebar-nav-group-hd" id="navContractGroup">
+            <span class="nav-icon">&#128196;</span>
+            <span class="nav-label">合約管理</span>
+            <span class="nav-arrow">&#9654;</span>
+          </div>
+          <div class="sidebar-sub-menu" id="subMenuContract">
+            <div class="sidebar-nav-item sidebar-sub-item" id="navErpMa">
+              <span class="nav-icon">&#128221;</span>
+              <span class="nav-label">ERP MA 管理</span>
+            </div>
+            <div class="sidebar-nav-item sidebar-sub-item" id="navSapMa">
+              <span class="nav-icon">&#128200;</span>
+              <span class="nav-label">SAP License MA</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 帳務管理群組 -->
+        <div class="sidebar-nav-group" id="navGroupAccounting">
+          <div class="sidebar-nav-item sidebar-nav-group-hd" id="navAccountingGroup">
+            <span class="nav-icon">&#128184;</span>
+            <span class="nav-label">帳務管理</span>
+            <span class="nav-arrow">&#9654;</span>
+          </div>
+          <div class="sidebar-sub-menu" id="subMenuAccounting">
+            <div class="sidebar-nav-item sidebar-sub-item" id="navReceivables">
+              <span class="nav-icon">&#128202;</span>
+              <span class="nav-label">應收帳款逾期</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Call-in Pass -->
+        <div class="sidebar-nav-item" id="navCallin" data-section="callin">
+          <span class="nav-icon">&#128222;</span>
+          <span class="nav-label">Call-in Pass</span>
+          <span class="nav-badge" id="callinBadge" style="display:none">0</span>
+        </div>
+
+        <!-- 名單移轉（主管專用） -->
+        <div class="sidebar-nav-item" id="navTransfer" data-section="transfer" style="display:none">
+          <span class="nav-icon">&#128260;</span>
+          <span class="nav-label">名單移轉</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebarUser"></div>
+        <a href="/admin.html" id="adminPanelLink" style="display:none;text-align:center;font-size:12px;color:#1a73e8;text-decoration:none;padding:6px 0;opacity:0.8;">⚙️ 管理者後台</a>
+        <button class="sidebar-logout" id="logoutBtn">登出</button>
+      </div>
+    </aside>
+
+    <!-- ── 右側主內容 ── -->
+    <div class="main-wrapper">
+
+      <!-- 頂部工具列 -->
+      <header class="topbar">
+        <button class="mobile-menu-btn" id="mobileMenuBtn">&#9776;</button>
+        <div class="topbar-title" id="topbarTitle">首頁</div>
+        <!-- 通知鈴鐺 -->
+        <div class="notif-bell-wrap" id="notifBellWrap">
+          <button class="notif-bell-btn" id="notifBellBtn" title="通知">
+            &#128276;
+            <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown" style="display:none">
+            <div class="notif-header">
+              <span>通知</span>
+              <button class="notif-read-all" id="notifReadAll">全部已讀</button>
+            </div>
+            <div class="notif-list" id="notifList"><div class="notif-empty">暫無通知</div></div>
+          </div>
+        </div>
+        <div class="topbar-actions" id="prospectsToolbar" style="display:none">
+          <div class="search-box">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" id="prospectSearchInput" placeholder="搜尋潛在客戶...">
+            <button class="clear-search" id="prospectClearSearch">&#10005;</button>
+          </div>
+          <button class="btn btn-primary" id="addProspectBtn">&#43; 新增潛在客戶</button>
+        </div>
+        <div class="topbar-actions" id="contactsToolbar" style="display:none">
+          <div class="search-box">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" id="searchInput" placeholder="搜尋姓名、公司、電話、Email...">
+            <button class="clear-search" id="clearSearch" title="清除搜尋">&#10005;</button>
+          </div>
+          <button class="btn btn-export" id="exportBtn">&#128196; 匯出 Excel</button>
+          <button class="btn btn-primary" id="addBtn">&#43; 新增名片</button>
+        </div>
+        <div class="topbar-actions" id="visitsToolbar" style="display:none">
+          <button class="btn btn-primary" id="addVisitBtn">&#43; 新增拜訪記錄</button>
+        </div>
+      </header>
+
+      <!-- 主內容區 -->
+      <main class="main">
+
+        <!-- ── 首頁儀表板 ── -->
+        <div id="dashboardView">
+          <div class="dashboard-welcome">
+            <div class="welcome-text">
+              <div class="welcome-greeting" id="dashboardGreeting">歡迎回來 👋</div>
+              <div class="welcome-sub">東捷資訊ERP 業務部 客戶關係管理系統</div>
+            </div>
+          </div>
+
+          <!-- 殭屍商機警示卡 -->
+          <div id="zombieAlertCard" style="display:none">
+            <div class="zombie-alert-card">
+              <div class="zombie-alert-icon">🧟</div>
+              <div class="zombie-alert-content">
+                <div class="zombie-alert-title">殭屍商機警示</div>
+                <div class="zombie-alert-sub" id="zombieAlertSub"></div>
+                <div class="zombie-alert-chips" id="zombieAlertChips"></div>
+              </div>
+              <button class="zombie-alert-goto btn btn-sm btn-primary" id="zombieAlertGoto">查看詳情 →</button>
+              <button class="zombie-alert-dismiss" id="zombieAlertDismiss" title="關閉">✕</button>
+            </div>
+          </div>
+
+          <!-- 生日提醒卡 -->
+          <div id="birthdayReminderCard" style="display:none">
+            <div class="bday-card">
+              <div class="bday-card-icon">🎂</div>
+              <div class="bday-card-content">
+                <div class="bday-card-title">即將到來的客戶生日</div>
+                <div class="bday-list" id="bdayList"></div>
+              </div>
+              <button class="bday-dismiss" id="bdayDismiss" title="關閉">✕</button>
+            </div>
+          </div>
+
+          <!-- 年度目標達成卡 -->
+          <div class="target-achievement-card" id="targetAchievementCard">
+            <div class="target-ach-left">
+              <div class="target-ach-year" id="targetAchYear">2026 年度業績目標</div>
+              <div class="target-ach-numbers">
+                <div class="target-ach-item">
+                  <span class="target-ach-label">目標金額</span>
+                  <span class="target-ach-value" id="targetAmountDisplay">尚未設定</span>
+                </div>
+                <div class="target-ach-sep">／</div>
+                <div class="target-ach-item">
+                  <span class="target-ach-label">已達成</span>
+                  <span class="target-ach-value achieved" id="targetAchievedDisplay">0 萬</span>
+                </div>
+                <div class="target-ach-sep">／</div>
+                <div class="target-ach-item">
+                  <span class="target-ach-label">達成率</span>
+                  <span class="target-ach-rate" id="targetRateDisplay">0%</span>
+                </div>
+              </div>
+              <div class="target-progress-bar">
+                <div class="target-progress-fill" id="targetProgressFill" style="width:0%"></div>
+              </div>
+            </div>
+            <button class="target-set-btn" id="goSetTargetBtn">&#127919; 設定目標</button>
+          </div>
+
+          <!-- 統計數字卡 -->
+          <div class="stat-cards">
+            <div class="stat-card">
+              <div class="stat-icon" style="background:#e8f0fe;color:#1a73e8">&#127970;</div>
+              <div class="stat-body">
+                <div class="stat-value" id="statCompanies">0</div>
+                <div class="stat-label">客戶公司數</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon" style="background:#e6f4ea;color:#34a853">&#128100;</div>
+              <div class="stat-body">
+                <div class="stat-value" id="statContacts">0</div>
+                <div class="stat-label">聯絡人總數</div>
+              </div>
+            </div>
+            <div class="stat-card" id="statCardA">
+              <div class="stat-icon" style="background:#fce8e6;color:#c5221f">&#128178;</div>
+              <div class="stat-body">
+                <div class="stat-value" id="statCommit">0</div>
+                <div class="stat-label">A｜Commit</div>
+              </div>
+            </div>
+            <div class="stat-card" id="statCardB">
+              <div class="stat-icon" style="background:#fff3e0;color:#e37400">&#128200;</div>
+              <div class="stat-body">
+                <div class="stat-value" id="statUpside">0</div>
+                <div class="stat-label">B｜Upside</div>
+              </div>
+            </div>
+            <div class="stat-card" id="statCardC">
+              <div class="stat-icon" style="background:#e8f0fe;color:#1a73e8">&#128203;</div>
+              <div class="stat-body">
+                <div class="stat-value" id="statPipeline">0</div>
+                <div class="stat-label">C｜Pipeline</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 圖表區 -->
+          <div class="dashboard-charts">
+            <div class="chart-card">
+              <div class="chart-title">產業分佈 <span class="chart-title-sub">（以公司計）</span></div>
+              <div id="industryChart3D"></div>
+              <div class="chart-empty" id="industryChartEmpty">尚無資料</div>
+              <div class="chart-legend" id="industryLegend"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">商機漏斗</div>
+              <div class="chart-empty" id="opportunityChartEmpty">尚無資料</div>
+              <div class="funnel-chart" id="opportunityFunnel"></div>
+            </div>
+          </div>
+
+          <!-- 商機推進進度摘要 -->
+          <div class="dash-pipeline-card">
+            <div class="dash-pipeline-title">商機推進進度 <span class="chart-title-sub">（點擊欄位前往看板）</span></div>
+            <div class="dash-pipeline-cols" id="dashPipelineCols"></div>
+          </div>
+
+          <!-- Call-in Pass 待辦提醒（業務看到被指派的） -->
+          <div id="dashCallinCard" style="display:none">
+            <div class="dash-section-title">&#128222; 今日 Call-in 待處理</div>
+            <div id="dashCallinList"></div>
+          </div>
+        </div>
+
+        <!-- ── 潛在客戶 ── -->
+        <div id="prospectsView" style="display:none">
+          <div class="section-stats">
+            <span class="contact-count" id="prospectCompanyCount">0 家公司</span>
+            <span class="contact-count" id="prospectContactCount">0 位潛在客戶</span>
+          </div>
+          <div class="contact-list" id="prospectList"></div>
+        </div>
+
+        <!-- ── 我的客戶 ── -->
+        <div id="contactsView" style="display:none">
+          <div class="section-stats">
+            <span class="contact-count" id="companyCount2">0 家公司</span>
+            <span class="contact-count" id="contactCount2">0 位聯絡人</span>
+          </div>
+          <div class="contact-list" id="contactList">
+            <div class="empty-state" id="emptyState">
+              <div class="empty-icon">&#128196;</div>
+              <p>尚無名片資料</p>
+              <p class="empty-sub">點擊右上角「新增名片」開始建立聯絡人</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 商機推進進度（Kanban）── -->
+        <div id="pipelineView" style="display:none">
+          <div class="kanban-board">
+
+            <!-- D 靜止中 -->
+            <div class="kanban-col" id="kanbanColD" data-stage="D">
+              <div class="kanban-col-header" style="border-top-color:#9e9e9e">
+                <div class="kanban-col-name-row">
+                  <span class="kanban-col-name">D｜靜止中</span>
+                  <span class="kanban-col-badge" id="kanbanBadgeD">0</span>
+                </div>
+                <div class="kanban-col-total" id="kanbanTotalD">$0<span class="kanban-col-total-label">萬</span></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCardsD" data-stage="D"></div>
+            </div>
+
+            <!-- C Pipeline -->
+            <div class="kanban-col" id="kanbanColC" data-stage="C">
+              <div class="kanban-col-header" style="border-top-color:#1a73e8">
+                <div class="kanban-col-name-row">
+                  <span class="kanban-col-name">C｜Pipeline</span>
+                  <span class="kanban-col-badge" id="kanbanBadgeC">0</span>
+                </div>
+                <div class="kanban-col-total" id="kanbanTotalC">$0<span class="kanban-col-total-label">萬</span></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCardsC" data-stage="C"></div>
+            </div>
+
+            <!-- B Upside -->
+            <div class="kanban-col" id="kanbanColB" data-stage="B">
+              <div class="kanban-col-header" style="border-top-color:#f57c00">
+                <div class="kanban-col-name-row">
+                  <span class="kanban-col-name">B｜Upside</span>
+                  <span class="kanban-col-badge" id="kanbanBadgeB">0</span>
+                </div>
+                <div class="kanban-col-total" id="kanbanTotalB">$0<span class="kanban-col-total-label">萬</span></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCardsB" data-stage="B"></div>
+            </div>
+
+            <!-- A Commit -->
+            <div class="kanban-col" id="kanbanColA" data-stage="A">
+              <div class="kanban-col-header" style="border-top-color:#d32f2f">
+                <div class="kanban-col-name-row">
+                  <span class="kanban-col-name">A｜Commit</span>
+                  <span class="kanban-col-badge" id="kanbanBadgeA">0</span>
+                </div>
+                <div class="kanban-col-total" id="kanbanTotalA">$0<span class="kanban-col-total-label">萬</span></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCardsA" data-stage="A"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── 銷售預測報表 ── -->
+        <div id="forecastView" style="display:none">
+
+          <!-- 控制列 -->
+          <div class="forecast-controls">
+            <div class="forecast-controls-left">
+              <select id="forecastYear" class="forecast-year-sel"></select>
+              <span class="forecast-hint">依商機「預定簽約日期」所屬年度顯示</span>
+            </div>
+            <button class="btn btn-export" id="forecastExportBtn">&#11015; 匯出 Excel</button>
+          </div>
+
+          <!-- 摘要卡 -->
+          <div class="forecast-summary-row" id="forecastSummaryCards"></div>
+
+          <!-- 報表主體 -->
+          <div class="forecast-table-wrap">
+            <table class="forecast-table">
+              <thead id="forecastThead"></thead>
+              <tbody id="forecastTbody"></tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <!-- ── 流失商機分析 ── -->
+        <div id="lostOppView" style="display:none">
+          <div class="forecast-controls">
+            <div class="forecast-controls-left" style="flex-wrap:wrap;gap:8px">
+              <input type="text" id="lostOppSearch" placeholder="搜尋客戶 / 產品…" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:200px">
+              <select id="lostOppReasonFilter" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="">全部原因</option>
+                <option value="預算不足">預算不足</option>
+                <option value="競爭對手得標">競爭對手得標</option>
+                <option value="客戶暫緩採購">客戶暫緩採購</option>
+                <option value="需求變更">需求變更</option>
+                <option value="內部策略調整">內部策略調整</option>
+                <option value="重複案件">重複案件</option>
+                <option value="其他">其他</option>
+              </select>
+              <input type="month" id="lostOppMonth" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <button class="btn btn-secondary" id="lostOppClear" style="padding:6px 12px;font-size:13px">清除篩選</button>
+            </div>
+            <div id="lostOppCount" style="font-size:13px;color:#888;align-self:center"></div>
+          </div>
+
+          <!-- 統計卡 -->
+          <div id="lostOppStats" style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap"></div>
+
+          <!-- 表格 -->
+          <div style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#fafafa;border-bottom:2px solid #eee">
+                  <th style="padding:10px 14px;text-align:left;font-weight:600;white-space:nowrap">刪除日期</th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:600">客戶名稱</th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:600">銷售案名</th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:600">階段</th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:600">金額(萬)</th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:600">刪除原因</th>
+                  <th style="padding:10px 14px;text-align:left;font-weight:600">業務</th>
+                </tr>
+              </thead>
+              <tbody id="lostOppTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── 報價單管理 ── -->
+        <div id="quotationsView" style="display:none">
+          <div class="view-toolbar">
+            <div class="search-box" style="width:260px">
+              <span class="search-icon">&#128269;</span>
+              <input type="text" id="quoteSearchInput" placeholder="搜尋公司、報價單號...">
+            </div>
+            <select id="quoteStatusFilter" class="forecast-year-sel">
+              <option value="">全部狀態</option>
+              <option value="draft">草稿</option>
+              <option value="sent">已寄出</option>
+              <option value="accepted">已接受</option>
+              <option value="rejected">已拒絕</option>
+            </select>
+            <button class="btn btn-primary" id="addQuoteBtn" onclick="openQuoteModal(null)">&#43; 新增報價單</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="quoteTable">
+              <thead><tr>
+                <th>報價單號</th>
+                <th>公司名稱</th>
+                <th>聯絡人</th>
+                <th>專案名稱</th>
+                <th>報價日期</th>
+                <th>合計金額</th>
+                <th>狀態</th>
+                <th>操作</th>
+              </tr></thead>
+              <tbody id="quoteTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── 商機動態報表 ── -->
+        <div id="pipelineReportView" style="display:none">
+
+          <!-- 控制列 -->
+          <div class="pr-controls">
+            <div class="pr-period-tabs">
+              <button class="pr-period-btn active" data-period="month">本月</button>
+              <button class="pr-period-btn" data-period="lastmonth">上月</button>
+              <button class="pr-period-btn" data-period="quarter">本季</button>
+              <button class="pr-period-btn" data-period="custom">自訂</button>
+            </div>
+            <div class="pr-custom-range" id="prCustomRange" style="display:none">
+              <input type="date" id="prFromDate">
+              <span style="color:#888;font-size:13px">至</span>
+              <input type="date" id="prToDate">
+              <button class="btn btn-primary btn-sm" id="prCustomApply">套用</button>
+            </div>
+            <div class="pr-period-label" id="prPeriodLabel"></div>
+          </div>
+
+          <!-- 摘要卡 -->
+          <div class="pr-summary-row" id="prSummaryCards"></div>
+
+          <!-- 兩欄佈局：漏斗圖 + 變動清單 -->
+          <div class="pr-main-grid">
+
+            <!-- 左：當前漏斗 -->
+            <div class="pr-card pr-funnel-card">
+              <div class="pr-card-title">📊 當前商機漏斗</div>
+              <div id="prFunnelBars"></div>
+              <div style="max-width:200px;height:180px;margin:12px auto 0">
+                <canvas id="prFunnelChart"></canvas>
+              </div>
+            </div>
+
+            <!-- 右：本期動態 -->
+            <div class="pr-card pr-moves-card">
+              <div class="pr-card-title">🔀 本期商機動態</div>
+
+              <!-- 晉升 -->
+              <div class="pr-move-section" id="prPromotedSection">
+                <div class="pr-move-head pr-move-head-up">⬆️ 階段晉升 <span class="pr-move-count" id="prPromotedCount">0</span></div>
+                <div class="pr-move-list" id="prPromotedList"></div>
+              </div>
+
+              <!-- 退後 -->
+              <div class="pr-move-section" id="prDemotedSection">
+                <div class="pr-move-head pr-move-head-down">⬇️ 階段退後 <span class="pr-move-count pr-move-count-down" id="prDemotedCount">0</span></div>
+                <div class="pr-move-list" id="prDemotedList"></div>
+              </div>
+
+              <!-- 新增 -->
+              <div class="pr-move-section" id="prNewSection">
+                <div class="pr-move-head pr-move-head-new">✨ 本期新增 <span class="pr-move-count pr-move-count-new" id="prNewCount">0</span></div>
+                <div class="pr-move-list" id="prNewList"></div>
+              </div>
+
+              <!-- 流失 -->
+              <div class="pr-move-section" id="prLostSection">
+                <div class="pr-move-head pr-move-head-lost">💔 本期流失 <span class="pr-move-count pr-move-count-lost" id="prLostCount">0</span></div>
+                <div class="pr-move-list" id="prLostList"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── ERP MA 合約管理 ── -->
+        <div id="erpMaView" style="display:none">
+
+          <!-- 統計卡 -->
+          <div class="contract-stat-row" id="contractStatRow"></div>
+
+          <!-- 工具列 -->
+          <div class="contract-toolbar">
+            <div class="search-box" style="width:260px">
+              <span class="search-icon">&#128269;</span>
+              <input type="text" id="contractSearch" placeholder="搜尋客戶、合約號碼...">
+            </div>
+            <select id="contractStatusFilter" class="forecast-year-sel">
+              <option value="">全部狀態</option>
+              <option value="active">有效</option>
+              <option value="expiring">即將到期</option>
+              <option value="expired">已到期</option>
+            </select>
+            <button class="btn btn-primary" id="addContractBtn">&#43; 新增合約</button>
+          </div>
+
+          <!-- 合約列表 -->
+          <div class="contract-table-wrap">
+            <table class="contract-table">
+              <thead>
+                <tr>
+                  <th>合約號碼</th>
+                  <th>客戶名稱</th>
+                  <th>產品／服務</th>
+                  <th>合約起日</th>
+                  <th>合約迄日</th>
+                  <th>年費金額<br>(NT$K)</th>
+                  <th>業務人員</th>
+                  <th>狀態</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="contractTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── SAP License MA 合約管理 ── -->
+        <div id="sapMaView" style="display:none">
+
+          <!-- 年度通知橫幅 -->
+          <div id="sapNoticeBar" class="sap-notice-bar" style="display:none"></div>
+
+          <!-- 統計卡 -->
+          <div class="contract-stat-row" id="sapStatRow"></div>
+
+          <!-- 工具列 -->
+          <div class="contract-toolbar">
+            <div class="search-box" style="width:260px">
+              <span class="search-icon">&#128269;</span>
+              <input type="text" id="sapContractSearch" placeholder="搜尋客戶、合約號碼...">
+            </div>
+            <select id="sapContractStatusFilter" class="forecast-year-sel">
+              <option value="">全部狀態</option>
+              <option value="active">有效</option>
+              <option value="expiring">即將到期</option>
+              <option value="expired">逾期</option>
+            </select>
+            <button class="btn btn-primary" id="addSapContractBtn">&#43; 新增合約</button>
+          </div>
+
+          <!-- 合約列表 -->
+          <div class="contract-table-wrap">
+            <table class="contract-table">
+              <thead>
+                <tr>
+                  <th>合約號碼</th>
+                  <th>客戶名稱</th>
+                  <th>產品／服務</th>
+                  <th>合約起日</th>
+                  <th>合約迄日</th>
+                  <th>年費金額<br>(NT$K)</th>
+                  <th>業務人員</th>
+                  <th>狀態</th>
+                  <th>備註</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="sapContractTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── 業務年度目標 ── -->
+        <div id="targetsView" style="display:none">
+
+          <!-- 目標設定卡 -->
+          <div class="target-set-card">
+            <div class="target-set-title">&#127919; 設定年度業績目標</div>
+            <div class="target-set-row">
+              <div class="form-group" style="flex:0 0 140px">
+                <label>年度</label>
+                <select id="targetYearSel"></select>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label>目標金額（萬元）</label>
+                <input type="number" id="targetAmountInput" placeholder="例：5000" min="0">
+              </div>
+              <button class="btn btn-primary" id="saveTargetBtn" style="align-self:flex-end">儲存目標</button>
+            </div>
+            <div class="target-history" id="targetHistory"></div>
+          </div>
+
+          <!-- 殭屍商機詳細區塊 -->
+          <div id="zombieSection" style="display:none">
+            <div class="zombie-section-card">
+              <div class="zombie-section-hd">
+                <span class="zombie-section-icon">🧟</span>
+                <span class="zombie-section-title">殭屍商機警示</span>
+                <span class="zombie-section-count" id="zombieSectionCount"></span>
+                <button class="zombie-collapse-btn" id="zombieCollapseBtn" title="收合">▲</button>
+              </div>
+              <div id="zombieSectionBody">
+                <div class="zombie-rules-hint">
+                  <span class="zombie-rule-chip zombie-chip-c">C 級 &gt;14 天未聯繫</span>
+                  <span class="zombie-rule-chip zombie-chip-b">B 級 &gt;24 天未拜訪 或 &gt;14 天未電話</span>
+                  <span class="zombie-rule-chip zombie-chip-a">A 級 &gt;7 天未任何聯繫</span>
+                </div>
+                <div class="zombie-table-wrap">
+                  <table class="zombie-table">
+                    <thead>
+                      <tr>
+                        <th>嚴重度</th>
+                        <th>客戶公司</th>
+                        <th>聯絡人</th>
+                        <th>商品項目</th>
+                        <th>金額（萬）</th>
+                        <th>階段</th>
+                        <th>最後聯繫</th>
+                        <th>警示原因</th>
+                        <th>負責人</th>
+                      </tr>
+                    </thead>
+                    <tbody id="zombieTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 商機列表（可維護成交狀態） -->
+          <div class="opp-list-card">
+            <div class="opp-list-header">
+              <div class="opp-list-title">&#128200; 商機列表</div>
+              <div class="opp-list-filters">
+                <select id="oppFilterYear">
+                  <option value="">全部年度</option>
+                </select>
+                <select id="oppFilterStage">
+                  <option value="">全部狀態</option>
+                  <option value="A">A｜Commit</option>
+                  <option value="B">B｜Upside</option>
+                  <option value="C">C｜Pipeline</option>
+                  <option value="D">D｜靜止中</option>
+                  <option value="成交">成交</option>
+                  <option value="已刪除">💔 已刪除（可還原）</option>
+                </select>
+              </div>
+            </div>
+            <div class="opp-table-wrap">
+              <table class="opp-table" id="oppTable">
+                <thead>
+                  <tr>
+                    <th>建立日期</th>
+                    <th>客戶公司</th>
+                    <th>聯絡人</th>
+                    <th>商機類別</th>
+                    <th>商品項目</th>
+                    <th>預估金額（萬）</th>
+                    <th>預計成交日</th>
+                    <th>狀態</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="oppTableBody"></tbody>
+              </table>
+              <div class="opp-empty" id="oppEmpty">尚無商機資料</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── 業務日報（日曆）── -->
+        <div id="visitsView" style="display:none">
+          <div class="cal-nav">
+            <button class="cal-nav-btn" id="calPrevBtn">&#9664;</button>
+            <div class="cal-month-title" id="calMonthTitle"></div>
+            <button class="cal-nav-btn" id="calNextBtn">&#9654;</button>
+            <button class="cal-today-btn" id="calTodayBtn">今天</button>
+          </div>
+          <div class="cal-weekdays">
+            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+
+        <!-- ── 應收帳款逾期 ── -->
+        <div id="receivablesView" style="display:none">
+          <div class="view-toolbar">
+            <div class="view-tab-group">
+              <button class="view-tab active" data-rtab="all">全部</button>
+              <button class="view-tab" data-rtab="overdue">逾期</button>
+              <button class="view-tab" data-rtab="pending">待收款</button>
+              <button class="view-tab" data-rtab="paid">已收款</button>
+            </div>
+            <button class="btn btn-primary" id="addReceivableBtn">&#43; 新增帳款</button>
+          </div>
+          <div class="receivables-summary" id="receivablesSummary"></div>
+          <div class="table-wrap">
+            <table class="data-table" id="receivablesTable">
+              <thead><tr>
+                <th>公司</th><th>聯絡人</th><th>發票號碼</th>
+                <th>開立日期</th><th>到期日</th><th>逾期天數</th>
+                <th>應收金額</th><th>未收餘額</th><th>狀態</th><th>操作</th>
+              </tr></thead>
+              <tbody id="receivablesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── Call-in Pass 管理 ── -->
+        <div id="callinView" style="display:none">
+          <div class="view-toolbar">
+            <div class="view-tab-group">
+              <button class="view-tab active" data-ctab="all">全部</button>
+              <button class="view-tab" data-ctab="pending">待指派</button>
+              <button class="view-tab" data-ctab="assigned">待聯繫</button>
+              <button class="view-tab" data-ctab="overdue">逾時</button>
+              <button class="view-tab" data-ctab="done">已完成</button>
+            </div>
+            <button class="btn btn-primary" id="addCallinBtn" style="display:none">&#43; 新增 Call-in</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="callinTable">
+              <thead><tr>
+                <th>建立時間</th><th>公司 / 聯絡人</th><th>電話</th>
+                <th>來電事由</th><th>負責業務</th><th>截止時間</th>
+                <th>狀態</th><th>操作</th>
+              </tr></thead>
+              <tbody id="callinTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ── 應收帳款 Modal ── -->
+  <div class="modal-overlay" id="receivableModalOverlay" style="display:none">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <h2 id="receivableModalTitle">新增帳款</h2>
+        <button class="modal-close" id="receivableModalClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="receivableId">
+        <div class="form-row">
+          <div class="form-group"><label>公司名稱 *</label><input type="text" id="rCompany" placeholder="客戶公司"></div>
+          <div class="form-group"><label>聯絡人</label><input type="text" id="rContact" placeholder="聯絡人姓名"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>發票號碼</label><input type="text" id="rInvoiceNo" placeholder="例：AB12345678"></div>
+          <div class="form-group"><label>幣別</label>
+            <select id="rCurrency"><option value="NTD">NTD</option><option value="USD">USD</option><option value="CNY">CNY</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>發票開立日 *</label><input type="date" id="rInvoiceDate"></div>
+          <div class="form-group"><label>付款到期日 *</label><input type="date" id="rDueDate"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>應收金額 *</label><input type="number" id="rAmount" placeholder="0" min="0"></div>
+          <div class="form-group"><label>已收金額</label><input type="number" id="rPaidAmount" placeholder="0" min="0"></div>
+        </div>
+        <div class="form-group"><label>備註</label><textarea id="rNote" rows="2" placeholder="備註說明"></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="receivableModalCancel">取消</button>
+        <button class="btn btn-primary" id="receivableModalSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Call-in 新增 Modal（秘書用） ── -->
+  <div class="modal-overlay" id="callinModalOverlay" style="display:none">
+    <div class="modal" style="max-width:500px">
+      <div class="modal-header">
+        <h2>新增 Call-in Pass</h2>
+        <button class="modal-close" id="callinModalClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>公司名稱</label><input type="text" id="ciCompany" placeholder="來電公司"></div>
+          <div class="form-group"><label>聯絡人</label><input type="text" id="ciContact" placeholder="來電者姓名"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>電話</label><input type="text" id="ciPhone" placeholder="來電號碼"></div>
+          <div class="form-group"><label>來源</label>
+            <select id="ciSource"><option value="電話">電話</option><option value="官網">官網</option><option value="展覽">展覽</option><option value="介紹">介紹</option><option value="其他">其他</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>來電事由 *</label><textarea id="ciTopic" rows="3" placeholder="客戶需求 / 問題說明"></textarea></div>
+        <div class="form-group"><label>備註</label><textarea id="ciNote" rows="2" placeholder="補充說明"></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="callinModalCancel">取消</button>
+        <button class="btn btn-primary" id="callinModalSave">建立 Call-in</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 名單移轉 View ── -->
+  <div id="transferView" style="display:none;padding:24px">
+    <div style="font-size:20px;font-weight:800;color:#1a2d52;margin-bottom:6px">🔄 責任業務名單移轉</div>
+    <div style="font-size:13px;color:#888;margin-bottom:24px">將業務人員的客戶名單（含商機、拜訪記錄、應收帳款）移轉給另一位業務</div>
+    <div class="transfer-layout">
+      <!-- 來源 -->
+      <div class="transfer-panel">
+        <div class="transfer-panel-head">
+          <select id="appTransferFromOwner"><option value="">-- 選取來源業務 --</option></select>
+          <span class="transfer-count" id="appTransferFromCount"></span>
+        </div>
+        <div class="transfer-list" id="appTransferFromList">
+          <div class="transfer-item-empty">請先選擇來源業務人員</div>
+        </div>
+        <div class="transfer-footer">
+          <span class="transfer-select-all" id="appTransferSelectAll">全選</span>
+          <span id="appTransferSelectedCount" style="font-size:12px;color:#fff"></span>
+        </div>
+      </div>
+      <!-- 箭頭 + 確認 -->
+      <div class="transfer-arrow">
+        <div class="transfer-arrow-icon">➡️</div>
+        <button class="btn btn-primary btn-sm" id="appTransferConfirmBtn" disabled style="writing-mode:vertical-rl;height:80px;letter-spacing:2px">確認移轉</button>
+      </div>
+      <!-- 目標 -->
+      <div class="transfer-panel">
+        <div class="transfer-panel-head">
+          <select id="appTransferToOwner"><option value="">-- 選取目標業務 --</option></select>
+          <span class="transfer-count" id="appTransferToCount"></span>
+        </div>
+        <div class="transfer-list" id="appTransferToList">
+          <div class="transfer-item-empty">請先選擇目標業務人員</div>
+        </div>
+        <div class="transfer-footer"></div>
+      </div>
+    </div>
+    <div id="appTransferResultBox" style="display:none;margin-top:16px"></div>
+  </div>
+
+  <!-- ── Call-in 指派 Modal（主管用） ── -->
+  <div class="modal-overlay" id="callinAssignOverlay" style="display:none">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header">
+        <h2>指派業務</h2>
+        <button class="modal-close" id="callinAssignClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="assignCallinId">
+        <div id="assignCallinInfo" style="background:#f8f9fa;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+        <div class="form-group">
+          <label>指派給業務</label>
+          <select id="assignToUser"><option value="">請選擇業務...</option></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="callinAssignCancel">取消</button>
+        <button class="btn btn-primary" id="callinAssignSave">確認指派</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Call-in 業務回應 Modal ── -->
+  <div class="modal-overlay" id="callinRespondOverlay" style="display:none">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <h2>Call-in 回應</h2>
+        <button class="modal-close" id="callinRespondClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="respondCallinId">
+        <div id="respondCallinInfo" style="background:#f8f9fa;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+        <div class="form-group">
+          <label>聯繫結果</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+            <label class="radio-btn"><input type="radio" name="respondAction" value="qualified" id="raQualified"> &#9989; 合格商機</label>
+            <label class="radio-btn"><input type="radio" name="respondAction" value="unqualified" id="raUnqualified"> &#10060; 非合格商機</label>
+            <label class="radio-btn"><input type="radio" name="respondAction" value="contacted" id="raContacted"> &#128222; 已聯繫（待確認）</label>
+          </div>
+        </div>
+        <div id="qualifiedSection" style="display:none">
+          <div class="form-group"><label>商機名稱 *</label><input type="text" id="oppName" placeholder="請輸入商機名稱"></div>
+          <div class="form-group"><label>商機等級</label>
+            <select id="oppStage">
+              <option value="A">A - Commit</option>
+              <option value="B">B - Upside</option>
+              <option value="C" selected>C - Pipeline</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group"><label>備註說明</label><textarea id="respondNote" rows="2" placeholder="補充說明..."></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="callinRespondCancel">取消</button>
+        <button class="btn btn-primary" id="callinRespondSave">確認送出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增/編輯 Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitle">新增名片</h2>
+        <button class="modal-close" id="modalClose">&#10005;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="tab-card">&#128196; 名片資料</button>
+        <button class="tab-btn" data-tab="tab-company">&#127970; 公司資訊</button>
+        <button class="tab-btn" data-tab="tab-opp">&#128161; 新增商機</button>
+        <button class="tab-btn" data-tab="tab-personal">&#128100; 個人資訊</button>
+      </div>
+      <div class="modal-body">
+        <div class="tab-content" id="tab-card">
+          <div class="card-image-section">
+            <div class="card-image-preview" id="cardImagePreview">
+              <span class="upload-hint">&#128247; 點擊上傳名片圖片</span>
+              <img id="previewImg" src="" alt="名片圖片" style="display:none">
+            </div>
+            <input type="file" id="cardImageInput" accept="image/*" style="display:none">
+            <div class="image-actions" id="imageActions" style="display:none">
+              <button class="btn-sm btn-danger" id="removeImage">移除圖片</button>
+            </div>
+          </div>
+          <form id="contactForm">
+            <input type="hidden" id="contactId">
+            <input type="hidden" id="cardImageUrl">
+            <div class="form-grid">
+              <div class="form-group full-width taxid-top">
+                <label>統一編號 <span class="auto-tag" id="taxIdLoadingBadge" style="display:none">查詢中...</span><span class="auto-tag taxid-ok" id="taxIdOkBadge" style="display:none">✓ 已帶入</span></label>
+                <div class="input-with-mic">
+                  <input type="text" id="taxId" placeholder="輸入 8 碼統編，自動帶入公司資料" maxlength="8">
+                  <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
+                </div>
+              </div>
+              <div class="form-group required">
+                <label>姓名</label>
+                <input type="text" id="name" placeholder="請輸入姓名" required>
+              </div>
+              <div class="form-group">
+                <label>英文名稱</label>
+                <input type="text" id="nameEn" placeholder="English Name">
+              </div>
+              <div class="form-group full-width">
+                <label>主要聯繫窗口</label>
+                <div class="radio-group">
+                  <label class="radio-label">
+                    <input type="radio" name="isPrimary" id="isPrimaryYes" value="true">
+                    <span class="radio-text primary-yes">&#11088; 是，設為主要聯繫窗口</span>
+                  </label>
+                  <label class="radio-label">
+                    <input type="radio" name="isPrimary" id="isPrimaryNo" value="false" checked>
+                    <span class="radio-text">否</span>
+                  </label>
+                </div>
+              </div>
+              <div class="form-group full-width">
+                <label>人員狀態</label>
+                <label class="checkbox-label resigned-check-label">
+                  <input type="checkbox" id="isResigned">
+                  <span class="checkbox-text resigned-text">&#128683; 此人員已離職</span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>公司</label>
+                <input type="text" id="company" placeholder="請輸入公司名稱" list="companyList" autocomplete="off">
+                <datalist id="companyList"></datalist>
+              </div>
+              <div class="form-group">
+                <label>職稱</label>
+                <input type="text" id="title" placeholder="請輸入職稱">
+              </div>
+              <div class="form-group full-width">
+                <label>職能分類 <span style="font-size:11px;color:#888;font-weight:normal">（依職稱自動判斷，可點擊修改；再次點擊取消選取）</span></label>
+                <div class="jf-selector" id="jfSelector"></div>
+                <input type="hidden" id="jobFunction">
+              </div>
+              <div class="form-group">
+                <label>產業屬性 <span class="auto-tag" id="autoDetectBadge" style="display:none">自動判斷</span></label>
+                <select id="industry">
+                  <option value="">-- 請選擇 --</option>
+                  <option value="半導體">半導體</option>
+                  <option value="科技業">科技業</option>
+                  <option value="電子製造">電子製造</option>
+                  <option value="製造業">製造業</option>
+                  <option value="金融業">金融業</option>
+                  <option value="醫療／生技">醫療／生技</option>
+                  <option value="零售／電商">零售／電商</option>
+                  <option value="建設／不動產">建設／不動產</option>
+                  <option value="顧問／服務業">顧問／服務業</option>
+                  <option value="政府／公家機關">政府／公家機關</option>
+                  <option value="教育">教育</option>
+                  <option value="傳產／食品">傳產／食品</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>電話</label>
+                <input type="text" id="phone" placeholder="例：02-12345678">
+              </div>
+              <div class="form-group">
+                <label>手機</label>
+                <input type="text" id="mobile" placeholder="例：0912-345678">
+              </div>
+              <div class="form-group">
+                <label>分機</label>
+                <input type="text" id="ext" placeholder="例：123">
+              </div>
+              <div class="form-group" style="position:relative">
+                <label>Email <span class="required">*</span></label>
+                <input type="email" id="email" placeholder="例：example@email.com" autocomplete="off" required>
+                <div class="domain-dropdown" id="domainDropdown"></div>
+              </div>
+              <div class="form-group full-width">
+                <label>地址</label>
+                <input type="text" id="address" placeholder="請輸入地址">
+              </div>
+              <div class="form-group full-width">
+                <label>網站</label>
+                <input type="text" id="website" placeholder="例：https://www.example.com">
+              </div>
+              <div class="form-group">
+                <label>使用中系統</label>
+                <select id="systemVendor">
+                  <option value="">-- 請選擇 --</option>
+                  <option value="鼎新系統">鼎新系統</option>
+                  <option value="SAP">SAP</option>
+                  <option value="Oracle">Oracle</option>
+                  <option value="文中">文中</option>
+                  <option value="正航">正航</option>
+                  <option value="自行開發">自行開發</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+              <div class="form-group" id="systemProductGroup" style="display:none">
+                <label>系統產品</label>
+                <select id="systemProduct">
+                  <option value="">-- 請選擇 --</option>
+                </select>
+                <input type="text" id="systemProductText" placeholder="請輸入系統說明..." style="display:none; margin-top:6px">
+              </div>
+              <div class="form-group full-width">
+                <label>備註</label>
+                <textarea id="note" placeholder="請輸入備註..." rows="3"></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="tab-content hidden" id="tab-company">
+          <div class="lookup-bar">
+            <div class="lookup-taxid">
+              統編：<strong id="lookupTaxIdDisplay">尚未填入統編</strong>
+            </div>
+            <button class="btn btn-primary" id="lookupBtn">&#128269; 查詢公司資料</button>
+          </div>
+          <div id="companyInfoResult">
+            <div class="lookup-hint">請先在「名片資料」頁簽填入統一編號，再點擊「查詢公司資料」</div>
+          </div>
+        </div>
+
+        <!-- ── 商機 TAB ── -->
+        <div class="tab-content hidden" id="tab-opp">
+          <div class="opp-tab-note" id="cOppNoIdNote" style="display:none">
+            &#9888; 請先儲存聯絡人資料後，再新增商機
+          </div>
+          <div id="cOppForm">
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label>商機類別 <span class="required">*</span></label>
+                <select id="cOppCategory">
+                  <option value="">-- 請選擇 --</option>
+                  <option value="ERP">ERP</option>
+                  <option value="ITS">ITS</option>
+                </select>
+              </div>
+              <div class="form-group full-width" id="cOppProductGroup" style="display:none">
+                <label>商品項目</label>
+                <select id="cOppProduct">
+                  <option value="">-- 請選擇 --</option>
+                </select>
+                <input type="text" id="cOppProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+              </div>
+              <div class="form-group">
+                <label>商機階段</label>
+                <select id="cOppStage">
+                  <option value="C" selected>C｜Pipeline（有商機，需求已明確）</option>
+                  <option value="B">B｜Upside（已報價，三個月內可落袋）</option>
+                  <option value="A">A｜Commit（本月有案子可簽約）</option>
+                  <option value="D">D｜靜止中（暫無商機）</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>預估金額（萬元）</label>
+                <input type="number" id="cOppAmount" placeholder="例：500" min="0">
+              </div>
+              <div class="form-group">
+                <label>預計成交日期</label>
+                <input type="date" id="cOppExpectedDate">
+              </div>
+              <div class="form-group">
+                <label>預估毛利率（%）</label>
+                <input type="number" id="cOppGrossMargin" placeholder="例：30" min="0" max="100" step="0.1">
+              </div>
+              <div class="form-group full-width">
+                <label>商機說明</label>
+                <textarea id="cOppDescription" rows="3" placeholder="描述此商機的背景、需求與競爭情況..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- ── 個人資訊 TAB ── -->
+        <div class="tab-content hidden" id="tab-personal">
+
+          <div class="personal-section-title">☕ 飲料偏好</div>
+          <div class="personal-chip-group" id="drinkPrefGroup">
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="黑咖啡"> ☕ 黑咖啡</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="咖啡加奶"> 🥛 咖啡加奶</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="綠茶"> 🍵 綠茶</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="烏龍茶"> 🍵 烏龍茶</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="紅茶"> 🍵 紅茶</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="手搖飲料"> 🧋 手搖飲料</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="果汁"> 🍹 果汁</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="氣泡水"> 💧 氣泡水</label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="咖啡因過敏" class="chip-alert"><span class="chip-alert-text">🚫 咖啡因過敏</span></label>
+            <label class="personal-chip"><input type="checkbox" name="drinkPref" value="不喝含糖飲料"> 🚷 不喝含糖</label>
+          </div>
+
+          <div class="personal-section-title">🎯 興趣愛好</div>
+          <div class="personal-chip-group" id="hobbiesGroup">
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="高爾夫"> ⛳ 高爾夫</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="閱讀"> 📚 閱讀</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="研究股市"> 📈 研究股市</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="聊房市"> 🏠 房市話題</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="汽車"> 🚗 汽車</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="美食"> 🍜 美食</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="旅遊"> ✈️ 旅遊</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="運動健身"> 💪 運動健身</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="音樂"> 🎵 音樂</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="電影"> 🎬 電影</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="釣魚"> 🎣 釣魚</label>
+            <label class="personal-chip"><input type="checkbox" name="hobbies" value="桌遊"> 🎲 桌遊</label>
+          </div>
+
+          <div class="personal-section-title">🍽️ 飲食禁忌</div>
+          <div class="personal-chip-group" id="dietGroup">
+            <label class="personal-chip"><input type="checkbox" name="diet" value="素食"> 🥦 素食</label>
+            <label class="personal-chip"><input type="checkbox" name="diet" value="不吃牛"> 🚫🐄 不吃牛</label>
+            <label class="personal-chip"><input type="checkbox" name="diet" value="不吃豬"> 🚫🐷 不吃豬</label>
+            <label class="personal-chip"><input type="checkbox" name="diet" value="不吃海鮮"> 🚫🦐 不吃海鮮</label>
+            <label class="personal-chip"><input type="checkbox" name="diet" value="不吃辣"> 🚫🌶️ 不吃辣</label>
+            <label class="personal-chip"><input type="checkbox" name="diet" value="過敏食物"> ⚠️ 有過敏食物</label>
+          </div>
+
+          <div class="form-group" style="margin-top:16px">
+            <label class="personal-section-title" style="margin-bottom:6px">🎂 生日（月/日）</label>
+            <input type="text" id="personalBirthday" placeholder="例：03/15" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px">
+          </div>
+
+          <div class="form-group" style="margin-top:16px">
+            <label class="personal-section-title" style="margin-bottom:6px">📝 關係備忘錄</label>
+            <textarea id="personalMemo" rows="4"
+              placeholder="記錄特殊偏好、重要背景、家庭狀況、拜訪心得等，方便業務交接時快速上手..."
+              style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;line-height:1.6"></textarea>
+          </div>
+
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelBtn">取消</button>
+        <button class="btn btn-primary" id="saveBtn">儲存</button>
+        <button class="btn btn-success" id="cOppSaveBtn" style="display:none">&#128161; 新增商機</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 檢視名片 Modal -->
+  <div class="modal-overlay" id="viewOverlay">
+    <div class="modal modal-view">
+      <div class="modal-header">
+        <h2 id="viewName">聯絡人資訊</h2>
+        <button class="modal-close" id="viewClose">&#10005;</button>
+      </div>
+      <div class="modal-body" id="viewBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="viewDeleteBtn">&#128465; 刪除</button>
+        <button class="btn btn-secondary" id="viewEditBtn">&#9998; 編輯</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 刪除確認 Modal -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header"><h2>確認刪除</h2></div>
+      <div class="modal-body">
+        <p>確定要刪除 <strong id="deleteContactName"></strong> 的名片資料嗎？</p>
+        <p class="text-muted">此操作無法復原。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirmCancel">取消</button>
+        <button class="btn btn-danger" id="confirmDelete">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增/編輯 拜訪記錄 Modal -->
+  <div class="modal-overlay" id="visitModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="visitModalTitle">新增拜訪記錄</h2>
+        <button class="modal-close" id="visitModalClose">&#10005;</button>
+      </div>
+      <!-- 共用欄位：客戶 & 聯絡人（兩個 Tab 共用） -->
+      <div class="visit-shared-fields">
+        <div class="form-grid">
+          <div class="form-group full-width required">
+            <label>客戶名稱</label>
+            <select id="visitCompany">
+              <option value="">-- 請選擇客戶 --</option>
+            </select>
+          </div>
+          <div class="form-group full-width required">
+            <label>聯絡人</label>
+            <select id="visitContactId" disabled>
+              <option value="">-- 請先選擇客戶 --</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-vtab="vtab-visit">&#128203; 拜訪記錄</button>
+        <button class="tab-btn" data-vtab="vtab-opportunity">&#128161; 新增商機</button>
+      </div>
+      <div class="modal-body">
+        <!-- Tab 1：拜訪記錄 -->
+        <div id="vtab-visit">
+          <form id="visitForm">
+            <input type="hidden" id="visitId">
+            <div class="form-grid">
+              <div class="form-group required">
+                <label>拜訪日期</label>
+                <input type="date" id="visitDate">
+              </div>
+              <div class="form-group">
+                <label>拜訪方式</label>
+                <select id="visitType">
+                  <option value="親訪">親訪</option>
+                  <option value="電話">電話</option>
+                  <option value="視訊">視訊</option>
+                  <option value="Email">Email</option>
+                  <option value="展覽">展覽</option>
+                </select>
+              </div>
+              <div class="form-group full-width required">
+                <label>拜訪主題</label>
+                <input type="text" id="visitTopic" placeholder="例：ERP 需求訪談、年度合約洽談...">
+              </div>
+              <div class="form-group full-width">
+                <label>會談內容</label>
+                <textarea id="visitContent" rows="4" placeholder="記錄本次拜訪的重點討論內容..."></textarea>
+              </div>
+              <div class="form-group full-width">
+                <label>下一步行動</label>
+                <textarea id="visitNextAction" rows="2" placeholder="例：寄送報價單、安排 Demo、下週回訪..."></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- Tab 2：新增商機 -->
+        <div id="vtab-opportunity" style="display:none">
+          <div class="opp-tab-note">
+            &#128161; 商機將連結至上方選擇的客戶與聯絡人，預設階段為 <strong>C｜Pipeline</strong>
+          </div>
+          <div class="form-grid">
+            <div class="form-group full-width required">
+              <label>商機類別</label>
+              <select id="oppCategory">
+                <option value="">-- 請選擇 --</option>
+                <option value="ERP">ERP</option>
+                <option value="ITS">ITS</option>
+              </select>
+            </div>
+            <div class="form-group full-width" id="oppProductGroup" style="display:none">
+              <label>商品項目</label>
+              <select id="oppProduct">
+                <option value="">-- 請選擇 --</option>
+              </select>
+              <input type="text" id="oppProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+            </div>
+            <div class="form-group">
+              <label>預估金額（萬元）</label>
+              <input type="number" id="oppAmount" placeholder="例：500" min="0">
+            </div>
+            <div class="form-group">
+              <label>預計成交日期</label>
+              <input type="date" id="oppExpectedDate">
+            </div>
+            <div class="form-group full-width">
+              <label>商機說明</label>
+              <textarea id="oppDescription" rows="3" placeholder="描述此商機的背景、需求與競爭情況..."></textarea>
+            </div>
+            <div class="form-group full-width">
+              <label>商機階段</label>
+              <div class="opp-stage-fixed opp-c">C｜Pipeline &nbsp;—&nbsp; 有商機，需求已明確（預設）</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="visitCancelBtn">取消</button>
+        <button class="btn btn-primary" id="visitSaveBtn">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 檢視拜訪記錄 Modal -->
+  <div class="modal-overlay" id="visitViewOverlay">
+    <div class="modal modal-view">
+      <div class="modal-header">
+        <h2 id="visitViewTitle">拜訪記錄</h2>
+        <button class="modal-close" id="visitViewClose">&#10005;</button>
+      </div>
+      <div class="modal-body" id="visitViewBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="visitViewDeleteBtn">&#128465; 刪除</button>
+        <button class="btn btn-secondary" id="visitViewEditBtn">&#9998; 編輯</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 刪除拜訪記錄確認 Modal -->
+  <div class="modal-overlay" id="visitConfirmOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header"><h2>確認刪除</h2></div>
+      <div class="modal-body">
+        <p>確定要刪除這筆拜訪記錄嗎？</p>
+        <p class="text-muted">此操作無法復原。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="visitConfirmCancel">取消</button>
+        <button class="btn btn-danger" id="visitConfirmDelete">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商機編輯 Modal -->
+  <div class="modal-overlay" id="oppEditOverlay">
+    <div class="modal modal-sm" style="width:480px">
+      <div class="modal-header">
+        <h2>編輯商機</h2>
+        <button class="modal-close" id="oppEditClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="oppEditId">
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label>客戶公司</label>
+            <input type="text" id="oppEditCompany" readonly style="background:#f8f9fa;color:#888">
+          </div>
+          <div class="form-group full-width">
+            <label>聯絡人</label>
+            <input type="text" id="oppEditContact" readonly style="background:#f8f9fa;color:#888">
+          </div>
+          <div class="form-group">
+            <label>商機類別</label>
+            <select id="oppEditCategory">
+              <option value="">-- 請選擇 --</option>
+              <option value="ERP">ERP</option>
+              <option value="ITS">ITS</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>商機階段</label>
+            <select id="oppEditStage">
+              <option value="D">D｜靜止中</option>
+              <option value="C">C｜Pipeline</option>
+              <option value="B">B｜Upside</option>
+              <option value="A">A｜Commit</option>
+              <option value="成交">✅ 成交</option>
+            </select>
+          </div>
+          <div class="form-group full-width" id="oppEditProductGroup">
+            <label>商品項目</label>
+            <select id="oppEditProduct">
+              <option value="">-- 請選擇 --</option>
+            </select>
+            <input type="text" id="oppEditProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+          </div>
+          <div class="form-group">
+            <label>合約金額（萬元）</label>
+            <input type="number" id="oppEditAmount" placeholder="例：500" min="0">
+          </div>
+          <div class="form-group">
+            <label>預估毛利率（%）</label>
+            <input type="number" id="oppEditGrossMargin" placeholder="例：30" min="0" max="100" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>預定簽約日期</label>
+            <input type="date" id="oppEditExpectedDate">
+          </div>
+          <div class="form-group full-width">
+            <label>商機說明</label>
+            <textarea id="oppEditDescription" rows="3" placeholder="描述商機背景、需求與競爭情況..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between">
+        <button class="btn" id="oppEditDelete" style="background:#fce8e6;color:#c62828;border:1px solid #f5c6cb">🗑️ 刪除案件</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="oppEditCancel">取消</button>
+          <button class="btn btn-primary" id="oppEditSave">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商機刪除原因 Modal -->
+  <div class="modal-overlay" id="oppDeleteModal">
+    <div class="modal" style="width:420px">
+      <div class="modal-header">
+        <h3>刪除案件</h3>
+        <button class="modal-close" id="oppDeleteClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#fce8e6;border-left:4px solid #ea4335;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px;color:#c62828">
+          刪除後案件將移至「流失商機」留存分析，不會永久消失。
+        </div>
+        <div class="form-group">
+          <label>客戶名稱</label>
+          <input type="text" id="oppDeleteCompany" readonly style="background:#f5f5f5;color:#888">
+        </div>
+        <div class="form-group">
+          <label>銷售案名</label>
+          <input type="text" id="oppDeleteProduct" readonly style="background:#f5f5f5;color:#888">
+        </div>
+        <div class="form-group">
+          <label>刪除原因 <span style="color:#ea4335">*</span></label>
+          <select id="oppDeleteReasonSel" style="margin-bottom:8px">
+            <option value="">— 請選擇原因 —</option>
+            <option value="預算不足">預算不足</option>
+            <option value="競爭對手得標">競爭對手得標</option>
+            <option value="客戶暫緩採購">客戶暫緩採購</option>
+            <option value="需求變更">需求變更</option>
+            <option value="內部策略調整">內部策略調整</option>
+            <option value="重複案件">重複案件</option>
+            <option value="其他">其他</option>
+          </select>
+          <textarea id="oppDeleteReasonNote" rows="3" placeholder="補充說明（選填）" style="resize:vertical"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:flex-end;gap:8px">
+        <button class="btn btn-secondary" id="oppDeleteCancel">取消</button>
+        <button class="btn" id="oppDeleteConfirm" style="background:#ea4335;color:#fff">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 合約新增/編輯 Modal -->
+  <div class="modal-overlay" id="contractModal">
+    <div class="modal" style="width:560px">
+      <div class="modal-header">
+        <h3 id="contractModalTitle">新增 ERP MA 合約</h3>
+        <button class="modal-close" id="contractModalClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="contractId">
+        <input type="hidden" id="contractTypeHidden" value="ERP_MA">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>合約號碼</label>
+            <input type="text" id="contractNo" placeholder="例：MA-2026-001">
+          </div>
+          <div class="form-group">
+            <label>客戶名稱 <span class="required">*</span></label>
+            <input type="text" id="contractCompany" placeholder="客戶公司名稱" list="companyDatalist">
+          </div>
+          <div class="form-group">
+            <label>聯絡人</label>
+            <input type="text" id="contractContact" placeholder="主要聯絡人姓名">
+          </div>
+          <div class="form-group">
+            <label>產品／服務</label>
+            <select id="contractProduct">
+              <option value="">-- 請選擇 --</option>
+              <optgroup label="一般商品">
+                <option value="SAP Public Cloud License">SAP Public Cloud License</option>
+                <option value="SAP Private Cloud License">SAP Private Cloud License</option>
+                <option value="ERP 顧問導入專案 PE">ERP 顧問導入專案 PE</option>
+                <option value="ERP 顧問導入專案 PCE">ERP 顧問導入專案 PCE</option>
+                <option value="其他">其他</option>
+              </optgroup>
+              <optgroup label="─── License MA ───">
+                <option value="SAP PCOE License MA">SAP PCOE License MA</option>
+                <option value="SAP PCE License MA">SAP PCE License MA</option>
+                <option value="SAP PE License MA">SAP PE License MA</option>
+              </optgroup>
+              <optgroup label="─── Service MA ───">
+                <option value="Service MA（Basis）">Service MA（Basis）</option>
+                <option value="Service MA（AP）">Service MA（AP）</option>
+                <option value="Service MA（Basis &amp; AP）">Service MA（Basis &amp; AP）</option>
+              </optgroup>
+              <optgroup label="─── SAP 延伸解決方案 ───">
+                <option value="SAP CRM">SAP CRM</option>
+                <option value="SAP Analytics Cloud（SAC）">SAP Analytics Cloud（SAC）</option>
+                <option value="SAP Customer Data Platform（CDP）">SAP Customer Data Platform（CDP）</option>
+                <option value="SAP Engagement Cloud（Emarsys）">SAP Engagement Cloud（Emarsys）</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>合約起日 <span class="required">*</span></label>
+            <input type="date" id="contractStartDate">
+          </div>
+          <div class="form-group">
+            <label>合約迄日 <span class="required">*</span></label>
+            <input type="date" id="contractEndDate">
+          </div>
+          <div class="form-group">
+            <label>續約至合約日期</label>
+            <input type="date" id="contractRenewDate">
+          </div>
+          <div class="form-group">
+            <label>年費金額（NT$K）</label>
+            <input type="number" id="contractAmount" placeholder="例：500" min="0">
+          </div>
+          <div class="form-group">
+            <label>業務人員</label>
+            <input type="text" id="contractSalesPerson" placeholder="負責業務姓名">
+          </div>
+          <!-- 多年合約費用區（合約超過1年時自動顯示）-->
+          <div id="contractMultiYearSection" class="form-group full-width multi-year-section" style="display:none">
+            <div class="multi-year-header">
+              <span class="multi-year-icon">📅</span>
+              <span class="multi-year-title">多年合約費用明細</span>
+              <span class="multi-year-hint">合約期間超過1年，請逐年填寫費用</span>
+            </div>
+            <div id="contractYearFields" class="multi-year-fields"></div>
+            <div class="multi-year-tcv-row">
+              <label class="multi-year-tcv-label">TCV 合計（NT$K）</label>
+              <input type="number" id="contractTCV" class="multi-year-tcv-input" readonly placeholder="自動加總">
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>備註</label>
+            <textarea id="contractNote" rows="2" placeholder="合約備注、特殊條款..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="contractCancelBtn">取消</button>
+        <button class="btn btn-primary" id="contractSaveBtn">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 合約刪除確認 -->
+  <div class="modal-overlay" id="contractDeleteModal">
+    <div class="modal modal-sm" style="width:380px">
+      <div class="modal-header">
+        <h3>確認刪除合約</h3>
+        <button class="modal-close" id="contractDeleteClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#555;font-size:14px">確定要刪除此合約記錄嗎？此動作無法復原。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="contractDeleteCancel">取消</button>
+        <button class="btn btn-danger" id="contractDeleteConfirm">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 報價單新增 / 編輯 Modal ── -->
+  <div class="modal-overlay" id="quoteModalOverlay" style="display:none">
+    <div class="modal" style="max-width:860px;width:96%">
+      <div class="modal-header">
+        <h2 id="quoteModalTitle">新增報價單</h2>
+        <button class="modal-close" id="quoteModalClose">&#10005;</button>
+      </div>
+
+      <!-- ── 報價單 TAB 導覽 ── -->
+      <div class="q-modal-tabs">
+        <button class="q-tab-btn active" id="quoteTabBtnInfo" onclick="switchQuoteTab('info')">📋 報價資訊</button>
+        <button class="q-tab-btn" id="quoteTabBtnPnl" onclick="switchQuoteTab('pnl')">📊 毛利分析（PNL）</button>
+      </div>
+
+      <!-- ── TAB 1：報價資訊 ── -->
+      <div class="modal-body" id="quoteTabContentInfo">
+        <input type="hidden" id="quoteId">
+
+        <!-- 基本資訊 -->
+        <div class="quote-section-title">📋 基本資訊</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>客戶公司 <span class="required">*</span></label>
+            <input type="text" id="qCompany" placeholder="客戶公司名稱" list="quoteCompanyList" autocomplete="off">
+            <datalist id="quoteCompanyList"></datalist>
+          </div>
+          <div class="form-group">
+            <label>聯絡人</label>
+            <select id="qContactId">
+              <option value="">-- 選擇聯絡人（帶入資料）--</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>電話</label>
+            <input type="text" id="qPhone" placeholder="公司電話">
+          </div>
+          <div class="form-group">
+            <label>手機</label>
+            <input type="text" id="qMobile" placeholder="聯絡人手機">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>地址</label>
+          <input type="text" id="qAddress" placeholder="客戶地址">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>報價日期 <span class="required">*</span></label>
+            <input type="date" id="qDate">
+          </div>
+          <div class="form-group">
+            <label>狀態</label>
+            <select id="qStatus">
+              <option value="draft">草稿</option>
+              <option value="sent">已寄出</option>
+              <option value="accepted">已接受</option>
+              <option value="rejected">已拒絕</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>專案名稱</label>
+            <input type="text" id="qProjectName" placeholder="本次報價專案名稱">
+          </div>
+          <div class="form-group">
+            <label>專案號碼</label>
+            <input type="text" id="qProjectNo" placeholder="例：PRJ-2026-001">
+          </div>
+        </div>
+
+        <!-- 報價項目 -->
+        <div class="quote-section-title" style="margin-top:20px">📦 報價項目</div>
+        <div class="quote-items-wrap">
+          <table class="quote-items-table">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th>品項說明</th>
+                <th style="width:60px">單位</th>
+                <th style="width:70px">數量</th>
+                <th style="width:110px">單價</th>
+                <th style="width:110px">小計</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="quoteItemsBody"></tbody>
+          </table>
+          <button class="btn btn-secondary btn-sm" id="addQuoteItemBtn" style="margin-top:8px">&#43; 新增項目</button>
+        </div>
+
+        <!-- 優惠設定 -->
+        <div class="quote-discount-bar">
+          <div class="quote-discount-label">💰 優惠設定</div>
+          <div class="quote-discount-modes">
+            <label class="quote-disc-radio">
+              <input type="radio" name="qDiscountType" value="none" checked> 無折扣
+            </label>
+            <label class="quote-disc-radio">
+              <input type="radio" name="qDiscountType" value="percent"> 折扣 %
+            </label>
+            <label class="quote-disc-radio">
+              <input type="radio" name="qDiscountType" value="amount"> 議價總額
+            </label>
+          </div>
+          <div id="qDiscountInputWrap" style="display:none;margin-top:8px;display:none">
+            <div class="quote-disc-input-row">
+              <span id="qDiscountPrefix" style="font-size:13px;color:#555;white-space:nowrap">折扣（%）</span>
+              <input type="number" id="qDiscountValue" min="0" max="100" step="0.1"
+                placeholder="例：90 = 九折" style="width:140px;border:1px solid #ddd;border-radius:6px;padding:6px 10px;font-size:13px">
+              <span id="qDiscountSuffix" style="font-size:13px;color:#888"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 合計 -->
+        <div class="quote-total-bar">
+          <div class="quote-total-row">
+            <span>小計</span>
+            <span id="qSubtotal">NT$ 0</span>
+          </div>
+          <div class="quote-total-row" id="qDiscountRow" style="display:none">
+            <span id="qDiscountRowLabel" style="color:#e65100">優惠折扣</span>
+            <span id="qDiscountAmt" style="color:#e65100">- NT$ 0</span>
+          </div>
+          <div class="quote-total-row" id="qDiscountedRow" style="display:none">
+            <span>優惠價（未稅）</span>
+            <span id="qDiscountedPrice">NT$ 0</span>
+          </div>
+          <div class="quote-total-row">
+            <span>稅（5%）</span>
+            <span id="qTax">NT$ 0</span>
+          </div>
+          <div class="quote-total-row quote-grand-total">
+            <span>含稅合計</span>
+            <span id="qTotal">NT$ 0</span>
+          </div>
+        </div>
+
+        <!-- 備註 -->
+        <div class="form-group" style="margin-top:12px">
+          <label>備註</label>
+          <textarea id="qNote" rows="2" placeholder="報價備注、特殊條款..."></textarea>
+        </div>
+      </div><!-- end quoteTabContentInfo -->
+
+      <!-- ── TAB 2：毛利分析（PNL） ── -->
+      <div class="modal-body" id="quoteTabContentPnl" style="display:none">
+        <div class="pnl-note">
+          📌 成本欄位請填未稅金額；毛利以<strong>優惠後未稅報價</strong>為基準計算。
+        </div>
+
+        <div class="quote-items-wrap" style="margin-top:12px;overflow-x:auto">
+          <table class="quote-items-table pnl-table">
+            <thead>
+              <tr>
+                <th style="width:34px">#</th>
+                <th>品項說明</th>
+                <th style="width:60px;text-align:right">數量</th>
+                <th style="width:110px;text-align:right">報價單價</th>
+                <th style="width:110px;text-align:right">報價小計</th>
+                <th style="width:120px;text-align:right">成本單價</th>
+                <th style="width:110px;text-align:right">成本小計</th>
+                <th style="width:100px;text-align:right">毛利</th>
+                <th style="width:80px;text-align:right">毛利率</th>
+              </tr>
+            </thead>
+            <tbody id="pnlItemsBody"></tbody>
+          </table>
+        </div>
+
+        <!-- 折扣資訊提示 -->
+        <div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>
+
+        <!-- PNL 匯總 -->
+        <div class="pnl-summary-bar">
+          <div class="pnl-sum-grid">
+            <div class="pnl-sum-card">
+              <div class="pnl-sum-label">報價合計（未稅）</div>
+              <div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div>
+            </div>
+            <div class="pnl-sum-card">
+              <div class="pnl-sum-label">成本合計</div>
+              <div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div>
+            </div>
+            <div class="pnl-sum-card">
+              <div class="pnl-sum-label">毛利</div>
+              <div class="pnl-sum-value pnl-gp-val" id="pnlGrossProfit">NT$ 0</div>
+            </div>
+            <div class="pnl-sum-card pnl-margin-card">
+              <div class="pnl-sum-label">整體毛利率</div>
+              <div class="pnl-sum-value pnl-margin-val" id="pnlMarginPct">0.0%</div>
+            </div>
+          </div>
+        </div>
+      </div><!-- end quoteTabContentPnl -->
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="quoteModalCancel">取消</button>
+        <button class="btn btn-primary" id="quoteModalSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 商機拜訪記錄浮動提示框 -->
+  <div id="oppVisitTooltip" class="opp-visit-tooltip" style="display:none"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+  <script src="quote.js"></script>
+</body>
+</html>

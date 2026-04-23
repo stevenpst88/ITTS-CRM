@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理者後台 - 業務名片管理系統</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      background: #f0f2f5; min-height: 100vh;
+    }
+    /* ── Admin Login Screen ── */
+    #adminLoginScreen {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      background: linear-gradient(135deg, #1a2d52 0%, #1a73e8 100%);
+      align-items: center; justify-content: center;
+    }
+    #adminLoginScreen.show { display: flex; }
+    .admin-login-box {
+      background: #fff; border-radius: 20px;
+      padding: 44px 40px; width: 400px; max-width: 95vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .admin-login-logo { text-align: center; margin-bottom: 28px; }
+    .admin-login-logo .icon { font-size: 44px; margin-bottom: 10px; }
+    .admin-login-logo h1 { font-size: 18px; font-weight: 800; color: #1a2d52; }
+    .admin-login-logo p { font-size: 12px; color: #aaa; margin-top: 5px; }
+    .admin-login-group { margin-bottom: 16px; }
+    .admin-login-group label { display: block; font-size: 12px; font-weight: 700; color: #666; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .admin-login-group input { width: 100%; padding: 12px 14px; border: 1.5px solid #e0e2e5; border-radius: 10px; font-size: 15px; outline: none; font-family: inherit; transition: border-color .2s; }
+    .admin-login-group input:focus { border-color: #1a73e8; }
+    .admin-login-btn { width: 100%; padding: 13px; background: #1a2d52; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; transition: background .2s; }
+    .admin-login-btn:hover { background: #1a73e8; }
+    .admin-login-err { background: #fce8e6; color: #c5352a; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; display: none; }
+    .admin-login-err.show { display: block; }
+    .admin-login-back { text-align: center; margin-top: 16px; }
+    .admin-login-back a { font-size: 12px; color: #888; text-decoration: none; }
+    .admin-login-back a:hover { color: #1a73e8; }
+    /* ── Top Bar ── */
+    .admin-topbar {
+      background: linear-gradient(135deg, #1a2d52 0%, #1a73e8 100%);
+      padding: 0 28px; height: 58px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .admin-topbar-left { display: flex; align-items: center; gap: 14px; }
+    .admin-logo { font-size: 13px; font-weight: 900; color: #fff; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 8px; }
+    .admin-title { font-size: 16px; font-weight: 700; color: #fff; }
+    .admin-topbar-right { display: flex; align-items: center; gap: 12px; }
+    .admin-user { font-size: 13px; color: rgba(255,255,255,0.8); }
+    .btn-back { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; transition: background 0.2s; }
+    .btn-back:hover { background: rgba(255,255,255,0.25); }
+    /* ── Layout ── */
+    .admin-layout { display: flex; height: calc(100vh - 58px); }
+    .admin-sidebar {
+      width: 200px; flex-shrink: 0;
+      background: #1a2d52; padding: 20px 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .admin-nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 20px; font-size: 14px; font-weight: 600;
+      color: rgba(255,255,255,0.65); cursor: pointer;
+      transition: all 0.15s; border-left: 3px solid transparent;
+    }
+    .admin-nav-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+    .admin-nav-item.active { background: rgba(255,255,255,0.12); color: #fff; border-left-color: #4da3ff; }
+    .admin-nav-icon { font-size: 16px; }
+    .admin-main { flex: 1; overflow-y: auto; padding: 28px; }
+    /* ── Section ── */
+    .admin-section { display: none; }
+    .admin-section.active { display: block; }
+    .section-title { font-size: 20px; font-weight: 800; color: #1a2d52; margin-bottom: 6px; }
+    .section-sub { font-size: 13px; color: #888; margin-bottom: 24px; }
+    /* ── Card ── */
+    .admin-card {
+      background: #fff; border-radius: 14px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.07); margin-bottom: 20px;
+    }
+    .admin-card-header {
+      padding: 16px 22px; border-bottom: 1px solid #f0f2f5;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .admin-card-title { font-size: 15px; font-weight: 700; color: #222; }
+    .admin-card-body { padding: 20px 22px; }
+    /* ── Table ── */
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .admin-table th {
+      text-align: left; padding: 10px 14px;
+      background: #f8f9fa; color: #666; font-weight: 700;
+      border-bottom: 2px solid #e9ecef; white-space: nowrap;
+    }
+    .admin-table td { padding: 12px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .admin-table tr:hover td { background: #f8f9ff; }
+    /* ── Badge ── */
+    .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+    .badge-admin { background: #e8f0fe; color: #1a73e8; }
+    .badge-user  { background: #f0f2f5; color: #666; }
+    .badge-manager1 { background: #fce4ec; color: #c2185b; }
+    .badge-manager2 { background: #f3e5f5; color: #7b1fa2; }
+    .badge-secretary { background: #e0f7fa; color: #00838f; }
+    .badge-active   { background: #e6f4ea; color: #1e7e34; }
+    .badge-inactive { background: #fce8e6; color: #c62828; }
+    /* ── Toggle Switch ── */
+    .toggle-wrap { display: flex; align-items: center; gap: 8px; }
+    .toggle {
+      position: relative; width: 40px; height: 22px;
+      display: inline-block;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #ccc; border-radius: 22px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .toggle-slider:before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      left: 3px; top: 3px; background: #fff;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: #1a73e8; }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-danger  { background: #fce8e6; color: #d32f2f; }
+    .btn-warning { background: #fff3e0; color: #e65100; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 16px; width: 460px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+    .modal-header { padding: 20px 24px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f2f5; }
+    .modal-header h3 { font-size: 16px; font-weight: 700; color: #1a2d52; }
+    .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #aaa; }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f2f5; display: flex; justify-content: flex-end; gap: 10px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 700; color: #555; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid #e0e2e5; border-radius: 8px;
+      font-size: 14px; outline: none; font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #1a73e8; }
+    .perm-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f5f5f5; }
+    .perm-row:last-child { border-bottom: none; }
+    .perm-label { font-size: 13px; font-weight: 600; color: #333; }
+    .perm-desc  { font-size: 11px; color: #999; margin-top: 2px; }
+    /* ── Log ── */
+    .log-item { padding: 12px 0; border-bottom: 1px solid #f5f5f5; display: flex; gap: 14px; }
+    .log-item:last-child { border-bottom: none; }
+    .log-time { font-size: 11px; color: #aaa; white-space: nowrap; min-width: 140px; }
+    .log-action-badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .log-CREATE_USER { background: #e6f4ea; color: #1e7e34; }
+    .log-UPDATE_USER { background: #e8f0fe; color: #1a73e8; }
+    .log-DELETE_USER { background: #fce8e6; color: #c62828; }
+    .log-RESET_PASSWORD { background: #fff3e0; color: #e65100; }
+    .log-UPDATE_PERMISSION { background: #f3e5f5; color: #7b1fa2; }
+    .log-IMPORT_CONTACTS { background: #e6f4ea; color: #1e7e34; }
+    .log-LOGIN { background: #e8f0fe; color: #1a73e8; }
+    .log-detail { font-size: 13px; color: #444; }
+    .log-operator { font-weight: 700; color: #1a73e8; }
+    /* ── 名片稽核紀錄 ── */
+    .audit-item { padding: 14px 0; border-bottom: 1px solid #f0f2f5; }
+    .audit-item:last-child { border-bottom: none; }
+    .audit-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+    .audit-time { font-size: 12px; color: #aaa; min-width: 150px; }
+    .audit-badge { padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+    .audit-user { font-size: 13px; color: #555; }
+    .audit-target { font-size: 14px; margin-bottom: 6px; }
+    .audit-changes { background: #f8f9fa; border-radius: 8px; padding: 8px 12px; margin-top: 6px; }
+    .audit-change-row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 13px; border-bottom: 1px solid #eee; }
+    .audit-change-row:last-child { border-bottom: none; }
+    .audit-field { color: #888; min-width: 80px; font-size: 12px; }
+    .audit-old { color: #ea4335; text-decoration: line-through; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .audit-arrow { color: #bbb; }
+    .audit-new { color: #34a853; font-weight: 600; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* ── Import ── */
+    .import-drop-zone {
+      border: 2px dashed #c5d0e0; border-radius: 12px;
+      padding: 40px 24px; text-align: center; cursor: pointer;
+      transition: all 0.2s; background: #f8faff;
+    }
+    .import-drop-zone:hover, .import-drop-zone.drag-over { border-color: #1a73e8; background: #e8f0fe; }
+    .import-drop-icon { font-size: 40px; margin-bottom: 10px; }
+    .import-drop-text { font-size: 15px; font-weight: 600; color: #444; }
+    .import-drop-sub  { font-size: 12px; color: #aaa; margin-top: 6px; }
+    .import-file-name { font-size: 13px; color: #1a73e8; font-weight: 600; margin-top: 8px; }
+    .import-options   { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin: 20px 0; }
+    .import-options .form-group { margin-bottom: 0; flex: 1; min-width: 180px; }
+    .import-preview-wrap { overflow-x: auto; margin-top: 16px; }
+    .import-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .import-preview-table th { background: #f0f2f5; padding: 8px 12px; text-align: left; font-weight: 700; color: #555; border-bottom: 2px solid #e0e2e5; white-space: nowrap; }
+    .import-preview-table td { padding: 7px 12px; border-bottom: 1px solid #f0f2f5; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .import-result { padding: 16px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+    .import-result.success { background: #e6f4ea; color: #1e7e34; }
+    .import-result.error   { background: #fce8e6; color: #c62828; }
+    .import-result-detail  { font-size: 12px; font-weight: 400; margin-top: 6px; color: #666; }
+    /* ── Transfer ── */
+    .transfer-layout { display: grid; grid-template-columns: 1fr 64px 1fr; gap: 0; align-items: start; }
+    .transfer-panel { background: #fff; border-radius: 14px; box-shadow: 0 2px 10px rgba(26,115,232,0.10); overflow: hidden; border: 1px solid #dde5f7; }
+    .transfer-panel-head {
+      background: linear-gradient(135deg, #1a73e8, #1558b0);
+      padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .transfer-panel-head select {
+      background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.4);
+      color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600;
+      flex: 1; margin-right: 8px; outline: none; cursor: pointer;
+    }
+    .transfer-panel-head select option { background: #1a73e8; color: #fff; }
+    .transfer-panel-head .transfer-count {
+      font-size: 12px; color: rgba(255,255,255,0.85); white-space: nowrap;
+    }
+    .transfer-list { min-height: 320px; max-height: 480px; overflow-y: auto; background: #f4f7fe; }
+    .transfer-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-bottom: 1px solid #e8eef9;
+      cursor: pointer; transition: background 0.15s; color: #2c3e6e;
+    }
+    .transfer-item:hover { background: #e8f0fe; }
+    .transfer-item.selected { background: #d2e3fc; border-left: 3px solid #1a73e8; }
+    .transfer-item input[type=checkbox] { accent-color: #1a73e8; width: 15px; height: 15px; cursor: pointer; }
+    .transfer-item-name { font-size: 13px; font-weight: 600; color: #1a2c5e; }
+    .transfer-item-company { font-size: 11px; color: #6b7a9e; margin-top: 1px; }
+    .transfer-item-empty { padding: 40px 16px; text-align: center; color: #aab4cc; font-size: 13px; }
+    .transfer-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px 8px; gap: 12px; }
+    .transfer-arrow-icon { font-size: 32px; color: #1a73e8; }
+    .transfer-footer { padding: 12px 16px; background: #f0f4fc; border-top: 1px solid #dde5f7; display: flex; align-items: center; justify-content: space-between; }
+    .transfer-select-all { font-size: 12px; color: #1a73e8; cursor: pointer; text-decoration: underline; }
+    .transfer-result { padding: 12px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 16px; }
+    .transfer-result.success { background: #e6f4ea; color: #1e7e34; }
+    .transfer-result.error   { background: #fce8e6; color: #c62828; }
+    /* 公司移轉項目 */
+    .transfer-company-item .transfer-item-content { flex: 1; min-width: 0; }
+    .transfer-company-item .transfer-item-name { font-size: 13px; font-weight: 700; color: #1a2c5e; }
+    .transfer-company-item .transfer-item-company { font-size: 11px; color: #6b7a9e; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: #323232; color: #fff; padding: 12px 24px;
+      border-radius: 10px; font-size: 14px; font-weight: 600;
+      z-index: 9999; opacity: 0; transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    /* ── Stat cards ── */
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+    .stat-card { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
+    .stat-label { font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 32px; font-weight: 800; color: #1a2d52; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- ── 管理者登入畫面（session 過期時才顯示）── -->
+  <div id="adminLoginScreen">
+    <div class="admin-login-box">
+      <div class="admin-login-logo">
+        <div class="icon">⚙️</div>
+        <h1>管理者後台</h1>
+        <p>請以管理者帳號登入</p>
+      </div>
+      <div class="admin-login-err" id="adminLoginErr">帳號或密碼錯誤，或無管理者權限</div>
+      <div class="admin-login-group">
+        <label>帳號</label>
+        <input type="text" id="adminLoginUser" placeholder="管理者帳號" autocomplete="username">
+      </div>
+      <div class="admin-login-group">
+        <label>密碼</label>
+        <input type="password" id="adminLoginPw" placeholder="管理者密碼" autocomplete="current-password">
+      </div>
+      <button class="admin-login-btn" id="adminLoginBtn">登入管理後台</button>
+      <div class="admin-login-back"><a href="/">← 返回系統</a></div>
+    </div>
+  </div>
+
+  <!-- Top Bar -->
+  <div class="admin-topbar">
+    <div class="admin-topbar-left">
+      <div class="admin-title">⚙️ 管理者後台</div>
+    </div>
+    <div class="admin-topbar-right">
+      <span class="admin-user" id="adminUser"></span>
+      <a href="/" class="btn-back">← 返回系統</a>
+    </div>
+  </div>
+
+  <div class="admin-layout">
+    <!-- Sidebar -->
+    <nav class="admin-sidebar">
+      <div class="admin-nav-item active" data-sec="users">
+        <span class="admin-nav-icon">👥</span> 帳號管理
+      </div>
+      <div class="admin-nav-item" data-sec="transfer">
+        <span class="admin-nav-icon">🔄</span> 名單移轉
+      </div>
+      <div class="admin-nav-item" data-sec="import">
+        <span class="admin-nav-icon">📥</span> 名單匯入
+      </div>
+      <div class="admin-nav-item" data-sec="card-ocr">
+        <span class="admin-nav-icon">📷</span> 名片辨識匯入
+      </div>
+      <div class="admin-nav-item" data-sec="jobfunc">
+        <span class="admin-nav-icon">🏷️</span> 職能分類
+      </div>
+      <div class="admin-nav-item" data-sec="logs">
+        <span class="admin-nav-icon">📋</span> 異動記錄
+      </div>
+      <div class="admin-nav-item" data-sec="contact-audit">
+        <span class="admin-nav-icon">🔍</span> 名片操作紀錄
+      </div>
+      <div class="admin-nav-item" data-sec="deleted-contacts">
+        <span class="admin-nav-icon">🗑️</span> 已刪除名單
+      </div>
+      <div class="admin-nav-item" data-sec="storage">
+        <span class="admin-nav-icon">💾</span> 容量空間監控
+      </div>
+      <div class="admin-nav-item" data-sec="version">
+        <span class="admin-nav-icon">🏷️</span> 版本資訊
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="admin-main">
+
+      <!-- ── 帳號管理 ── -->
+      <div class="admin-section active" id="sec-users">
+        <div class="section-title">帳號管理</div>
+        <div class="section-sub">管理系統使用者帳號、密碼與權限設定</div>
+
+        <div class="stat-row" id="userStatRow"></div>
+
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">使用者列表</span>
+            <button class="btn btn-primary" id="addUserBtn">＋ 新增帳號</button>
+          </div>
+          <div class="admin-card-body" style="padding:0">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>帳號</th>
+                  <th>顯示名稱</th>
+                  <th>角色</th>
+                  <th>狀態</th>
+                  <th>下載名單</th>
+                  <th>設定業績目標</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="userTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 責任業務名單移轉 ── -->
+      <div class="admin-section" id="sec-transfer">
+        <div class="section-title">責任業務名單移轉</div>
+        <div class="section-sub">將業務人員的客戶名單（含商機、拜訪記錄、應收帳款）移轉給另一位業務</div>
+
+        <div class="transfer-layout">
+          <!-- 來源業務 -->
+          <div class="transfer-panel">
+            <div class="transfer-panel-head">
+              <select id="transferFromOwner"><option value="">-- 選取來源業務 --</option></select>
+              <span class="transfer-count" id="transferFromCount"></span>
+            </div>
+            <div class="transfer-list" id="transferFromList">
+              <div class="transfer-item-empty">請先選擇來源業務人員</div>
+            </div>
+            <div class="transfer-footer">
+              <span class="transfer-select-all" id="transferSelectAll">全選</span>
+              <span id="transferSelectedCount" style="font-size:12px;color:#666"></span>
+            </div>
+          </div>
+
+          <!-- 中間箭頭與確認 -->
+          <div class="transfer-arrow">
+            <div class="transfer-arrow-icon">➡️</div>
+            <button class="btn btn-primary btn-sm" id="transferConfirmBtn" disabled style="writing-mode:vertical-rl;height:80px;letter-spacing:2px">確認移轉</button>
+          </div>
+
+          <!-- 目標業務 -->
+          <div class="transfer-panel">
+            <div class="transfer-panel-head">
+              <select id="transferToOwner"><option value="">-- 選取目標業務 --</option></select>
+              <span class="transfer-count" id="transferToCount"></span>
+            </div>
+            <div class="transfer-list" id="transferToList">
+              <div class="transfer-item-empty">請先選擇目標業務人員</div>
+            </div>
+            <div class="transfer-footer"></div>
+          </div>
+        </div>
+
+        <div id="transferResultBox" style="display:none;margin-top:16px"></div>
+      </div>
+
+      <!-- ── 客戶名單匯入 ── -->
+      <div class="admin-section" id="sec-import">
+        <div class="section-title">客戶名單匯入</div>
+        <div class="section-sub">批次匯入 Excel 客戶名單，指派給指定業務人員</div>
+
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">📥 上傳名單</span>
+            <a id="downloadTemplateBtn" href="#" class="btn btn-sm" style="background:#f0f2f5;color:#333;text-decoration:none">⬇ 下載範本</a>
+          </div>
+          <div class="admin-card-body">
+
+            <!-- 拖放上傳區 -->
+            <div class="import-drop-zone" id="importDropZone">
+              <div class="import-drop-icon">📂</div>
+              <div class="import-drop-text">點擊選擇或拖曳檔案至此</div>
+              <div class="import-drop-sub">支援 .xlsx、.xls、.csv 格式，最大 10MB</div>
+              <div class="import-file-name" id="importFileName"></div>
+            </div>
+            <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" style="display:none">
+
+            <!-- 匯入選項 -->
+            <div class="import-options">
+              <div class="form-group">
+                <label>指派給業務人員</label>
+                <select id="importTargetOwner">
+                  <option value="">-- 請選擇 --</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>重複資料處理</label>
+                <select id="importSkipDup">
+                  <option value="true">略過重複（同姓名＋同公司）</option>
+                  <option value="false">全部匯入（允許重複）</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 預覽 -->
+            <div id="importPreviewSection" style="display:none">
+              <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:8px">
+                📋 預覽（前 5 筆）— 共 <span id="importTotalRows">0</span> 筆資料
+              </div>
+              <div class="import-preview-wrap">
+                <table class="import-preview-table">
+                  <thead id="importPreviewHead"></thead>
+                  <tbody id="importPreviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 結果 -->
+            <div id="importResultBox" style="display:none;margin-top:16px"></div>
+
+            <!-- 操作按鈕 -->
+            <div style="display:flex;gap:12px;margin-top:20px">
+              <button class="btn btn-primary" id="importConfirmBtn" disabled>✅ 確認匯入</button>
+              <button class="btn" id="importResetBtn" style="background:#f0f2f5;color:#555">清除</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 名片辨識匯入 ── -->
+      <div class="admin-section" id="sec-card-ocr">
+        <div class="section-title">名片辨識匯入</div>
+        <div class="section-sub">將 Claude 辨識後的 JSON 資料貼入下方，確認後批次匯入系統</div>
+
+        <div class="admin-card">
+          <div class="admin-card-body">
+
+            <!-- 說明步驟 -->
+            <div style="background:#e8f0fe;border-left:4px solid #1a73e8;padding:12px 16px;border-radius:6px;margin-bottom:20px;font-size:13px;line-height:1.8">
+              <strong>📷 操作步驟：</strong><br>
+              1. 將名片照片（JPG/PNG）貼給 Claude 對話<br>
+              2. Claude 辨識後回傳 JSON，複製全部內容<br>
+              3. 貼到下方文字框 → 選擇指派業務人員 → 點擊「預覽」→「確認匯入」
+            </div>
+
+            <!-- JSON 輸入框 -->
+            <div class="form-group">
+              <label style="font-weight:600">貼入辨識結果 JSON</label>
+              <textarea id="ocrJsonInput" rows="10"
+                style="width:100%;font-family:monospace;font-size:12px;border:1px solid #ddd;border-radius:8px;padding:12px;resize:vertical;box-sizing:border-box"
+                placeholder='貼入 Claude 回傳的 JSON，格式如下：&#10;[&#10;  {&#10;    "name": "王大明",&#10;    "nameEn": "David Wang",&#10;    "company": "範例公司",&#10;    "title": "業務經理",&#10;    "phone": "02-12345678",&#10;    "mobile": "0912-345678",&#10;    "email": "david@example.com",&#10;    "taxId": "12345678"&#10;  }&#10;]'></textarea>
+            </div>
+
+            <!-- 選項 -->
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px">
+              <div class="form-group" style="flex:1;min-width:180px">
+                <label>指派給業務人員</label>
+                <select id="ocrTargetOwner">
+                  <option value="">-- 請選擇 --</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1;min-width:180px">
+                <label>重複資料處理</label>
+                <select id="ocrSkipDup">
+                  <option value="true">略過重複</option>
+                  <option value="false">全部匯入</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- 預覽表格 -->
+            <div id="ocrPreviewSection" style="display:none;margin-top:16px">
+              <div style="font-weight:600;font-size:13px;margin-bottom:8px">
+                📋 預覽 — 共 <span id="ocrTotalRows">0</span> 筆
+              </div>
+              <div style="overflow-x:auto;border-radius:8px;border:1px solid #eee">
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <thead>
+                    <tr style="background:#f5f5f5">
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">#</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">姓名</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">公司</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">職稱</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">電話</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">手機</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">Email</th>
+                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">統一編號</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ocrPreviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 結果訊息 -->
+            <div id="ocrResultBox" style="display:none;margin-top:16px"></div>
+
+            <!-- 按鈕 -->
+            <div style="display:flex;gap:12px;margin-top:20px">
+              <button class="btn" id="ocrPreviewBtn" style="background:#1a73e8;color:#fff">🔍 預覽</button>
+              <button class="btn btn-primary" id="ocrImportBtn" style="display:none">✅ 確認匯入</button>
+              <button class="btn" id="ocrClearBtn" style="background:#f0f2f5;color:#555">清除</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 職能分類批次 Mapping ── -->
+      <div class="admin-section" id="sec-jobfunc">
+        <div class="section-title">職能分類管理</div>
+        <div class="section-sub">依現有職稱自動判斷並批次更新聯絡人的職能分類</div>
+
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">🏷️ 批次自動 Mapping</span>
+          </div>
+          <div class="admin-card-body">
+            <p style="font-size:13px;color:#555;line-height:1.7;margin-bottom:16px">
+              點擊下方按鈕，系統將依據每位聯絡人的「職稱」欄位，自動判斷並填入對應的職能分類。<br>
+              <strong>已設定職能分類者不會被覆蓋</strong>，僅對尚未分類的聯絡人進行自動判斷。
+            </p>
+            <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+              <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:10px">職能分類說明</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+                <div style="background:#fce8e6;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#c0392b">決策領導層</span><div style="font-size:11px;color:#888;margin-top:3px">董事長・總經理・副總・協理・總監</div></div>
+                <div style="background:#fff3e0;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#e67e22">營運與生產核心</span><div style="font-size:11px;color:#888;margin-top:3px">廠長・生管・課長・組長・作業員</div></div>
+                <div style="background:#e8f0fe;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1565c0">研發與技術工程</span><div style="font-size:11px;color:#888;margin-top:3px">研發・製程・設備・工業工程師・PM</div></div>
+                <div style="background:#e6f4ea;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1b7e34">品質控管體系</span><div style="font-size:11px;color:#888;margin-top:3px">品保・品管・QA・QC・IQC・TE</div></div>
+                <div style="background:#f3e5f5;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#6a1b9a">行政與市場幕僚</span><div style="font-size:11px;color:#888;margin-top:3px">業務・採購・財務・會計・HR・ESH</div></div>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="migrateJobFuncBtn">🏷️ 開始自動 Mapping</button>
+            <div id="migrateJobFuncResult" style="display:none;margin-top:16px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 異動記錄 ── -->
+      <div class="admin-section" id="sec-logs">
+        <div class="section-title">異動記錄</div>
+        <div class="section-sub">所有帳號新增、修改、刪除、密碼重設的操作記錄</div>
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">操作日誌</span>
+            <button class="btn btn-sm" onclick="loadLogs()" style="background:#f0f2f5;color:#333">重新整理</button>
+          </div>
+          <div class="admin-card-body" id="logList" style="max-height:600px;overflow-y:auto">
+            <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 名片操作紀錄 ── -->
+      <div class="admin-section" id="sec-contact-audit">
+        <div class="section-title">名片操作紀錄</div>
+        <div class="section-sub">追蹤每一筆聯絡人的新增、修改、刪除、還原操作，保護客戶資料不被惡意竄改</div>
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">篩選條件</span>
+          </div>
+          <div class="admin-card-body" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px">
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">操作人員</div>
+              <select id="auditFilterUser" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="">全部人員</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">動作類型</div>
+              <select id="auditFilterAction" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="">全部動作</option>
+                <option value="CREATE">新增</option>
+                <option value="UPDATE">修改</option>
+                <option value="DELETE">刪除</option>
+                <option value="RESTORE">還原</option>
+                <option value="PERMANENT_DELETE">永久刪除</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">開始日期</div>
+              <input type="date" id="auditFilterFrom" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+            </div>
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">結束日期</div>
+              <input type="date" id="auditFilterTo" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+            </div>
+            <button class="btn" onclick="loadContactAudit()" style="background:#1a73e8;color:#fff;padding:7px 18px">🔍 查詢</button>
+            <button class="btn" onclick="clearAuditFilter()" style="background:#f0f2f5;color:#333;padding:7px 14px">清除</button>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:16px">
+          <div class="admin-card-header">
+            <span class="admin-card-title">操作紀錄</span>
+            <span id="auditCount" style="font-size:13px;color:#888"></span>
+          </div>
+          <div class="admin-card-body" id="auditList" style="max-height:600px;overflow-y:auto">
+            <div style="text-align:center;color:#bbb;padding:40px">請設定篩選條件後點擊查詢</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 已刪除名單 ── -->
+      <div class="admin-section" id="sec-deleted-contacts">
+        <div class="section-title">已刪除名單</div>
+        <div class="section-sub">已被軟刪除的聯絡人，可選擇還原或永久刪除（永久刪除後無法復原）</div>
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">已刪除聯絡人</span>
+            <button class="btn btn-sm" onclick="loadDeletedContacts()" style="background:#f0f2f5;color:#333">重新整理</button>
+          </div>
+          <div class="admin-card-body" id="deletedList" style="max-height:600px;overflow-y:auto">
+            <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 容量空間監控 ── -->
+      <div class="admin-section" id="sec-storage">
+        <div class="section-title">💾 容量空間監控</div>
+        <div class="section-sub">系統資料庫與圖片儲存空間即時用量報告</div>
+
+        <!-- 頂部摘要卡 -->
+        <div id="storageStatRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px"></div>
+
+        <!-- 資料庫集合筆數 + 資料庫大小 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+          <!-- 各集合筆數 -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <span class="admin-card-title">📊 資料集合筆數</span>
+            </div>
+            <div class="admin-card-body" id="storageCollections" style="padding:8px 0"></div>
+          </div>
+
+          <!-- 磁碟用量圓餅 + 圖片列表 -->
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <span class="admin-card-title">📁 磁碟用量分佈</span>
+            </div>
+            <div class="admin-card-body">
+              <!-- 用量長條 -->
+              <div id="storageDiskBars" style="padding:4px 0"></div>
+              <!-- 最近圖片 -->
+              <div style="margin-top:16px;border-top:1px solid #f0f0f0;padding-top:14px">
+                <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:10px;letter-spacing:.3px">最近上傳圖片（前 10 筆）</div>
+                <div id="storageRecentFiles" style="display:flex;flex-direction:column;gap:5px"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 重新整理 -->
+        <div style="text-align:right;margin-top:4px">
+          <span id="storageGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <button class="btn btn-sm" onclick="loadStorageInfo()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+        </div>
+      </div>
+
+      <!-- ── 版本資訊 ── -->
+      <div class="admin-section" id="sec-version">
+        <div class="section-title">🏷️ 版本資訊</div>
+        <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
+
+        <!-- 系統版本主卡 -->
+        <div id="versionHeroCard" style="background:linear-gradient(135deg,#1a2d52 0%,#1a73e8 100%);
+             border-radius:16px;padding:28px 32px;margin-bottom:20px;color:#fff;
+             display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+          <div>
+            <div style="font-size:12px;opacity:.6;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">東捷資訊ERP 業務部</div>
+            <div style="font-size:26px;font-weight:900;letter-spacing:-0.5px" id="vAppName">Account Profile CRM</div>
+            <div style="font-size:13px;opacity:.75;margin-top:4px" id="vAppDesc">名片管理 CRM 系統</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:40px;font-weight:900;opacity:.15;position:absolute;right:32px;top:20px;letter-spacing:-2px" id="vVersionBg">v1.0</div>
+            <div style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+                 border-radius:10px;padding:8px 20px;display:inline-block">
+              <div style="font-size:11px;opacity:.6;margin-bottom:2px">目前版本</div>
+              <div style="font-size:22px;font-weight:800" id="vVersion">v1.0.0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 上下兩欄 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+          <!-- 伺服器運行資訊 -->
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">⚙️ 伺服器運行狀態</span></div>
+            <div class="admin-card-body" id="vServerInfo" style="padding:6px 0"></div>
+          </div>
+
+          <!-- 作業系統 / 硬體 -->
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">🖥️ 主機環境</span></div>
+            <div class="admin-card-body" id="vOsInfo" style="padding:6px 0"></div>
+          </div>
+
+        </div>
+
+        <!-- 資料庫架構 -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🗄️ 資料庫架構</span></div>
+          <div class="admin-card-body" id="vDbInfo" style="padding:14px"></div>
+        </div>
+
+        <!-- 後端套件 -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">📦 後端套件（Node.js）</span></div>
+          <div class="admin-card-body">
+            <div id="vBackendPkgs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding:12px"></div>
+          </div>
+        </div>
+
+        <!-- 前端技術 -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🎨 前端技術</span></div>
+          <div class="admin-card-body">
+            <div id="vFrontendPkgs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding:12px"></div>
+          </div>
+        </div>
+
+        <div style="text-align:right;margin-top:4px">
+          <span id="vGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <button class="btn btn-sm" onclick="loadVersionInfo()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ── 新增/編輯帳號 Modal ── -->
+  <div class="modal-overlay" id="userModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="userModalTitle">新增帳號</h3>
+        <button class="modal-close" id="userModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editUsername">
+        <div class="form-group">
+          <label>帳號 *</label>
+          <input type="text" id="fieldUsername" placeholder="輸入帳號（英文）">
+        </div>
+        <div class="form-group" id="passwordGroup">
+          <label>密碼 *</label>
+          <input type="password" id="fieldPassword" placeholder="輸入密碼">
+        </div>
+        <div class="form-group">
+          <label>顯示名稱</label>
+          <input type="text" id="fieldDisplayName" placeholder="顯示於系統的名稱">
+        </div>
+        <div class="form-group">
+          <label>角色</label>
+          <select id="fieldRole">
+            <option value="user">一般業務</option>
+            <option value="secretary">秘書</option>
+            <option value="manager2">二級主管</option>
+            <option value="manager1">一級主管</option>
+            <option value="admin">管理者</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>狀態</label>
+          <select id="fieldActive">
+            <option value="true">啟用</option>
+            <option value="false">停用</option>
+          </select>
+        </div>
+        <div style="background:#f8f9fa;border-radius:10px;padding:14px;margin-top:4px">
+          <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">功能權限</div>
+          <div class="perm-row">
+            <div>
+              <div class="perm-label">📥 下載客戶名單</div>
+              <div class="perm-desc">可匯出 Excel 客戶聯絡人資料</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="fieldCanDownload"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="perm-row">
+            <div>
+              <div class="perm-label">🎯 設定業績目標</div>
+              <div class="perm-desc">可設定年度業績目標（一般業務無法修改）</div>
+            </div>
+            <label class="toggle"><input type="checkbox" id="fieldCanTargets"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" style="background:#f0f2f5;color:#333" id="userModalCancel">取消</button>
+        <button class="btn btn-primary" id="userModalSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 重設密碼 Modal ── -->
+  <div class="modal-overlay" id="pwModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>重設密碼</h3>
+        <button class="modal-close" id="pwModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pwUsername">
+        <p style="font-size:13px;color:#666;margin-bottom:16px">為帳號 <strong id="pwUsernameDisplay"></strong> 設定新密碼</p>
+        <div class="form-group">
+          <label>新密碼 *</label>
+          <input type="password" id="pwNewPassword" placeholder="輸入新密碼">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" style="background:#f0f2f5;color:#333" id="pwModalCancel">取消</button>
+        <button class="btn btn-primary" id="pwModalSave">確認重設</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 刪除確認 Modal ── -->
+  <div class="modal-overlay" id="delModal">
+    <div class="modal" style="width:360px">
+      <div class="modal-header">
+        <h3>確認刪除帳號</h3>
+        <button class="modal-close" id="delModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px;color:#555">確定要刪除帳號 <strong id="delUsernameDisplay"></strong> 嗎？此操作無法復原。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" style="background:#f0f2f5;color:#333" id="delModalCancel">取消</button>
+        <button class="btn btn-danger" id="delModalConfirm">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = '/api';
+    let allUsers = [];
+
+    function $(id) { return document.getElementById(id); }
+
+    function showToast(msg, duration = 2500) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), duration);
+    }
+
+    // ── 導覽切換 ──
+    document.querySelectorAll('.admin-nav-item').forEach(item => {
+      item.addEventListener('click', function() {
+        document.querySelectorAll('.admin-nav-item').forEach(i => i.classList.remove('active'));
+        document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+        this.classList.add('active');
+        $('sec-' + this.dataset.sec).classList.add('active');
+        if (this.dataset.sec === 'logs') loadLogs();
+        if (this.dataset.sec === 'contact-audit') initContactAudit();
+        if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
+        if (this.dataset.sec === 'storage') loadStorageInfo();
+        if (this.dataset.sec === 'version') loadVersionInfo();
+      });
+    });
+
+    // ── 管理者登入 ──
+    function showLoginScreen() {
+      $('adminLoginScreen').classList.add('show');
+    }
+    function hideLoginScreen() {
+      $('adminLoginScreen').classList.remove('show');
+    }
+
+    $('adminLoginBtn').addEventListener('click', doAdminLogin);
+    $('adminLoginPw').addEventListener('keydown', e => { if (e.key === 'Enter') doAdminLogin(); });
+    $('adminLoginUser').addEventListener('keydown', e => { if (e.key === 'Enter') $('adminLoginPw').focus(); });
+
+    async function doAdminLogin() {
+      const username = $('adminLoginUser').value.trim();
+      const password = $('adminLoginPw').value;
+      const err = $('adminLoginErr');
+      err.classList.remove('show');
+      if (!username || !password) { err.textContent = '請填入帳號與密碼'; err.classList.add('show'); return; }
+      try {
+        const r = await fetch(`${API}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await r.json();
+        if (!r.ok || !data.success) {
+          err.textContent = data.message || '帳號或密碼錯誤';
+          err.classList.add('show');
+          $('adminLoginPw').value = '';
+          return;
+        }
+        // 確認是否為管理者
+        const meR = await fetch(`${API}/me`);
+        const me = await meR.json();
+        if (me.role !== 'admin') {
+          err.textContent = '此帳號無管理者權限';
+          err.classList.add('show');
+          await fetch(`${API}/logout`, { method: 'POST' });
+          return;
+        }
+        $('adminUser').textContent = `👤 ${me.displayName || me.username}`;
+        hideLoginScreen();
+        await loadUsers();
+      } catch {
+        err.textContent = '連線失敗，請稍後再試';
+        err.classList.add('show');
+      }
+    }
+
+    // ── 載入當前使用者 ──
+    async function loadMe() {
+      try {
+        const r = await fetch(`${API}/me`);
+        if (!r.ok) { showLoginScreen(); return false; }
+        const u = await r.json();
+        if (u.role !== 'admin') { showLoginScreen(); return false; }
+        $('adminUser').textContent = `👤 ${u.displayName || u.username}`;
+        return true;
+      } catch {
+        showLoginScreen();
+        return false;
+      }
+    }
+
+    // ── API Helper（自動處理 session 過期）──
+    async function adminFetch(url, options = {}) {
+      const r = await fetch(url, options);
+      if (r.status === 401 || r.status === 403) {
+        showLoginScreen();
+        $('adminLoginErr').textContent = 'Session 已過期，請重新登入';
+        $('adminLoginErr').classList.add('show');
+        throw new Error('Session expired');
+      }
+      return r;
+    }
+
+    // ── 載入使用者列表 ──
+    async function loadUsers() {
+      try {
+        const r = await adminFetch(`${API}/admin/users`);
+        if (!r.ok) { showToast('載入帳號列表失敗'); return; }
+        allUsers = await r.json();
+        renderUserStat();
+        renderUserTable();
+      } catch (e) { if (e.message !== 'Session expired') showToast('載入失敗'); }
+    }
+
+    function renderUserStat() {
+      const total   = allUsers.length;
+      const admins  = allUsers.filter(u => u.role === 'admin').length;
+      const active  = allUsers.filter(u => u.active).length;
+      const canDL   = allUsers.filter(u => u.canDownloadContacts).length;
+      $('userStatRow').innerHTML = `
+        <div class="stat-card"><div class="stat-label">總帳號數</div><div class="stat-value">${total}</div></div>
+        <div class="stat-card"><div class="stat-label">管理者</div><div class="stat-value" style="color:#1a73e8">${admins}</div></div>
+        <div class="stat-card"><div class="stat-label">啟用中</div><div class="stat-value" style="color:#1e7e34">${active}</div></div>
+        <div class="stat-card"><div class="stat-label">可下載名單</div><div class="stat-value" style="color:#e65100">${canDL}</div></div>`;
+    }
+
+    function renderUserTable() {
+      $('userTableBody').innerHTML = allUsers.map(u => `
+        <tr>
+          <td><strong>${u.username}</strong></td>
+          <td>${u.displayName}</td>
+          <td><span class="badge badge-${u.role}">${{admin:'管理者',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務'}[u.role]||u.role}</span></td>
+          <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
+          <td style="text-align:center">
+            <label class="toggle" title="下載客戶名單">
+              <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} onchange="quickToggle('${u.username}','canDownloadContacts',this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td style="text-align:center">
+            <label class="toggle" title="設定業績目標">
+              <input type="checkbox" ${u.canSetTargets ? 'checked' : ''} onchange="quickToggle('${u.username}','canSetTargets',this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-primary" onclick="openEditUser('${u.username}')">編輯</button>
+              <button class="btn btn-sm btn-warning" onclick="openResetPw('${u.username}')">重設密碼</button>
+              <button class="btn btn-sm btn-danger" onclick="openDeleteUser('${u.username}')">刪除</button>
+            </div>
+          </td>
+        </tr>`).join('');
+    }
+
+    // ── 快速切換單一權限 ──
+    async function quickToggle(username, field, value) {
+      try {
+        const payload = { [field]: value };
+        const r = await adminFetch(`${API}/admin/users/${username}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (!r.ok) { showToast(data.error || '更新失敗'); loadUsers(); return; }
+        // 更新本地資料
+        const u = allUsers.find(x => x.username === username);
+        if (u) u[field] = value;
+        renderUserStat();
+        showToast(`✅ ${username} 權限已更新`);
+      } catch (e) { if (e.message !== 'Session expired') { showToast('操作失敗，請重試'); loadUsers(); } }
+    }
+
+    // ── 新增帳號 ──
+    $('addUserBtn').addEventListener('click', () => {
+      $('userModalTitle').textContent = '新增帳號';
+      $('editUsername').value = '';
+      $('fieldUsername').value = '';
+      $('fieldUsername').disabled = false;
+      $('fieldPassword').value = '';
+      $('passwordGroup').style.display = '';
+      $('fieldDisplayName').value = '';
+      $('fieldRole').value = 'user';
+      $('fieldActive').value = 'true';
+      $('fieldCanDownload').checked = false;
+      $('fieldCanTargets').checked = false;
+      $('userModal').classList.add('open');
+    });
+
+    function openEditUser(username) {
+      const u = allUsers.find(x => x.username === username);
+      if (!u) return;
+      $('userModalTitle').textContent = '編輯帳號';
+      $('editUsername').value = username;
+      $('fieldUsername').value = username;
+      $('fieldUsername').disabled = true;
+      $('passwordGroup').style.display = 'none';
+      $('fieldDisplayName').value = u.displayName;
+      $('fieldRole').value = u.role || 'user';
+      $('fieldActive').value = u.active ? 'true' : 'false';
+      $('fieldCanDownload').checked = u.canDownloadContacts;
+      $('fieldCanTargets').checked = u.canSetTargets;
+      $('userModal').classList.add('open');
+    }
+
+    function closeUserModal() { $('userModal').classList.remove('open'); }
+    $('userModalClose').addEventListener('click', closeUserModal);
+    $('userModalCancel').addEventListener('click', closeUserModal);
+
+    $('userModalSave').addEventListener('click', async () => {
+      const editUn = $('editUsername').value;
+      const isEdit = !!editUn;
+      const payload = {
+        displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
+        role: $('fieldRole').value,
+        active: $('fieldActive').value === 'true',
+        canDownloadContacts: $('fieldCanDownload').checked,
+        canSetTargets: $('fieldCanTargets').checked
+      };
+      try {
+        let r;
+        if (isEdit) {
+          r = await adminFetch(`${API}/admin/users/${editUn}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        } else {
+          const un = $('fieldUsername').value.trim();
+          const pw = $('fieldPassword').value;
+          if (!un || !pw) { showToast('請填入帳號與密碼'); return; }
+          r = await adminFetch(`${API}/admin/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: un, password: pw, ...payload }) });
+        }
+        const data = await r.json();
+        if (!r.ok) { showToast(data.error || '儲存失敗'); return; }
+        showToast(isEdit ? '✅ 帳號已更新' : '✅ 帳號已新增');
+        closeUserModal();
+        loadUsers();
+      } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗，請重試'); }
+    });
+
+    // ── 重設密碼 ──
+    function openResetPw(username) {
+      $('pwUsername').value = username;
+      $('pwUsernameDisplay').textContent = username;
+      $('pwNewPassword').value = '';
+      $('pwModal').classList.add('open');
+    }
+    function closePwModal() { $('pwModal').classList.remove('open'); }
+    $('pwModalClose').addEventListener('click', closePwModal);
+    $('pwModalCancel').addEventListener('click', closePwModal);
+    $('pwModalSave').addEventListener('click', async () => {
+      const un = $('pwUsername').value;
+      const pw = $('pwNewPassword').value;
+      if (!pw) { showToast('請輸入新密碼'); return; }
+      try {
+        const r = await adminFetch(`${API}/admin/users/${un}/password`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pw }) });
+        const data = await r.json();
+        if (!r.ok) { showToast(data.error || '重設失敗'); return; }
+        showToast('✅ 密碼已重設');
+        closePwModal();
+      } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗'); }
+    });
+
+    // ── 刪除帳號 ──
+    function openDeleteUser(username) {
+      $('delUsernameDisplay').textContent = username;
+      $('delModalConfirm').dataset.username = username;
+      $('delModal').classList.add('open');
+    }
+    function closeDelModal() { $('delModal').classList.remove('open'); }
+    $('delModalClose').addEventListener('click', closeDelModal);
+    $('delModalCancel').addEventListener('click', closeDelModal);
+    $('delModalConfirm').addEventListener('click', async function() {
+      const un = this.dataset.username;
+      try {
+        const r = await adminFetch(`${API}/admin/users/${un}`, { method:'DELETE' });
+        const data = await r.json();
+        if (!r.ok) { showToast(data.error || '刪除失敗'); return; }
+        showToast('✅ 帳號已刪除');
+        closeDelModal();
+        loadUsers();
+      } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗'); }
+    });
+
+    // ── 異動記錄 ──
+    const ACTION_LABELS = {
+      CREATE_USER: '新增帳號', UPDATE_USER: '更新帳號',
+      DELETE_USER: '刪除帳號', RESET_PASSWORD: '重設密碼',
+      UPDATE_PERMISSION: '更新權限'
+    };
+    async function loadLogs() {
+      $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
+      try {
+        const r = await adminFetch(`${API}/admin/logs`);
+        const logs = await r.json();
+        if (!logs.length) {
+          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">尚無異動記錄</div>';
+          return;
+        }
+        $('logList').innerHTML = logs.map(l => `
+          <div class="log-item">
+            <div class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</div>
+            <div>
+              <span class="log-action-badge log-${l.action}">${ACTION_LABELS[l.action] || l.action}</span>
+            </div>
+            <div class="log-detail">
+              <span class="log-operator">${l.operator}</span> → ${l.detail}
+            </div>
+          </div>`).join('');
+      } catch (e) {
+        if (e.message !== 'Session expired')
+          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入失敗</div>';
+      }
+    }
+
+    // ════════════════════════════════════════════════════
+    // ── 責任業務名單移轉 ──────────────────────────────────
+    // ════════════════════════════════════════════════════
+    let transferFromContacts = [];
+    let transferToContacts   = [];
+
+    function escH(s) {
+      return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function populateTransferSelects() {
+      try {
+        const r = await adminFetch(`${API}/admin/users`);
+        const users = await r.json();
+        const active = users.filter(u => u.active);
+        ['transferFromOwner','transferToOwner'].forEach(id => {
+          const sel = $(id);
+          const cur = sel.value;
+          sel.innerHTML = '<option value="">-- 選取業務人員 --</option>';
+          active.forEach(u => {
+            const o = document.createElement('option');
+            o.value = u.username;
+            o.textContent = `${u.displayName || u.username}`;
+            sel.appendChild(o);
+          });
+          if (cur) sel.value = cur;
+        });
+      } catch {}
+    }
+
+    // 依公司分組聯絡人
+    function groupByCompany(contacts) {
+      const map = new Map();
+      contacts.forEach(c => {
+        const key = (c.company || '').trim() || '__no_company__';
+        if (!map.has(key)) map.set(key, { company: key === '__no_company__' ? '' : key, contacts: [] });
+        map.get(key).contacts.push(c);
+      });
+      return [...map.values()].sort((a, b) => {
+        if (!a.company && b.company) return 1;
+        if (a.company && !b.company) return -1;
+        return a.company.localeCompare(b.company, 'zh-TW');
+      });
+    }
+
+    function renderTransferList(contacts, listId, checkable) {
+      const el = $(listId);
+      if (!contacts.length) {
+        el.innerHTML = '<div class="transfer-item-empty">此業務目前無客戶資料</div>';
+        return;
+      }
+      const groups = groupByCompany(contacts);
+      el.innerHTML = groups.map(g => {
+        const companyLabel = g.company || '（無公司）';
+        const names = g.contacts.map(c => escH(c.name || '？')).join('、');
+        const ids = g.contacts.map(c => c.id).join(',');
+        return `
+        <div class="transfer-item transfer-company-item" data-ids="${escH(ids)}">
+          ${checkable ? `<input type="checkbox" class="transfer-cb" data-ids="${escH(ids)}">` : ''}
+          <div class="transfer-item-content">
+            <div class="transfer-item-name">${escH(companyLabel)}</div>
+            <div class="transfer-item-company">${g.contacts.length} 位聯絡人：${names}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      if (checkable) {
+        el.querySelectorAll('.transfer-item').forEach(item => {
+          item.addEventListener('click', e => {
+            if (e.target.type === 'checkbox') return;
+            const cb = item.querySelector('.transfer-cb');
+            cb.checked = !cb.checked;
+            item.classList.toggle('selected', cb.checked);
+            updateTransferUI();
+          });
+          item.querySelector('.transfer-cb').addEventListener('change', function() {
+            item.classList.toggle('selected', this.checked);
+            updateTransferUI();
+          });
+        });
+      }
+    }
+
+    function updateTransferUI() {
+      const checked = document.querySelectorAll('#transferFromList .transfer-cb:checked');
+      const totalContacts = [...checked].reduce((sum, cb) => sum + cb.dataset.ids.split(',').length, 0);
+      $('transferSelectedCount').textContent = checked.length ? `已選 ${checked.length} 家公司（${totalContacts} 位）` : '';
+      const toOwner = $('transferToOwner').value;
+      $('transferConfirmBtn').disabled = !(checked.length > 0 && toOwner);
+    }
+
+    async function loadTransferFrom() {
+      const owner = $('transferFromOwner').value;
+      if (!owner) { $('transferFromList').innerHTML = '<div class="transfer-item-empty">請先選擇來源業務人員</div>'; return; }
+      try {
+        const r = await adminFetch(`${API}/contacts-by-owner?owner=${encodeURIComponent(owner)}`);
+        transferFromContacts = await r.json();
+        const companyCount = new Set(transferFromContacts.map(c => c.company || '__')).size;
+        $('transferFromCount').textContent = `${companyCount} 家公司・${transferFromContacts.length} 位`;
+        renderTransferList(transferFromContacts, 'transferFromList', true);
+        updateTransferUI();
+      } catch {}
+    }
+
+    async function loadTransferTo() {
+      const owner = $('transferToOwner').value;
+      if (!owner) { $('transferToList').innerHTML = '<div class="transfer-item-empty">請先選擇目標業務人員</div>'; return; }
+      try {
+        const r = await adminFetch(`${API}/contacts-by-owner?owner=${encodeURIComponent(owner)}`);
+        transferToContacts = await r.json();
+        const companyCount = new Set(transferToContacts.map(c => c.company || '__')).size;
+        $('transferToCount').textContent = `${companyCount} 家公司・${transferToContacts.length} 位`;
+        renderTransferList(transferToContacts, 'transferToList', false);
+        updateTransferUI();
+      } catch {}
+    }
+
+    $('transferFromOwner').addEventListener('change', loadTransferFrom);
+    $('transferToOwner').addEventListener('change', () => { loadTransferTo(); updateTransferUI(); });
+
+    $('transferSelectAll').addEventListener('click', () => {
+      const cbs = document.querySelectorAll('#transferFromList .transfer-cb');
+      const allChecked = [...cbs].every(c => c.checked);
+      cbs.forEach(cb => {
+        cb.checked = !allChecked;
+        cb.closest('.transfer-item').classList.toggle('selected', !allChecked);
+      });
+      $('transferSelectAll').textContent = allChecked ? '全選' : '全消';
+      updateTransferUI();
+    });
+
+    $('transferConfirmBtn').addEventListener('click', async () => {
+      const fromOwner = $('transferFromOwner').value;
+      const toOwner   = $('transferToOwner').value;
+      const checked   = [...document.querySelectorAll('#transferFromList .transfer-cb:checked')];
+      if (!fromOwner || !toOwner || !checked.length) return;
+
+      // 展開所有選中公司的聯絡人 ID
+      const contactIds = checked.flatMap(cb => cb.dataset.ids.split(',').filter(Boolean));
+      $('transferConfirmBtn').disabled = true;
+      $('transferConfirmBtn').textContent = '移轉中...';
+
+      try {
+        const r = await adminFetch(`${API}/transfer-contacts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fromOwner, toOwner, contactIds })
+        });
+        const result = await r.json();
+        const box = $('transferResultBox');
+        box.style.display = 'block';
+        if (result.success) {
+          box.className = 'transfer-result success';
+          box.innerHTML = `✅ 移轉完成！共移轉 <strong>${result.contactCount}</strong> 位客戶，
+            拜訪記錄 <strong>${result.visitCount}</strong> 筆、
+            商機 <strong>${result.oppCount}</strong> 筆、
+            應收帳款 <strong>${result.recvCount}</strong> 筆`;
+          showToast(`✅ 成功移轉 ${result.contactCount} 位客戶`);
+          await loadTransferFrom();
+          await loadTransferTo();
+        } else {
+          box.className = 'transfer-result error';
+          box.innerHTML = `❌ 移轉失敗：${escH(result.error || '未知錯誤')}`;
+        }
+      } catch (e) {
+        if (e.message !== 'Session expired') showToast('移轉失敗，請重試');
+      } finally {
+        $('transferConfirmBtn').disabled = false;
+        $('transferConfirmBtn').textContent = '確認移轉';
+        updateTransferUI();
+      }
+    });
+
+    // ── 異動記錄：顯示匯入標籤 ──
+    const _origActionLabels = ACTION_LABELS;
+    ACTION_LABELS['IMPORT_CONTACTS'] = '匯入名單';
+    ACTION_LABELS['LOGIN'] = '登入';
+
+    // ════════════════════════════════════════════════════
+    // ── 客戶名單匯入 ──────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    let importFile = null;
+    let importParsedRows = [];
+    const IMPORT_COLS = ['姓名','英文名稱','公司','職稱','電話','分機','手機','Email','地址','網站','統一編號','產業屬性','備註'];
+
+    // 下載範本
+    $('downloadTemplateBtn').addEventListener('click', e => {
+      e.preventDefault();
+      window.location.href = `${API}/admin/import-template`;
+    });
+
+    // 填充業務人員選單
+    async function populateImportOwners() {
+      try {
+        const r = await adminFetch(`${API}/admin/users`);
+        const users = await r.json();
+        const sel = $('importTargetOwner');
+        sel.innerHTML = '<option value="">-- 請選擇 --</option>';
+        users.filter(u => u.active).forEach(u => {
+          const o = document.createElement('option');
+          o.value = u.username;
+          o.textContent = `${u.displayName || u.username}（${u.username}）`;
+          sel.appendChild(o);
+        });
+      } catch {}
+    }
+
+    // 拖放 & 點擊上傳
+    const dropZone   = $('importDropZone');
+    const fileInput  = $('importFileInput');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) handleImportFile(f);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleImportFile(fileInput.files[0]);
+    });
+
+    function handleImportFile(file) {
+      importFile = file;
+      $('importFileName').textContent = `✅ 已選擇：${file.name}`;
+      // 用 FileReader 讀取並預覽（前5筆）
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const XLSX_lib = typeof XLSX !== 'undefined' ? XLSX : null;
+          // 沒有前端 XLSX，只顯示檔名，解析交給後端
+          $('importTotalRows').textContent = '（解析中，請選擇業務人員後按確認匯入）';
+          $('importPreviewSection').style.display = 'block';
+          $('importPreviewHead').innerHTML = `<tr>${IMPORT_COLS.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+          $('importPreviewBody').innerHTML = `<tr><td colspan="${IMPORT_COLS.length}" style="text-align:center;color:#aaa;padding:16px">預覽將在匯入後顯示結果</td></tr>`;
+          $('importConfirmBtn').disabled = false;
+          $('importResultBox').style.display = 'none';
+        } catch {}
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // 確認匯入
+    $('importConfirmBtn').addEventListener('click', async () => {
+      const owner = $('importTargetOwner').value;
+      if (!owner) { showToast('請先選擇業務人員'); return; }
+      if (!importFile) { showToast('請先選擇檔案'); return; }
+
+      $('importConfirmBtn').disabled = true;
+      $('importConfirmBtn').textContent = '匯入中...';
+
+      try {
+        const formData = new FormData();
+        formData.append('file', importFile);
+        formData.append('targetOwner', owner);
+        formData.append('skipDuplicates', $('importSkipDup').value);
+
+        const r = await adminFetch(`${API}/admin/import-contacts`, { method: 'POST', body: formData });
+        const result = await r.json();
+
+        const box = $('importResultBox');
+        box.style.display = 'block';
+        if (result.success) {
+          box.className = 'import-result success';
+          box.innerHTML = `✅ 匯入完成！成功 <strong>${result.imported}</strong> 筆，略過 <strong>${result.skipped}</strong> 筆，錯誤 <strong>${result.errors}</strong> 筆
+            ${result.errorDetails && result.errorDetails.length ? `<div class="import-result-detail">${result.errorDetails.join('<br>')}</div>` : ''}`;
+          showToast(`✅ 匯入成功 ${result.imported} 筆`);
+        } else {
+          box.className = 'import-result error';
+          box.innerHTML = `❌ 匯入失敗：${result.error || '未知錯誤'}`;
+        }
+      } catch (e) {
+        if (e.message !== 'Session expired') showToast('匯入失敗，請重試');
+      } finally {
+        $('importConfirmBtn').disabled = false;
+        $('importConfirmBtn').textContent = '✅ 確認匯入';
+      }
+    });
+
+    // 清除
+    $('importResetBtn').addEventListener('click', () => {
+      importFile = null;
+      fileInput.value = '';
+      $('importFileName').textContent = '';
+      $('importPreviewSection').style.display = 'none';
+      $('importResultBox').style.display = 'none';
+      $('importConfirmBtn').disabled = true;
+    });
+
+    // ── 職能分類批次 Mapping ────────────────────────────────
+    document.getElementById('migrateJobFuncBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('migrateJobFuncBtn');
+      const resultBox = document.getElementById('migrateJobFuncResult');
+      btn.disabled = true;
+      btn.textContent = '⏳ 處理中...';
+      resultBox.style.display = 'none';
+      try {
+        const res = await fetch('/api/admin/migrate-job-function', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = `<div class="transfer-result success">✅ 自動 Mapping 完成：已更新 <strong>${data.mapped}</strong> 筆，略過（已有分類）<strong>${data.skipped}</strong> 筆</div>`;
+        } else {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = `<div class="transfer-result error">❌ 操作失敗：${data.error || '未知錯誤'}</div>`;
+        }
+      } catch {
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `<div class="transfer-result error">❌ 連線失敗，請稍後再試</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🏷️ 開始自動 Mapping';
+      }
+    });
+
+    // ════════════════════════════════════════════════════
+    // ── 名片辨識 JSON 匯入 ────────────────────────────────
+    // ════════════════════════════════════════════════════
+    let ocrParsedRows = [];
+
+    // 填充業務人員選單
+    async function populateOcrOwners() {
+      try {
+        const r = await adminFetch(`${API}/admin/users`);
+        const users = await r.json();
+        const sel = $('ocrTargetOwner');
+        sel.innerHTML = '<option value="">-- 請選擇 --</option>';
+        users.filter(u => u.role !== 'admin').forEach(u => {
+          sel.innerHTML += `<option value="${u.username}">${u.displayName || u.username}</option>`;
+        });
+      } catch {}
+    }
+
+    // 預覽按鈕
+    $('ocrPreviewBtn').addEventListener('click', () => {
+      const raw = $('ocrJsonInput').value.trim();
+      if (!raw) { alert('請貼入 JSON 資料'); return; }
+      try {
+        const parsed = JSON.parse(raw);
+        const rows = Array.isArray(parsed) ? parsed : [parsed];
+        if (!rows.length) { alert('JSON 內無資料'); return; }
+        ocrParsedRows = rows;
+        $('ocrTotalRows').textContent = rows.length;
+        const tbody = $('ocrPreviewBody');
+        tbody.innerHTML = rows.map((r, i) => `
+          <tr style="border-bottom:1px solid #f0f0f0">
+            <td style="padding:7px 12px;color:#aaa">${i + 1}</td>
+            <td style="padding:7px 12px;font-weight:500">${r.name || ''}</td>
+            <td style="padding:7px 12px">${r.company || ''}</td>
+            <td style="padding:7px 12px;color:#666">${r.title || ''}</td>
+            <td style="padding:7px 12px">${r.phone || ''}</td>
+            <td style="padding:7px 12px">${r.mobile || ''}</td>
+            <td style="padding:7px 12px">${r.email || ''}</td>
+            <td style="padding:7px 12px">${r.taxId || ''}</td>
+          </tr>`).join('');
+        $('ocrPreviewSection').style.display = 'block';
+        $('ocrImportBtn').style.display = '';
+        $('ocrResultBox').style.display = 'none';
+      } catch (e) {
+        alert('JSON 格式有誤，請確認後再試\n錯誤：' + e.message);
+      }
+    });
+
+    // 確認匯入
+    $('ocrImportBtn').addEventListener('click', async () => {
+      const owner = $('ocrTargetOwner').value;
+      if (!owner) { alert('請選擇指派的業務人員'); return; }
+      if (!ocrParsedRows.length) { alert('請先預覽資料'); return; }
+      $('ocrImportBtn').disabled = true;
+      $('ocrImportBtn').textContent = '匯入中...';
+      try {
+        const r = await adminFetch(`${API}/admin/import-contacts-json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetOwner: owner,
+            contacts: ocrParsedRows,
+            skipDuplicates: $('ocrSkipDup').value === 'true'
+          })
+        });
+        const result = await r.json();
+        const box = $('ocrResultBox');
+        box.style.display = 'block';
+        if (result.success) {
+          box.innerHTML = `<div class="transfer-result success">✅ 匯入完成！成功 <strong>${result.imported}</strong> 筆，略過 <strong>${result.skipped}</strong> 筆</div>`;
+          ocrParsedRows = [];
+          $('ocrJsonInput').value = '';
+          $('ocrPreviewSection').style.display = 'none';
+          $('ocrImportBtn').style.display = 'none';
+        } else {
+          box.innerHTML = `<div class="transfer-result error">❌ 匯入失敗：${result.error}</div>`;
+        }
+      } catch (e) {
+        $('ocrResultBox').style.display = 'block';
+        $('ocrResultBox').innerHTML = `<div class="transfer-result error">❌ 連線失敗：${e.message}</div>`;
+      } finally {
+        $('ocrImportBtn').disabled = false;
+        $('ocrImportBtn').textContent = '✅ 確認匯入';
+      }
+    });
+
+    // 清除
+    $('ocrClearBtn').addEventListener('click', () => {
+      $('ocrJsonInput').value = '';
+      $('ocrPreviewSection').style.display = 'none';
+      $('ocrImportBtn').style.display = 'none';
+      $('ocrResultBox').style.display = 'none';
+      ocrParsedRows = [];
+    });
+
+    // ── 初始化（先確認登入與權限，再載入資料）──
+    (async function init() {
+      const ok = await loadMe();
+      if (ok) { await loadUsers(); await populateImportOwners(); await populateTransferSelects(); await populateOcrOwners(); }
+    })();
+
+    // ════════════════════════════════════════════════════
+    // ── 名片操作紀錄 ──────────────────────────────────────
+    const AUDIT_ACTION_LABELS = {
+      CREATE: '新增', UPDATE: '修改', DELETE: '刪除',
+      RESTORE: '還原', PERMANENT_DELETE: '永久刪除'
+    };
+    const AUDIT_ACTION_COLORS = {
+      CREATE: '#34a853', UPDATE: '#1a73e8', DELETE: '#ea4335',
+      RESTORE: '#fb8c00', PERMANENT_DELETE: '#6d4c41'
+    };
+
+    async function initContactAudit() {
+      // 填充人員下拉
+      const sel = $('auditFilterUser');
+      if (sel.options.length <= 1) {
+        try {
+          const users = await adminFetch(`${API}/admin/users`);
+          users.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.username;
+            opt.textContent = (u.displayName || u.username) + ' (' + u.username + ')';
+            sel.appendChild(opt);
+          });
+        } catch {}
+      }
+      await loadContactAudit();
+    }
+
+    function clearAuditFilter() {
+      $('auditFilterUser').value = '';
+      $('auditFilterAction').value = '';
+      $('auditFilterFrom').value = '';
+      $('auditFilterTo').value = '';
+      loadContactAudit();
+    }
+
+    async function loadContactAudit() {
+      $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">查詢中...</div>';
+      const params = new URLSearchParams();
+      const u = $('auditFilterUser').value;
+      const a = $('auditFilterAction').value;
+      const f = $('auditFilterFrom').value;
+      const t = $('auditFilterTo').value;
+      if (u) params.set('userId', u);
+      if (a) params.set('action', a);
+      if (f) params.set('dateFrom', f);
+      if (t) params.set('dateTo', t);
+      try {
+        const logs = await adminFetch(`${API}/admin/contact-audit?${params}`);
+        $('auditCount').textContent = `共 ${logs.length} 筆`;
+        if (!logs.length) {
+          $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">無符合條件的紀錄</div>';
+          return;
+        }
+        $('auditList').innerHTML = logs.map(l => {
+          const color = AUDIT_ACTION_COLORS[l.action] || '#888';
+          const label = AUDIT_ACTION_LABELS[l.action] || l.action;
+          const changesHtml = l.changes && l.changes.length
+            ? `<div class="audit-changes">${l.changes.map(c =>
+                `<div class="audit-change-row">
+                  <span class="audit-field">${c.fieldLabel}</span>
+                  <span class="audit-old">${c.oldValue || '（空）'}</span>
+                  <span class="audit-arrow">→</span>
+                  <span class="audit-new">${c.newValue || '（空）'}</span>
+                </div>`
+              ).join('')}</div>`
+            : '';
+          return `
+            <div class="audit-item">
+              <div class="audit-header">
+                <span class="audit-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</span>
+                <span class="audit-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${label}</span>
+                <span class="audit-user">👤 ${l.userName}</span>
+              </div>
+              <div class="audit-target">
+                <strong>${l.targetName || '（無姓名）'}</strong>
+                ${l.targetCompany ? `<span style="color:#888;margin-left:8px">${l.targetCompany}</span>` : ''}
+              </div>
+              ${changesHtml}
+            </div>`;
+        }).join('');
+      } catch (e) {
+        $('auditList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${e.message}</div>`;
+      }
+    }
+
+    // ── 已刪除名單 ────────────────────────────────────────
+    async function loadDeletedContacts() {
+      $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
+      try {
+        const list = await adminFetch(`${API}/admin/deleted-contacts`);
+        if (!list.length) {
+          $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">目前無已刪除的聯絡人</div>';
+          return;
+        }
+        $('deletedList').innerHTML = `
+          <table class="admin-table">
+            <thead><tr>
+              <th>姓名</th><th>公司</th><th>職稱</th>
+              <th>刪除時間</th><th>刪除者</th><th>操作</th>
+            </tr></thead>
+            <tbody>${list.map(c => `
+              <tr>
+                <td>${c.name || '-'}</td>
+                <td>${c.company || '-'}</td>
+                <td>${c.title || '-'}</td>
+                <td style="font-size:12px;color:#888">${c.deletedAt ? new Date(c.deletedAt).toLocaleString('zh-TW') : '-'}</td>
+                <td>${c.deletedByName || c.deletedBy || '-'}</td>
+                <td>
+                  <button class="btn btn-sm" style="background:#34a853;color:#fff;margin-right:6px"
+                    onclick="restoreContact('${c.id}', '${(c.name||'').replace(/'/g,'')}')">還原</button>
+                  <button class="btn btn-sm" style="background:#ea4335;color:#fff"
+                    onclick="permanentDelete('${c.id}', '${(c.name||'').replace(/'/g,'')}')">永久刪除</button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`;
+      } catch (e) {
+        $('deletedList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${e.message}</div>`;
+      }
+    }
+
+    async function restoreContact(id, name) {
+      if (!confirm(`確定要還原「${name}」嗎？\n還原後將回到原業務的聯絡人名單。`)) return;
+      try {
+        await adminFetch(`${API}/admin/contacts/${id}/restore`, { method: 'POST' });
+        alert('✅ 已還原成功');
+        loadDeletedContacts();
+      } catch (e) { alert('還原失敗：' + e.message); }
+    }
+
+    async function permanentDelete(id, name) {
+      if (!confirm(`⚠️ 永久刪除「${name}」？\n\n此操作【無法復原】，名片圖片也將一併刪除。\n確定繼續？`)) return;
+      try {
+        await adminFetch(`${API}/admin/contacts/${id}/permanent`, { method: 'DELETE' });
+        alert('已永久刪除');
+        loadDeletedContacts();
+      } catch (e) { alert('刪除失敗：' + e.message); }
+    }
+
+    // ── 版本資訊 ──────────────────────────────────────────
+    function fmtMem(bytes) {
+      const gb = bytes / 1024 / 1024 / 1024;
+      return gb >= 1 ? gb.toFixed(1) + ' GB' : (bytes / 1024 / 1024).toFixed(0) + ' MB';
+    }
+    function fmtOsUptime(sec) {
+      const d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600), m = Math.floor((sec%3600)/60);
+      return `${d}天 ${h}時 ${m}分`;
+    }
+    function vRow(label, value, highlight) {
+      return `<div style="display:flex;justify-content:space-between;align-items:center;
+                padding:8px 18px;border-bottom:1px solid #f5f5f5;font-size:13px">
+        <span style="color:#666;font-weight:500">${label}</span>
+        <span style="font-weight:700;color:${highlight||'#1a2d52'}">${value}</span>
+      </div>`;
+    }
+
+    async function loadVersionInfo() {
+      try {
+        const r = await adminFetch(`${API}/admin/version`);
+        const d = await r.json();
+
+        // 主卡
+        $('vAppName').textContent   = 'Account Profile CRM';
+        $('vAppDesc').textContent   = d.app.description;
+        $('vVersion').textContent   = 'v' + d.app.version;
+        $('vVersionBg').textContent = 'v' + d.app.version;
+
+        // 伺服器運行
+        const startLocal = new Date(d.app.startTime).toLocaleString('zh-TW');
+        $('vServerInfo').innerHTML =
+          vRow('系統版本',      'v' + d.app.version,  '#1a73e8') +
+          vRow('Node.js 版本', d.runtime.node,         '#34a853') +
+          vRow('伺服器啟動時間', startLocal) +
+          vRow('已運行時間',    d.app.uptime,           '#f57c00') +
+          vRow('系統框架',      'Express.js',           '#1a2d52') +
+          vRow('部署環境',      'On-Premise 本地部署');
+
+        // 主機環境
+        const memUsed = d.runtime.totalMem - d.runtime.freeMem;
+        const memPct  = Math.round(memUsed / d.runtime.totalMem * 100);
+        $('vOsInfo').innerHTML =
+          vRow('主機名稱',    d.runtime.hostname) +
+          vRow('作業系統',    d.runtime.platform) +
+          vRow('處理器架構',  d.runtime.arch.toUpperCase()) +
+          vRow('CPU 核心數',  d.runtime.cpus + ' 核') +
+          vRow('CPU 型號',    `<span title="${d.runtime.cpuModel}" style="max-width:180px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${d.runtime.cpuModel}</span>`) +
+          vRow('記憶體用量',  `${fmtMem(memUsed)} / ${fmtMem(d.runtime.totalMem)} (${memPct}%)`, memPct > 80 ? '#ea4335' : '#34a853') +
+          vRow('主機運行時間', fmtOsUptime(d.runtime.osUptime));
+
+        // 資料庫
+        $('vDbInfo').innerHTML = `
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            ${[
+              { label:'資料庫類型', value: d.database.type,     color:'#1a73e8' },
+              { label:'資料檔案',   value: d.database.file,     color:'#34a853' },
+              { label:'帳號檔案',   value: d.database.authFile, color:'#f57c00' },
+            ].map(i=>`
+              <div style="background:#f8f9fa;border-radius:10px;padding:12px 14px;border-left:3px solid ${i.color}">
+                <div style="font-size:11px;color:#888;margin-bottom:4px">${i.label}</div>
+                <div style="font-size:14px;font-weight:700;color:${i.color}">${i.value}</div>
+              </div>`).join('')}
+          </div>
+          <div style="margin-top:14px;background:#e8f0fe;border-radius:10px;padding:12px 16px;
+                      font-size:13px;color:#1a2d52;display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:18px;flex-shrink:0">💡</span>
+            <div>
+              <strong>${d.database.engine}</strong><br>
+              <span style="color:#555;line-height:1.7">${d.database.note}</span>
+            </div>
+          </div>`;
+
+        // 後端套件
+        $('vBackendPkgs').innerHTML = d.backend.map(p => `
+          <div style="background:#f8f9fa;border-radius:10px;padding:12px 14px;
+                      display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">${p.icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:#1a2d52">${p.name}</div>
+              <div style="font-size:11px;color:#888;margin-top:1px">${p.desc}</div>
+            </div>
+            <span style="font-size:11px;font-weight:700;color:#fff;background:#1a73e8;
+                         padding:2px 8px;border-radius:10px;white-space:nowrap">v${p.ver}</span>
+          </div>`).join('');
+
+        // 前端技術
+        $('vFrontendPkgs').innerHTML = d.frontend.map(p => `
+          <div style="background:#f8f9fa;border-radius:10px;padding:12px 14px;
+                      display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">${p.icon}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:700;color:#1a2d52">${p.name}</div>
+              <div style="font-size:11px;color:#888;margin-top:1px">${p.desc}</div>
+            </div>
+            ${p.ver !== '—' ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#34a853;
+                         padding:2px 8px;border-radius:10px;white-space:nowrap">v${p.ver}</span>` : ''}
+          </div>`).join('');
+
+        // 時間戳記
+        $('vGenTime').textContent = '更新時間：' + new Date(d.generatedAt).toLocaleTimeString('zh-TW');
+
+      } catch(e) {
+        showToast('無法載入版本資訊：' + e.message);
+      }
+    }
+
+    // ── 容量空間監控 ──────────────────────────────────────
+    function fmtBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B','KB','MB','GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)) + ' ' + sizes[i];
+    }
+
+    async function loadStorageInfo() {
+      try {
+        const r = await adminFetch(`${API}/admin/storage`);
+        const d = await r.json();
+
+        // ── 摘要卡 ──
+        const totalDisk = d.dbSize + d.uploadsSize;
+        const statCards = [
+          { icon:'🗄️',  label:'資料庫大小',   value: fmtBytes(d.dbSize),      sub: 'data.json',            color:'#1a73e8', bg:'#e8f0fe' },
+          { icon:'🖼️',  label:'圖片儲存',     value: fmtBytes(d.uploadsSize),  sub: `${d.uploadsCount} 個檔案`, color:'#34a853', bg:'#e6f4ea' },
+          { icon:'📝',  label:'資料總筆數',   value: d.totalRecords.toLocaleString()+'筆', sub:'所有集合合計', color:'#f57c00', bg:'#fff3e0' },
+          { icon:'👥',  label:'系統帳號',     value: d.users+'位',              sub:'已建立帳號',             color:'#9c27b0', bg:'#f3e5f5' },
+        ];
+        $('storageStatRow').innerHTML = statCards.map(c => `
+          <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.07);
+                      padding:16px;border-top:3px solid ${c.color};display:flex;align-items:center;gap:12px">
+            <div style="width:42px;height:42px;border-radius:10px;background:${c.bg};color:${c.color};
+                        display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${c.icon}</div>
+            <div style="min-width:0">
+              <div style="font-size:11px;color:#888;margin-bottom:2px">${c.label}</div>
+              <div style="font-size:20px;font-weight:800;color:${c.color};line-height:1.2">${c.value}</div>
+              <div style="font-size:11px;color:#bbb;margin-top:2px">${c.sub}</div>
+            </div>
+          </div>`).join('');
+
+        // ── 各集合筆數（橫條圖）──
+        const maxCount = Math.max(...d.collections.map(c => c.count), 1);
+        $('storageCollections').innerHTML = d.collections.map(c => {
+          const pct = Math.max((c.count / maxCount) * 100, c.count ? 3 : 0);
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 18px;border-bottom:1px solid #f5f5f5">
+              <span style="font-size:15px;flex-shrink:0">${c.icon}</span>
+              <span style="font-size:12px;font-weight:600;color:#555;min-width:100px">${c.label}</span>
+              <div style="flex:1;height:14px;background:#f5f5f5;border-radius:7px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#1a73e8,#4da3ff);border-radius:7px;transition:width .4s"></div>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:#333;min-width:40px;text-align:right">${c.count}</span>
+            </div>`;
+        }).join('');
+
+        // ── 磁碟分佈長條 ──
+        const diskItems = [
+          { label:'資料庫 (data.json)', size: d.dbSize,      color:'#1a73e8' },
+          { label:'圖片上傳 (uploads)', size: d.uploadsSize,  color:'#34a853' },
+        ];
+        const totalSize = diskItems.reduce((s, i) => s + i.size, 0) || 1;
+        $('storageDiskBars').innerHTML = diskItems.map(item => {
+          const pct = Math.round(item.size / totalSize * 100);
+          return `
+            <div style="margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="font-weight:600;color:#444">${item.label}</span>
+                <span style="color:#888">${fmtBytes(item.size)} (${pct}%)</span>
+              </div>
+              <div style="height:16px;background:#f0f2f5;border-radius:8px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${item.color};border-radius:8px;transition:width .5s"></div>
+              </div>
+            </div>`;
+        }).join('') + `
+          <div style="text-align:right;font-size:12px;font-weight:700;color:#555;margin-top:6px;padding-top:6px;border-top:1px solid #f0f0f0">
+            合計：${fmtBytes(totalSize)}
+          </div>`;
+
+        // ── 最近上傳圖片 ──
+        $('storageRecentFiles').innerHTML = d.recentFiles.length === 0
+          ? '<div style="text-align:center;color:#bbb;font-size:12px;padding:12px">尚無圖片</div>'
+          : d.recentFiles.map(f => {
+              const d2 = new Date(f.mtime);
+              const ts = `${d2.getFullYear()}/${String(d2.getMonth()+1).padStart(2,'0')}/${String(d2.getDate()).padStart(2,'0')}`;
+              return `
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px">
+                  <span style="color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px" title="${f.name}">🖼️ ${f.name}</span>
+                  <span style="color:#bbb;flex-shrink:0;margin-left:8px">${fmtBytes(f.size)} · ${ts}</span>
+                </div>`;
+            }).join('');
+
+        // 產生時間
+        const gt = new Date(d.generatedAt);
+        $('storageGenTime').textContent = `更新時間：${gt.toLocaleTimeString('zh-TW')}`;
+
+      } catch(e) {
+        showToast('無法載入容量資訊：' + e.message);
+      }
+    }
+
+  </script>
+</body>
+</html>

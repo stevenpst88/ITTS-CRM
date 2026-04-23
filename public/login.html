@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登入 - 東捷資訊業務管理系統</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-box {
+      background: #fff;
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 400px;
+      max-width: 95vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .login-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .login-logo .icon { font-size: 48px; margin-bottom: 12px; }
+    .login-logo img { height: 56px; margin-bottom: 16px; }
+    .login-logo h1 { font-size: 20px; font-weight: 700; color: #1a3c7a; line-height: 1.4; }
+    .login-logo p { font-size: 13px; color: #888; margin-top: 6px; }
+
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
+    .form-group input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid #e0e2e5; border-radius: 10px;
+      font-size: 15px; outline: none;
+      transition: border-color .2s; font-family: inherit;
+    }
+    .form-group input:focus { border-color: #1a73e8; }
+
+    .login-btn {
+      width: 100%; padding: 13px;
+      background: #1a73e8; color: #fff;
+      border: none; border-radius: 10px;
+      font-size: 16px; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+      margin-top: 8px;
+    }
+    .login-btn:hover { background: #1558b0; }
+    .login-btn:active { transform: scale(0.99); }
+
+    .error-msg {
+      background: #fce8e6; color: #c5352a;
+      padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; margin-bottom: 16px;
+      display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .footer-note { text-align: center; font-size: 12px; color: #bbb; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="login-logo">
+      <img src="/itts-logo.png" alt="ITTS Logo">
+      <h1>東捷資訊業務管理系統</h1>
+      <p>請登入以繼續使用</p>
+    </div>
+
+    <div class="error-msg" id="errorMsg">帳號或密碼錯誤，請重新輸入</div>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label>帳號</label>
+        <input type="text" id="username" placeholder="請輸入帳號" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="password" placeholder="請輸入密碼" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-btn">登入</button>
+    </form>
+
+    <p class="footer-note">© 東捷資訊業務管理系統</p>
+  </div>
+
+  <script>
+    $('loginForm', document).addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.classList.remove('show');
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          // 管理者直接進後台，其他角色進主系統
+          window.location.href = data.role === 'admin' ? '/admin.html' : '/';
+        } else {
+          errorMsg.classList.add('show');
+          document.getElementById('password').value = '';
+          document.getElementById('password').focus();
+        }
+      } catch {
+        errorMsg.textContent = '連線失敗，請稍後再試';
+        errorMsg.classList.add('show');
+      }
+    });
+
+    function $(id, ctx) { return (ctx || document).getElementById(id); }
+
+    // Enter 鍵提交
+    document.getElementById('password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('loginForm').requestSubmit();
+    });
+  </script>
+</body>
+</html>
