@@ -157,9 +157,12 @@ function requireAuth(req, res, next) {
 }
 
 // ── Auth helpers ────────────────────────────────────────
+// Serverless 相容：當 DB_BACKEND=postgres 時，auth / audit 也存在 app_data.content 裡
+const _USE_DB_FOR_META = (process.env.DB_BACKEND === 'postgres');
+
 function requireAdmin(req, res, next) {
   if (!req.session || !req.session.user) return res.status(401).json({ error: '請先登入' });
-  const authData = JSON.parse(fs.readFileSync(path.join(__dirname, 'auth.json'), 'utf8'));
+  const authData = loadAuth();
   const user = authData.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false)
     return res.status(403).json({ error: '無管理者權限' });
@@ -167,14 +170,39 @@ function requireAdmin(req, res, next) {
 }
 
 function loadAuth() {
+  if (_USE_DB_FOR_META) {
+    const d = db.load();
+    return d._auth || { users: [] };
+  }
   return JSON.parse(fs.readFileSync(path.join(__dirname, 'auth.json'), 'utf8'));
 }
 
 function saveAuth(data) {
+  if (_USE_DB_FOR_META) {
+    const d = db.load();
+    d._auth = data;
+    db.save(d);
+    return;
+  }
   fs.writeFileSync(path.join(__dirname, 'auth.json'), JSON.stringify(data, null, 2), 'utf8');
 }
 
 function writeLog(action, operator, target, detail, req) {
+  if (_USE_DB_FOR_META) {
+    const d = db.load();
+    if (!Array.isArray(d._auditLog)) d._auditLog = [];
+    d._auditLog.unshift({
+      id: uuidv4(),
+      action, operator, target, detail,
+      ip:        (req && req.ip) || '',
+      userAgent: (req && req.headers && req.headers['user-agent']) || '',
+      timestamp: new Date().toISOString(),
+    });
+    // 保留最近 5000 筆
+    if (d._auditLog.length > 5000) d._auditLog.length = 5000;
+    db.save(d);
+    return;
+  }
   const logFile = path.join(__dirname, 'audit.log.json');
   let logs = [];
   try { logs = JSON.parse(fs.readFileSync(logFile, 'utf8')); } catch {}
@@ -383,6 +411,10 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
 
 // ── Admin: get audit logs ────────────────────────────────
 app.get('/api/admin/logs', requireAdmin, (req, res) => {
+  if (_USE_DB_FOR_META) {
+    const d = db.load();
+    return res.json(Array.isArray(d._auditLog) ? d._auditLog : []);
+  }
   const logFile = path.join(__dirname, 'audit.log.json');
   try {
     const logs = JSON.parse(fs.readFileSync(logFile, 'utf8'));
