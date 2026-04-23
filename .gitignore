@@ -2,9 +2,8 @@
 #  敏感資料（絕對不可上 Git）
 # ════════════════════════════════════════
 .env
-.env.local
-.env.production
-.env.*.local
+.env.*
+!.env.example
 auth.json
 data.json
 audit.log.json
