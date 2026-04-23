@@ -11,22 +11,54 @@ const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const db = require('./db');
+const jwtSession = require('./middleware/jwtSession');
+const storage = require('./storage');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// ── 信任 Vercel 代理（取得正確的 req.ip / HTTPS 判斷）──
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+// ── Postgres backend：確保首次請求前 DB 已 preload ─────────
+if (process.env.DB_BACKEND === 'postgres') {
+  let _readyPromise = null;
+  app.use(async (req, res, next) => {
+    try {
+      if (!_readyPromise) _readyPromise = db.ready();
+      await _readyPromise;
+      next();
+    } catch (err) {
+      console.error('[db] ready middleware error:', err);
+      res.status(503).json({ error: '資料庫初始化失敗，請稍後再試' });
+    }
+  });
+}
 
 // ── Session 設定 ────────────────────────────────────────
-app.use(session({
-  secret: process.env.SESSION_SECRET || (() => { throw new Error('SESSION_SECRET 未設定，請建立 .env 檔案'); })(),
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 8 * 60 * 60 * 1000, // 8 小時
-    httpOnly: true,              // 防止 JS 讀取 cookie（緩解 XSS 竊取）
-    sameSite: 'strict',          // 防止 CSRF
-    secure: process.env.NODE_ENV === 'production' // HTTPS 時啟用
-  }
-}));
+// Vercel Serverless 無持久記憶體：改用 JWT + httpOnly cookie
+// 本地開發可用舊 express-session（若 SESSION_BACKEND=memory）
+const SESSION_BACKEND = process.env.SESSION_BACKEND || 'jwt';
+
+if (SESSION_BACKEND === 'memory') {
+  // 本地/傳統伺服器用
+  app.use(session({
+    secret: process.env.SESSION_SECRET || (() => { throw new Error('SESSION_SECRET 未設定，請建立 .env 檔案'); })(),
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 8 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production'
+    }
+  }));
+} else {
+  // Serverless / Vercel 用（推薦）
+  app.use(jwtSession);
+}
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
@@ -258,7 +290,10 @@ app.get('/admin.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 app.use(requireAuth, express.static(path.join(__dirname, 'public')));
-app.use('/uploads', requireAuth, express.static(path.join(__dirname, 'uploads')));
+// ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
+app.get('/uploads/:key', requireAuth, (req, res, next) => {
+  Promise.resolve(storage.serveFile(req, res, req.params.key)).catch(next);
+});
 
 app.get('/api/me', requireAuth, (req, res) => {
   res.json(req.session.user);
@@ -368,16 +403,9 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
   });
 });
 
-// ── 名片圖片上傳設定 ─────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, uuidv4() + ext);
-  }
-});
+// ── 名片圖片上傳設定（使用 storage 模組的 engine）─────────
 const upload = multer({
-  storage,
+  storage: storage.getMulterStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedExt  = /jpeg|jpg|png|gif|webp/;
@@ -2746,8 +2774,26 @@ app.use((req, res) => {
   res.redirect('/login.html');
 });
 
-app.listen(PORT, () => {
-  migrateOwner();
-  console.log(`\n✅ 業務名片管理系統已啟動`);
-  console.log(`👉 請開啟瀏覽器，前往 http://localhost:${PORT}\n`);
-});
+// ════════════════════════════════════════════════════════════
+//  雙模啟動：本地直接 listen；Vercel serverless 只 export app
+// ════════════════════════════════════════════════════════════
+if (require.main === module) {
+  // 本地執行：node server.js
+  (async () => {
+    try { await db.ready(); } catch (e) { console.error('[db] ready failed:', e); }
+    app.listen(PORT, () => {
+      migrateOwner();
+      console.log(`\n✅ 業務名片管理系統已啟動`);
+      console.log(`👉 請開啟瀏覽器，前往 http://localhost:${PORT}\n`);
+    });
+  })();
+} else {
+  // 被 import（如 api/index.js）：只 export app，由 serverless 呼叫
+  // Postgres 模式需要先 preload data 才能同步 load()
+  if (process.env.DB_BACKEND === 'postgres') {
+    // 背景預熱（不阻塞 cold start；首個 request 會等）
+    db.ready().catch((e) => console.error('[db] preload failed:', e));
+  }
+}
+
+module.exports = app;
