@@ -270,9 +270,9 @@ function sanitizeUrl(url) {
 }
 
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
-app.use('/login.html', express.static(path.join(__dirname, 'public', 'login.html')));
-app.use('/itts-logo.png', express.static(path.join(__dirname, 'public', 'itts-logo.png')));
-app.use('/itts-logo.svg', express.static(path.join(__dirname, 'public', 'itts-logo.svg')));
+app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html')));
+app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png')));
+app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg')));
 // admin.html 已移至受保護路由（需登入 + admin 角色）
 
 app.post('/api/login', loginLimiter, async (req, res) => {
@@ -315,9 +315,9 @@ app.get('/admin.html', requireAuth, (req, res) => {
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  res.sendFile(path.join(__dirname, '_client', 'admin.html'));
 });
-app.use(requireAuth, express.static(path.join(__dirname, 'public')));
+app.use(requireAuth, express.static(path.join(__dirname, '_client')));
 // ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
 app.get('/uploads/:key', requireAuth, (req, res, next) => {
   Promise.resolve(storage.serveFile(req, res, req.params.key)).catch(next);
@@ -2331,7 +2331,7 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
     const data = db.load();
     const auth = loadAuth();
     const dbPath = path.join(__dirname, 'data.json');
-    const uploadsPath = path.join(__dirname, 'public', 'uploads');
+    const uploadsPath = path.join(__dirname, 'uploads');
 
     // data.json 大小
     const dbStat = fs.existsSync(dbPath) ? fs.statSync(dbPath) : null;

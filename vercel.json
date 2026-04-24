@@ -4,11 +4,11 @@
     "api/index.js": {
       "maxDuration": 30,
       "memory": 1024,
-      "includeFiles": "{public,templates,db,middleware,storage}/**"
+      "includeFiles": "{_client,templates,db,middleware,storage}/**"
     }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
   ],
-  "regions": ["hkg1"]
+  "regions": ["hnd1"]
 }
