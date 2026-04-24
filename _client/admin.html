@@ -1016,25 +1016,41 @@
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
           <td style="text-align:center">
             <label class="toggle" title="下載客戶名單">
-              <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} onchange="quickToggle('${u.username}','canDownloadContacts',this.checked)">
+              <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} data-action="toggle" data-username="${u.username}" data-field="canDownloadContacts">
               <span class="toggle-slider"></span>
             </label>
           </td>
           <td style="text-align:center">
             <label class="toggle" title="設定業績目標">
-              <input type="checkbox" ${u.canSetTargets ? 'checked' : ''} onchange="quickToggle('${u.username}','canSetTargets',this.checked)">
+              <input type="checkbox" ${u.canSetTargets ? 'checked' : ''} data-action="toggle" data-username="${u.username}" data-field="canSetTargets">
               <span class="toggle-slider"></span>
             </label>
           </td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn btn-sm btn-primary" onclick="openEditUser('${u.username}')">編輯</button>
-              <button class="btn btn-sm btn-warning" onclick="openResetPw('${u.username}')">重設密碼</button>
-              <button class="btn btn-sm btn-danger" onclick="openDeleteUser('${u.username}')">刪除</button>
+              <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${u.username}">編輯</button>
+              <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${u.username}">重設密碼</button>
+              <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${u.username}">刪除</button>
             </div>
           </td>
         </tr>`).join('');
     }
+
+    // ── 事件委派（取代所有 onclick/onchange，不依賴 CSP inline handler）──
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action   = btn.dataset.action;
+      const username = btn.dataset.username;
+      if (action === 'edit')    openEditUser(username);
+      if (action === 'resetpw') openResetPw(username);
+      if (action === 'delete')  openDeleteUser(username);
+    });
+    document.addEventListener('change', function(e) {
+      const inp = e.target.closest('input[data-action="toggle"]');
+      if (!inp) return;
+      quickToggle(inp.dataset.username, inp.dataset.field, inp.checked);
+    });
 
     // ── 快速切換單一權限 ──
     async function quickToggle(username, field, value) {
