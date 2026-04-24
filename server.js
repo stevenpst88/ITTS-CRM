@@ -73,7 +73,10 @@ app.use(helmet({
       frameSrc:        ["'none'"],
       frameAncestors:  ["'none'"],   // 防止 Clickjacking（等同 X-Frame-Options: DENY）
       baseUri:         ["'self'"],
-      formAction:      ["'self'"]
+      formAction:      ["'self'"],
+      // Helmet v7 預設加 script-src-attr 'none' 會封鎖所有 onclick= 等內嵌事件
+      // 現有 HTML 大量使用 onclick/onchange，改為允許 inline
+      scriptSrcAttr:   ["'unsafe-inline'"]
     }
   },
   crossOriginEmbedderPolicy: false,  // 避免影響現有圖片/資源載入
