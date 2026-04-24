@@ -1,4 +1,4 @@
-const API = 'http://localhost:3000/api';
+const API = '/api';
 
 // ── XSS 防護：HTML 字符轉義 ───────────────────────────────
 function escapeHtml(str) {
