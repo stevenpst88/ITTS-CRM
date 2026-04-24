@@ -60,23 +60,24 @@ if (SESSION_BACKEND === 'memory') {
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
-  // Content Security Policy：允許 CDN 載入 Chart.js，inline script/style 維持相容
+  // Content Security Policy：useDefaults:false 完全自訂，避免 Helmet v8 預設
+  // 加入 script-src-attr 'none' 封鎖 onclick= 等 HTML 內嵌事件處理器
   contentSecurityPolicy: {
+    useDefaults: false,
     directives: {
-      defaultSrc:      ["'self'"],
-      scriptSrc:       ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      styleSrc:        ["'self'", "'unsafe-inline'"],
-      imgSrc:          ["'self'", "data:", "blob:"],
-      connectSrc:      ["'self'"],
-      fontSrc:         ["'self'"],
-      objectSrc:       ["'none'"],
-      frameSrc:        ["'none'"],
-      frameAncestors:  ["'none'"],   // 防止 Clickjacking（等同 X-Frame-Options: DENY）
-      baseUri:         ["'self'"],
-      formAction:      ["'self'"],
-      // Helmet v7 預設加 script-src-attr 'none' 會封鎖所有 onclick= 等內嵌事件
-      // 現有 HTML 大量使用 onclick/onchange，改為允許 inline
-      scriptSrcAttr:   ["'unsafe-inline'"]
+      "default-src":      ["'self'"],
+      "script-src":       ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+      "script-src-attr":  ["'unsafe-inline'"],   // 允許 onclick/onchange 等行內事件
+      "style-src":        ["'self'", "'unsafe-inline'"],
+      "img-src":          ["'self'", "data:", "blob:"],
+      "connect-src":      ["'self'"],
+      "font-src":         ["'self'"],
+      "object-src":       ["'none'"],
+      "frame-src":        ["'none'"],
+      "frame-ancestors":  ["'none'"],
+      "base-uri":         ["'self'"],
+      "form-action":      ["'self'"],
+      "upgrade-insecure-requests": []
     }
   },
   crossOriginEmbedderPolicy: false,  // 避免影響現有圖片/資源載入
