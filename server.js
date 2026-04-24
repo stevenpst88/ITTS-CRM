@@ -22,13 +22,11 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// ── Postgres backend：確保首次請求前 DB 已 preload ─────────
+// ── Postgres backend：每次請求都呼叫 ready()（TTL 內會直接命中快取）──
 if (process.env.DB_BACKEND === 'postgres') {
-  let _readyPromise = null;
   app.use(async (req, res, next) => {
     try {
-      if (!_readyPromise) _readyPromise = db.ready();
-      await _readyPromise;
+      await db.ready();
       next();
     } catch (err) {
       console.error('[db] ready middleware error:', err);

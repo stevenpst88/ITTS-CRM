@@ -22,27 +22,29 @@ if (!username || !password) {
     if (typeof db.ready === 'function') await db.ready();
 
     const data = db.load();
-    // auth.json 結構：儲存在 DB 的 app_data.content.users（如果有）
-    // 如果本來業務邏輯是分開 loadAuth()，我們也塞一份到 data.users 作為種子
-    if (!Array.isArray(data.users)) data.users = [];
+    // server.js 的 loadAuth() 在 postgres 模式讀 data._auth.users
+    if (!data._auth) data._auth = { users: [] };
+    if (!Array.isArray(data._auth.users)) data._auth.users = [];
 
-    if (data.users.some(u => u.username === username)) {
+    if (data._auth.users.some(u => u.username === username)) {
       console.error(`❌ 帳號 ${username} 已存在`);
       process.exit(2);
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    data.users.push({
+    data._auth.users.push({
       username,
-      passwordHash,
+      password: passwordHash,          // server.js 讀 user.password
       displayName: displayName || username,
-      role: 'manager1',
+      role: 'admin',
+      active: true,
+      canDownloadContacts: true,
+      canSetTargets: true,
       createdAt: new Date().toISOString(),
     });
 
     await db.save(data);
-    console.log(`✅ 已建立帳號：${username}（角色 manager1）`);
-    console.log('⚠️  請確認 server.js 的 loadAuth() 能正確讀到此帳號，若仍用 auth.json 則需額外遷移。');
+    console.log(`✅ 已建立管理員帳號：${username}（role: admin）`);
     process.exit(0);
   } catch (err) {
     console.error('❌ 失敗:', err);

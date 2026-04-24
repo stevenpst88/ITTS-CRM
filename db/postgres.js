@@ -88,8 +88,10 @@ async function saveAsync(data) {
 //  這樣 server.js 所有業務邏輯完全不用改。
 // ════════════════════════════════════════════════════════════
 
-let _cache = null;
-let _writeQueue = Promise.resolve();
+let _cache        = null;
+let _writeQueue   = Promise.resolve();
+let _lastFetch    = 0;
+const REFRESH_TTL = 30 * 1000; // 30 秒內外部寫入（seed / 多 instance）也能被感知
 
 function load() {
   if (_cache === null) {
@@ -101,7 +103,8 @@ function load() {
 }
 
 function save(data) {
-  _cache = data;
+  _cache     = data;
+  _lastFetch = Date.now(); // 剛寫完，視同剛 fetch
   // 序列化寫入（避免併發寫衝突）
   _writeQueue = _writeQueue
     .then(() => saveAsync(data))
@@ -110,9 +113,12 @@ function save(data) {
 }
 
 // 啟動時呼叫：preload 資料到快取
+// 若快取存在但 TTL 到期，重新拉一次（支援外部工具寫入後自動感知）
 async function ready() {
-  if (_cache !== null) return;
-  _cache = await loadAsync();
+  const now = Date.now();
+  if (_cache !== null && now - _lastFetch < REFRESH_TTL) return;
+  _cache     = await loadAsync();
+  _lastFetch = now;
 }
 
 module.exports = { load, save, ready, _loadAsync: loadAsync, _saveAsync: saveAsync };
