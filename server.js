@@ -82,13 +82,21 @@ app.use(helmet({
   referrerPolicy:     { policy: 'strict-origin-when-cross-origin' }
 }));
 
-// ── CORS：限制只允許本機 ──────────────────────────────────
+// ── CORS：限制只允許本機與同網域 ────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',').map(s => s.trim());
+
 app.use(cors({
   origin: (origin, cb) => {
-    // 允許同源請求（origin 為 undefined）及設定的來源
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // 允許無 Origin（server-to-server 或同頁導覽）
+    if (!origin) return cb(null, true);
+    // 允許明確設定的來源
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // 允許 Vercel 自動注入的 VERCEL_URL（形如 itts-crm.vercel.app）
+    if (process.env.VERCEL_URL && origin === `https://${process.env.VERCEL_URL}`) return cb(null, true);
+    // 允許 VERCEL_BRANCH_URL / VERCEL_PROJECT_PRODUCTION_URL（多 alias 部署）
+    const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    if (vercelProd && origin === `https://${vercelProd}`) return cb(null, true);
     cb(new Error('CORS 不允許此來源'));
   },
   credentials: true
