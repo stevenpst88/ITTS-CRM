@@ -803,11 +803,16 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
 });
 
 app.put('/api/opportunities/:id', requireAuth, (req, res) => {
-  const owner = req.session.user.username;
+  const { username, role } = req.session.user;
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
-  const idx = data.opportunities.findIndex(o => o.id === req.params.id && o.owner === owner);
+  // 一般業務只能改自己的；主管/admin 可改其可查看範圍內的商機（owner 不變）
+  const viewable = getViewableOwners(req, 'opportunities');
+  const idx = data.opportunities.findIndex(o =>
+    o.id === req.params.id && viewable.includes(o.owner)
+  );
   if (idx === -1) return res.status(404).json({ error: '找不到此商機' });
+  const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   const newStage = data.opportunities[idx].stage;

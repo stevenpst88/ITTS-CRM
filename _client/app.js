@@ -2473,12 +2473,16 @@ function renderKanban() {
         .forEach(o => container.appendChild(buildKanbanCard(o)));
     }
 
-    // Drag-and-drop 事件
+    // Drag-and-drop 事件（用 AbortController 避免 renderKanban 多次呼叫疊加監聽器）
+    if (container._dndController) container._dndController.abort();
+    container._dndController = new AbortController();
+    const sig = { signal: container._dndController.signal };
+
     container.addEventListener('dragover', e => {
       e.preventDefault();
       container.classList.add('drag-over');
-    });
-    container.addEventListener('dragleave', () => container.classList.remove('drag-over'));
+    }, sig);
+    container.addEventListener('dragleave', () => container.classList.remove('drag-over'), sig);
     container.addEventListener('drop', async e => {
       e.preventDefault();
       container.classList.remove('drag-over');
@@ -2487,18 +2491,24 @@ function renderKanban() {
       const opp = allOpportunities.find(x => x.id === dragOppId);
       if (!opp || opp.stage === newStage) return;
       try {
-        await fetch(`${API}/opportunities/${dragOppId}`, {
+        const r = await fetch(`${API}/opportunities/${dragOppId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ stage: newStage })
         });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          showToast('❌ 更新失敗：' + (err.error || r.status));
+          return;
+        }
         await loadOpportunities();
         renderKanban();
         updateStatCards();
         renderDashboardCharts();
-        showToast(`已移至 ${newStage}｜${KANBAN_STAGES.find(s=>s.key===newStage)?.label.split('｜')[1]}`);
-      } catch { showToast('更新失敗'); }
-    });
+        const stageLabel = KANBAN_STAGES.find(s => s.key === newStage)?.label.split('｜')[1] || newStage;
+        showToast(`✅ 已移至 ${newStage}｜${stageLabel}`);
+      } catch (err) { showToast('❌ 網路錯誤，請重試'); }
+    }, sig);
   });
 }
 
