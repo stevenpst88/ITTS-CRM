@@ -369,6 +369,35 @@
               <div class="kanban-cards" id="kanbanCardsA" data-stage="A"></div>
             </div>
 
+            <!-- ── Won 欄 ── -->
+            <div class="kanban-col kanban-col-won" id="kanbanColWon" data-stage="Won">
+              <div class="kanban-col-header" style="border-top-color:#1e8e3e">
+                <div class="kanban-col-name-row">
+                  <span class="kanban-col-name">🏆 Won</span>
+                  <span class="kanban-col-badge kanban-badge-won" id="kanbanBadgeWon">0</span>
+                </div>
+                <div class="kanban-col-total" id="kanbanTotalWon">$0<span class="kanban-col-total-label">萬</span></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCardsWon" data-stage="Won"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── 簽約慶祝 Overlay ── -->
+        <div id="wonCelebration" style="display:none;position:fixed;inset:0;z-index:9999;pointer-events:none">
+          <canvas id="wonConfettiCanvas" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+          <div id="wonCelebCard" style="
+            position:absolute;top:50%;left:50%;transform:translate(-50%,-60%) scale(0.5);
+            background:#fff;border-radius:24px;padding:40px 56px;text-align:center;
+            box-shadow:0 24px 80px rgba(0,0,0,0.25);pointer-events:none;
+            transition:transform .4s cubic-bezier(.34,1.56,.64,1), opacity .4s;
+            opacity:0;
+          ">
+            <div style="font-size:64px;margin-bottom:12px">🎉</div>
+            <div style="font-size:28px;font-weight:900;color:#1a2d52;margin-bottom:8px">恭喜簽約！</div>
+            <div id="wonCelebCompany" style="font-size:18px;font-weight:700;color:#1e8e3e;margin-bottom:4px"></div>
+            <div id="wonCelebAmount"  style="font-size:15px;color:#888"></div>
           </div>
         </div>
 

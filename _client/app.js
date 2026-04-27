@@ -2506,11 +2506,94 @@ function renderKanban() {
         renderKanban();
         updateStatCards();
         renderDashboardCharts();
-        const stageLabel = KANBAN_STAGES.find(s => s.key === newStage)?.label.split('｜')[1] || newStage;
-        showToast(`✅ 已移至 ${newStage}｜${stageLabel}`);
+        if (newStage === 'Won') {
+          celebrateWon(opp);
+        } else {
+          const stageLabel = KANBAN_STAGES.find(s => s.key === newStage)?.label.split('｜')[1] || newStage;
+          showToast(`✅ 已移至 ${newStage}｜${stageLabel}`);
+        }
       } catch (err) { showToast('❌ 網路錯誤，請重試'); }
     }, sig);
   });
+}
+
+// ── 簽約慶祝動畫 ─────────────────────────────────────────
+function celebrateWon(opp) {
+  const overlay = document.getElementById('wonCelebration');
+  const card    = document.getElementById('wonCelebCard');
+  const canvas  = document.getElementById('wonConfettiCanvas');
+  if (!overlay || !card || !canvas) return;
+
+  // 填入商機資訊
+  document.getElementById('wonCelebCompany').textContent = opp.company || '';
+  const amt = opp.amount ? `合約金額：$${Number(opp.amount).toLocaleString()} 萬` : '';
+  document.getElementById('wonCelebAmount').textContent = amt;
+
+  // 顯示 overlay
+  overlay.style.display = '';
+  card.className = '';
+  void card.offsetWidth; // reflow
+  card.className = 'won-celeb-in';
+
+  // Canvas confetti
+  const ctx = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const COLORS = ['#1e8e3e','#34a853','#fbbc04','#ea4335','#4285f4','#ff6d00','#ab47bc'];
+  const pieces = Array.from({ length: 120 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height - canvas.height,
+    w: 8 + Math.random() * 10,
+    h: 14 + Math.random() * 10,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rot: Math.random() * 360,
+    vx: (Math.random() - .5) * 3,
+    vy: 3 + Math.random() * 5,
+    vr: (Math.random() - .5) * 8,
+    alpha: 1,
+  }));
+
+  let frame, start = null;
+  const DURATION = 3200; // ms
+
+  function draw(ts) {
+    if (!start) start = ts;
+    const elapsed = ts - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.vy += 0.12; // gravity
+      p.rot += p.vr;
+      if (elapsed > DURATION * .6) p.alpha = Math.max(0, p.alpha - .02);
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    if (elapsed < DURATION) {
+      frame = requestAnimationFrame(draw);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 關閉彈窗
+      card.className = 'won-celeb-out';
+      setTimeout(() => { overlay.style.display = 'none'; card.className = ''; }, 400);
+    }
+  }
+  cancelAnimationFrame(frame);
+  frame = requestAnimationFrame(draw);
+
+  // 點擊提早關閉
+  overlay.style.pointerEvents = 'auto';
+  overlay.onclick = () => {
+    cancelAnimationFrame(frame);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    card.className = 'won-celeb-out';
+    setTimeout(() => { overlay.style.display = 'none'; card.className = ''; overlay.style.pointerEvents = 'none'; overlay.onclick = null; }, 400);
+  };
 }
 
 function buildKanbanCard(o) {
@@ -2984,7 +3067,12 @@ async function updateOppStage(id, stage, confirmWon = false) {
     updateStatCards();
     renderDashboardCharts();
     if (currentSection === 'prospects' || currentSection === 'contacts') loadContacts();
-    showToast(isWon ? `🏆 已標記 ${stage}，計入年度業績` : '商機狀態已更新');
+    if (stage === 'Won') {
+      const opp = allOpportunities.find(x => x.id === id);
+      if (opp) celebrateWon(opp);
+    } else {
+      showToast(isWon ? `✅ 已標記成交，計入年度業績` : '商機狀態已更新');
+    }
   } catch { showToast('更新失敗，請重試'); }
 }
 

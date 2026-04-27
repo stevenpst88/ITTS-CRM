@@ -1112,6 +1112,27 @@ body {
   transition: background .15s;
 }
 .kanban-cards.drag-over { background: rgba(26,115,232,.07); }
+/* ── Won 欄特殊樣式 ── */
+.kanban-col-won { background: #f0faf2; }
+.kanban-col-won .kanban-col-header { background: #f0faf2; }
+.kanban-col-won .kanban-cards.drag-over { background: rgba(30,142,62,.12); outline: 2px dashed #1e8e3e; outline-offset: -6px; }
+.kanban-badge-won { background: #d4edda !important; color: #1e8e3e !important; }
+.kanban-col-won .kanban-col-total { color: #1e8e3e; }
+.kanban-col-won .kanban-card { border-left: 3px solid #1e8e3e; }
+.kanban-col-won .kanban-card-amount { color: #1e8e3e; }
+
+/* ── 簽約慶祝彈窗動畫 ── */
+@keyframes won-card-in {
+  0%   { transform: translate(-50%,-60%) scale(.5); opacity: 0; }
+  70%  { transform: translate(-50%,-50%) scale(1.05); opacity: 1; }
+  100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+}
+@keyframes won-card-out {
+  from { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+  to   { transform: translate(-50%,-50%) scale(.9); opacity: 0; }
+}
+.won-celeb-in  { animation: won-card-in  .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+.won-celeb-out { animation: won-card-out .35s ease-in forwards; }
 .kanban-card {
   background: #fff; border-radius: 10px;
   padding: 14px 15px;
