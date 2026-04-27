@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const db = require('./db');
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
+const gemini = require('./ai/gemini');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -356,6 +357,241 @@ app.put('/api/user/password', requireAuth, async (req, res) => {
   saveAuth(auth);
   writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
   res.json({ success: true });
+});
+
+// ════════════════════════════════════════════════════════
+// ── AI 功能（Google Gemini）──────────────────────────────
+// ════════════════════════════════════════════════════════
+
+// 共用：未設定 API Key 時的回應
+function requireAi(req, res, next) {
+  if (!gemini.isConfigured()) return res.status(503).json({ error: 'AI_NOT_CONFIGURED' });
+  next();
+}
+
+// ── Feature 1：名片 AI 辨識 ─────────────────────────────
+const uploadOcr = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\//i.test(file.mimetype);
+    ok ? cb(null, true) : cb(new Error('只支援圖片格式'));
+  }
+});
+
+app.post('/api/admin/ai-ocr-card', requireAdmin, requireAi,
+  (req, res, next) => uploadOcr.single('card')(req, res, next),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: '未收到圖片' });
+      const base64 = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+
+      const model = gemini.getModel();
+      const result = await model.generateContent([
+        {
+          inlineData: { mimeType, data: base64 }
+        },
+        `你是名片 OCR 助手。請從這張名片圖片中擷取所有聯絡資訊。
+回傳一個 JSON 陣列，每位聯絡人一個物件，使用以下欄位名稱（沒有的填空字串 ""）：
+name（中文姓名）, nameEn（英文姓名）, company（公司名稱）, title（職稱）,
+phone（市話，含區碼）, mobile（手機）, ext（分機號碼）, email（Email）,
+address（地址）, website（網址，需含 http/https）, taxId（統一編號 8 碼）, industry（產業）
+
+只回傳 JSON 陣列，不要任何說明或 markdown。`
+      ]);
+
+      const text = result.response.text();
+      let contacts;
+      try {
+        contacts = gemini.parseJson(text);
+        if (!Array.isArray(contacts)) contacts = [contacts];
+      } catch {
+        return res.status(500).json({ error: 'AI 回應格式錯誤，請重試', raw: text.slice(0, 200) });
+      }
+
+      res.json({ contacts });
+    } catch (e) {
+      const status = e.status === 429 ? 429 : 500;
+      const msg = e.status === 429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 辨識失敗：' + e.message);
+      res.status(status).json({ error: msg });
+    }
+  }
+);
+
+// ── Feature 2：拜訪記錄 AI 建議 ──────────────────────────
+app.post('/api/ai/visit-suggest', requireAuth, requireAi, async (req, res) => {
+  try {
+    const { topic, content, visitType, contactName, company } = req.body;
+    if (!content || content.trim().length < 10)
+      return res.status(400).json({ error: '請先填寫會談內容（至少 10 字）' });
+
+    const model = gemini.getModel();
+    const result = await model.generateContent(
+      `你是一位 B2B 業務顧問。以下是一筆拜訪記錄：
+客戶：${company || '（未填）'} / ${contactName || '（未填）'}
+拜訪方式：${visitType || ''}
+主題：${topic || '（未填）'}
+內容：${content}
+
+請根據內容：
+1. 建議一個具體的「下一步行動」（30 字以內，繁體中文）
+2. 列出 2–3 個關鍵重點（每點 20 字以內，繁體中文）
+
+只回傳 JSON，不要其他說明：
+{"nextAction":"...","keyTakeaways":["...","..."]}`
+    );
+
+    const text = result.response.text();
+    try {
+      const data = gemini.parseJson(text);
+      res.json(data);
+    } catch {
+      res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
+    }
+  } catch (e) {
+    const status = e.status === 429 ? 429 : 500;
+    const msg = e.status === 429 ? 'AI 暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
+    res.status(status).json({ error: msg });
+  }
+});
+
+// ── Feature 3：商機贏率預測 ──────────────────────────────
+app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
+  try {
+    const { oppId } = req.body;
+    if (!oppId) return res.status(400).json({ error: '缺少 oppId' });
+
+    const data   = db.load();
+    const viewable = getViewableOwners(req, 'opportunities');
+    const opp = (data.opportunities || []).find(o => o.id === oppId && viewable.includes(o.owner));
+    if (!opp) return res.status(404).json({ error: '找不到此商機' });
+
+    // 統計拜訪活躍度
+    const now = Date.now();
+    const visits = (data.visits || []).filter(v => {
+      if (opp.contactId && v.contactId === opp.contactId) return true;
+      if (opp.company && v.contactName && (data.contacts || []).some(c => c.id === v.contactId && c.company === opp.company)) return true;
+      return false;
+    });
+    const visits30 = visits.filter(v => v.visitDate && (now - new Date(v.visitDate)) < 30*86400000).length;
+    const visits60 = visits.filter(v => v.visitDate && (now - new Date(v.visitDate)) < 60*86400000).length;
+    const hist = opp.stageHistory || [];
+    const promotions = hist.filter(h => ['D','C','B','A'].indexOf(h.to) > ['D','C','B','A'].indexOf(h.from)).length;
+    const demotions  = hist.filter(h => ['D','C','B','A'].indexOf(h.to) < ['D','C','B','A'].indexOf(h.from)).length;
+    const daysToClose = opp.expectedDate
+      ? Math.round((new Date(opp.expectedDate) - new Date()) / 86400000)
+      : null;
+    const STAGE_LABEL_AI = { D:'D（靜止）', C:'C（Pipeline）', B:'B（Upside）', A:'A（Commit）', '成交':'成交', Won:'Won' };
+
+    const model = gemini.getModel();
+    const result = await model.generateContent(
+      `你是 B2B 銷售預測分析師。請根據以下資料預測商機贏率（0–100 整數）：
+
+商機：${opp.company} / ${opp.product || opp.description || '未填'}
+現在階段：${STAGE_LABEL_AI[opp.stage] || opp.stage}
+金額：${opp.amount || '未填'} 萬元
+距預計成交：${daysToClose !== null ? daysToClose + ' 天' : '未設定'}
+最近 30 天拜訪：${visits30} 次，60 天：${visits60} 次
+歷史晉升：${promotions} 次，退後：${demotions} 次
+說明：${opp.description || '（無）'}
+
+只回傳 JSON：{"winRate":72,"reasoning":"20字內說明","factors":{"stage":35,"activity":10,"timeline":20,"amount":7}}
+winRate 是 0–100 整數，factors 各項加總約等於 winRate。`
+    );
+
+    const text = result.response.text();
+    try {
+      const aiData = gemini.parseJson(text);
+      // 快取到商機物件
+      const idx = data.opportunities.findIndex(o => o.id === oppId);
+      if (idx !== -1) {
+        data.opportunities[idx].aiWinRate   = aiData.winRate;
+        data.opportunities[idx].aiWinRateAt = new Date().toISOString();
+        db.save(data);
+      }
+      res.json(aiData);
+    } catch {
+      res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
+    }
+  } catch (e) {
+    const status = e.status === 429 ? 429 : 500;
+    const msg = e.status === 429 ? 'AI 暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
+    res.status(status).json({ error: msg });
+  }
+});
+
+// ── Feature 4：客戶輪廓 AI 摘要 ──────────────────────────
+app.post('/api/ai/contact-summary', requireAuth, requireAi, async (req, res) => {
+  try {
+    const { contactId } = req.body;
+    if (!contactId) return res.status(400).json({ error: '缺少 contactId' });
+
+    const data  = db.load();
+    const username = req.session.user.username;
+    const viewable = getViewableOwners(req, 'contacts');
+    const contact = (data.contacts || []).find(c => c.id === contactId && viewable.includes(c.owner) && !c.deleted);
+    if (!contact) return res.status(404).json({ error: '找不到此聯絡人' });
+
+    // 最近 5 筆拜訪
+    const visits = (data.visits || [])
+      .filter(v => v.contactId === contactId)
+      .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
+      .slice(0, 5);
+
+    const daysSinceVisit = visits[0]?.visitDate
+      ? Math.round((Date.now() - new Date(visits[0].visitDate)) / 86400000) : null;
+
+    const visitSummary = visits.length
+      ? visits.map(v => `・${v.visitDate} ${v.visitType}：${v.topic || ''} ${v.content ? '— ' + v.content.slice(0, 40) : ''}`).join('\n')
+      : '（尚無拜訪記錄）';
+
+    // 進行中商機
+    const opps = (data.opportunities || []).filter(o =>
+      o.contactId === contactId && o.stage !== 'D' && o.stage !== '成交' && o.stage !== 'Won'
+    );
+    const oppSummary = opps.length
+      ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}萬`).join('；')
+      : '（無進行中商機）';
+
+    const model = gemini.getModel();
+    const result = await model.generateContent(
+      `你是一位 B2B 業務關係分析師。請根據以下資料，用繁體中文生成一段 100–150 字的「客戶輪廓摘要」：
+1. 先判斷關係健康度（良好 / 普通 / 需關注）
+2. 近期拜訪重點摘要
+3. 商機現況
+4. 一個具體的關係維護建議
+
+客戶：${contact.name || ''}，${contact.title || ''}，${contact.company || ''}
+產業：${contact.industry || '（未填）'}
+距上次拜訪：${daysSinceVisit !== null ? daysSinceVisit + ' 天' : '未知'}
+最近拜訪：
+${visitSummary}
+進行中商機：${oppSummary}
+
+只回傳 JSON：{"summary":"...","health":"良好"}`
+    );
+
+    const text = result.response.text();
+    try {
+      const aiData = gemini.parseJson(text);
+      // 快取到聯絡人
+      const idx = data.contacts.findIndex(c => c.id === contactId);
+      if (idx !== -1) {
+        data.contacts[idx].aiSummary       = aiData.summary;
+        data.contacts[idx].aiSummaryHealth = aiData.health;
+        data.contacts[idx].aiSummaryAt     = new Date().toISOString();
+        db.save(data);
+      }
+      res.json(aiData);
+    } catch {
+      res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
+    }
+  } catch (e) {
+    const status = e.status === 429 ? 429 : 500;
+    const msg = e.status === 429 ? 'AI 暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
+    res.status(status).json({ error: msg });
+  }
 });
 
 // ── Admin: get all users ─────────────────────────────────

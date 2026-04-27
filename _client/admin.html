@@ -595,22 +595,38 @@
       <!-- ── 名片辨識匯入 ── -->
       <div class="admin-section" id="sec-card-ocr">
         <div class="section-title">名片辨識匯入</div>
-        <div class="section-sub">將 Claude 辨識後的 JSON 資料貼入下方，確認後批次匯入系統</div>
+        <div class="section-sub">上傳名片圖片由 AI 自動辨識，或手動貼入 JSON 後批次匯入系統</div>
 
         <div class="admin-card">
           <div class="admin-card-body">
 
+            <!-- AI 辨識區塊 -->
+            <div style="background:#f0faf0;border:1.5px solid #1e8e3e;border-radius:10px;padding:18px 20px;margin-bottom:20px">
+              <div style="font-size:14px;font-weight:700;color:#1e8e3e;margin-bottom:10px">🤖 AI 自動辨識（建議）</div>
+              <div style="font-size:13px;color:#555;margin-bottom:12px">上傳名片圖片，AI 自動擷取姓名、公司、電話、Email 等欄位，結果自動填入下方 JSON 框</div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <label for="ocrAiFile" style="cursor:pointer">
+                  <div class="btn" style="background:#fff;border:1.5px solid #1e8e3e;color:#1e8e3e;display:inline-flex;align-items:center;gap:6px">
+                    📷 選擇圖片
+                  </div>
+                  <input type="file" id="ocrAiFile" accept="image/*" style="display:none">
+                </label>
+                <span id="ocrAiFileName" style="font-size:13px;color:#666"></span>
+                <button class="btn" id="ocrAiBtn" disabled style="background:#1e8e3e;color:#fff;min-width:120px">🤖 AI 辨識</button>
+                <span id="ocrAiStatus" style="font-size:13px;color:#888"></span>
+              </div>
+            </div>
+
             <!-- 說明步驟 -->
             <div style="background:#e8f0fe;border-left:4px solid #1a73e8;padding:12px 16px;border-radius:6px;margin-bottom:20px;font-size:13px;line-height:1.8">
-              <strong>📷 操作步驟：</strong><br>
-              1. 將名片照片（JPG/PNG）貼給 Claude 對話<br>
-              2. Claude 辨識後回傳 JSON，複製全部內容<br>
-              3. 貼到下方文字框 → 選擇指派業務人員 → 點擊「預覽」→「確認匯入」
+              <strong>📝 手動貼入 JSON（備用）：</strong><br>
+              1. 將名片照片貼給外部 AI 工具辨識<br>
+              2. 取得 JSON 後貼到下方文字框 → 選擇業務人員 → 預覽 → 確認匯入
             </div>
 
             <!-- JSON 輸入框 -->
             <div class="form-group">
-              <label style="font-weight:600">貼入辨識結果 JSON</label>
+              <label style="font-weight:600">辨識結果 JSON</label>
               <textarea id="ocrJsonInput" rows="10"
                 style="width:100%;font-family:monospace;font-size:12px;border:1px solid #ddd;border-radius:8px;padding:12px;resize:vertical;box-sizing:border-box"
                 placeholder='貼入 Claude 回傳的 JSON，格式如下：&#10;[&#10;  {&#10;    "name": "王大明",&#10;    "nameEn": "David Wang",&#10;    "company": "範例公司",&#10;    "title": "業務經理",&#10;    "phone": "02-12345678",&#10;    "mobile": "0912-345678",&#10;    "email": "david@example.com",&#10;    "taxId": "12345678"&#10;  }&#10;]'></textarea>
@@ -2349,6 +2365,82 @@
         btn.textContent = '匯入';
       }
     });
+
+    // ════════════════════════════════════════════════════
+    // ── 名片 AI 辨識 ──────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    $('ocrAiFile').addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+      $('ocrAiFileName').textContent = '📄 ' + file.name;
+      $('ocrAiBtn').disabled = false;
+    });
+
+    $('ocrAiBtn').addEventListener('click', async () => {
+      const fileInput = $('ocrAiFile');
+      if (!fileInput.files[0]) return;
+
+      const btn    = $('ocrAiBtn');
+      const status = $('ocrAiStatus');
+      btn.disabled = true;
+      btn.textContent = '辨識中...';
+      status.textContent = '';
+      status.style.color = '#888';
+
+      try {
+        // 用戶端壓縮圖片到最大 1200px，避免超時
+        const compressed = await compressImage(fileInput.files[0], 1200);
+
+        const fd = new FormData();
+        fd.append('card', compressed, fileInput.files[0].name);
+
+        const r = await adminFetch(`${API}/admin/ai-ocr-card`, { method: 'POST', body: fd });
+        const data = await r.json();
+
+        if (!r.ok) {
+          if (data.error === 'AI_NOT_CONFIGURED') {
+            status.style.color = '#c62828';
+            status.textContent = '❌ 尚未設定 GEMINI_API_KEY，請聯絡管理員';
+          } else {
+            status.style.color = '#c62828';
+            status.textContent = '❌ ' + (data.error || '辨識失敗');
+          }
+          return;
+        }
+
+        // 填入 JSON textarea（供後續預覽/匯入使用）
+        $('ocrJsonInput').value = JSON.stringify(data.contacts, null, 2);
+        status.style.color = '#1e8e3e';
+        status.textContent = `✅ 辨識完成，共 ${data.contacts.length} 筆，請確認後點擊「預覽」匯入`;
+        showToast('AI 辨識完成，請檢查結果並點擊「預覽」');
+      } catch(e) {
+        status.style.color = '#c62828';
+        status.textContent = '❌ ' + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI 辨識';
+      }
+    });
+
+    // 圖片壓縮（Canvas resize）
+    function compressImage(file, maxPx) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          let { width, height } = img;
+          if (width <= maxPx && height <= maxPx) { resolve(file); return; }
+          const ratio = Math.min(maxPx / width, maxPx / height);
+          const canvas = document.createElement('canvas');
+          canvas.width  = Math.round(width  * ratio);
+          canvas.height = Math.round(height * ratio);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.88);
+        };
+        img.src = url;
+      });
+    }
 
   </script>
 </body>

@@ -2711,6 +2711,10 @@ function openOppEdit(id) {
   // 商品選單
   populateOppEditProduct(o.category, o.product);
 
+  // 重置 AI 贏率面板
+  const _panel = $('oppWinRatePanel');
+  if (_panel) _panel.style.display = 'none';
+
   $('oppEditOverlay').classList.add('open');
 }
 
@@ -5067,3 +5071,222 @@ async function doAppTransfer() {
     updateAppTransferUI();
   }
 }
+
+// ── AI 功能 ───────────────────────────────────────────────
+
+// 拜訪記錄 AI 建議
+const _visitAiBtn = $v('visitAiBtn');
+if (_visitAiBtn) {
+  _visitAiBtn.addEventListener('click', async () => {
+    const topic       = $v('visitTopic').value.trim();
+    const content     = $v('visitContent').value.trim();
+    const visitType   = $v('visitType').value;
+    const contactId   = $v('visitContactId').value;
+    const contact     = allContacts.find(c => c.id === contactId);
+    const contactName = contact?.name || '';
+    const company     = contact?.company || '';
+
+    if (!content && !topic) { showToast('請先填寫拜訪主題或內容再使用 AI 建議'); return; }
+
+    _visitAiBtn.disabled = true;
+    _visitAiBtn.textContent = '✨ 分析中…';
+    $v('visitAiTakeaways').style.display = 'none';
+
+    try {
+      const r = await fetch(`${API}/ai/visit-suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, content, visitType, contactName, company })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (data.error === 'AI_NOT_CONFIGURED') showToast('⚠️ 未設定 GEMINI_API_KEY，請聯絡管理員');
+        else showToast('AI 分析失敗：' + (data.error || '請重試'));
+        return;
+      }
+      // 填入下一步建議（若空白則自動填入）
+      if (data.nextAction && !$v('visitNextAction').value.trim()) {
+        $v('visitNextAction').value = data.nextAction;
+      }
+      // 顯示關鍵重點
+      if (data.keyTakeaways && data.keyTakeaways.length) {
+        const taDiv = $v('visitAiTakeaways');
+        taDiv.innerHTML = '<strong>🤖 AI 關鍵重點：</strong><ul style="margin:4px 0 0 16px;padding:0">' +
+          data.keyTakeaways.map(t => `<li>${escapeHtml(t)}</li>`).join('') + '</ul>';
+        if (data.nextAction) {
+          taDiv.innerHTML += `<div style="margin-top:6px"><strong>💡 建議下一步：</strong>${escapeHtml(data.nextAction)}</div>`;
+        }
+        taDiv.style.display = '';
+      }
+    } catch { showToast('網路錯誤，請稍後再試'); }
+    finally {
+      _visitAiBtn.disabled = false;
+      _visitAiBtn.textContent = '✨ AI 建議';
+    }
+  });
+}
+
+// 商機贏率預測
+const _oppWinRateBtn = $('oppWinRateBtn');
+if (_oppWinRateBtn) {
+  _oppWinRateBtn.addEventListener('click', async () => {
+    const oppId = $('oppEditId').value;
+    if (!oppId) return;
+
+    _oppWinRateBtn.disabled = true;
+    _oppWinRateBtn.textContent = '🤖 預測中…';
+
+    try {
+      const r = await fetch(`${API}/ai/opp-win-rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oppId })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (data.error === 'AI_NOT_CONFIGURED') showToast('⚠️ 未設定 GEMINI_API_KEY，請聯絡管理員');
+        else showToast('AI 分析失敗：' + (data.error || '請重試'));
+        return;
+      }
+      // 顯示贏率面板
+      const panel = $('oppWinRatePanel');
+      if (panel) {
+        $('oppWinRateValue').textContent = (data.winRate ?? '--') + '%';
+        $('oppWinRateReasoning').textContent = data.reasoning || '';
+
+        const f = data.factors || {};
+        const factorsEl = $('oppWinRateFactors');
+        if (factorsEl) {
+          factorsEl.textContent = [
+            f.stage    ? `階段：${f.stage}`       : '',
+            f.activity ? `活躍度：${f.activity}` : '',
+            f.timeline ? `時程：${f.timeline}`   : '',
+            f.amount   ? `金額：${f.amount}`     : ''
+          ].filter(Boolean).join('　');
+        }
+        panel.style.display = '';
+        // 同步更新記憶體中的商機（快取）
+        const oInMem = allOpportunities.find(x => x.id === oppId);
+        if (oInMem) {
+          oInMem.aiWinRate   = data.winRate;
+          oInMem.aiWinRateAt = new Date().toISOString();
+        }
+      }
+    } catch { showToast('網路錯誤，請稍後再試'); }
+    finally {
+      _oppWinRateBtn.disabled = false;
+      _oppWinRateBtn.textContent = '🤖 預測贏率';
+    }
+  });
+}
+
+// 聯絡人 AI 摘要 —— tab 切換顯示快取、按鈕重新生成
+(function setupContactAiTab() {
+  // tab 切換時載入快取摘要
+  const tabBtn = document.querySelector('[data-tab="tab-ai"]');
+  if (!tabBtn) return;
+
+  tabBtn.addEventListener('click', () => {
+    const contactId = $('contactId').value;
+    if (!contactId) return;
+    const c = allContacts.find(x => x.id === contactId);
+    if (!c) return;
+    _renderAiSummary(c);
+  });
+
+  // 生成按鈕
+  const genBtn = $('aiSummaryBtn');
+  if (genBtn) {
+    genBtn.addEventListener('click', async () => {
+      const contactId = $('contactId').value;
+      if (!contactId) return;
+
+      genBtn.disabled = true;
+      genBtn.textContent = '🤖 分析中…';
+      $('aiSummaryStatus').textContent = '正在呼叫 AI，請稍候（約 5–15 秒）…';
+
+      try {
+        const r = await fetch(`${API}/ai/contact-summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contactId })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          if (data.error === 'AI_NOT_CONFIGURED') {
+            $('aiSummaryStatus').textContent = '⚠️ 未設定 GEMINI_API_KEY，請聯絡管理員';
+          } else {
+            $('aiSummaryStatus').textContent = '❌ ' + (data.error || 'AI 分析失敗，請重試');
+          }
+          return;
+        }
+        // 更新記憶體快取
+        const c = allContacts.find(x => x.id === contactId);
+        if (c) {
+          c.aiSummary       = data.summary;
+          c.aiSummaryHealth = data.health;
+          c.aiSummaryAt     = new Date().toISOString();
+          _renderAiSummary(c);
+        }
+        $('aiSummaryStatus').textContent = '';
+      } catch {
+        $('aiSummaryStatus').textContent = '❌ 網路錯誤，請稍後再試';
+      } finally {
+        genBtn.disabled = false;
+        genBtn.textContent = '🤖 生成客戶輪廓摘要';
+      }
+    });
+  }
+})();
+
+function _renderAiSummary(c) {
+  const healthEl = $('aiSummaryHealth');
+  const textEl   = $('aiSummaryText');
+  const metaEl   = $('aiSummaryMeta');
+
+  if (c.aiSummary) {
+    textEl.textContent = c.aiSummary;
+    if (metaEl && c.aiSummaryAt) {
+      const d = new Date(c.aiSummaryAt);
+      metaEl.textContent = `上次分析：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    if (healthEl) {
+      const hMap = { '良好': { bg: '#e8f5e9', color: '#1e8e3e', text: '✅ 關係良好' },
+                     '普通': { bg: '#fff8e1', color: '#f9a825', text: '⚠️ 關係普通' },
+                     '需關注': { bg: '#fce4ec', color: '#c62828', text: '🔴 需要關注' } };
+      const h = hMap[c.aiSummaryHealth] || { bg: '#f5f5f5', color: '#666', text: c.aiSummaryHealth || '' };
+      healthEl.style.background = h.bg;
+      healthEl.style.color      = h.color;
+      healthEl.textContent      = h.text;
+      healthEl.style.display    = h.text ? 'inline-block' : 'none';
+    }
+  } else {
+    textEl.textContent = '尚未生成摘要，點擊下方按鈕開始分析';
+    if (healthEl) { healthEl.textContent = ''; healthEl.style.display = 'none'; }
+    if (metaEl)   metaEl.textContent = '';
+  }
+}
+
+// openModal 時控制 AI tab 顯示（僅編輯現有聯絡人時顯示）
+// 利用 MutationObserver 監聽 modalOverlay class 變化
+(function patchOpenModalForAiTab() {
+  const tabAiBtn = document.getElementById('tabAiBtn');
+  if (!tabAiBtn) return;
+  const mo = new MutationObserver(() => {
+    const isOpen = document.getElementById('modalOverlay').classList.contains('open');
+    if (isOpen) {
+      const hasId = !!document.getElementById('contactId').value;
+      tabAiBtn.style.display = hasId ? '' : 'none';
+      if (!hasId) {
+        // 若當前在 tab-ai，切回 tab-card
+        if (!document.getElementById('tab-ai').classList.contains('hidden')) {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+          document.querySelector('[data-tab="tab-card"]').classList.add('active');
+          document.getElementById('tab-card').classList.remove('hidden');
+        }
+      }
+    }
+  });
+  mo.observe(document.getElementById('modalOverlay'), { attributes: true, attributeFilter: ['class'] });
+})();

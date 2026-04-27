@@ -94,6 +94,17 @@ body {
 }
 .sidebar-changepw:hover { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 
+/* ── AI 按鈕 ── */
+.btn-ai-suggest {
+  background: linear-gradient(135deg, #a8edea, #fed6e3);
+  border: 1px solid #b8e0d2; color: #2d5a4e; border-radius: 6px;
+  padding: 3px 10px; font-size: 12px; cursor: pointer;
+  transition: all .18s; white-space: nowrap; font-weight: 600;
+}
+.btn-ai-suggest:hover { background: linear-gradient(135deg, #81dbd6, #fab8cc); box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+.btn-ai-suggest:disabled { opacity: .5; cursor: not-allowed; }
+.tab-btn-ai { display: none; }
+
 /* ── Main Wrapper (right side) ── */
 .main-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 

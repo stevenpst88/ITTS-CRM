@@ -1016,6 +1016,7 @@
         <button class="tab-btn" data-tab="tab-company">&#127970; 公司資訊</button>
         <button class="tab-btn" data-tab="tab-opp">&#128161; 新增商機</button>
         <button class="tab-btn" data-tab="tab-personal">&#128100; 個人資訊</button>
+        <button class="tab-btn tab-btn-ai" data-tab="tab-ai" id="tabAiBtn" style="display:none">🤖 AI 摘要</button>
       </div>
       <div class="modal-body">
         <div class="tab-content" id="tab-card">
@@ -1272,6 +1273,17 @@
 
         </div>
 
+        <!-- AI 摘要 tab -->
+        <div class="tab-content hidden" id="tab-ai">
+          <div style="text-align:center;padding:24px 0 16px">
+            <div id="aiSummaryHealth" style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:16px"></div>
+          </div>
+          <div id="aiSummaryText" style="font-size:14px;line-height:1.8;color:#333;background:#f8f9fb;border-radius:10px;padding:16px;min-height:80px;margin-bottom:16px">尚未生成摘要，點擊下方按鈕開始分析</div>
+          <div id="aiSummaryMeta" style="font-size:12px;color:#aaa;margin-bottom:16px"></div>
+          <button class="btn btn-primary" id="aiSummaryBtn" style="width:100%">🤖 生成客戶輪廓摘要</button>
+          <div id="aiSummaryStatus" style="margin-top:10px;font-size:13px;color:#888"></div>
+        </div>
+
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancelBtn">取消</button>
@@ -1365,8 +1377,13 @@
                 <input type="text" id="visitTopic" placeholder="例：ERP 需求訪談、年度合約洽談...">
               </div>
               <div class="form-group full-width">
-                <label>會談內容</label>
+                <label style="display:flex;align-items:center;justify-content:space-between">
+                  <span>會談內容</span>
+                  <button type="button" id="visitAiBtn" class="btn-ai-suggest" title="AI 分析內容並建議下一步">✨ AI 建議</button>
+                </label>
                 <textarea id="visitContent" rows="4" placeholder="記錄本次拜訪的重點討論內容..."></textarea>
+                <!-- AI 關鍵重點提示框 -->
+                <div id="visitAiTakeaways" style="display:none;margin-top:8px;background:#f0faf0;border:1px solid #a8d5b0;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e5c2a;line-height:1.7"></div>
               </div>
               <div class="form-group full-width">
                 <label>下一步行動</label>
@@ -1515,9 +1532,18 @@
           </div>
         </div>
       </div>
+      <!-- AI 贏率結果面板 -->
+      <div id="oppWinRatePanel" style="display:none;margin:0 20px 12px;padding:12px 16px;background:#f0faf0;border:1px solid #a8d5b0;border-radius:10px;font-size:13px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="font-size:26px;font-weight:900;color:#1e8e3e" id="oppWinRateValue">—</span>
+          <span style="color:#555" id="oppWinRateReasoning"></span>
+        </div>
+        <div id="oppWinRateFactors" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
       <div class="modal-footer" style="justify-content:space-between">
         <button class="btn" id="oppEditDelete" style="background:#fce8e6;color:#c62828;border:1px solid #f5c6cb">🗑️ 刪除案件</button>
         <div style="display:flex;gap:8px">
+          <button class="btn" id="oppWinRateBtn" style="background:#e8f5e9;color:#1e8e3e;border:1px solid #a8d5b0">🤖 預測贏率</button>
           <button class="btn btn-secondary" id="oppEditCancel">取消</button>
           <button class="btn btn-primary" id="oppEditSave">儲存</button>
         </div>
