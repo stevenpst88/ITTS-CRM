@@ -1030,6 +1030,14 @@
               <button class="btn-sm btn-danger" id="removeImage">移除圖片</button>
             </div>
           </div>
+          <!-- AI 名片辨識 -->
+          <div style="margin-bottom:14px">
+            <input type="file" id="ocrCardInput" accept="image/*" capture="environment" style="display:none">
+            <button type="button" id="ocrCardBtn" class="btn-ai-suggest" style="width:100%;padding:8px;font-size:13px">
+              📷 拍照辨識名片（AI 自動填入欄位）
+            </button>
+            <div id="ocrCardStatus" style="margin-top:6px;font-size:12px;color:#888;text-align:center"></div>
+          </div>
           <form id="contactForm">
             <input type="hidden" id="contactId">
             <input type="hidden" id="cardImageUrl">

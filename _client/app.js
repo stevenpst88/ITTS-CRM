@@ -5072,6 +5072,95 @@ async function doAppTransfer() {
   }
 }
 
+// ── AI 名片拍照辨識（業務用）─────────────────────────────
+(function setupOcrCard() {
+  const btn    = $('ocrCardBtn');
+  const input  = $('ocrCardInput');
+  const status = $('ocrCardStatus');
+  if (!btn || !input) return;
+
+  // 點按鈕 → 開啟相機或檔案選取
+  btn.addEventListener('click', () => input.click());
+
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';   // 允許重複選同一張
+
+    // 前端壓縮到 1200px
+    const compressed = await compressCardImage(file, 1200);
+
+    btn.disabled = true;
+    status.textContent = '🤖 AI 辨識中，請稍候…';
+
+    try {
+      const fd = new FormData();
+      fd.append('card', compressed, 'card.jpg');
+      const r = await fetch(`${API}/ai/ocr-card`, { method: 'POST', body: fd });
+      const data = await r.json();
+
+      if (!r.ok) {
+        status.textContent = '❌ ' + (data.error || 'AI 辨識失敗，請重試');
+        return;
+      }
+
+      const c = data.contact || {};
+      // 填入表單欄位
+      const fill = (id, val) => { const el = $(id); if (el && val) el.value = val; };
+      fill('name',    c.name);
+      fill('nameEn',  c.nameEn);
+      fill('company', c.company);
+      fill('title',   c.title);
+      fill('phone',   c.phone);
+      fill('mobile',  c.mobile);
+      fill('ext',     c.ext);
+      fill('email',   c.email);
+      fill('address', c.address);
+      fill('website', c.website);
+      fill('taxId',   c.taxId);
+
+      // 若有統編，觸發自動查詢
+      if (c.taxId && c.taxId.length === 8) {
+        $('taxId').dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // 若有產業，設定
+      if (c.industry) {
+        const indEl = $('industry');
+        if (indEl) { indEl.value = c.industry; indEl.dataset.manual = 'true'; }
+      }
+
+      status.textContent = '✅ 辨識完成，請確認並補充資料後儲存';
+      status.style.color = '#1e8e3e';
+    } catch {
+      status.textContent = '❌ 網路錯誤，請稍後再試';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 壓縮圖片（Canvas resize）
+  function compressCardImage(file, maxPx) {
+    return new Promise(resolve => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width: w, height: h } = img;
+        if (w > maxPx || h > maxPx) {
+          if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+          else       { w = Math.round(w * maxPx / h); h = maxPx; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => resolve(new File([blob], 'card.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.88);
+      };
+      img.onerror = () => resolve(file);
+      img.src = url;
+    });
+  }
+})();
+
 // ── AI 功能 ───────────────────────────────────────────────
 
 // 拜訪記錄 AI 建議
