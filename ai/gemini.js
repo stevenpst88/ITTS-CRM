@@ -8,7 +8,7 @@ function getClient() {
   return _client;
 }
 
-function getModel(model = 'gemini-2.0-flash') {
+function getModel(model = 'gemini-flash-lite-latest') {
   const client = getClient();
   if (!client) return null;
   return client.getGenerativeModel({ model });

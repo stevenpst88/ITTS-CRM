@@ -7,6 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.104.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
@@ -19,7 +20,9 @@
     "multer": "^2.0.0",
     "pg": "^8.20.0",
     "uuid": "^9.0.0",
-    "xlsx": "^0.18.5",
-    "@google/generative-ai": "^0.21.0"
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "pptxgenjs": "^4.0.1"
   }
 }
