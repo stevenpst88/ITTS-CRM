@@ -831,8 +831,8 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
 
 // ── 商機動態報表 ──────────────────────────────────────────
 // 從低到高排列：D(靜止) → C(Pipeline) → B(Upside) → A(Commit) → 成交
-const STAGE_ORDER = ['D','C','B','A','成交'];
-const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A｜Commit', '成交':'✅ 成交' };
+const STAGE_ORDER = ['D','C','B','A','成交','Won'];
+const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A｜Commit', '成交':'✅ 成交', Won:'🏆 Won' };
 app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const { from, to } = req.query;
   const now = new Date();
@@ -908,8 +908,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
     summary: {
-      totalPipeline: sum(opps.filter(o=>o.stage!=='成交'&&o.stage!=='D')),
-      totalCount:    opps.filter(o=>o.stage!=='成交'&&o.stage!=='D').length,
+      totalPipeline: sum(opps.filter(o=>o.stage!=='成交'&&o.stage!=='Won'&&o.stage!=='D')),
+      totalCount:    opps.filter(o=>o.stage!=='成交'&&o.stage!=='Won'&&o.stage!=='D').length,
       newAmount:  sum(newDeals), newCount: newDeals.length,
       lostAmount: sum(lostDeals), lostCount: lostDeals.length,
       promotedAmount: sum(promoted), promotedCount: promoted.length,
@@ -994,7 +994,7 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
   const zombies = [];
 
   (data.opportunities || [])
-    .filter(o => owners.includes(o.owner) && o.stage !== '成交')
+    .filter(o => owners.includes(o.owner) && o.stage !== '成交' && o.stage !== 'Won')
     .forEach(o => {
       // 彙整此商機相關的所有拜訪
       const seen = new Set();
@@ -1104,8 +1104,8 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
 });
 
 // ── 銷售預測 Excel 匯出 ──────────────────────────────────
-const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, '成交': 100 };
-const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', '成交': '成交' };
+const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, '成交': 100, Won: 100 };
+const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', '成交': '成交', Won: 'Won' };
 
 app.get('/api/forecast/export', requireAuth, (req, res) => {
   const yr   = parseInt(req.query.year) || new Date().getFullYear();
@@ -1203,7 +1203,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const userMap = {};
   (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
 
-  const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', '成交': '成交' };
+  const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', '成交': '成交', Won: 'Won' };
 
   const headers = [
     '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
@@ -1445,7 +1445,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     const displayToUser = {};
     (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
 
-    const VALID_STAGES = new Set(['A', 'B', 'C', '成交', 'D']);
+    const VALID_STAGES = new Set(['A', 'B', 'C', '成交', 'D', 'Won']);
 
     const data = db.load();
     if (!data.opportunities) data.opportunities = [];
@@ -1470,7 +1470,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
       const stage = String(row[COL.stage] ?? '').trim();
       // 允許中文別名
-      const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C' };
+      const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C', 'won': 'Won', '成交': '成交' };
       const resolvedStage = VALID_STAGES.has(stage) ? stage : (stageMap[stage] || 'C');
 
       const opp = {

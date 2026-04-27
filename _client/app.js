@@ -588,7 +588,7 @@ function renderDashboardCharts() {
 }
 
 function getWonContactIds() {
-  const ids = new Set(allOpportunities.filter(o => o.stage === '成交').map(o => o.contactId));
+  const ids = new Set(allOpportunities.filter(o => o.stage === '成交' || o.stage === 'Won').map(o => o.contactId));
   // 以公司為單位：同公司任一人設為 customer，整公司都算
   const customerCompanies = new Set(
     allContacts.filter(c => c.customerType === 'customer' && c.company).map(c => c.company)
@@ -934,7 +934,7 @@ function renderContacts(contacts) {
 
         // 最近商機
         const recentOpp = [...allOpportunities]
-          .filter(o => (o.company || '') === company && o.stage !== '成交')
+          .filter(o => (o.company || '') === company && o.stage !== '成交' && o.stage !== 'Won')
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
           [0];
 
@@ -2438,10 +2438,11 @@ $v('visitConfirmDelete').addEventListener('click', async () => {
 
 // ── 商機推進看板（Kanban）────────────────────────────────
 const KANBAN_STAGES = [
-  { key:'D', label:'D｜靜止中', color:'#9e9e9e' },
-  { key:'C', label:'C｜Pipeline', color:'#1a73e8' },
-  { key:'B', label:'B｜Upside',   color:'#f57c00' },
-  { key:'A', label:'A｜Commit',   color:'#d32f2f' },
+  { key:'D',   label:'D｜靜止中',  color:'#9e9e9e' },
+  { key:'C',   label:'C｜Pipeline',color:'#1a73e8' },
+  { key:'B',   label:'B｜Upside',  color:'#f57c00' },
+  { key:'A',   label:'A｜Commit',  color:'#d32f2f' },
+  { key:'Won', label:'🏆 Won',     color:'#1e8e3e' },
 ];
 
 let dragOppId = null;
@@ -2452,7 +2453,7 @@ async function loadPipelineView() {
 }
 
 function renderKanban() {
-  const activeOpps = allOpportunities.filter(o => o.stage !== '成交');
+  const activeOpps = allOpportunities.filter(o => o.stage !== '成交'); // 成交走「我的客戶」，Won 留在看板
 
   KANBAN_STAGES.forEach(({ key }) => {
     const stageOpps = activeOpps.filter(o => o.stage === key);
@@ -2822,10 +2823,10 @@ $('saveTargetBtn').addEventListener('click', async () => {
 // ── 商機列表渲染 ─────────────────────────────────────────
 const OPP_STAGE_LABELS = {
   A: 'A｜Commit', B: 'B｜Upside', C: 'C｜Pipeline',
-  D: 'D｜靜止中', '成交': '✅ 成交'
+  D: 'D｜靜止中', '成交': '✅ 成交', Won: '🏆 Won'
 };
 const OPP_STAGE_COLORS = {
-  A: '#c5221f', B: '#e37400', C: '#1a73e8', D: '#888', '成交': '#34a853'
+  A: '#c5221f', B: '#e37400', C: '#1a73e8', D: '#888', '成交': '#34a853', Won: '#1e8e3e'
 };
 
 function renderOppTable() {
@@ -2866,14 +2867,14 @@ function renderOppTable() {
 
   // ── 正常列渲染 ──
   const activeRows = list.map(o => {
-    const won     = o.stage === '成交';
+    const won     = o.stage === '成交' || o.stage === 'Won';
     const zombie  = zombieMap.get(o.id);
     const zombieCls = zombie ? (zombie.severity === 'danger' ? 'opp-zombie-danger' : 'opp-zombie-warn') : '';
     const zombieBadge = zombie
       ? `<span class="opp-zombie-badge ${zombie.severity === 'danger' ? 'z-badge-danger' : 'z-badge-warn'}"
              title="${escapeHtml(zombie.reasons.join(' | '))}">🧟</span> `
       : '';
-    const stageOpts = ['A','B','C','D','成交'].map(s =>
+    const stageOpts = ['A','B','C','D','成交','Won'].map(s =>
       `<option value="${s}" ${o.stage===s?'selected':''}>${OPP_STAGE_LABELS[s]||s}</option>`
     ).join('');
     return `<tr class="${won ? 'opp-won-row' : ''} ${zombieCls}" data-id="${o.id}">
@@ -2966,10 +2967,11 @@ function renderOppTable() {
 }
 
 async function updateOppStage(id, stage, confirmWon = false) {
-  if (confirmWon && !confirm('確認將此商機標記為【成交】並計入年度業績？')) return;
+  const isWon = stage === '成交' || stage === 'Won';
+  if (confirmWon && !confirm(`確認將此商機標記為【${stage}】並計入年度業績？`)) return;
   try {
     const body = { stage };
-    if (stage === '成交') body.achievedDate = new Date().toISOString().slice(0,10);
+    if (isWon) body.achievedDate = new Date().toISOString().slice(0,10);
     await fetch(`${API}/opportunities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -2982,7 +2984,7 @@ async function updateOppStage(id, stage, confirmWon = false) {
     updateStatCards();
     renderDashboardCharts();
     if (currentSection === 'prospects' || currentSection === 'contacts') loadContacts();
-    showToast(stage === '成交' ? '✅ 已標記成交，客戶自動移入「我的客戶」' : '商機狀態已更新');
+    showToast(isWon ? `🏆 已標記 ${stage}，計入年度業績` : '商機狀態已更新');
   } catch { showToast('更新失敗，請重試'); }
 }
 
@@ -2993,9 +2995,9 @@ $('oppFilterStage').addEventListener('change', renderOppTable);
 let forecastYear = new Date().getFullYear();
 
 // 階段 → 把握度%
-const STAGE_CONFIDENCE = { D: 10, C: 25, B: 50, A: 90, '成交': 100 };
+const STAGE_CONFIDENCE = { D: 10, C: 25, B: 50, A: 90, '成交': 100, Won: 100 };
 // 階段 → 把握度顯示標籤
-const STAGE_CONF_LABEL = { A: 'Commit', B: 'Upside', C: 'Pipeline', '成交': '成交' };
+const STAGE_CONF_LABEL = { A: 'Commit', B: 'Upside', C: 'Pipeline', '成交': '成交', Won: 'Won' };
 
 // 業務人員（從登入資訊取得）
 let forecastSalesPerson = '';
@@ -3097,14 +3099,14 @@ function renderForecastTable() {
     const gm  = parseFloat(o.grossMarginRate) || 0;
     return s + amt * gm / 100;
   }, 0);
-  const wonOpps = opps.filter(o => o.stage === '成交');
+  const wonOpps = opps.filter(o => o.stage === '成交' || o.stage === 'Won');
   const totWon = wonOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0) * 10, 0);
 
   // ── 篩選標籤（顯示目前套用的條件）──
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
   const stageVal = $('forecastStageFilter') ? $('forecastStageFilter').value : '';
   const salesLabel = salesVal ? (forecastUserMap[salesVal] || salesVal) : '';
-  const stageLabel = stageVal ? ({ A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', '成交':'成交' }[stageVal] || stageVal) : '';
+  const stageLabel = stageVal ? ({ A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', '成交':'成交', Won:'Won' }[stageVal] || stageVal) : '';
   const filterTags = [salesLabel, stageLabel].filter(Boolean);
   const filterHint = filterTags.length
     ? `<div style="font-size:12px;color:#1a73e8;margin-bottom:6px">
@@ -3166,7 +3168,7 @@ function renderForecastTable() {
     const confLabel   = STAGE_CONF_LABEL[o.stage] || null;
     const confDisplay = confLabel ? `<span class="ft-conf-label">${confLabel}</span>` : '—';
     const salesName = o.product || o.description || '—';
-    const stageClass = o.stage === '成交' ? 'ft-won' : (o.stage === 'A' ? 'ft-stage-a' : '');
+    const stageClass = (o.stage === '成交' || o.stage === 'Won') ? 'ft-won' : (o.stage === 'A' ? 'ft-stage-a' : '');
     // 業務人員：優先用 owner 查對應表，找不到才用登入者名稱
     const salesPerson = (o.owner && forecastUserMap[o.owner])
       ? forecastUserMap[o.owner]
@@ -3418,14 +3420,15 @@ let prCurrentPeriod = 'month';
 let prListenersSet  = false;
 
 const STAGE_COLOR = {
-  'A': '#d32f2f',   // Commit  紅
-  'B': '#f57c00',   // Upside  橘
+  'A': '#d32f2f',   // Commit   紅
+  'B': '#f57c00',   // Upside   橘
   'C': '#1a73e8',   // Pipeline 藍
-  'D': '#9e9e9e',   // 靜止中  灰
-  '成交': '#34a853' // 成交    綠
+  'D': '#9e9e9e',   // 靜止中   灰
+  '成交': '#34a853',// 成交     綠
+  'Won': '#1e8e3e', // Won      深綠
 };
 const STAGE_LBL = {
-  'A':'A｜Commit','B':'B｜Upside','C':'C｜Pipeline','D':'D｜靜止中','成交':'✅ 成交'
+  'A':'A｜Commit','B':'B｜Upside','C':'C｜Pipeline','D':'D｜靜止中','成交':'✅ 成交','Won':'🏆 Won'
 };
 
 function getPrDateRange(period) {
