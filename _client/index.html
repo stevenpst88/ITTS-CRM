@@ -379,10 +379,25 @@
           <div class="forecast-controls">
             <div class="forecast-controls-left">
               <select id="forecastYear" class="forecast-year-sel"></select>
+              <!-- 業務人員篩選：manager1 / manager2 / secretary / admin 才顯示 -->
+              <select id="forecastSalesFilter" class="forecast-year-sel" style="display:none">
+                <option value="">全部業務</option>
+              </select>
+              <!-- 把握度篩選 -->
+              <select id="forecastStageFilter" class="forecast-year-sel" style="display:none">
+                <option value="">全部階段</option>
+                <option value="A">A｜Commit</option>
+                <option value="B">B｜Upside</option>
+                <option value="C">C｜Pipeline</option>
+                <option value="成交">成交</option>
+              </select>
               <span class="forecast-hint">依商機「預定簽約日期」所屬年度顯示</span>
             </div>
             <button class="btn btn-export" id="forecastExportBtn">&#11015; 匯出 Excel</button>
           </div>
+
+          <!-- 篩選標籤提示 -->
+          <div id="forecastFilterHint"></div>
 
           <!-- 摘要卡 -->
           <div class="forecast-summary-row" id="forecastSummaryCards"></div>

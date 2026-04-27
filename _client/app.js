@@ -3010,6 +3010,7 @@ async function loadForecastView() {
     if (r.ok) forecastUserMap = await r.json();
   } catch { /* ignore */ }
   initForecastYearSel();
+  initForecastSalesFilter();   // 載入 userMap 後再填入業務選單
   renderForecastTable();
 }
 
@@ -3024,13 +3025,54 @@ function initForecastYearSel() {
     sel.appendChild(o);
   }
   sel.addEventListener('change', () => { forecastYear = parseInt(sel.value); renderForecastTable(); });
+
+}
+
+function initForecastSalesFilter() {
+  const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
+  const salesFilter = $('forecastSalesFilter');
+  const stageFilter = $('forecastStageFilter');
+  if (!canFilter) return;
+
+  // 顯示篩選欄
+  if (salesFilter) salesFilter.style.display = '';
+  if (stageFilter) stageFilter.style.display = '';
+
+  // 填入業務人員（避免重複加）
+  if (salesFilter) {
+    const existingVals = new Set(Array.from(salesFilter.options).map(o => o.value));
+    Object.entries(forecastUserMap).forEach(([username, displayName]) => {
+      if (!existingVals.has(username)) {
+        const o = document.createElement('option');
+        o.value = username;
+        o.textContent = displayName || username;
+        salesFilter.appendChild(o);
+      }
+    });
+    // 只綁一次
+    if (!salesFilter.dataset.bound) {
+      salesFilter.addEventListener('change', renderForecastTable);
+      salesFilter.dataset.bound = '1';
+    }
+  }
+
+  if (stageFilter && !stageFilter.dataset.bound) {
+    stageFilter.addEventListener('change', renderForecastTable);
+    stageFilter.dataset.bound = '1';
+  }
 }
 
 function getForecastOpps(year) {
+  const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
+  const stageVal = $('forecastStageFilter') ? $('forecastStageFilter').value : '';
+
   return allOpportunities.filter(o => {
     if (!o.expectedDate) return false;
-    if (o.stage === 'D') return false;  // D 階段不納入銷售預測
-    return new Date(o.expectedDate).getFullYear() === year;
+    if (o.stage === 'D') return false;          // D 階段不納入銷售預測
+    if (new Date(o.expectedDate).getFullYear() !== year) return false;
+    if (salesVal && o.owner !== salesVal) return false;   // 業務人員篩選
+    if (stageVal && o.stage !== stageVal) return false;   // 把握度篩選
+    return true;
   });
 }
 
@@ -3047,6 +3089,20 @@ function renderForecastTable() {
   }, 0);
   const wonOpps = opps.filter(o => o.stage === '成交');
   const totWon = wonOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0) * 10, 0);
+
+  // ── 篩選標籤（顯示目前套用的條件）──
+  const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
+  const stageVal = $('forecastStageFilter') ? $('forecastStageFilter').value : '';
+  const salesLabel = salesVal ? (forecastUserMap[salesVal] || salesVal) : '';
+  const stageLabel = stageVal ? ({ A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', '成交':'成交' }[stageVal] || stageVal) : '';
+  const filterTags = [salesLabel, stageLabel].filter(Boolean);
+  const filterHint = filterTags.length
+    ? `<div style="font-size:12px;color:#1a73e8;margin-bottom:6px">
+        篩選中：${filterTags.map(t=>`<span style="background:#e8f0fe;border-radius:4px;padding:2px 8px;margin-right:4px">${t}</span>`).join('')}
+       </div>`
+    : '';
+  const hintEl = $('forecastFilterHint');
+  if (hintEl) hintEl.innerHTML = filterHint;
 
   $('forecastSummaryCards').innerHTML = `
     <div class="forecast-summary-card fsc-blue">
