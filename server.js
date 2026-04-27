@@ -1191,6 +1191,145 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   res.send(buf);
 });
 
+// ── 商機全量匯出（Admin）─────────────────────────────────
+app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+
+  const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', '成交': '成交' };
+
+  const headers = [
+    '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
+    '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/成交)',
+    '合約金額(萬元)', '預估毛利率(%)', '備註(description)',
+    '建立時間', '商機ID'
+  ];
+
+  const rows = (data.opportunities || []).map(o => [
+    o.company      || '',
+    o.product      || '',
+    o.category     || '',
+    o.expectedDate || '',
+    o.owner        || '',
+    userMap[o.owner] || o.owner || '',
+    o.stage        || '',
+    o.amount       || '',
+    o.grossMarginRate || '',
+    o.description  || '',
+    o.createdAt    ? o.createdAt.slice(0, 10) : '',
+    o.id           || ''
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 30 }, { wch: 10 }, { wch: 14 },
+    { wch: 14 }, { wch: 12 }, { wch: 18 },
+    { wch: 14 }, { wch: 14 }, { wch: 30 },
+    { wch: 12 }, { wch: 36 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '商機資料');
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%95%86%E6%A9%9F%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 商機批次匯入（Admin）─────────────────────────────────
+app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+
+    const buf  = req.file.buffer || require('fs').readFileSync(req.file.path);
+    const wb   = XLSX.read(buf, { type: 'buffer' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
+
+    // 找標頭列（允許第一列是標頭）
+    const header = rows[0].map(h => String(h).trim());
+    const COL = {
+      company:      header.findIndex(h => h.includes('客戶名稱')),
+      product:      header.findIndex(h => h.includes('銷售案名')),
+      category:     header.findIndex(h => h.includes('BU')),
+      expectedDate: header.findIndex(h => h.includes('預定簽約日')),
+      owner:        header.findIndex(h => h.includes('業務帳號')),
+      stage:        header.findIndex(h => h.includes('把握度')),
+      amount:       header.findIndex(h => h.includes('合約金額')),
+      grossMarginRate: header.findIndex(h => h.includes('毛利率')),
+      description:  header.findIndex(h => h.includes('備註')),
+    };
+
+    const auth = loadAuth();
+    const usernames = new Set((auth.users || []).map(u => u.username));
+    // displayName → username 反查
+    const displayToUser = {};
+    (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+
+    const VALID_STAGES = new Set(['A', 'B', 'C', '成交', 'D']);
+
+    const data = db.load();
+    if (!data.opportunities) data.opportunities = [];
+
+    let created = 0;
+    const errors = [];
+
+    rows.slice(1).forEach((row, i) => {
+      const rowNum = i + 2;
+      if (!row.some(c => String(c).trim())) return; // 空列跳過
+
+      const company = String(row[COL.company] ?? '').trim();
+      if (!company) { errors.push(`第${rowNum}列：客戶名稱不可空白`); return; }
+
+      // owner 解析：優先用帳號欄，找不到再用姓名欄
+      let owner = String(row[COL.owner] ?? '').trim();
+      if (!usernames.has(owner)) {
+        const byName = displayToUser[owner];
+        if (byName) owner = byName;
+        else { errors.push(`第${rowNum}列：找不到業務帳號「${owner}」`); return; }
+      }
+
+      const stage = String(row[COL.stage] ?? '').trim();
+      // 允許中文別名
+      const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C' };
+      const resolvedStage = VALID_STAGES.has(stage) ? stage : (stageMap[stage] || 'C');
+
+      const opp = {
+        id:             uuidv4(),
+        owner,
+        company,
+        product:        String(row[COL.product]      ?? '').trim(),
+        category:       String(row[COL.category]     ?? '').trim(),
+        expectedDate:   String(row[COL.expectedDate] ?? '').trim(),
+        stage:          resolvedStage,
+        amount:         String(row[COL.amount]       ?? '').trim(),
+        grossMarginRate:String(row[COL.grossMarginRate] ?? '').trim(),
+        description:    String(row[COL.description]  ?? '').trim(),
+        contactId:      '',
+        contactName:    '',
+        visitId:        '',
+        createdAt:      new Date().toISOString(),
+        importedAt:     new Date().toISOString(),
+      };
+      data.opportunities.push(opp);
+      created++;
+    });
+
+    if (created > 0) db.save(data);
+
+    res.json({ success: true, created, errors });
+  } catch (err) {
+    console.error('[import opp]', err);
+    res.status(500).json({ error: '匯入失敗：' + err.message });
+  }
+});
+
 // ── 合約管理 CRUD ─────────────────────────────────────────
 app.get('/api/contracts', requireAuth, (req, res) => {
   const data = db.load();

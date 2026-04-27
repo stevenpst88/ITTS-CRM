@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理者後台 - 業務名片管理系統</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -308,6 +309,9 @@
       <div class="admin-nav-item" data-sec="import">
         <span class="admin-nav-icon">📥</span> 名單匯入
       </div>
+      <div class="admin-nav-item" data-sec="opp-io">
+        <span class="admin-nav-icon">📊</span> 商機匯出入
+      </div>
       <div class="admin-nav-item" data-sec="card-ocr">
         <span class="admin-nav-icon">📷</span> 名片辨識匯入
       </div>
@@ -469,6 +473,54 @@
             </div>
 
           </div>
+        </div>
+      </div>
+
+      <!-- ── 商機匯出入 ── -->
+      <div class="admin-section" id="sec-opp-io">
+        <div class="section-title">商機資料匯出入</div>
+        <div class="section-sub">匯出全部商機為 Excel，或從 Excel 批次匯入商機資料</div>
+
+        <!-- 匯出 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 商機匯出</div>
+          <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有商機（所有業務人員），包含完整欄位，可直接再匯入</div>
+          <button class="btn btn-primary" id="oppExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
+          <div id="oppExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
+        </div>
+
+        <!-- 匯入 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 商機匯入</div>
+          <div style="font-size:13px;color:#888;margin-bottom:4px">
+            上傳 Excel 檔案批次新增商機。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號、把握度階段</strong>
+          </div>
+          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+            把握度請填：A（Commit）、B（Upside）、C（Pipeline）、成交
+          </div>
+
+          <div class="import-drop-zone" id="oppImportDropZone">
+            <div class="import-drop-icon">📂</div>
+            <div class="import-drop-text">點擊選擇或拖曳 Excel 至此</div>
+            <div class="import-drop-sub">.xlsx / .xls，最大 10MB</div>
+            <div class="import-file-name" id="oppImportFileName"></div>
+          </div>
+          <input type="file" id="oppImportFileInput" accept=".xlsx,.xls" style="display:none">
+
+          <!-- 預覽 -->
+          <div id="oppImportPreviewWrap" style="display:none;margin-top:16px">
+            <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">預覽（前 5 筆）</div>
+            <div class="import-preview-wrap">
+              <table class="import-preview-table" id="oppImportPreviewTable"></table>
+            </div>
+            <div style="margin-top:12px;color:#888;font-size:12px" id="oppImportTotalHint"></div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <button class="btn btn-primary" id="oppImportBtn" disabled style="min-width:120px">匯入</button>
+            <button class="btn" id="oppImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
+          </div>
+          <div id="oppImportResult" style="margin-top:14px"></div>
         </div>
       </div>
 
@@ -1968,6 +2020,126 @@
         showToast('無法載入容量資訊：' + e.message);
       }
     }
+
+    // ════════════════════════════════════════════════════
+    // ── 商機匯出入 ────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+
+    // ── 匯出 ──
+    $('oppExportBtn').addEventListener('click', async () => {
+      const btn = $('oppExportBtn');
+      const msg = $('oppExportMsg');
+      btn.disabled = true;
+      btn.textContent = '處理中...';
+      msg.textContent = '';
+      try {
+        const r = await adminFetch(`${API}/admin/opportunities/export`);
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error || '匯出失敗'); }
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = r.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+        a.download = m ? decodeURIComponent(m[1].replace(/"/g,'')) : '商機資料.xlsx';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        msg.textContent = '✅ 匯出成功';
+      } catch(e) {
+        msg.style.color = '#c62828';
+        msg.textContent = '❌ ' + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ 下載 Excel';
+      }
+    });
+
+    // ── 匯入：拖曳 & 點擊 ──
+    let oppImportFile = null;
+
+    $('oppImportDropZone').addEventListener('click', () => $('oppImportFileInput').click());
+    $('oppImportDropZone').addEventListener('dragover', e => { e.preventDefault(); $('oppImportDropZone').classList.add('drag-over'); });
+    $('oppImportDropZone').addEventListener('dragleave', () => $('oppImportDropZone').classList.remove('drag-over'));
+    $('oppImportDropZone').addEventListener('drop', e => {
+      e.preventDefault();
+      $('oppImportDropZone').classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) handleOppImportFile(f);
+    });
+    $('oppImportFileInput').addEventListener('change', e => {
+      if (e.target.files[0]) handleOppImportFile(e.target.files[0]);
+    });
+
+    function handleOppImportFile(file) {
+      oppImportFile = file;
+      $('oppImportFileName').textContent = `📄 ${file.name}`;
+      $('oppImportResult').innerHTML = '';
+      $('oppImportBtn').disabled = false;
+      $('oppImportClearBtn').style.display = '';
+
+      // 用 SheetJS（若有引入）預覽，沒有就跳過
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const XLSX = window.XLSX;
+          if (!XLSX) { $('oppImportPreviewWrap').style.display = 'none'; return; }
+          const wb   = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          if (rows.length < 2) return;
+          const header = rows[0];
+          const preview = rows.slice(1, 6);
+          const total   = rows.slice(1).filter(r => r.some(c => String(c).trim())).length;
+
+          let tbl = '<tr>' + header.map(h => `<th>${escH(String(h))}</th>`).join('') + '</tr>';
+          preview.forEach(r => {
+            tbl += '<tr>' + header.map((_, i) => `<td>${escH(String(r[i] ?? ''))}</td>`).join('') + '</tr>';
+          });
+          $('oppImportPreviewTable').innerHTML = tbl;
+          $('oppImportTotalHint').textContent = `共 ${total} 筆資料（預覽前 5 筆）`;
+          $('oppImportPreviewWrap').style.display = '';
+        } catch {}
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    $('oppImportClearBtn').addEventListener('click', () => {
+      oppImportFile = null;
+      $('oppImportFileInput').value = '';
+      $('oppImportFileName').textContent = '';
+      $('oppImportBtn').disabled = true;
+      $('oppImportClearBtn').style.display = 'none';
+      $('oppImportPreviewWrap').style.display = 'none';
+      $('oppImportResult').innerHTML = '';
+    });
+
+    $('oppImportBtn').addEventListener('click', async () => {
+      if (!oppImportFile) return;
+      const btn = $('oppImportBtn');
+      const resultEl = $('oppImportResult');
+      btn.disabled = true;
+      btn.textContent = '匯入中...';
+      resultEl.innerHTML = '';
+      try {
+        const fd = new FormData();
+        fd.append('file', oppImportFile);
+        const r    = await adminFetch(`${API}/admin/opportunities/import`, { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || '匯入失敗');
+
+        let html = `<div class="import-result success">✅ 成功匯入 ${data.created} 筆商機`;
+        if (data.errors && data.errors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        html += '</div>';
+        resultEl.innerHTML = html;
+      } catch(e) {
+        resultEl.innerHTML = `<div class="import-result error">❌ ${escH(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '匯入';
+      }
+    });
 
   </script>
 </body>
