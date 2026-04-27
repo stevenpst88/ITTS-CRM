@@ -1977,6 +1977,64 @@ $('logoutBtn').addEventListener('click', async () => {
   window.location.href = '/login.html';
 });
 
+// ── 更改密碼 ─────────────────────────────────────────────
+function openChangePw() {
+  $('changePwOld').value     = '';
+  $('changePwNew').value     = '';
+  $('changePwConfirm').value = '';
+  $('changePwError').style.display = 'none';
+  $('changePwOverlay').style.display = '';
+  setTimeout(() => $('changePwOld').focus(), 60);
+}
+function closeChangePw() {
+  $('changePwOverlay').style.display = 'none';
+}
+
+$('changePwBtn').addEventListener('click', openChangePw);
+$('changePwClose').addEventListener('click', closeChangePw);
+$('changePwCancel').addEventListener('click', closeChangePw);
+$('changePwOverlay').addEventListener('click', e => { if (e.target === $('changePwOverlay')) closeChangePw(); });
+
+// Enter 鍵送出
+['changePwOld','changePwNew','changePwConfirm'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('changePwSubmit').click(); });
+});
+
+$('changePwSubmit').addEventListener('click', async () => {
+  const errEl  = $('changePwError');
+  const oldPw  = $('changePwOld').value.trim();
+  const newPw  = $('changePwNew').value;
+  const confPw = $('changePwConfirm').value;
+  const btn    = $('changePwSubmit');
+
+  const showErr = msg => { errEl.textContent = msg; errEl.style.display = ''; };
+  errEl.style.display = 'none';
+
+  if (!oldPw)           return showErr('請輸入舊密碼');
+  if (!newPw)           return showErr('請輸入新密碼');
+  if (newPw.length < 6) return showErr('新密碼至少需要 6 個字元');
+  if (newPw !== confPw) return showErr('兩次輸入的新密碼不一致');
+
+  btn.disabled = true;
+  btn.textContent = '更新中...';
+  try {
+    const r = await fetch(`${API}/user/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: oldPw, newPassword: newPw })
+    });
+    const data = await r.json();
+    if (!r.ok) return showErr(data.error || '更改失敗，請稍後再試');
+    closeChangePw();
+    showToast('✅ 密碼已成功更新');
+  } catch {
+    showErr('網路錯誤，請稍後再試');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '確認更改';
+  }
+});
+
 // ── 拜訪記錄 ─────────────────────────────────────────────
 let allVisits = [];
 let currentVisitId = null;

@@ -87,6 +87,12 @@ body {
   font-size: 12px; cursor: pointer; transition: all .18s; white-space: nowrap;
 }
 .sidebar-logout:hover { background: #ea4335; border-color: #ea4335; color: #fff; }
+.sidebar-changepw {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.7); border-radius: 6px; padding: 5px 9px;
+  font-size: 14px; cursor: pointer; transition: all .18s; white-space: nowrap; flex-shrink: 0;
+}
+.sidebar-changepw:hover { background: #1a73e8; border-color: #1a73e8; color: #fff; }
 
 /* ── Main Wrapper (right side) ── */
 .main-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; }

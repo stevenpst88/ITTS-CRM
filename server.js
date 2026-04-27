@@ -337,6 +337,27 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json(req.session.user);
 });
 
+// ── 自助更改密碼（登入者本人）────────────────────────────
+app.put('/api/user/password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword)
+    return res.status(400).json({ error: '請填寫舊密碼與新密碼' });
+  if (newPassword.length < 6)
+    return res.status(400).json({ error: '新密碼至少需要 6 個字元' });
+
+  const auth = loadAuth();
+  const user = auth.users.find(u => u.username === req.session.user.username);
+  if (!user) return res.status(404).json({ error: '找不到帳號' });
+
+  const valid = await bcrypt.compare(currentPassword, user.password);
+  if (!valid) return res.status(401).json({ error: '舊密碼不正確' });
+
+  user.password = await bcrypt.hash(newPassword, 12);
+  saveAuth(auth);
+  writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
+  res.json({ success: true });
+});
+
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const auth = loadAuth();

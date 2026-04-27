@@ -114,7 +114,10 @@
       <div class="sidebar-footer">
         <div class="sidebar-user" id="sidebarUser"></div>
         <a href="/admin.html" id="adminPanelLink" style="display:none;text-align:center;font-size:12px;color:#1a73e8;text-decoration:none;padding:6px 0;opacity:0.8;">⚙️ 管理者後台</a>
-        <button class="sidebar-logout" id="logoutBtn">登出</button>
+        <div style="display:flex;gap:6px;width:100%">
+          <button class="sidebar-changepw" id="changePwBtn" title="更改密碼">🔑</button>
+          <button class="sidebar-logout" id="logoutBtn" style="flex:1">登出</button>
+        </div>
       </div>
     </aside>
 
@@ -1880,6 +1883,35 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="quoteModalCancel">取消</button>
         <button class="btn btn-primary" id="quoteModalSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 更改密碼 Modal ── -->
+  <div class="modal-overlay" id="changePwOverlay" style="display:none">
+    <div class="modal-box" style="max-width:420px">
+      <div class="modal-header">
+        <h3>🔑 更改密碼</h3>
+        <button class="modal-close" id="changePwClose">&#10005;</button>
+      </div>
+      <div class="modal-body" style="padding:24px">
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">舊密碼</label>
+          <input type="password" id="changePwOld" class="form-control" placeholder="請輸入目前密碼" autocomplete="current-password">
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">新密碼</label>
+          <input type="password" id="changePwNew" class="form-control" placeholder="至少 6 個字元" autocomplete="new-password">
+        </div>
+        <div class="form-group" style="margin-bottom:24px">
+          <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">確認新密碼</label>
+          <input type="password" id="changePwConfirm" class="form-control" placeholder="再輸入一次新密碼" autocomplete="new-password">
+        </div>
+        <div id="changePwError" style="display:none;background:#fce8e6;color:#c5352a;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn" id="changePwCancel" style="background:#f0f2f5;color:#333">取消</button>
+          <button class="btn btn-primary" id="changePwSubmit">確認更改</button>
+        </div>
       </div>
     </div>
   </div>
