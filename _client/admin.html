@@ -309,6 +309,9 @@
       <div class="admin-nav-item" data-sec="import">
         <span class="admin-nav-icon">📥</span> 名單匯入
       </div>
+      <div class="admin-nav-item" data-sec="contact-io">
+        <span class="admin-nav-icon">👤</span> 客戶匯出入
+      </div>
       <div class="admin-nav-item" data-sec="opp-io">
         <span class="admin-nav-icon">📊</span> 商機匯出入
       </div>
@@ -473,6 +476,71 @@
             </div>
 
           </div>
+        </div>
+      </div>
+
+      <!-- ── 客戶資料匯出入 ── -->
+      <div class="admin-section" id="sec-contact-io">
+        <div class="section-title">客戶資料匯出入</div>
+        <div class="section-sub">匯出全部客戶名單為 Excel，或從 Excel 批次匯入客戶資料</div>
+
+        <!-- 匯出 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 客戶資料匯出</div>
+          <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有客戶名單（所有業務人員），包含完整欄位，可直接作為匯入模板使用</div>
+          <button class="btn btn-primary" id="contactExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
+          <div id="contactExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
+        </div>
+
+        <!-- 匯入 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 客戶資料匯入</div>
+          <div style="font-size:13px;color:#888;margin-bottom:4px">
+            上傳 Excel 批次新增客戶。建議先匯出作為模板，<strong>必填：姓名或公司（至少一項）、業務帳號</strong>
+          </div>
+          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+            若 Excel 有「業務帳號」欄位，將依欄位自動指派；無欄位或帳號不存在時，以「預設業務」補充
+          </div>
+
+          <!-- 選項列 -->
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">預設業務（無帳號欄位時使用）</div>
+              <select id="contactImportOwnerSel" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:160px">
+                <option value="">-- 不設預設 --</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:12px;color:#888;margin-bottom:4px">重複資料</div>
+              <select id="contactImportSkipDup" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="true">略過重複（同業務+公司+姓名）</option>
+                <option value="false">全部匯入</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="import-drop-zone" id="contactImportDropZone">
+            <div class="import-drop-icon">📂</div>
+            <div class="import-drop-text">點擊選擇或拖曳 Excel 至此</div>
+            <div class="import-drop-sub">.xlsx / .xls，最大 10MB</div>
+            <div class="import-file-name" id="contactImportFileName"></div>
+          </div>
+          <input type="file" id="contactImportFileInput" accept=".xlsx,.xls" style="display:none">
+
+          <!-- 預覽 -->
+          <div id="contactImportPreviewWrap" style="display:none;margin-top:16px">
+            <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">預覽（前 5 筆）</div>
+            <div class="import-preview-wrap">
+              <table class="import-preview-table" id="contactImportPreviewTable"></table>
+            </div>
+            <div style="margin-top:12px;color:#888;font-size:12px" id="contactImportTotalHint"></div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <button class="btn btn-primary" id="contactImportBtn" disabled style="min-width:120px">匯入</button>
+            <button class="btn" id="contactImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
+          </div>
+          <div id="contactImportResult" style="margin-top:14px"></div>
         </div>
       </div>
 
@@ -2020,6 +2088,147 @@
         showToast('無法載入容量資訊：' + e.message);
       }
     }
+
+    // ════════════════════════════════════════════════════
+    // ── 客戶資料匯出入 ─────────────────────────────────────
+    // ════════════════════════════════════════════════════
+
+    // 填入預設業務下拉
+    function populateContactImportOwners() {
+      const sel = $('contactImportOwnerSel');
+      if (!sel || sel.dataset.loaded) return;
+      const existingVals = new Set(Array.from(sel.options).map(o => o.value));
+      (allUsers || []).filter(u => u.role !== 'admin').forEach(u => {
+        if (!existingVals.has(u.username)) {
+          const o = document.createElement('option');
+          o.value = u.username;
+          o.textContent = `${u.displayName || u.username} (${u.username})`;
+          sel.appendChild(o);
+        }
+      });
+      sel.dataset.loaded = '1';
+    }
+
+    // 點選 contact-io 時填入業務清單
+    document.querySelector('[data-sec="contact-io"]').addEventListener('click', populateContactImportOwners);
+
+    // ── 匯出 ──
+    $('contactExportBtn').addEventListener('click', async () => {
+      const btn = $('contactExportBtn');
+      const msg = $('contactExportMsg');
+      btn.disabled = true;
+      btn.textContent = '處理中...';
+      msg.textContent = '';
+      msg.style.color = '#1a73e8';
+      try {
+        const r = await adminFetch(`${API}/admin/contacts/export`);
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error || '匯出失敗'); }
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = r.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+        a.download = m ? decodeURIComponent(m[1].replace(/"/g,'')) : '客戶資料.xlsx';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        msg.textContent = '✅ 匯出成功';
+      } catch(e) {
+        msg.style.color = '#c62828';
+        msg.textContent = '❌ ' + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⬇ 下載 Excel';
+      }
+    });
+
+    // ── 匯入 ──
+    let contactImportFile = null;
+
+    $('contactImportDropZone').addEventListener('click', () => $('contactImportFileInput').click());
+    $('contactImportDropZone').addEventListener('dragover', e => { e.preventDefault(); $('contactImportDropZone').classList.add('drag-over'); });
+    $('contactImportDropZone').addEventListener('dragleave', () => $('contactImportDropZone').classList.remove('drag-over'));
+    $('contactImportDropZone').addEventListener('drop', e => {
+      e.preventDefault();
+      $('contactImportDropZone').classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) handleContactImportFile(f);
+    });
+    $('contactImportFileInput').addEventListener('change', e => {
+      if (e.target.files[0]) handleContactImportFile(e.target.files[0]);
+    });
+
+    function handleContactImportFile(file) {
+      contactImportFile = file;
+      $('contactImportFileName').textContent = `📄 ${file.name}`;
+      $('contactImportResult').innerHTML = '';
+      $('contactImportBtn').disabled = false;
+      $('contactImportClearBtn').style.display = '';
+
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          const XLSX = window.XLSX;
+          if (!XLSX) { $('contactImportPreviewWrap').style.display = 'none'; return; }
+          const wb   = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          if (rows.length < 2) return;
+          const header  = rows[0];
+          const preview = rows.slice(1, 6);
+          const total   = rows.slice(1).filter(r => r.some(c => String(c).trim())).length;
+
+          let tbl = '<tr>' + header.map(h => `<th>${escH(String(h))}</th>`).join('') + '</tr>';
+          preview.forEach(r => {
+            tbl += '<tr>' + header.map((_, i) => `<td>${escH(String(r[i] ?? ''))}</td>`).join('') + '</tr>';
+          });
+          $('contactImportPreviewTable').innerHTML = tbl;
+          $('contactImportTotalHint').textContent = `共 ${total} 筆資料（預覽前 5 筆）`;
+          $('contactImportPreviewWrap').style.display = '';
+        } catch {}
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    $('contactImportClearBtn').addEventListener('click', () => {
+      contactImportFile = null;
+      $('contactImportFileInput').value = '';
+      $('contactImportFileName').textContent = '';
+      $('contactImportBtn').disabled = true;
+      $('contactImportClearBtn').style.display = 'none';
+      $('contactImportPreviewWrap').style.display = 'none';
+      $('contactImportResult').innerHTML = '';
+    });
+
+    $('contactImportBtn').addEventListener('click', async () => {
+      if (!contactImportFile) return;
+      const btn = $('contactImportBtn');
+      const resultEl = $('contactImportResult');
+      btn.disabled = true;
+      btn.textContent = '匯入中...';
+      resultEl.innerHTML = '';
+      try {
+        const fd = new FormData();
+        fd.append('file', contactImportFile);
+        fd.append('defaultOwner', $('contactImportOwnerSel').value);
+        fd.append('skipDuplicates', $('contactImportSkipDup').value);
+        const r    = await adminFetch(`${API}/admin/contacts/import`, { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || '匯入失敗');
+
+        let html = `<div class="import-result success">✅ 成功匯入 ${data.imported} 筆，略過 ${data.skipped} 筆`;
+        if (data.errors && data.errors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列有問題：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        html += '</div>';
+        resultEl.innerHTML = html;
+      } catch(e) {
+        resultEl.innerHTML = `<div class="import-result error">❌ ${escH(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '匯入';
+      }
+    });
 
     // ════════════════════════════════════════════════════
     // ── 商機匯出入 ────────────────────────────────────────

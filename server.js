@@ -1240,6 +1240,174 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   res.send(buf);
 });
 
+// ── 客戶資料匯出（Admin）────────────────────────────────
+app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+
+  const headers = [
+    '姓名', '英文名稱', '公司', '職稱', '電話', '分機', '手機', 'Email',
+    '地址', '網站', '統一編號', '產業屬性', '商機分類', '使用中系統', '系統產品',
+    '備註', '業務帳號(owner)', '業務姓名', '建立時間', '聯絡人ID'
+  ];
+
+  const rows = (data.contacts || []).filter(c => !c.deleted).map(c => [
+    c.name        || '',
+    c.nameEn      || '',
+    c.company     || '',
+    c.title       || '',
+    c.phone       || '',
+    c.ext         || '',
+    c.mobile      || '',
+    c.email       || '',
+    c.address     || '',
+    c.website     || '',
+    c.taxId       || '',
+    c.industry    || '',
+    c.opportunityStage || '',
+    c.systemVendor || '',
+    c.systemProduct || '',
+    c.note        || '',
+    c.owner       || '',
+    userMap[c.owner] || c.owner || '',
+    c.createdAt   ? c.createdAt.slice(0, 10) : '',
+    c.id          || ''
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 18 }, { wch: 26 }, { wch: 14 },
+    { wch: 14 }, { wch: 8  }, { wch: 14 }, { wch: 28 },
+    { wch: 30 }, { wch: 24 }, { wch: 12 }, { wch: 14 },
+    { wch: 12 }, { wch: 16 }, { wch: 16 },
+    { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 36 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '客戶資料');
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%AE%A2%E6%88%B6%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 客戶資料批次匯入（Admin）────────────────────────────
+app.post('/api/admin/contacts/import', requireAdmin,
+  (req, res, next) => uploadImport.single('file')(req, res, next),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+
+      const { defaultOwner, skipDuplicates } = req.body;
+
+      const buf  = req.file.buffer;
+      const wb   = XLSX.read(buf, { type: 'buffer' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
+
+      const header = rows[0].map(h => String(h).trim());
+
+      // 欄位 index 對應（容錯：取包含關鍵字的欄位）
+      const col = k => header.findIndex(h => h.includes(k));
+      const COL = {
+        name:           col('姓名'),
+        nameEn:         col('英文名稱'),
+        company:        col('公司'),
+        title:          col('職稱'),
+        phone:          col('電話'),
+        ext:            col('分機'),
+        mobile:         col('手機'),
+        email:          col('Email'),
+        address:        col('地址'),
+        website:        col('網站'),
+        taxId:          col('統一編號'),
+        industry:       col('產業屬性'),
+        opportunityStage: col('商機分類'),
+        systemVendor:   col('使用中系統'),
+        systemProduct:  col('系統產品'),
+        note:           col('備註'),
+        owner:          col('業務帳號'),
+      };
+
+      const auth = loadAuth();
+      const usernames = new Set((auth.users || []).map(u => u.username));
+      const displayToUser = {};
+      (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+
+      const data = db.load();
+      if (!data.contacts) data.contacts = [];
+
+      let imported = 0, skipped = 0;
+      const errors = [];
+
+      rows.slice(1).forEach((row, i) => {
+        const rowNum = i + 2;
+        if (!row.some(c => String(c).trim())) return; // 空列
+
+        const get = idx => idx >= 0 ? String(row[idx] ?? '').trim() : '';
+
+        const name    = get(COL.name);
+        const company = get(COL.company);
+        if (!name && !company) { skipped++; return; }
+
+        // 解析 owner
+        let owner = get(COL.owner);
+        if (owner && !usernames.has(owner)) {
+          owner = displayToUser[owner] || owner;
+        }
+        if (!owner || !usernames.has(owner)) {
+          if (defaultOwner && usernames.has(defaultOwner)) {
+            owner = defaultOwner;
+          } else {
+            errors.push(`第${rowNum}列：業務帳號「${owner}」不存在，請填寫或設定預設業務`);
+            return;
+          }
+        }
+
+        // 重複檢查（同 owner、同公司、同姓名）
+        if (skipDuplicates === 'true') {
+          const dup = data.contacts.find(c =>
+            !c.deleted && c.owner === owner &&
+            c.name === name && c.company === company
+          );
+          if (dup) { skipped++; return; }
+        }
+
+        let website = get(COL.website);
+        if (website && !/^https?:\/\//i.test(website)) website = '';
+
+        data.contacts.push({
+          id: uuidv4(), owner, createdAt: new Date().toISOString(),
+          name, nameEn: get(COL.nameEn), company, title: get(COL.title),
+          phone: get(COL.phone), ext: get(COL.ext), mobile: get(COL.mobile),
+          email: get(COL.email), address: get(COL.address), website,
+          taxId: get(COL.taxId), industry: get(COL.industry),
+          opportunityStage: get(COL.opportunityStage),
+          systemVendor: get(COL.systemVendor), systemProduct: get(COL.systemProduct),
+          note: get(COL.note), isPrimary: false, cardImage: '',
+          deleted: false
+        });
+        imported++;
+      });
+
+      db.save(data);
+      writeLog('IMPORT_CONTACTS_ADMIN', req.session.user.username, 'admin',
+        `Admin 批次匯入客戶：${imported} 筆成功，${skipped} 筆略過，${errors.length} 筆錯誤`, req);
+
+      res.json({ success: true, imported, skipped, errors });
+    } catch (e) {
+      console.error('[import-contacts]', e);
+      res.status(500).json({ error: '匯入失敗：' + e.message });
+    }
+  }
+);
+
 // ── 商機批次匯入（Admin）─────────────────────────────────
 app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), async (req, res) => {
   try {
