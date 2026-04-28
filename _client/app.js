@@ -4378,10 +4378,12 @@ $('contractSaveBtn').addEventListener('click', async () => {
 
   try {
     if (id) {
-      await fetch(`${API}/contracts/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      const r = await fetch(`${API}/contracts/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      if (!r.ok) { const e = await r.json().catch(()=>{}); showToast('❌ 儲存失敗：' + (e?.error || r.status)); return; }
       showToast('合約已更新');
     } else {
-      await fetch(`${API}/contracts`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      const r = await fetch(`${API}/contracts`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      if (!r.ok) { const e = await r.json().catch(()=>{}); showToast('❌ 新增失敗：' + (e?.error || r.status)); return; }
       showToast('合約已新增');
     }
     closeContractModal();

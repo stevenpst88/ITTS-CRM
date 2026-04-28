@@ -2207,11 +2207,16 @@ app.post('/api/contracts', requireAuth, (req, res) => {
 });
 
 app.put('/api/contracts/:id', requireAuth, (req, res) => {
-  const owner = req.session.user.username;
+  const { username, role } = req.session.user;
   const data = db.load();
   if (!data.contracts) data.contracts = [];
-  const idx = data.contracts.findIndex(c => c.id === req.params.id && c.owner === owner);
+  // admin / manager1 可編輯任何人的合約；一般業務只能編自己的
+  const canEditAll = ['admin', 'manager1', 'manager2'].includes(role);
+  const idx = data.contracts.findIndex(c =>
+    c.id === req.params.id && (canEditAll || c.owner === username)
+  );
   if (idx === -1) return res.status(404).json({ error: '找不到此合約' });
+  const owner = data.contracts[idx].owner; // 保留原 owner，不讓前端改
   data.contracts[idx] = { ...data.contracts[idx], ...pickFields(req.body, CONTRACT_FIELDS), id: req.params.id, owner };
   db.save(data);
   res.json(data.contracts[idx]);
