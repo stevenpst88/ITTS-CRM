@@ -1926,6 +1926,253 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
   }
 });
 
+// ── 日報（拜訪記錄）匯出（Admin）────────────────────────
+app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+
+  const headers = [
+    '拜訪日期', '拜訪方式', '客戶姓名', '拜訪主題', '會談內容', '下一步行動',
+    '業務帳號(owner)', '業務姓名', '建立時間', '記錄ID'
+  ];
+
+  const rows = (data.visits || []).map(v => [
+    v.visitDate    || '',
+    v.visitType    || '',
+    v.contactName  || '',
+    v.topic        || '',
+    v.content      || '',
+    v.nextAction   || '',
+    v.owner        || '',
+    userMap[v.owner] || v.owner || '',
+    v.createdAt    ? v.createdAt.slice(0, 10) : '',
+    v.id           || ''
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 24 }, { wch: 40 }, { wch: 30 },
+    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 36 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '日報記錄');
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E6%97%A5%E5%A0%B1%E8%A8%98%E9%8C%84_${dateStr}.xlsx`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 日報（拜訪記錄）批次匯入（Admin）──────────────────────
+app.post('/api/admin/visits/import', requireAdmin,
+  (req, res, next) => uploadImport.single('file')(req, res, next),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+
+      const buf  = req.file.buffer;
+      const wb   = XLSX.read(buf, { type: 'buffer' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
+
+      const header = rows[0].map(h => String(h).trim());
+      const COL = {
+        visitDate:   header.findIndex(h => h.includes('拜訪日期')),
+        visitType:   header.findIndex(h => h.includes('拜訪方式')),
+        contactName: header.findIndex(h => h.includes('客戶姓名')),
+        topic:       header.findIndex(h => h.includes('拜訪主題')),
+        content:     header.findIndex(h => h.includes('會談內容')),
+        nextAction:  header.findIndex(h => h.includes('下一步行動')),
+        owner:       header.findIndex(h => h.includes('業務帳號')),
+      };
+
+      const auth = loadAuth();
+      const usernames = new Set((auth.users || []).map(u => u.username));
+      const displayToUser = {};
+      (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+
+      const data = db.load();
+      if (!data.visits) data.visits = [];
+
+      let created = 0;
+      const errors = [];
+
+      rows.slice(1).forEach((row, i) => {
+        const rowNum = i + 2;
+        if (!row.some(c => String(c).trim())) return;
+
+        // owner 解析
+        let owner = String(row[COL.owner] ?? '').trim();
+        if (!usernames.has(owner)) {
+          const byName = displayToUser[owner];
+          if (byName) owner = byName;
+          else { errors.push(`第${rowNum}列：找不到業務帳號「${owner}」`); return; }
+        }
+
+        const visitDate = String(row[COL.visitDate] ?? '').trim();
+        if (!visitDate) { errors.push(`第${rowNum}列：拜訪日期不可空白`); return; }
+
+        const visit = {
+          id:          uuidv4(),
+          owner,
+          contactId:   '',
+          contactName: String(row[COL.contactName] ?? '').trim(),
+          visitDate,
+          visitType:   String(row[COL.visitType]   ?? '').trim() || '其他',
+          topic:       String(row[COL.topic]        ?? '').trim(),
+          content:     String(row[COL.content]      ?? '').trim(),
+          nextAction:  String(row[COL.nextAction]   ?? '').trim(),
+          createdAt:   new Date().toISOString(),
+          importedAt:  new Date().toISOString(),
+        };
+        data.visits.push(visit);
+        created++;
+      });
+
+      if (created > 0) db.save(data);
+      res.json({ success: true, created, errors });
+    } catch (err) {
+      console.error('[import visits]', err);
+      res.status(500).json({ error: '匯入失敗：' + err.message });
+    }
+  }
+);
+
+// ── 合約管理匯出（Admin）─────────────────────────────────
+app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+
+  const headers = [
+    '合約編號', '客戶名稱', '聯絡人', '產品/服務', '合約開始日', '合約結束日',
+    '合約金額(萬元)', '業務人員', '類型', '備註',
+    '業務帳號(owner)', '業務姓名', '建立時間', '合約ID'
+  ];
+
+  const rows = (data.contracts || []).map(c => [
+    c.contractNo   || '',
+    c.company      || '',
+    c.contactName  || '',
+    c.product      || '',
+    c.startDate    || '',
+    c.endDate      || '',
+    c.amount       || '',
+    c.salesPerson  || '',
+    c.type         || '',
+    c.note         || '',
+    c.owner        || '',
+    userMap[c.owner] || c.owner || '',
+    c.createdAt    ? c.createdAt.slice(0, 10) : '',
+    c.id           || ''
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 24 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+    { wch: 10 }, { wch: 30 }, { wch: 14 }, { wch: 12 },
+    { wch: 12 }, { wch: 36 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '合約資料');
+
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%90%88%E7%B4%84%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 合約管理批次匯入（Admin）─────────────────────────────
+app.post('/api/admin/contracts/import', requireAdmin,
+  (req, res, next) => uploadImport.single('file')(req, res, next),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+
+      const buf  = req.file.buffer;
+      const wb   = XLSX.read(buf, { type: 'buffer' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
+
+      const header = rows[0].map(h => String(h).trim());
+      const COL = {
+        contractNo:   header.findIndex(h => h.includes('合約編號')),
+        company:      header.findIndex(h => h.includes('客戶名稱')),
+        contactName:  header.findIndex(h => h.includes('聯絡人')),
+        product:      header.findIndex(h => h.includes('產品')),
+        startDate:    header.findIndex(h => h.includes('開始日')),
+        endDate:      header.findIndex(h => h.includes('結束日')),
+        amount:       header.findIndex(h => h.includes('合約金額')),
+        salesPerson:  header.findIndex(h => h.includes('業務人員')),
+        type:         header.findIndex(h => h.includes('類型')),
+        note:         header.findIndex(h => h.includes('備註')),
+        owner:        header.findIndex(h => h.includes('業務帳號')),
+      };
+
+      const auth = loadAuth();
+      const usernames = new Set((auth.users || []).map(u => u.username));
+      const displayToUser = {};
+      (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+
+      const data = db.load();
+      if (!data.contracts) data.contracts = [];
+
+      let created = 0;
+      const errors = [];
+
+      rows.slice(1).forEach((row, i) => {
+        const rowNum = i + 2;
+        if (!row.some(c => String(c).trim())) return;
+
+        const company = String(row[COL.company] ?? '').trim();
+        if (!company) { errors.push(`第${rowNum}列：客戶名稱不可空白`); return; }
+
+        let owner = String(row[COL.owner] ?? '').trim();
+        if (!usernames.has(owner)) {
+          const byName = displayToUser[owner];
+          if (byName) owner = byName;
+          else { errors.push(`第${rowNum}列：找不到業務帳號「${owner}」`); return; }
+        }
+
+        const contract = {
+          id:          uuidv4(),
+          owner,
+          contractNo:  String(row[COL.contractNo]  ?? '').trim(),
+          company,
+          contactName: String(row[COL.contactName] ?? '').trim(),
+          product:     String(row[COL.product]      ?? '').trim(),
+          startDate:   String(row[COL.startDate]    ?? '').trim(),
+          endDate:     String(row[COL.endDate]      ?? '').trim(),
+          amount:      String(row[COL.amount]        ?? '').trim(),
+          salesPerson: String(row[COL.salesPerson]  ?? '').trim(),
+          type:        String(row[COL.type]          ?? '').trim(),
+          note:        String(row[COL.note]          ?? '').trim(),
+          createdAt:   new Date().toISOString(),
+          importedAt:  new Date().toISOString(),
+        };
+        data.contracts.push(contract);
+        created++;
+      });
+
+      if (created > 0) db.save(data);
+      res.json({ success: true, created, errors });
+    } catch (err) {
+      console.error('[import contracts]', err);
+      res.status(500).json({ error: '匯入失敗：' + err.message });
+    }
+  }
+);
+
 // ── 合約管理 CRUD ─────────────────────────────────────────
 app.get('/api/contracts', requireAuth, (req, res) => {
   const data = db.load();

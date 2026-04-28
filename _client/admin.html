@@ -315,6 +315,12 @@
       <div class="admin-nav-item" data-sec="opp-io">
         <span class="admin-nav-icon">📊</span> 商機匯出入
       </div>
+      <div class="admin-nav-item" data-sec="visit-io">
+        <span class="admin-nav-icon">📝</span> 日報匯出入
+      </div>
+      <div class="admin-nav-item" data-sec="contract-io">
+        <span class="admin-nav-icon">📄</span> 合約匯出入
+      </div>
       <div class="admin-nav-item" data-sec="card-ocr">
         <span class="admin-nav-icon">📷</span> 名片辨識匯入
       </div>
@@ -589,6 +595,100 @@
             <button class="btn" id="oppImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
           <div id="oppImportResult" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <!-- ── 日報（拜訪記錄）匯出入 ── -->
+      <div class="admin-section" id="sec-visit-io">
+        <div class="section-title">日報資料匯出入</div>
+        <div class="section-sub">匯出全部拜訪記錄為 Excel，或從 Excel 批次匯入日報資料</div>
+
+        <!-- 匯出 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 日報匯出</div>
+          <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有業務人員的拜訪記錄，包含完整欄位，可直接再匯入</div>
+          <button class="btn btn-primary" id="visitExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
+          <div id="visitExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
+        </div>
+
+        <!-- 匯入 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 日報匯入</div>
+          <div style="font-size:13px;color:#888;margin-bottom:4px">
+            上傳 Excel 檔案批次新增日報記錄。請使用匯出的檔案作為模板，<strong>必填欄位：拜訪日期、業務帳號</strong>
+          </div>
+          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+            拜訪方式請填：電訪、拜訪、視訊、Email、其他（空白預設「其他」）
+          </div>
+
+          <div class="import-drop-zone" id="visitImportDropZone">
+            <div class="import-drop-icon">📂</div>
+            <div class="import-drop-text">點擊選擇或拖曳 Excel 至此</div>
+            <div class="import-drop-sub">.xlsx / .xls，最大 10MB</div>
+            <div class="import-file-name" id="visitImportFileName"></div>
+          </div>
+          <input type="file" id="visitImportFileInput" accept=".xlsx,.xls" style="display:none">
+
+          <div id="visitImportPreviewWrap" style="display:none;margin-top:16px">
+            <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">預覽（前 5 筆）</div>
+            <div class="import-preview-wrap">
+              <table class="import-preview-table" id="visitImportPreviewTable"></table>
+            </div>
+            <div style="margin-top:12px;color:#888;font-size:12px" id="visitImportTotalHint"></div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <button class="btn btn-primary" id="visitImportBtn" disabled style="min-width:120px">匯入</button>
+            <button class="btn" id="visitImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
+          </div>
+          <div id="visitImportResult" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <!-- ── 合約管理匯出入 ── -->
+      <div class="admin-section" id="sec-contract-io">
+        <div class="section-title">合約資料匯出入</div>
+        <div class="section-sub">匯出全部合約為 Excel，或從 Excel 批次匯入合約資料</div>
+
+        <!-- 匯出 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 合約匯出</div>
+          <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有合約資料，包含完整欄位，可直接再匯入</div>
+          <button class="btn btn-primary" id="contractExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
+          <div id="contractExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
+        </div>
+
+        <!-- 匯入 -->
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 合約匯入</div>
+          <div style="font-size:13px;color:#888;margin-bottom:4px">
+            上傳 Excel 檔案批次新增合約。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號</strong>
+          </div>
+          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+            合約金額單位：萬元
+          </div>
+
+          <div class="import-drop-zone" id="contractImportDropZone">
+            <div class="import-drop-icon">📂</div>
+            <div class="import-drop-text">點擊選擇或拖曳 Excel 至此</div>
+            <div class="import-drop-sub">.xlsx / .xls，最大 10MB</div>
+            <div class="import-file-name" id="contractImportFileName"></div>
+          </div>
+          <input type="file" id="contractImportFileInput" accept=".xlsx,.xls" style="display:none">
+
+          <div id="contractImportPreviewWrap" style="display:none;margin-top:16px">
+            <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:8px">預覽（前 5 筆）</div>
+            <div class="import-preview-wrap">
+              <table class="import-preview-table" id="contractImportPreviewTable"></table>
+            </div>
+            <div style="margin-top:12px;color:#888;font-size:12px" id="contractImportTotalHint"></div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+            <button class="btn btn-primary" id="contractImportBtn" disabled style="min-width:120px">匯入</button>
+            <button class="btn" id="contractImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
+          </div>
+          <div id="contractImportResult" style="margin-top:14px"></div>
         </div>
       </div>
 
@@ -2364,6 +2464,143 @@
         btn.disabled = false;
         btn.textContent = '匯入';
       }
+    });
+
+    // ════════════════════════════════════════════════════
+    // ── 日報匯出入 ────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    $('visitExportBtn').addEventListener('click', async () => {
+      const btn = $('visitExportBtn');
+      const msg = $('visitExportMsg');
+      btn.disabled = true; btn.textContent = '處理中...'; msg.textContent = ''; msg.style.color = '#1a73e8';
+      try {
+        const r = await adminFetch(`${API}/admin/visits/export`);
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error || '匯出失敗'); }
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = r.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+        a.download = m ? decodeURIComponent(m[1].replace(/"/g,'')) : '日報記錄.xlsx';
+        a.href = url; a.click(); URL.revokeObjectURL(url);
+        msg.textContent = '✅ 匯出成功';
+      } catch(e) { msg.style.color = '#c62828'; msg.textContent = '❌ ' + e.message; }
+      finally { btn.disabled = false; btn.textContent = '⬇ 下載 Excel'; }
+    });
+
+    let visitImportFile = null;
+    function setupImportZone(zone, fileInput, fileNameEl, previewWrap, previewTable, totalHint, importBtn, clearBtn, resultEl, varSetter, previewId) {
+      zone.addEventListener('click', () => fileInput.click());
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) handleImportFile(f); });
+      fileInput.addEventListener('change', e => { if (e.target.files[0]) handleImportFile(e.target.files[0]); });
+
+      function handleImportFile(file) {
+        varSetter(file);
+        fileNameEl.textContent = `📄 ${file.name}`;
+        resultEl.innerHTML = '';
+        importBtn.disabled = false;
+        clearBtn.style.display = '';
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          try {
+            const XLSX = window.XLSX;
+            if (!XLSX) { previewWrap.style.display = 'none'; return; }
+            const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+            if (rows.length < 2) return;
+            const header = rows[0]; const preview = rows.slice(1, 6);
+            const total = rows.slice(1).filter(r => r.some(c => String(c).trim())).length;
+            let tbl = '<tr>' + header.map(h => `<th>${escH(String(h))}</th>`).join('') + '</tr>';
+            preview.forEach(r => { tbl += '<tr>' + header.map((_, i) => `<td>${escH(String(r[i] ?? ''))}</td>`).join('') + '</tr>'; });
+            previewTable.innerHTML = tbl;
+            totalHint.textContent = `共 ${total} 筆資料（預覽前 5 筆）`;
+            previewWrap.style.display = '';
+          } catch {}
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      clearBtn.addEventListener('click', () => {
+        varSetter(null); fileInput.value = ''; fileNameEl.textContent = '';
+        importBtn.disabled = true; clearBtn.style.display = 'none';
+        previewWrap.style.display = 'none'; resultEl.innerHTML = '';
+      });
+    }
+
+    setupImportZone(
+      $('visitImportDropZone'), $('visitImportFileInput'), $('visitImportFileName'),
+      $('visitImportPreviewWrap'), $('visitImportPreviewTable'), $('visitImportTotalHint'),
+      $('visitImportBtn'), $('visitImportClearBtn'), $('visitImportResult'),
+      f => { visitImportFile = f; }
+    );
+
+    $('visitImportBtn').addEventListener('click', async () => {
+      if (!visitImportFile) return;
+      const btn = $('visitImportBtn'); const resultEl = $('visitImportResult');
+      btn.disabled = true; btn.textContent = '匯入中...'; resultEl.innerHTML = '';
+      try {
+        const fd = new FormData(); fd.append('file', visitImportFile);
+        const r    = await adminFetch(`${API}/admin/visits/import`, { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || '匯入失敗');
+        let html = `<div class="import-result success">✅ 成功匯入 ${data.created} 筆日報記錄`;
+        if (data.errors && data.errors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        html += '</div>'; resultEl.innerHTML = html;
+      } catch(e) { resultEl.innerHTML = `<div class="import-result error">❌ ${escH(e.message)}</div>`; }
+      finally { btn.disabled = false; btn.textContent = '匯入'; }
+    });
+
+    // ════════════════════════════════════════════════════
+    // ── 合約匯出入 ────────────────────────────────────────
+    // ════════════════════════════════════════════════════
+    $('contractExportBtn').addEventListener('click', async () => {
+      const btn = $('contractExportBtn');
+      const msg = $('contractExportMsg');
+      btn.disabled = true; btn.textContent = '處理中...'; msg.textContent = ''; msg.style.color = '#1a73e8';
+      try {
+        const r = await adminFetch(`${API}/admin/contracts/export`);
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error || '匯出失敗'); }
+        const blob = await r.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = r.headers.get('Content-Disposition') || '';
+        const m    = cd.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+        a.download = m ? decodeURIComponent(m[1].replace(/"/g,'')) : '合約資料.xlsx';
+        a.href = url; a.click(); URL.revokeObjectURL(url);
+        msg.textContent = '✅ 匯出成功';
+      } catch(e) { msg.style.color = '#c62828'; msg.textContent = '❌ ' + e.message; }
+      finally { btn.disabled = false; btn.textContent = '⬇ 下載 Excel'; }
+    });
+
+    let contractImportFile = null;
+    setupImportZone(
+      $('contractImportDropZone'), $('contractImportFileInput'), $('contractImportFileName'),
+      $('contractImportPreviewWrap'), $('contractImportPreviewTable'), $('contractImportTotalHint'),
+      $('contractImportBtn'), $('contractImportClearBtn'), $('contractImportResult'),
+      f => { contractImportFile = f; }
+    );
+
+    $('contractImportBtn').addEventListener('click', async () => {
+      if (!contractImportFile) return;
+      const btn = $('contractImportBtn'); const resultEl = $('contractImportResult');
+      btn.disabled = true; btn.textContent = '匯入中...'; resultEl.innerHTML = '';
+      try {
+        const fd = new FormData(); fd.append('file', contractImportFile);
+        const r    = await adminFetch(`${API}/admin/contracts/import`, { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || '匯入失敗');
+        let html = `<div class="import-result success">✅ 成功匯入 ${data.created} 筆合約`;
+        if (data.errors && data.errors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        html += '</div>'; resultEl.innerHTML = html;
+      } catch(e) { resultEl.innerHTML = `<div class="import-result error">❌ ${escH(e.message)}</div>`; }
+      finally { btn.disabled = false; btn.textContent = '匯入'; }
     });
 
     // ════════════════════════════════════════════════════
