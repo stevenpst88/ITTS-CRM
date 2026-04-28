@@ -727,82 +727,81 @@ ${pageText}
   }
 });
 
-// ── Admin: 批次填入官網 ───────────────────────────────────
+// ── Admin: 批次填入官網（分批分頁，避免 Vercel timeout）──
 app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
-  const data = db.load();
+  const BATCH = 15; // 每批處理幾家公司（並行）
+  const offset = parseInt(req.body?.offset ?? req.query?.offset ?? 0);
+
+  const data     = db.load();
   const contacts = (data.contacts || []).filter(c => !c.deleted);
+  const targets  = contacts.filter(c => !c.website);
 
-  // 找出網站空白的聯絡人（同公司只處理一次，統一回填）
-  const companyMap = {}; // taxId or companyName → website
-  const targets = contacts.filter(c => !c.website);
-
-  const stats = { total: targets.length, updated: 0, skipped: 0, notFound: 0 };
-  const delay = ms => new Promise(r => setTimeout(r, ms));
-
-  // 先用 taxId 聚合（同統編只查一次）
+  // 聚合：同統編只查一次，同公司名只查一次
   const taxIdGroups = {};
-  const noTaxIdList = [];
+  const nameGroups  = {};
   for (const c of targets) {
     const tid = (c.taxId || '').trim();
     if (tid && /^\d{8}$/.test(tid)) {
-      if (!taxIdGroups[tid]) taxIdGroups[tid] = [];
-      taxIdGroups[tid].push(c);
+      (taxIdGroups[tid] = taxIdGroups[tid] || []).push(c);
     } else {
-      noTaxIdList.push(c);
+      const key = (c.company || '').trim();
+      if (key) (nameGroups[key] = nameGroups[key] || []).push(c);
     }
   }
 
-  // 處理有統編的（MOPS + GCIS + DDG）
-  for (const [taxId, group] of Object.entries(taxIdGroups)) {
-    // 先嘗試從 GCIS 拿 stockCode
-    let stockCode = '', listedType = '';
-    try {
-      const lists = await getCompanyLists();
-      const twseM = (lists.twse || []).find(c => c['營利事業統一編號'] === taxId);
-      const tpexM = !twseM && (lists.tpex || []).find(c => c['UnifiedBusinessNo.'] === taxId);
-      if (twseM) { stockCode = twseM['公司代號'] || ''; listedType = '上市'; }
-      else if (tpexM) { stockCode = tpexM.SecuritiesCompanyCode || ''; listedType = '上櫃'; }
-    } catch {}
+  // 合併成任務清單 [ { key, group, taxId, companyName } ]
+  const allTasks = [
+    ...Object.entries(taxIdGroups).map(([tid, g]) => ({ key: tid,  group: g, taxId: tid,  companyName: g[0].company || '' })),
+    ...Object.entries(nameGroups) .map(([nm,  g]) => ({ key: '_'+nm, group: g, taxId: '',   companyName: nm })),
+  ];
 
-    const companyName = group[0].company || '';
-    let website = companyMap[taxId];
-    if (!website) {
-      website = await fetchWebsiteOnly(taxId, companyName, stockCode, listedType);
-      companyMap[taxId] = website || '';
-    }
+  const totalCompanies = allTasks.length;
+  const batch = allTasks.slice(offset, offset + BATCH);
+  const hasMore = offset + BATCH < totalCompanies;
 
+  if (batch.length === 0) {
+    return res.json({ success: true, updated: 0, notFound: 0, skipped: 0,
+                      totalContacts: targets.length, totalCompanies, offset, hasMore: false });
+  }
+
+  // 只在第一批時載入上市/上櫃清單（避免重複下載）
+  let lists = { twse: [], tpex: [] };
+  try { lists = await getCompanyLists(); } catch {}
+
+  // 並行查詢這批公司的官網
+  const results = await Promise.allSettled(
+    batch.map(async task => {
+      let stockCode = '', listedType = '';
+      if (task.taxId) {
+        const twseM = (lists.twse || []).find(c => c['營利事業統一編號'] === task.taxId);
+        const tpexM = !twseM && (lists.tpex || []).find(c => c['UnifiedBusinessNo.'] === task.taxId);
+        if (twseM) { stockCode = twseM['公司代號'] || ''; listedType = '上市'; }
+        else if (tpexM) { stockCode = tpexM.SecuritiesCompanyCode || ''; listedType = '上櫃'; }
+      }
+      const website = await fetchWebsiteOnly(task.taxId, task.companyName, stockCode, listedType);
+      return { task, website: website || '' };
+    })
+  );
+
+  // 回填資料
+  let updated = 0, notFound = 0;
+  for (const r of results) {
+    if (r.status !== 'fulfilled') { notFound += r.reason?.task?.group?.length || 1; continue; }
+    const { task, website } = r.value;
     if (website) {
-      group.forEach(c => { c.website = website; stats.updated++; });
+      task.group.forEach(c => { c.website = website; });
+      updated += task.group.length;
     } else {
-      stats.notFound += group.length;
+      notFound += task.group.length;
     }
-    await delay(300); // 避免 rate limit
-  }
-
-  // 處理無統編（只用 DuckDuckGo + Email domain）
-  const companyNameGroups = {};
-  for (const c of noTaxIdList) {
-    const key = (c.company || '').trim();
-    if (!key) { stats.skipped++; continue; }
-    if (!companyNameGroups[key]) companyNameGroups[key] = [];
-    companyNameGroups[key].push(c);
-  }
-  for (const [companyName, group] of Object.entries(companyNameGroups)) {
-    let website = companyMap['_name_' + companyName];
-    if (website === undefined) {
-      website = await fetchWebsiteOnly('', companyName, '', '');
-      companyMap['_name_' + companyName] = website || '';
-    }
-    if (website) {
-      group.forEach(c => { c.website = website; stats.updated++; });
-    } else {
-      stats.notFound += group.length;
-    }
-    await delay(300);
   }
 
   db.save(data);
-  res.json({ success: true, ...stats });
+  res.json({
+    success: true, updated, notFound, skipped: 0,
+    totalContacts: targets.length, totalCompanies,
+    offset, nextOffset: offset + BATCH, hasMore
+  });
 });
 
 // ── Admin: get all users ─────────────────────────────────

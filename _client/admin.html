@@ -2254,26 +2254,62 @@
       const hint   = $('bulkWebsiteHint');
       const result = $('bulkWebsiteResult');
       if (!confirm('確定要開始批次填入官網嗎？\n視客戶數量可能需要數分鐘，請勿關閉頁面。')) return;
+
       btn.disabled = true;
       btn.textContent = '⏳ 執行中…';
-      hint.textContent = '正在查詢中，請耐心等候…';
-      result.style.display = 'none';
+      result.style.display = '';
+      result.style.background = '#f4f7ff';
+      result.style.border = '1px solid #c8d4f0';
+      result.innerHTML = '<span style="color:#555">⏳ 準備中…</span>';
+
+      let offset = 0, totalUpdated = 0, totalNotFound = 0;
+      let totalCompanies = 0, totalContacts = 0;
+
       try {
-        const r = await fetch('/api/admin/bulk-fill-website', { method: 'POST' });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || '執行失敗');
-        result.style.display = '';
+        while (true) {
+          hint.textContent = totalCompanies
+            ? `已處理 ${offset} / ${totalCompanies} 家公司，成功 ${totalUpdated} 筆…`
+            : '正在查詢第一批…';
+
+          const r = await fetch('/api/admin/bulk-fill-website', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offset })
+          });
+
+          if (!r.ok) {
+            const text = await r.text();
+            throw new Error(text.slice(0, 120));
+          }
+
+          const d = await r.json();
+          if (!d.success) throw new Error(d.error || '伺服器回傳失敗');
+
+          totalUpdated   += d.updated;
+          totalNotFound  += d.notFound;
+          totalCompanies  = d.totalCompanies || totalCompanies;
+          totalContacts   = d.totalContacts  || totalContacts;
+
+          result.innerHTML = `
+            ⏳ 進度：<strong>${Math.min(d.nextOffset, totalCompanies)} / ${totalCompanies}</strong> 家公司<br>
+            ✅ 已填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆聯絡人`;
+
+          if (!d.hasMore) break;
+          offset = d.nextOffset;
+          await new Promise(res => setTimeout(res, 500)); // 批次間稍微間隔
+        }
+
+        // 完成
         result.style.background = '#f0faf0';
         result.style.border = '1px solid #a8d5b0';
         result.innerHTML = `
           <strong style="color:#1a5c2a">✅ 批次作業完成</strong><br>
-          📊 處理聯絡人：<strong>${d.total}</strong> 筆（網站空白）<br>
-          ✅ 成功填入：<strong style="color:#1a73e8">${d.updated}</strong> 筆<br>
-          ❌ 未找到網址：<strong>${d.notFound}</strong> 筆<br>
-          ⏭ 略過（無公司名稱）：<strong>${d.skipped}</strong> 筆`;
-        hint.textContent = '作業完成！重新整理客戶頁面即可看到更新結果。';
+          📊 待填入聯絡人：<strong>${totalContacts}</strong> 筆，共 <strong>${totalCompanies}</strong> 家公司<br>
+          ✅ 成功填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆<br>
+          ❌ 未找到網址：<strong>${totalNotFound}</strong> 筆`;
+        hint.textContent = '完成！重新整理客戶頁面即可看到更新結果。';
+
       } catch (e) {
-        result.style.display = '';
         result.style.background = '#fce8e6';
         result.style.border = '1px solid #e8b4b0';
         result.innerHTML = `<strong style="color:#c5352a">❌ 執行失敗</strong>：${e.message}`;
