@@ -3567,7 +3567,9 @@ function renderLostOppTable() {
 // ── 商機動態報表 ──────────────────────────────────────────
 let prChart = null;          // Chart.js instance
 let prCurrentPeriod = 'month';
+let prCurrentOwner  = '';   // '' = 全部業務
 let prListenersSet  = false;
+let prOwnerBuilt    = false; // 業務下拉只建立一次
 
 const STAGE_COLOR = {
   'A': '#d32f2f',   // Commit   紅
@@ -3612,10 +3614,33 @@ async function loadPipelineReport() {
   $('prPeriodLabel').textContent = fmtPeriodLabel(from, to);
 
   try {
-    const qs = `from=${from.toISOString()}&to=${to.toISOString()}`;
+    let qs = `from=${from.toISOString()}&to=${to.toISOString()}`;
+    if (prCurrentOwner) qs += `&owner=${encodeURIComponent(prCurrentOwner)}`;
     const res = await fetch(`/api/pipeline-report?${qs}`);
     if (!res.ok) throw new Error('載入失敗');
     const data = await res.json();
+
+    // 第一次載入時建立業務人員篩選下拉
+    if (!prOwnerBuilt && data.ownerOptions && data.ownerOptions.length > 1) {
+      prOwnerBuilt = true;
+      const wrap   = $('prOwnerWrap');
+      const select = $('prOwnerSelect');
+      // 清除舊 options 再填入
+      select.innerHTML = '<option value="">全部業務</option>';
+      data.ownerOptions.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.username;
+        opt.textContent = o.displayName;
+        select.appendChild(opt);
+      });
+      select.value = prCurrentOwner;
+      wrap.style.display = 'flex';
+      select.addEventListener('change', () => {
+        prCurrentOwner = select.value;
+        loadPipelineReport();
+      });
+    }
+
     renderPrSummary(data.summary);
     renderPrFunnel(data.funnel);
     renderPrMoves(data);

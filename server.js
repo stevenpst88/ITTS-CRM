@@ -1131,12 +1131,22 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
 const STAGE_ORDER = ['D','C','B','A','成交','Won'];
 const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A｜Commit', '成交':'✅ 成交', Won:'🏆 Won' };
 app.get('/api/pipeline-report', requireAuth, (req, res) => {
-  const { from, to } = req.query;
+  const { from, to, owner: ownerFilter } = req.query;
   const now = new Date();
   const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
   const toDate   = to   ? new Date(to)   : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  const owners = getViewableOwners(req, 'opportunities');
+  const allOwners = getViewableOwners(req, 'opportunities');
+  // 若前端指定了特定業務且在可視範圍內，就篩選該業務
+  const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
   const data   = db.load();
+  const auth   = loadAuth();
+  // 建立業務人員選單（顯示名稱），只有多人可選時才有意義
+  const ownerOptions = allOwners.length > 1
+    ? allOwners.map(u => {
+        const usr = auth.users.find(x => x.username === u);
+        return { username: u, displayName: usr ? (usr.displayName || u) : u };
+      })
+    : [];
   const opps   = (data.opportunities || []).filter(o => owners.includes(o.owner));
   const lostAll= (data.lostOpportunities || []).filter(o => owners.includes(o.owner));
 
@@ -1200,6 +1210,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const sum = arr => arr.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
   res.json({
     period: { from: fromDate.toISOString(), to: toDate.toISOString() },
+    ownerOptions,
     funnel,
     newDeals:   newDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,owner:o.owner,createdAt:o.createdAt})),
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),

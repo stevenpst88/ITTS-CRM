@@ -538,6 +538,13 @@
               <input type="date" id="prToDate">
               <button class="btn btn-primary btn-sm" id="prCustomApply">套用</button>
             </div>
+            <!-- 業務人員篩選（主管/秘書才顯示） -->
+            <div id="prOwnerWrap" style="display:none;align-items:center;gap:6px">
+              <span style="font-size:13px;color:#555">👤 業務：</span>
+              <select id="prOwnerSelect" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;background:#fff;cursor:pointer">
+                <option value="">全部業務</option>
+              </select>
+            </div>
             <div class="pr-period-label" id="prPeriodLabel"></div>
           </div>
 
