@@ -3336,13 +3336,10 @@ function initForecastYearSel() {
 function initForecastSalesFilter() {
   const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
   const salesFilter = $('forecastSalesFilter');
-  if (!canFilter) return;
 
-  // 顯示業務篩選
-  if (salesFilter) salesFilter.style.display = '';
-
-  // 填入業務人員（避免重複加）
-  if (salesFilter) {
+  // 業務人員篩選：只限主管/秘書
+  if (canFilter && salesFilter) {
+    salesFilter.style.display = '';
     const existingVals = new Set(Array.from(salesFilter.options).map(o => o.value));
     Object.entries(forecastUserMap).forEach(([username, displayName]) => {
       if (!existingVals.has(username)) {
@@ -3358,7 +3355,7 @@ function initForecastSalesFilter() {
     }
   }
 
-  // 顯示並初始化階段多選下拉
+  // 階段多選：所有角色都顯示
   initForecastStageMultiSel();
 }
 
