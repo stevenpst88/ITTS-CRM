@@ -727,6 +727,84 @@ ${pageText}
   }
 });
 
+// ── Admin: 批次填入官網 ───────────────────────────────────
+app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
+  const data = db.load();
+  const contacts = (data.contacts || []).filter(c => !c.deleted);
+
+  // 找出網站空白的聯絡人（同公司只處理一次，統一回填）
+  const companyMap = {}; // taxId or companyName → website
+  const targets = contacts.filter(c => !c.website);
+
+  const stats = { total: targets.length, updated: 0, skipped: 0, notFound: 0 };
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+
+  // 先用 taxId 聚合（同統編只查一次）
+  const taxIdGroups = {};
+  const noTaxIdList = [];
+  for (const c of targets) {
+    const tid = (c.taxId || '').trim();
+    if (tid && /^\d{8}$/.test(tid)) {
+      if (!taxIdGroups[tid]) taxIdGroups[tid] = [];
+      taxIdGroups[tid].push(c);
+    } else {
+      noTaxIdList.push(c);
+    }
+  }
+
+  // 處理有統編的（MOPS + GCIS + DDG）
+  for (const [taxId, group] of Object.entries(taxIdGroups)) {
+    // 先嘗試從 GCIS 拿 stockCode
+    let stockCode = '', listedType = '';
+    try {
+      const lists = await getCompanyLists();
+      const twseM = (lists.twse || []).find(c => c['營利事業統一編號'] === taxId);
+      const tpexM = !twseM && (lists.tpex || []).find(c => c['UnifiedBusinessNo.'] === taxId);
+      if (twseM) { stockCode = twseM['公司代號'] || ''; listedType = '上市'; }
+      else if (tpexM) { stockCode = tpexM.SecuritiesCompanyCode || ''; listedType = '上櫃'; }
+    } catch {}
+
+    const companyName = group[0].company || '';
+    let website = companyMap[taxId];
+    if (!website) {
+      website = await fetchWebsiteOnly(taxId, companyName, stockCode, listedType);
+      companyMap[taxId] = website || '';
+    }
+
+    if (website) {
+      group.forEach(c => { c.website = website; stats.updated++; });
+    } else {
+      stats.notFound += group.length;
+    }
+    await delay(300); // 避免 rate limit
+  }
+
+  // 處理無統編（只用 DuckDuckGo + Email domain）
+  const companyNameGroups = {};
+  for (const c of noTaxIdList) {
+    const key = (c.company || '').trim();
+    if (!key) { stats.skipped++; continue; }
+    if (!companyNameGroups[key]) companyNameGroups[key] = [];
+    companyNameGroups[key].push(c);
+  }
+  for (const [companyName, group] of Object.entries(companyNameGroups)) {
+    let website = companyMap['_name_' + companyName];
+    if (website === undefined) {
+      website = await fetchWebsiteOnly('', companyName, '', '');
+      companyMap['_name_' + companyName] = website || '';
+    }
+    if (website) {
+      group.forEach(c => { c.website = website; stats.updated++; });
+    } else {
+      stats.notFound += group.length;
+    }
+    await delay(300);
+  }
+
+  db.save(data);
+  res.json({ success: true, ...stats });
+});
+
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const auth = loadAuth();
@@ -2407,6 +2485,80 @@ async function getCompanyLists() {
   }
 
   return companyCache;
+}
+
+// ── 共用：只查官網（給 bulk 及 company-lookup 使用）──────
+async function fetchWebsiteOnly(taxId, companyName, stockCode, listedType) {
+  let website = '';
+  let emailDomain = '';
+
+  // 1. MOPS（上市/上櫃）
+  if (!website && stockCode) {
+    try {
+      const typek = listedType === '上市' ? 'sii' : 'otc';
+      const r = await fetch(
+        `https://mops.twse.com.tw/mops/web/ajax_t108sb01?inpuType=co_id&TYPEK=${typek}&isnew=false&co_id=${stockCode}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000) }
+      );
+      if (r.ok) {
+        const html = await r.text();
+        const lm = html.match(/公司網址[\s\S]{0,200}?href=['"]([^'"]{5,})['"]/i);
+        const tm = html.match(/公司網址[\s\S]{0,200}?>(https?:\/\/[^\s<"']+)/i);
+        const raw = (lm?.[1] || tm?.[1] || '').trim();
+        if (raw && /^https?:\/\//i.test(raw)) website = raw.replace(/\/$/, '');
+      }
+    } catch {}
+  }
+
+  // 2. GCIS 通訊資料（有統編才查）
+  if (!website && taxId) {
+    try {
+      const r = await fetch(
+        `https://data.gcis.nat.gov.tw/od/data/api/9A6764F8-C567-4B97-985A-B2FFA47A7B4F?$format=json&$filter=Business_Accounting_NO eq ${taxId}&$skip=0&$top=1`,
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(6000) }
+      );
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.[0]) {
+          const raw = d[0].Company_Website || d[0].Website || d[0].website || '';
+          if (raw && raw.length > 4)
+            website = (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw).replace(/\/$/, '');
+          const email = d[0].Company_Email || d[0].E_Mail || '';
+          if (!website && email && email.includes('@')) {
+            const dom = email.split('@')[1].toLowerCase().trim();
+            const PUBLIC = ['gmail.com','yahoo.com','yahoo.com.tw','hotmail.com','outlook.com'];
+            if (dom && !PUBLIC.includes(dom)) emailDomain = 'https://www.' + dom;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. DuckDuckGo Instant Answer
+  if (!website && companyName) {
+    try {
+      const q = encodeURIComponent(companyName + ' 官方網站');
+      const r = await fetch(
+        `https://api.duckduckgo.com/?q=${q}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) }
+      );
+      if (r.ok) {
+        const ddg = await r.json();
+        const webItem = (ddg.Infobox?.content || []).find(
+          item => /^(website|official website|官網|網址|homepage)/i.test(item.label || '')
+        );
+        if (webItem?.value && /^https?:\/\//i.test(webItem.value))
+          website = webItem.value.replace(/\/+$/, '');
+        if (!website && ddg.AbstractURL && !/wikipedia|wikimedia/i.test(ddg.AbstractURL))
+          website = ddg.AbstractURL;
+      }
+    } catch {}
+  }
+
+  // 4. Email domain 備援
+  if (!website && emailDomain) website = emailDomain;
+
+  return website;
 }
 
 function formatCapital(amount) {

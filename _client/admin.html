@@ -309,6 +309,9 @@
       <div class="admin-nav-item" data-sec="import">
         <span class="admin-nav-icon">📥</span> 名單匯入
       </div>
+      <div class="admin-nav-item" data-sec="bulk-website">
+        <span class="admin-nav-icon">🌐</span> 批次填入官網
+      </div>
       <div class="admin-nav-item" data-sec="contact-io">
         <span class="admin-nav-icon">👤</span> 客戶匯出入
       </div>
@@ -482,6 +485,22 @@
             </div>
 
           </div>
+        </div>
+      </div>
+
+      <!-- ── 批次填入官網 ── -->
+      <div class="admin-section" id="sec-bulk-website">
+        <div class="section-title">批次填入客戶官網</div>
+        <div class="section-sub">自動查詢網站空白的客戶，依序嘗試 MOPS、GCIS、DuckDuckGo 填入官網網址</div>
+        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+          <div style="font-size:13px;color:#555;margin-bottom:6px">
+            ・有統一編號的公司會查詢 MOPS（上市/上櫃）與 GCIS 通訊資料<br>
+            ・無統編的公司以 DuckDuckGo 搜尋，知名企業較易成功<br>
+            ・已有官網的聯絡人<strong>不會</strong>被覆蓋，同公司只查詢一次
+          </div>
+          <div style="margin:16px 0 10px;font-size:13px;color:#888" id="bulkWebsiteHint">點擊按鈕開始批次作業（視資料量可能需要數分鐘）</div>
+          <button class="btn btn-primary" id="bulkWebsiteBtn" style="min-width:160px">🌐 批次填入官網</button>
+          <div id="bulkWebsiteResult" style="display:none;margin-top:16px;padding:14px 16px;border-radius:8px;font-size:13px;line-height:1.8"></div>
         </div>
       </div>
 
@@ -2228,6 +2247,42 @@
 
     // 點選 contact-io 時填入業務清單
     document.querySelector('[data-sec="contact-io"]').addEventListener('click', populateContactImportOwners);
+
+    // ── 批次填入官網 ──
+    $('bulkWebsiteBtn').addEventListener('click', async () => {
+      const btn    = $('bulkWebsiteBtn');
+      const hint   = $('bulkWebsiteHint');
+      const result = $('bulkWebsiteResult');
+      if (!confirm('確定要開始批次填入官網嗎？\n視客戶數量可能需要數分鐘，請勿關閉頁面。')) return;
+      btn.disabled = true;
+      btn.textContent = '⏳ 執行中…';
+      hint.textContent = '正在查詢中，請耐心等候…';
+      result.style.display = 'none';
+      try {
+        const r = await fetch('/api/admin/bulk-fill-website', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '執行失敗');
+        result.style.display = '';
+        result.style.background = '#f0faf0';
+        result.style.border = '1px solid #a8d5b0';
+        result.innerHTML = `
+          <strong style="color:#1a5c2a">✅ 批次作業完成</strong><br>
+          📊 處理聯絡人：<strong>${d.total}</strong> 筆（網站空白）<br>
+          ✅ 成功填入：<strong style="color:#1a73e8">${d.updated}</strong> 筆<br>
+          ❌ 未找到網址：<strong>${d.notFound}</strong> 筆<br>
+          ⏭ 略過（無公司名稱）：<strong>${d.skipped}</strong> 筆`;
+        hint.textContent = '作業完成！重新整理客戶頁面即可看到更新結果。';
+      } catch (e) {
+        result.style.display = '';
+        result.style.background = '#fce8e6';
+        result.style.border = '1px solid #e8b4b0';
+        result.innerHTML = `<strong style="color:#c5352a">❌ 執行失敗</strong>：${e.message}`;
+        hint.textContent = '請稍後再試';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🌐 批次填入官網';
+      }
+    });
 
     // ── 匯出 ──
     $('contactExportBtn').addEventListener('click', async () => {
