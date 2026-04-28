@@ -2856,52 +2856,92 @@ async function loadManagerAchievement(year) {
     if (!rows.length) { container.innerHTML = '<div style="color:#aaa;text-align:center;padding:20px">暫無資料</div>'; return; }
 
     const fmt = n => (n || 0).toLocaleString();
-    const rateColor = r => r === null ? '#aaa' : r >= 100 ? '#0a8a4a' : r >= 70 ? '#1a73e8' : r >= 40 ? '#f59e0b' : '#e53e3e';
-    const rateText  = r => r === null ? '未設目標' : r + '%';
-    const barW      = r => r === null ? 0 : Math.min(r, 100);
+    const rateColor = r => r === null ? '#bbb' : r >= 100 ? '#0a8a4a' : r >= 70 ? '#1a73e8' : r >= 40 ? '#f59e0b' : '#e53e3e';
+    const rateText  = r => r === null ? '–' : r + '%';
+    const ROLE_BADGE = { manager1:'一級主管', manager2:'二級主管' };
 
+    // ── SVG 半圓油表產生器 ──────────────────────────────────
+    // center(100,108) radius=80, 弧長=π*80≈251.3
+    function makeGaugeSvg(rate, color) {
+      const R = 80, cx = 100, cy = 108;
+      const arcLen = Math.PI * R;                      // ≈251.33
+      const progress = rate === null ? 0 : Math.min(rate, 100) / 100 * arcLen;
+      const lx = cx - R, rx = cx + R;                  // (20,108),(180,108)
+      // M lx cy  A R R 0 0 0 rx cy  → 從左經頂部到右（sweep=0=逆時針在screen=往上）
+      const d = `M ${lx} ${cy} A ${R} ${R} 0 0 0 ${rx} ${cy}`;
+
+      // 顏色分段刻度（背景分5格）
+      const ticks = [0, 0.25, 0.5, 0.75, 1.0].map(p => {
+        const a = Math.PI * (1 - p);
+        return { x: cx + R * Math.cos(a), y: cy - R * Math.sin(a) };
+      });
+      const tickMarks = ticks.map(t =>
+        `<circle cx="${t.x.toFixed(1)}" cy="${t.y.toFixed(1)}" r="3" fill="#e0e7ef"/>`
+      ).join('');
+
+      // 中心文字
+      const pctTxt = rate === null ? '—' : (rate > 999 ? '>999' : rate) + '%';
+      const txtColor = rate === null ? '#bbb' : color;
+
+      return `<svg viewBox="0 0 200 120" width="170" height="102" style="display:block;margin:0 auto">
+        <!-- 背景弧 -->
+        <path d="${d}" stroke="#e8ecf4" stroke-width="18" fill="none" stroke-linecap="round"/>
+        <!-- 進度弧 -->
+        <path d="${d}" stroke="${color}" stroke-width="18" fill="none" stroke-linecap="round"
+          stroke-dasharray="${progress.toFixed(1)} ${arcLen.toFixed(1)}"/>
+        ${tickMarks}
+        <!-- 百分比文字 -->
+        <text x="100" y="94" text-anchor="middle" font-size="26" font-weight="800"
+          font-family="-apple-system,sans-serif" fill="${txtColor}">${pctTxt}</text>
+        <!-- 0% / 100% 標籤 -->
+        <text x="${lx - 4}" y="${cy + 18}" text-anchor="middle" font-size="9" fill="#bbb">0%</text>
+        <text x="${rx + 4}" y="${cy + 18}" text-anchor="middle" font-size="9" fill="#bbb">100%</text>
+      </svg>`;
+    }
+
+    // ── 卡片格 ──────────────────────────────────────────────
     container.innerHTML = `
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead>
-            <tr style="background:#f0f4ff;color:#555">
-              <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e0e7ef">業務人員</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">年度目標（萬）<span style="font-size:11px;color:#aaa;font-weight:400;margin-left:4px">點擊編輯</span></th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">已成交</th>
-              <th style="padding:10px 12px;text-align:center;font-weight:600;border-bottom:2px solid #e0e7ef;min-width:200px">達成率</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">在手商機</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">成交件數</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((r, i) => `
-              <tr style="border-bottom:1px solid #f0f0f0;${i % 2 === 1 ? 'background:#fafbff' : ''}">
-                <td style="padding:11px 12px;font-weight:600;color:#333">
-                  ${r.displayName}
-                  <span style="font-size:11px;color:#aaa;font-weight:400;margin-left:4px">${r.role === 'manager2' ? '(二級主管)' : r.role === 'manager1' ? '(一級主管)' : ''}</span>
-                </td>
-                <td style="padding:8px 12px;text-align:right">
-                  <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}">
-                    <span class="mgr-target-display" style="cursor:pointer;color:${r.target ? '#333' : '#ccc'};border-bottom:1px dashed #bbb;padding-bottom:1px" title="點擊設定目標">
-                      ${r.target ? fmt(r.target) : '未設定'}
-                    </span>
-                  </div>
-                </td>
-                <td style="padding:11px 12px;text-align:right;font-weight:600;color:#0a8a4a">${fmt(r.achieved)} 萬</td>
-                <td style="padding:11px 12px">
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <div style="flex:1;background:#eee;border-radius:4px;height:8px;overflow:hidden">
-                      <div style="width:${barW(r.rate)}%;background:${rateColor(r.rate)};height:100%;border-radius:4px;transition:width .4s"></div>
-                    </div>
-                    <span style="font-size:13px;font-weight:700;color:${rateColor(r.rate)};min-width:56px;text-align:right">${rateText(r.rate)}</span>
-                  </div>
-                </td>
-                <td style="padding:11px 12px;text-align:right;color:#1a73e8">${fmt(r.pipeline)} 萬</td>
-                <td style="padding:11px 12px;text-align:right;color:#555">${r.wonCount} 件</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px 0">
+        ${rows.map(r => {
+          const color = rateColor(r.rate);
+          const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
+          return `
+          <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:16px 18px;min-width:210px;flex:1 1 210px;max-width:280px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+            <!-- 姓名 -->
+            <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${r.displayName}${badge}
+            </div>
+            <!-- 油表 -->
+            ${makeGaugeSvg(r.rate, color)}
+            <!-- 目標（可編輯）-->
+            <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}"
+                style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 4px">
+              <span style="font-size:11px;color:#888">目標</span>
+              <span class="mgr-target-display" title="點擊編輯目標"
+                style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
+                ${r.target ? r.target.toLocaleString() + ' 萬' : '未設定'}
+              </span>
+              <span style="font-size:11px;color:#aaa">✎</span>
+            </div>
+            <!-- 數字列 -->
+            <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
+              <div>
+                <div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div>
+                <div style="color:#aaa;margin-top:2px">已成交（萬）</div>
+              </div>
+              <div style="width:1px;background:#f0f0f0"></div>
+              <div>
+                <div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div>
+                <div style="color:#aaa;margin-top:2px">在手商機（萬）</div>
+              </div>
+              <div style="width:1px;background:#f0f0f0"></div>
+              <div>
+                <div style="font-weight:700;font-size:14px;color:#555">${r.wonCount}</div>
+                <div style="color:#aaa;margin-top:2px">成交件數</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>`;
 
     // ── Inline 編輯：點擊目標欄位 ──
