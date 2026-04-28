@@ -1059,7 +1059,21 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
 
   const rows = salesUsers.map(u => {
     const target = (data.targets || []).find(t => t.owner === u.username && t.year === year);
-    const myOpps = (data.opportunities || []).filter(o => o.owner === u.username);
+
+    // 主管彙總轄下所有人的商機；一般業務只看自己
+    let rowOwners;
+    if (u.role === 'manager1') {
+      // 一級主管：彙總所有可見成員（含 manager2 + user + 自己）
+      rowOwners = viewableUsernames;
+    } else if (u.role === 'manager2') {
+      // 二級主管：彙總 user 角色 + 自己（不含其他 manager2）
+      rowOwners = auth.users
+        .filter(x => x.role === 'user' || x.username === u.username)
+        .map(x => x.username);
+    } else {
+      rowOwners = [u.username];
+    }
+    const myOpps = (data.opportunities || []).filter(o => rowOwners.includes(o.owner));
 
     // 成交：以 achievedDate 為準，無則 createdAt
     const achieved = myOpps
@@ -3578,12 +3592,14 @@ if (require.main === module) {
   // 被 import（如 api/index.js）：只 export app，由 serverless 呼叫
   // Postgres 模式需要先 preload data 才能同步 load()
   if (process.env.DB_BACKEND === 'postgres') {
-    // 背景預熱（不阻塞 cold start；首個 request 會等）
-    db.ready().catch((e) => console.error('[db] preload failed:', e));
+    // 背景預熱 + 遷移（不阻塞 cold start；首個 request 會等 ready）
+    db.ready()
+      .then(() => {
+        migrateOwner();
+        migrateStage成交ToWon();
+      })
+      .catch((e) => console.error('[db] preload failed:', e));
   }
 }
-
-// Vercel serverless 環境下也執行遷移（冷啟動時）
-migrateStage成交ToWon();
 
 module.exports = app;
