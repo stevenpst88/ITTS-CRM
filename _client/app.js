@@ -83,12 +83,9 @@ function applyPermissions() {
       const el = $(id); if (el) el.style.display = 'none';
     });
   }
-  if (['marketing','manager1','manager2','admin'].includes(role)) {
+  // 行銷活動 & Lead 管理：僅行銷人員可見
+  if (role === 'marketing') {
     ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
-  }
-  if (role === 'user') {
-    // 業務看被分配的 Lead（有才顯示 badge）
-    refreshLeadsBadge();
   }
 }
 
@@ -1392,6 +1389,45 @@ function renderCompanyInfo(d) {
       ${finSection}
     </div>`;
 }
+
+// ── Feature 6：AI 公司背景分析 ──────────────────────────
+$('companyInsightBtn').addEventListener('click', async () => {
+  const btn = $('companyInsightBtn');
+  const url = $('companyInsightUrl').value.trim();
+  if (!url) return showToast('請輸入公司官網網址', 'error');
+  if (!/^https?:\/\//i.test(url)) return showToast('網址格式錯誤，請包含 https://', 'error');
+
+  btn.disabled = true; btn.textContent = '分析中…';
+  const resultDiv = $('companyInsightResult');
+  resultDiv.style.display = '';
+  resultDiv.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">🤖 AI 正在分析中，請稍候（約 10-15 秒）…</div>';
+
+  try {
+    const r = await fetch(`${API}/ai/company-insight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      resultDiv.innerHTML = `<div class="ai-insight-error">${escapeHtml(d.error || 'AI 發生錯誤，請重試')}</div>`;
+      return;
+    }
+    resultDiv.innerHTML = `
+      <div class="ai-insight-card">
+        <div class="aic-row"><span class="aic-label">公司名稱</span><span>${escapeHtml(d.companyName||'—')}</span></div>
+        <div class="aic-row"><span class="aic-label">主要業務</span><span>${escapeHtml(d.mainBusiness||'—')}</span></div>
+        <div class="aic-row"><span class="aic-label">產品/服務</span><span>${escapeHtml(d.products||'—')}</span></div>
+        <div class="aic-row"><span class="aic-label">公司規模</span><span>${escapeHtml(d.scale||'—')}</span></div>
+        <div class="aic-row"><span class="aic-label">IT 需求痛點</span><span>${escapeHtml(d.painPoints||'—')}</span></div>
+        <div class="aic-summary">${escapeHtml(d.summary||'—')}</div>
+      </div>`;
+  } catch (e) {
+    resultDiv.innerHTML = `<div class="ai-insight-error">網路錯誤：${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 分析';
+  }
+});
 
 // ── 商機分類徽章 ─────────────────────────────────────────
 const OPPORTUNITY_LABELS = {
@@ -5529,6 +5565,74 @@ if (_visitAiBtn) {
   });
 }
 
+// ── Feature 1b：生成跟進信件草稿 ────────────────────────
+const _visitEmailBtn = $v('visitEmailBtn');
+if (_visitEmailBtn) {
+  _visitEmailBtn.addEventListener('click', async () => {
+    const topic   = $v('visitTopic').value.trim();
+    const content = $v('visitContent').value.trim();
+    if (!content && !topic) { showToast('請先填寫拜訪主題或會談內容再生成信件'); return; }
+
+    const contactId = $v('visitContactId').value;
+    const contact   = allContacts.find(c => c.id === contactId);
+
+    _visitEmailBtn.disabled = true;
+    _visitEmailBtn.textContent = '✉️ 產生中…';
+    $v('visitEmailDraft').style.display = 'none';
+
+    try {
+      const r = await fetch(`${API}/ai/follow-up-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactName: contact?.name  || '',
+          company:     contact?.company || '',
+          title:       contact?.title  || '',
+          visitType:   $v('visitType').value,
+          topic,
+          content,
+          nextAction:  $v('visitNextAction').value.trim()
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (data.error === 'AI_NOT_CONFIGURED') showToast('⚠️ 未設定 GEMINI_API_KEY，請聯絡管理員');
+        else showToast('AI 生成失敗：' + (data.error || '請重試'));
+        return;
+      }
+      $v('visitEmailSubject').textContent = data.subject || '';
+      $v('visitEmailBody').innerText      = data.body || '';
+      $v('visitEmailDraft').style.display = '';
+      // 捲動到草稿框
+      $v('visitEmailDraft').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch { showToast('網路錯誤，請稍後再試'); }
+    finally {
+      _visitEmailBtn.disabled = false;
+      _visitEmailBtn.textContent = '✉️ 生成跟進信件';
+    }
+  });
+
+  // 複製全文
+  $v('visitEmailCopyBtn').addEventListener('click', () => {
+    const subject = $v('visitEmailSubject').textContent.trim();
+    const body    = $v('visitEmailBody').innerText.trim();
+    const text    = `主旨：${subject}\n\n${body}`;
+    navigator.clipboard.writeText(text)
+      .then(() => showToast('已複製到剪貼簿', 'success'))
+      .catch(() => showToast('複製失敗，請手動選取'));
+  });
+
+  // 開啟郵件程式（mailto）
+  $v('visitEmailMailtoBtn').addEventListener('click', () => {
+    const contactId = $v('visitContactId').value;
+    const contact   = allContacts.find(c => c.id === contactId);
+    const toEmail   = contact?.email || '';
+    const subject   = encodeURIComponent($v('visitEmailSubject').textContent.trim());
+    const body      = encodeURIComponent($v('visitEmailBody').innerText.trim());
+    window.location.href = `mailto:${toEmail}?subject=${subject}&body=${body}`;
+  });
+}
+
 // 商機贏率預測
 const _oppWinRateBtn = $('oppWinRateBtn');
 if (_oppWinRateBtn) {
@@ -5982,9 +6086,6 @@ async function refreshLeadsBadge() {
       badge.textContent = pending;
       badge.style.display = pending > 0 ? '' : 'none';
     }
-    if (pending > 0) {
-      const el = $('navLeads'); if (el) el.style.display = '';
-    }
   } catch {}
 }
 
@@ -6003,7 +6104,7 @@ async function loadCampaignsView() {
   const addBtn = $('addCampaignBtn');
   const role = userPermissions.role;
   if (addBtn) {
-    addBtn.style.display = ['marketing','manager1','manager2','admin'].includes(role) ? '' : 'none';
+    addBtn.style.display = role === 'marketing' ? '' : 'none';
     addBtn.onclick = () => openCampaignModal(null);
   }
   // 篩選
@@ -6026,7 +6127,7 @@ function renderCampaignCards() {
     return;
   }
   const role = userPermissions.role;
-  const canEdit = ['marketing','manager1','manager2','admin'].includes(role);
+  const canEdit = role === 'marketing';
   container.innerHTML = list.map(c => {
     const pct = c.targetCount > 0 ? Math.min(100, Math.round(c.leadCount / c.targetCount * 100)) : 0;
     const typeLabel   = CAMPAIGN_TYPE_LABEL[c.type]     || c.type    || '—';
@@ -6167,7 +6268,7 @@ async function loadLeadsView() {
   const addBtn = $('addLeadBtn');
   const role = userPermissions.role;
   if (addBtn) {
-    addBtn.style.display = ['marketing','manager1','manager2','admin'].includes(role) ? '' : 'none';
+    addBtn.style.display = role === 'marketing' ? '' : 'none';
     addBtn.onclick = () => openLeadModal(null);
   }
   const srch = $('leadSearch');

@@ -105,6 +105,98 @@ body {
 .btn-ai-suggest:disabled { opacity: .5; cursor: not-allowed; }
 .tab-btn-ai { display: none; }
 
+/* ── Feature 1: AI 跟進信件草稿 ── */
+.visit-email-section {
+  margin-top: 10px;
+  border: 1px dashed #b8c8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.visit-email-trigger {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 8px 12px;
+  background: #f4f7ff;
+}
+.visit-email-hint {
+  font-size: 11.5px; color: #556; flex: 1;
+}
+.btn-email-gen {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff; border: none; border-radius: 6px;
+  padding: 5px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: opacity .18s;
+}
+.btn-email-gen:hover { opacity: .85; }
+.btn-email-gen:disabled { opacity: .5; cursor: not-allowed; }
+
+.visit-email-draft {
+  border-top: 1px solid #d0daff;
+  background: #fff;
+}
+.email-draft-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: #eef1ff;
+  border-bottom: 1px solid #d0daff;
+}
+.email-draft-title {
+  font-size: 12px; font-weight: 600; color: #3a4a8a;
+}
+.email-draft-actions { display: flex; gap: 6px; }
+.btn-email-action {
+  font-size: 11px; padding: 3px 10px; border-radius: 5px;
+  cursor: pointer; border: 1px solid; transition: all .15s; font-weight: 500;
+}
+.btn-email-open {
+  background: #fff; border-color: #7c90d0; color: #3a4a8a;
+}
+.btn-email-open:hover { background: #eef1ff; }
+.btn-email-copy {
+  background: #3a4a8a; border-color: #3a4a8a; color: #fff;
+}
+.btn-email-copy:hover { background: #2a3a7a; }
+
+.email-subject-row, .email-body-row {
+  display: flex; gap: 0; border-bottom: 1px solid #e8ecff;
+}
+.email-body-row { border-bottom: none; }
+.email-field-label {
+  width: 36px; flex-shrink: 0; padding: 8px 0 8px 12px;
+  font-size: 11px; font-weight: 700; color: #7c8ab8;
+  line-height: 1.5; text-align: center;
+}
+.email-subject-text {
+  flex: 1; padding: 7px 12px; font-size: 13px; font-weight: 600;
+  color: #1a2a6a; outline: none; min-height: 34px;
+  border-left: 1px solid #e8ecff;
+}
+.email-subject-text:focus { background: #f8f9ff; }
+.email-body-text {
+  flex: 1; padding: 8px 12px; font-size: 12.5px; color: #2a3a6a;
+  line-height: 1.75; white-space: pre-wrap; outline: none;
+  min-height: 100px; border-left: 1px solid #e8ecff;
+}
+.email-body-text:focus { background: #f8f9ff; }
+
+/* ── Feature 6: AI 公司背景分析卡片 ── */
+.ai-insight-card {
+  background: #f8f9ff; border: 1px solid #c8d4f0;
+  border-radius: 8px; padding: 12px 14px; font-size: 13px;
+}
+.aic-row {
+  display: flex; gap: 8px; margin-bottom: 5px; line-height: 1.5;
+}
+.aic-label {
+  color: #556; min-width: 82px; font-weight: 600; flex-shrink: 0;
+}
+.aic-summary {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid #dde;
+  color: #334; line-height: 1.6; font-size: 12.5px;
+}
+.ai-insight-error {
+  color: #c33; font-size: 13px; padding: 6px 0;
+}
+
 /* ── Main Wrapper (right side) ── */
 .main-wrapper { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 

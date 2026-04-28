@@ -1467,6 +1467,16 @@
           <div id="companyInfoResult">
             <div class="lookup-hint">請先在「名片資料」頁簽填入統一編號，再點擊「查詢公司資料」</div>
           </div>
+          <!-- AI 公司背景分析 -->
+          <div style="margin-top:16px;border-top:1px solid #eee;padding-top:14px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#333">🤖 AI 公司背景分析</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="url" id="companyInsightUrl" placeholder="輸入公司官網網址，例：https://www.itts.com.tw"
+                     style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+              <button type="button" id="companyInsightBtn" class="btn btn-primary" style="white-space:nowrap;font-size:13px;padding:6px 14px">🔍 分析</button>
+            </div>
+            <div id="companyInsightResult" style="display:none;margin-top:10px"></div>
+          </div>
         </div>
 
         <!-- ── 商機 TAB ── -->
@@ -1687,6 +1697,30 @@
                 <textarea id="visitContent" rows="4" placeholder="記錄本次拜訪的重點討論內容..."></textarea>
                 <!-- AI 關鍵重點提示框 -->
                 <div id="visitAiTakeaways" style="display:none;margin-top:8px;background:#f0faf0;border:1px solid #a8d5b0;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e5c2a;line-height:1.7"></div>
+                <!-- AI 跟進信件草稿 -->
+                <div class="visit-email-section">
+                  <div class="visit-email-trigger">
+                    <div class="visit-email-hint">✉️ 根據拜訪內容，自動起草一封客製化的跟進 Email</div>
+                    <button type="button" id="visitEmailBtn" class="btn-email-gen">✨ AI 生成跟進信件</button>
+                  </div>
+                  <div id="visitEmailDraft" style="display:none" class="visit-email-draft">
+                    <div class="email-draft-header">
+                      <span class="email-draft-title">📧 信件草稿（可直接修改後複製）</span>
+                      <div class="email-draft-actions">
+                        <button type="button" id="visitEmailMailtoBtn" class="btn-email-action btn-email-open" title="用預設郵件程式開啟">📤 開啟郵件程式</button>
+                        <button type="button" id="visitEmailCopyBtn" class="btn-email-action btn-email-copy">📋 複製全文</button>
+                      </div>
+                    </div>
+                    <div class="email-subject-row">
+                      <span class="email-field-label">主旨</span>
+                      <div id="visitEmailSubject" class="email-subject-text" contenteditable="true" spellcheck="false"></div>
+                    </div>
+                    <div class="email-body-row">
+                      <span class="email-field-label">內容</span>
+                      <div id="visitEmailBody" class="email-body-text" contenteditable="true" spellcheck="false"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="form-group full-width">
                 <label>下一步行動</label>

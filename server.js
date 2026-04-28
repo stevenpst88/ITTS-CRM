@@ -634,6 +634,99 @@ ${visitSummary}
   }
 });
 
+// ── Feature 5：個人化跟進信件草稿 ──────────────────────
+app.post('/api/ai/follow-up-email', requireAuth, requireAi, async (req, res) => {
+  try {
+    const { contactName, company, title, visitType, topic, content, nextAction } = req.body;
+    if (!content && !topic)
+      return res.status(400).json({ error: '請先填寫拜訪主題或會談內容' });
+
+    const model = gemini.getModel();
+    const result = await model.generateContent(
+      `你是 B2B 業務助理。根據以下拜訪記錄，以繁體中文撰寫一封專業的後續跟進信件（Email）草稿。
+客戶：${company || '（未填）'} / ${contactName || '（未填）'}${title ? `（${title}）` : ''}
+拜訪方式：${visitType || ''}，主題：${topic || '（未填）'}
+會談內容：${content || '（未填）'}
+下一步行動：${nextAction || '（未填）'}
+
+要求：
+- 主旨簡短（20 字以內）
+- 信件內容 150–250 字，語氣專業且友善
+- 開頭問候，摘要本次討論重點，提及後續行動，結尾署名「[您的姓名]」
+
+只回傳 JSON，不要任何說明：{"subject":"...","body":"..."}`
+    );
+
+    const text = result.response.text();
+    try {
+      const data = gemini.parseJson(text);
+      res.json(data);
+    } catch {
+      res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
+    }
+  } catch (e) {
+    const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED');
+    res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message) });
+  }
+});
+
+// ── Feature 6：AI 公司背景分析（網頁 fetch + Gemini）───
+app.post('/api/ai/company-insight', requireAuth, requireAi, async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || !/^https?:\/\//i.test(url))
+      return res.status(400).json({ error: '請提供有效的網址（需包含 https://）' });
+
+    // 抓取網頁內容（10 秒逾時）
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    let pageText;
+    try {
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CRM-AI-Bot/1.0)' }
+      });
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const html = await resp.text();
+      // 移除 script / style 區塊及 HTML tags
+      pageText = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 4000);
+    } catch (fetchErr) {
+      clearTimeout(timer);
+      return res.status(400).json({ error: '無法存取此網址，請確認網址是否正確或網站是否允許存取' });
+    }
+
+    if (!pageText || pageText.length < 30)
+      return res.status(400).json({ error: '網頁內容過少，無法分析' });
+
+    const model = gemini.getModel();
+    const result = await model.generateContent(
+      `你是商業分析師。以下是一家公司官網的文字內容（已移除 HTML）：
+${pageText}
+
+請用繁體中文分析，只回傳 JSON，不要任何說明：
+{"companyName":"公司全名","mainBusiness":"主要業務（30字內）","products":"主要產品或服務（50字內）","scale":"公司規模推測（如：中型企業、上市公司）","painPoints":"可能的 IT/ERP 需求痛點（50字內）","summary":"整體背景摘要（100字內）"}`
+    );
+
+    const text = result.response.text();
+    try {
+      const data = gemini.parseJson(text);
+      res.json(data);
+    } catch {
+      res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
+    }
+  } catch (e) {
+    const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED');
+    res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message) });
+  }
+});
+
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const auth = loadAuth();
