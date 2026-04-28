@@ -75,6 +75,21 @@ function applyPermissions() {
   if (role === 'manager1' || role === 'manager2' || role === 'admin') {
     const el = $('navExecDash'); if (el) el.style.display = '';
   }
+  // 行銷功能
+  if (role === 'marketing') {
+    ['navProspects','navContacts','navVisits','navTargets','navPipeline',
+     'navContractGroup','navForecast','navLostOpp','navExecDash','navQuotations',
+     'navPipelineReport','navAccountingGroup','navCallin'].forEach(id => {
+      const el = $(id); if (el) el.style.display = 'none';
+    });
+  }
+  if (['marketing','manager1','manager2','admin'].includes(role)) {
+    ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
+  }
+  if (role === 'user') {
+    // 業務看被分配的 Lead（有才顯示 badge）
+    refreshLeadsBadge();
+  }
 }
 
 let allContacts = [];
@@ -606,11 +621,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
+  ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
+  const titles = { null:'首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -628,7 +643,8 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','execDashView','quotationsView','pipelineReportView','erpMaView','sapMaView',
+   'forecastView','lostOppView','execDashView','campaignsView','leadsView',
+   'quotationsView','pipelineReportView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
   });
@@ -656,6 +672,8 @@ function showSection(section) {
   $('pipelineView').style.display     = section === 'pipeline'    ? '' : 'none';
   $('forecastView').style.display     = section === 'forecast'    ? '' : 'none';
   $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
+  $('campaignsView').style.display    = section === 'campaigns'   ? '' : 'none';
+  $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
   $('quotationsView').style.display       = section === 'quotations'     ? '' : 'none';
   $('pipelineReportView').style.display   = section === 'pipelineReport' ? '' : 'none';
@@ -675,6 +693,8 @@ function showSection(section) {
   if (section === 'pipeline')    loadPipelineView();
   if (section === 'forecast')    loadForecastView();
   if (section === 'execDash')    loadExecDash();
+  if (section === 'campaigns')   loadCampaignsView();
+  if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
   if (section === 'quotations')      loadQuotationsView();
   if (section === 'pipelineReport')  loadPipelineReport();
@@ -694,6 +714,8 @@ $('navPipeline').addEventListener('click',  () => showSection('pipeline'));
 $('navForecast').addEventListener('click',  () => showSection('forecast'));
 $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
 $('navExecDash').addEventListener('click',        () => showSection('execDash'));
+$('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
+$('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
 $('navPipelineReport').addEventListener('click',  () => showSection('pipelineReport'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
@@ -5921,6 +5943,439 @@ function renderExecTrend(data) {
         ${bars}${xLabels}
       </svg>
     </div>`;
+}
+
+// ════════════════════════════════════════════════════════
+//  行銷管理：行銷活動 & Lead
+// ════════════════════════════════════════════════════════
+
+const CAMPAIGN_TYPE_LABEL = { seminar:'研討會', webinar:'Webinar', digital:'數位廣告', exhibition:'展覽', other:'其他' };
+const CAMPAIGN_STATUS_LABEL = { planned:'計畫中', active:'進行中', completed:'已完成', cancelled:'已取消' };
+const CAMPAIGN_STATUS_COLOR = { planned:'#1a73e8', active:'#1e8e3e', completed:'#888', cancelled:'#c5221f' };
+const LEAD_STATUS_LABEL = { new:'🆕 新進', assigned:'📋 已指派', contacted:'📞 已聯繫', converted:'✅ 已轉商機', disqualified:'❌ 不合格' };
+const LEAD_STATUS_COLOR = { new:'#1a73e8', assigned:'#e37400', contacted:'#9c27b0', converted:'#1e8e3e', disqualified:'#888' };
+
+let allCampaigns = [];
+let allLeads     = [];
+let salesUserList = []; // { username, displayName }
+
+async function fetchSalesUsers() {
+  if (salesUserList.length) return;
+  try {
+    const r = await fetch('/api/admin/users');
+    if (!r.ok) return;
+    const users = await r.json();
+    salesUserList = users.filter(u => u.role === 'user' && u.active !== false)
+      .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
+  } catch {}
+}
+
+// ── Lead Badge（業務看被分配的未處理 Lead）───────────────
+async function refreshLeadsBadge() {
+  try {
+    const r = await fetch(`${API}/leads`);
+    if (!r.ok) return;
+    const leads = await r.json();
+    const pending = leads.filter(l => l.status === 'assigned').length;
+    const badge = $('leadsBadge');
+    if (badge) {
+      badge.textContent = pending;
+      badge.style.display = pending > 0 ? '' : 'none';
+    }
+    if (pending > 0) {
+      const el = $('navLeads'); if (el) el.style.display = '';
+    }
+  } catch {}
+}
+
+// ════════════════════════════════════════════════════════
+//  行銷活動
+// ════════════════════════════════════════════════════════
+
+async function loadCampaignsView() {
+  try {
+    const r = await fetch(`${API}/campaigns`);
+    allCampaigns = r.ok ? await r.json() : [];
+  } catch { allCampaigns = []; }
+  renderCampaignCards();
+
+  // 新增按鈕（行銷 / manager / admin 才顯示）
+  const addBtn = $('addCampaignBtn');
+  const role = userPermissions.role;
+  if (addBtn) {
+    addBtn.style.display = ['marketing','manager1','manager2','admin'].includes(role) ? '' : 'none';
+    addBtn.onclick = () => openCampaignModal(null);
+  }
+  // 篩選
+  ['campaignTypeFilter','campaignStatusFilter'].forEach(id => {
+    const el = $(id); if (el) { el.onchange = renderCampaignCards; }
+  });
+}
+
+function renderCampaignCards() {
+  const container = $('campaignCards');
+  if (!container) return;
+  const typeF   = $('campaignTypeFilter')?.value   || '';
+  const statusF = $('campaignStatusFilter')?.value || '';
+  let list = allCampaigns.filter(c =>
+    (!typeF   || c.type   === typeF) &&
+    (!statusF || c.status === statusF)
+  );
+  if (!list.length) {
+    container.innerHTML = '<div style="grid-column:1/-1;padding:48px;text-align:center;color:#aaa">尚無行銷活動，點「新增活動」開始建立</div>';
+    return;
+  }
+  const role = userPermissions.role;
+  const canEdit = ['marketing','manager1','manager2','admin'].includes(role);
+  container.innerHTML = list.map(c => {
+    const pct = c.targetCount > 0 ? Math.min(100, Math.round(c.leadCount / c.targetCount * 100)) : 0;
+    const typeLabel   = CAMPAIGN_TYPE_LABEL[c.type]     || c.type    || '—';
+    const statusLabel = CAMPAIGN_STATUS_LABEL[c.status] || c.status  || '—';
+    const statusColor = CAMPAIGN_STATUS_COLOR[c.status] || '#888';
+    const convRate    = c.leadCount > 0 ? Math.round(c.convertedCount / c.leadCount * 100) : 0;
+    return `
+      <div class="campaign-card" data-id="${c.id}">
+        <div class="campaign-card-header">
+          <span class="campaign-type-badge">${typeLabel}</span>
+          <span class="campaign-status-badge" style="color:${statusColor};background:${statusColor}18">${statusLabel}</span>
+        </div>
+        <div class="campaign-card-name">${escapeHtml(c.name)}</div>
+        <div class="campaign-card-date">${c.startDate || ''}${c.endDate && c.endDate !== c.startDate ? ' ～ ' + c.endDate : ''}</div>
+        ${c.description ? `<div class="campaign-card-desc">${escapeHtml(c.description)}</div>` : ''}
+        <div class="campaign-card-stats">
+          <div class="campaign-stat">
+            <div class="campaign-stat-val">${c.leadCount}</div>
+            <div class="campaign-stat-lbl">Lead 數</div>
+          </div>
+          <div class="campaign-stat">
+            <div class="campaign-stat-val" style="color:#1e8e3e">${c.convertedCount}</div>
+            <div class="campaign-stat-lbl">已轉商機</div>
+          </div>
+          <div class="campaign-stat">
+            <div class="campaign-stat-val">${c.leadCount > 0 ? convRate + '%' : '—'}</div>
+            <div class="campaign-stat-lbl">轉換率</div>
+          </div>
+          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}萬</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
+        </div>
+        ${c.targetCount > 0 ? `
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:4px">
+              <span>Lead 進度</span><span>${c.leadCount} / ${c.targetCount}</span>
+            </div>
+            <div style="height:6px;background:#eee;border-radius:3px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:#1a73e8;border-radius:3px;transition:width .3s"></div>
+            </div>
+          </div>` : ''}
+        <div class="campaign-card-actions">
+          <button class="btn btn-sm btn-secondary" onclick="showSection('leads');filterLeadsByCampaign('${c.id}')">查看 Lead</button>
+          ${canEdit ? `<button class="btn btn-sm btn-secondary" onclick="openCampaignModal('${c.id}')">編輯</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterLeadsByCampaign(campaignId) {
+  const sel = $('leadCampaignFilter');
+  if (sel) { sel.value = campaignId; renderLeadsTable(); }
+}
+
+function openCampaignModal(id) {
+  const c = id ? allCampaigns.find(x => x.id === id) : null;
+  $('campaignModalId').value   = c?.id   || '';
+  $('campaignModalTitle').textContent = c ? '編輯行銷活動' : '新增行銷活動';
+  $('campaignModalName').value   = c?.name        || '';
+  $('campaignModalType').value   = c?.type        || 'seminar';
+  $('campaignModalStatus').value = c?.status      || 'planned';
+  $('campaignModalStart').value  = c?.startDate   || '';
+  $('campaignModalEnd').value    = c?.endDate     || '';
+  $('campaignModalTarget').value = c?.targetCount || '';
+  $('campaignModalBudget').value = c?.budget      || '';
+  $('campaignModalDesc').value   = c?.description || '';
+  $('campaignModalOverlay').classList.add('open');
+  setTimeout(() => $('campaignModalName').focus(), 60);
+}
+function closeCampaignModal() { $('campaignModalOverlay').classList.remove('open'); }
+
+$('campaignModalSaveBtn').addEventListener('click', async () => {
+  const name = $('campaignModalName').value.trim();
+  if (!name) { showToast('請填入活動名稱'); return;  }
+  const id = $('campaignModalId').value;
+  const payload = {
+    name,
+    type:        $('campaignModalType').value,
+    status:      $('campaignModalStatus').value,
+    startDate:   $('campaignModalStart').value,
+    endDate:     $('campaignModalEnd').value,
+    targetCount: parseInt($('campaignModalTarget').value) || 0,
+    budget:      parseFloat($('campaignModalBudget').value) || 0,
+    description: $('campaignModalDesc').value.trim(),
+  };
+  try {
+    const r = await fetch(`${API}/campaigns${id ? '/' + id : ''}`, {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showToast('❌ ' + (e.error||r.status)); return; }
+    showToast(id ? '活動已更新' : '活動已建立');
+    closeCampaignModal();
+    await loadCampaignsView();
+  } catch (e) { showToast('❌ 網路錯誤'); }
+});
+
+// ════════════════════════════════════════════════════════
+//  Lead 管理
+// ════════════════════════════════════════════════════════
+
+async function loadLeadsView() {
+  await fetchSalesUsers();
+  try {
+    const [lr, cr] = await Promise.all([
+      fetch(`${API}/leads`),
+      fetch(`${API}/campaigns`)
+    ]);
+    allLeads     = lr.ok ? await lr.json() : [];
+    allCampaigns = cr.ok ? await cr.json() : allCampaigns;
+  } catch { allLeads = []; }
+
+  // 活動篩選下拉
+  const campSel = $('leadCampaignFilter');
+  if (campSel) {
+    const curVal = campSel.value;
+    campSel.innerHTML = '<option value="">全部活動</option>';
+    allCampaigns.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name;
+      if (c.id === curVal) o.selected = true;
+      campSel.appendChild(o);
+    });
+    campSel.onchange = renderLeadsTable;
+  }
+
+  // Lead Modal 活動下拉也更新
+  const leadCampSel = $('leadModalCampaign');
+  if (leadCampSel) {
+    leadCampSel.innerHTML = '<option value="">-- 無活動 --</option>';
+    allCampaigns.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name;
+      leadCampSel.appendChild(o);
+    });
+  }
+
+  // 新增/搜尋事件
+  const addBtn = $('addLeadBtn');
+  const role = userPermissions.role;
+  if (addBtn) {
+    addBtn.style.display = ['marketing','manager1','manager2','admin'].includes(role) ? '' : 'none';
+    addBtn.onclick = () => openLeadModal(null);
+  }
+  const srch = $('leadSearch');
+  if (srch) srch.oninput = renderLeadsTable;
+  const statusF = $('leadStatusFilter');
+  if (statusF) statusF.onchange = renderLeadsTable;
+
+  renderLeadsTable();
+}
+
+function renderLeadsTable() {
+  const role     = userPermissions.role;
+  const canManage = ['manager1','manager2','admin'].includes(role);
+  const srch     = ($('leadSearch')?.value || '').toLowerCase();
+  const statusF  = $('leadStatusFilter')?.value || '';
+  const campF    = $('leadCampaignFilter')?.value || '';
+
+  let list = allLeads.filter(l =>
+    (!statusF || l.status === statusF) &&
+    (!campF   || l.campaignId === campF) &&
+    (!srch    || (l.company||'').toLowerCase().includes(srch) || (l.contactName||'').toLowerCase().includes(srch))
+  );
+
+  const tbody = $('leadsTbody');
+  if (!tbody) return;
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#aaa">暫無 Lead 資料</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(l => {
+    const statusLabel = LEAD_STATUS_LABEL[l.status] || l.status;
+    const statusColor = LEAD_STATUS_COLOR[l.status] || '#888';
+    const assignedName = l.assignedTo
+      ? (salesUserList.find(u => u.username === l.assignedTo)?.displayName || l.assignedTo)
+      : '—';
+    const actions = canManage ? buildLeadActions(l) : '';
+    return `<tr>
+      <td style="font-weight:500">${escapeHtml(l.company || '—')}</td>
+      <td>${escapeHtml(l.contactName || '—')}</td>
+      <td style="color:#888;font-size:12px">${escapeHtml(l.title || '—')}</td>
+      <td style="font-size:12px;color:#555">${escapeHtml(l.campaignName || '—')}</td>
+      <td><span class="lead-status-badge" style="color:${statusColor};background:${statusColor}18">${statusLabel}</span></td>
+      <td style="font-size:12px">${escapeHtml(assignedName)}</td>
+      <td style="font-size:12px;color:#aaa">${(l.createdAt||'').slice(0,10)}</td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildLeadActions(l) {
+  const btns = [];
+  btns.push(`<button class="btn btn-xs btn-secondary" onclick="openLeadModal('${l.id}')">編輯</button>`);
+  if (l.status !== 'converted' && l.status !== 'disqualified') {
+    btns.push(`<button class="btn btn-xs btn-primary" onclick="openAssignLeadModal('${l.id}')">指派</button>`);
+    btns.push(`<button class="btn btn-xs" style="background:#1e8e3e;color:#fff" onclick="openConvertLeadModal('${l.id}')">轉商機</button>`);
+    btns.push(`<button class="btn btn-xs btn-secondary" onclick="disqualifyLead('${l.id}')">不合格</button>`);
+  }
+  return btns.join(' ');
+}
+
+function openLeadModal(id) {
+  const l = id ? allLeads.find(x => x.id === id) : null;
+  $('leadModalId').value         = l?.id          || '';
+  $('leadModalHeading').textContent = l ? '編輯 Lead' : '新增 Lead';
+  $('leadModalCompany').value    = l?.company     || '';
+  $('leadModalContact').value    = l?.contactName || '';
+  $('leadModalJobTitle').value   = l?.title       || '';
+  $('leadModalPhone').value      = l?.phone       || '';
+  $('leadModalEmail').value      = l?.email       || '';
+  $('leadModalInterest').value   = l?.interest    || '';
+  $('leadModalNote').value       = l?.note        || '';
+  const campSel = $('leadModalCampaign');
+  if (campSel) campSel.value = l?.campaignId || '';
+  $('leadModalOverlay').classList.add('open');
+  setTimeout(() => $('leadModalCompany').focus(), 60);
+}
+function closeLeadModal() { $('leadModalOverlay').classList.remove('open'); }
+
+$('leadModalSaveBtn').addEventListener('click', async () => {
+  const company = $('leadModalCompany').value.trim();
+  if (!company) { showToast('請填入公司名稱'); return; }
+  const id = $('leadModalId').value;
+  const campSel = $('leadModalCampaign');
+  const campId  = campSel?.value || '';
+  const campName = campId ? (allCampaigns.find(c => c.id === campId)?.name || '') : '';
+  const payload = {
+    company,
+    contactName:  $('leadModalContact').value.trim(),
+    title:        ($('leadModalJobTitle')?.value || '').trim(),
+    phone:        $('leadModalPhone').value.trim(),
+    email:        $('leadModalEmail').value.trim(),
+    interest:     $('leadModalInterest').value.trim(),
+    note:         $('leadModalNote').value.trim(),
+    campaignId:   campId,
+    campaignName: campName,
+  };
+  try {
+    const r = await fetch(`${API}/leads${id ? '/' + id : ''}`, {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showToast('❌ ' + (e.error||r.status)); return; }
+    showToast(id ? 'Lead 已更新' : 'Lead 已建立');
+    closeLeadModal();
+    await loadLeadsView();
+  } catch { showToast('❌ 網路錯誤'); }
+});
+
+// ── 指派 Lead ─────────────────────────────────────────
+async function openAssignLeadModal(leadId) {
+  await fetchSalesUsers();
+  const l = allLeads.find(x => x.id === leadId);
+  if (!l) return;
+  $('assignLeadId').value = leadId;
+  $('assignLeadName').textContent = `${l.company || ''}${l.contactName ? ' / ' + l.contactName : ''}`;
+  const sel = $('assignSalesSel');
+  sel.innerHTML = '<option value="">請選擇業務…</option>';
+  salesUserList.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.username; o.textContent = u.displayName;
+    if (u.username === l.assignedTo) o.selected = true;
+    sel.appendChild(o);
+  });
+  $('assignLeadOverlay').classList.add('open');
+}
+function closeAssignLeadModal() { $('assignLeadOverlay').classList.remove('open'); }
+
+$('assignLeadConfirmBtn').addEventListener('click', async () => {
+  const leadId = $('assignLeadId').value;
+  const assignedTo = $('assignSalesSel').value;
+  if (!assignedTo) { showToast('請選擇業務'); return; }
+  try {
+    const r = await fetch(`${API}/leads/${leadId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedTo })
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showToast('❌ ' + (e.error||r.status)); return; }
+    showToast('✅ Lead 已指派');
+    closeAssignLeadModal();
+    await loadLeadsView();
+  } catch { showToast('❌ 網路錯誤'); }
+});
+
+// ── 轉換 Lead → 商機 ──────────────────────────────────
+async function openConvertLeadModal(leadId) {
+  await fetchSalesUsers();
+  const l = allLeads.find(x => x.id === leadId);
+  if (!l) return;
+  $('convertLeadId').value = leadId;
+  $('convertLeadCompany').value  = l.company     || '';
+  $('convertLeadContact').value  = l.contactName || '';
+  $('convertOppName').value      = l.interest    || '';
+  $('convertOppCategory').value  = '';
+  $('convertOppStage').value     = 'C';
+  const sel = $('convertSalesSel');
+  sel.innerHTML = '<option value="">請選擇業務…</option>';
+  salesUserList.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.username; o.textContent = u.displayName;
+    if (u.username === l.assignedTo) o.selected = true;
+    sel.appendChild(o);
+  });
+  $('convertLeadOverlay').classList.add('open');
+  setTimeout(() => $('convertOppName').focus(), 60);
+}
+function closeConvertLeadModal() { $('convertLeadOverlay').classList.remove('open'); }
+
+$('convertLeadConfirmBtn').addEventListener('click', async () => {
+  const leadId     = $('convertLeadId').value;
+  const oppName    = $('convertOppName').value.trim();
+  const salesPerson = $('convertSalesSel').value;
+  if (!oppName)      { showToast('請填入商機名稱'); return; }
+  if (!salesPerson)  { showToast('請選擇負責業務'); return; }
+  try {
+    const r = await fetch(`${API}/leads/${leadId}/convert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        oppName,
+        category:    $('convertOppCategory').value.trim(),
+        stage:       $('convertOppStage').value,
+        salesPerson,
+      })
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showToast('❌ ' + (e.error||r.status)); return; }
+    showToast('🎉 Lead 已成功轉換為商機！');
+    closeConvertLeadModal();
+    await loadLeadsView();
+  } catch { showToast('❌ 網路錯誤'); }
+});
+
+// ── 不合格 ────────────────────────────────────────────
+async function disqualifyLead(leadId) {
+  const l = allLeads.find(x => x.id === leadId);
+  if (!l) return;
+  if (!confirm(`確認將「${l.company || l.contactName}」標記為不合格 Lead？`)) return;
+  try {
+    const r = await fetch(`${API}/leads/${leadId}/disqualify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: '' })
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showToast('❌ ' + (e.error||r.status)); return; }
+    showToast('Lead 已標記為不合格');
+    await loadLeadsView();
+  } catch { showToast('❌ 網路錯誤'); }
 }
 
 // ── 產品 / BU 分析 ────────────────────────────────────────

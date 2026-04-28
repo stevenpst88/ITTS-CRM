@@ -784,6 +784,11 @@ function getViewableOwners(req, dataType) {
     }
     return []; // 聯絡人、拜訪記錄、合約、年度目標秘書看不到
   }
+  if (role === 'marketing') {
+    // 行銷只看自己的活動與 Lead，不看業務資料
+    if (dataType === 'campaigns' || dataType === 'leads') return [username];
+    return [];
+  }
   return [username]; // 一般業務只看自己
 }
 
@@ -2918,6 +2923,225 @@ app.put('/api/callins/:id/respond', requireAuth, (req, res) => {
       `${item.company || item.contactName}：${statusLabel[item.status] || ''}`, item.id);
   }
   res.json(item);
+});
+
+// ════════════════════════════════════════════════════════
+//  行銷管理：活動（campaigns）& 線索（leads）
+// ════════════════════════════════════════════════════════
+
+const CAMPAIGN_FIELDS = ['name','type','startDate','endDate','description','budget','targetCount','status'];
+const LEAD_FIELDS     = ['campaignId','campaignName','company','contactName','title','phone','email','interest','note','status'];
+
+// ── 行銷活動 CRUD ─────────────────────────────────────
+
+app.get('/api/campaigns', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  const data = db.load();
+  let list = data.campaigns || [];
+  if (role === 'marketing') {
+    list = list.filter(c => c.owner === username);
+  } else if (!['admin','manager1','manager2'].includes(role)) {
+    return res.json([]);
+  }
+  // 附加每個活動的 lead 統計
+  const leads = data.leads || [];
+  list = list.map(c => ({
+    ...c,
+    leadCount:     leads.filter(l => l.campaignId === c.id).length,
+    convertedCount: leads.filter(l => l.campaignId === c.id && l.status === 'converted').length,
+  }));
+  res.json(list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+});
+
+app.post('/api/campaigns', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['marketing','admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '無權限' });
+  const data = db.load();
+  if (!data.campaigns) data.campaigns = [];
+  const c = { id: uuidv4(), owner: username, ...pickFields(req.body, CAMPAIGN_FIELDS), createdAt: new Date().toISOString() };
+  if (!c.name) return res.status(400).json({ error: '請填入活動名稱' });
+  c.status = c.status || 'planned';
+  data.campaigns.push(c);
+  db.save(data);
+  res.status(201).json(c);
+});
+
+app.put('/api/campaigns/:id', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  const data = db.load();
+  const idx = (data.campaigns || []).findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '找不到活動' });
+  const c = data.campaigns[idx];
+  if (c.owner !== username && !['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '無權限' });
+  data.campaigns[idx] = { ...c, ...pickFields(req.body, CAMPAIGN_FIELDS), id: c.id, owner: c.owner };
+  db.save(data);
+  res.json(data.campaigns[idx]);
+});
+
+app.delete('/api/campaigns/:id', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  const data = db.load();
+  const idx = (data.campaigns || []).findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '找不到活動' });
+  if (data.campaigns[idx].owner !== username && !['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '無權限' });
+  data.campaigns.splice(idx, 1);
+  db.save(data);
+  res.json({ success: true });
+});
+
+// ── Lead CRUD ─────────────────────────────────────────
+
+app.get('/api/leads', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  const data = db.load();
+  let list = data.leads || [];
+  if (role === 'marketing') {
+    list = list.filter(l => l.owner === username);
+  } else if (role === 'user') {
+    list = list.filter(l => l.assignedTo === username);
+  } else if (!['admin','manager1','manager2'].includes(role)) {
+    return res.json([]);
+  }
+  // manager2 只看自己可視範圍的業務分配
+  if (role === 'manager2') {
+    const auth = loadAuth();
+    const visUsers = auth.users.filter(u => u.role === 'user' || u.username === username).map(u => u.username);
+    const allMarketing = auth.users.filter(u => u.role === 'marketing').map(u => u.username);
+    list = list.filter(l => allMarketing.includes(l.owner) || visUsers.includes(l.assignedTo) || l.assignedTo === username);
+  }
+  res.json(list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+});
+
+app.post('/api/leads', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['marketing','admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '無權限' });
+  const data = db.load();
+  if (!data.leads) data.leads = [];
+  const l = {
+    id: uuidv4(), owner: username,
+    ...pickFields(req.body, LEAD_FIELDS),
+    status: 'new',
+    assignedTo: null, assignedBy: null, assignedAt: null,
+    opportunityId: null, convertedAt: null,
+    createdAt: new Date().toISOString()
+  };
+  if (!l.company && !l.contactName) return res.status(400).json({ error: '請填入公司或聯絡人' });
+  data.leads.push(l);
+  db.save(data);
+  res.status(201).json(l);
+});
+
+app.put('/api/leads/:id', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  const data = db.load();
+  const idx = (data.leads || []).findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '找不到 Lead' });
+  const l = data.leads[idx];
+  if (l.owner !== username && !['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '無權限' });
+  data.leads[idx] = { ...l, ...pickFields(req.body, LEAD_FIELDS), id: l.id, owner: l.owner };
+  db.save(data);
+  res.json(data.leads[idx]);
+});
+
+// 指派 Lead 給業務
+app.post('/api/leads/:id/assign', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '僅主管可指派 Lead' });
+  const { assignedTo } = req.body;
+  if (!assignedTo) return res.status(400).json({ error: '請選擇指派業務' });
+  const data = db.load();
+  const auth = loadAuth();
+  const targetUser = auth.users.find(u => u.username === assignedTo && u.role === 'user');
+  if (!targetUser) return res.status(400).json({ error: '找不到此業務帳號' });
+  const l = (data.leads || []).find(l => l.id === req.params.id);
+  if (!l) return res.status(404).json({ error: '找不到 Lead' });
+  if (l.status === 'converted') return res.status(400).json({ error: 'Lead 已轉換，無法重新指派' });
+  l.assignedTo  = assignedTo;
+  l.assignedBy  = username;
+  l.assignedAt  = new Date().toISOString();
+  l.status      = 'assigned';
+  db.save(data);
+  // 通知業務
+  pushNotification(assignedTo, 'lead_assigned', '🎯 新 Lead 指派',
+    `${l.company || l.contactName} 已指派給您`, l.id);
+  res.json(l);
+});
+
+// 轉換 Lead → Contact + Opportunity
+app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '僅主管可轉換 Lead' });
+  const data = db.load();
+  const l = (data.leads || []).find(l => l.id === req.params.id);
+  if (!l) return res.status(404).json({ error: '找不到 Lead' });
+  if (l.status === 'converted') return res.status(400).json({ error: '此 Lead 已轉換' });
+
+  const salesPerson = req.body.salesPerson || l.assignedTo;
+  if (!salesPerson) return res.status(400).json({ error: '請指定負責業務' });
+  const { product, category, stage, oppName } = req.body;
+
+  if (!data.contacts) data.contacts = [];
+  if (!data.opportunities) data.opportunities = [];
+
+  // 建立聯絡人（不重複）
+  const exists = data.contacts.find(c =>
+    c.owner === salesPerson &&
+    ((l.company && c.company === l.company) || (l.contactName && c.name === l.contactName))
+  );
+  let contactId = exists ? exists.id : null;
+  if (!exists) {
+    const newContact = {
+      id: uuidv4(), owner: salesPerson,
+      name: l.contactName || '', company: l.company || '',
+      title: l.title || '', phone: l.phone || '', email: l.email || '',
+      note: `[Lead] ${l.campaignName || ''} - ${l.interest || ''}`,
+      fromLeadId: l.id, createdAt: new Date().toISOString()
+    };
+    data.contacts.push(newContact);
+    contactId = newContact.id;
+  }
+
+  // 建立商機
+  const opp = {
+    id: uuidv4(), owner: salesPerson,
+    contactId: contactId || '',
+    contactName: l.contactName || '', company: l.company || '',
+    product: oppName || product || l.interest || '',
+    category: category || '', stage: stage || 'C',
+    amount: '', expectedDate: '', grossMarginRate: '',
+    description: `來源活動：${l.campaignName || ''}`,
+    fromLeadId: l.id, createdAt: new Date().toISOString()
+  };
+  data.opportunities.push(opp);
+
+  l.status = 'converted';
+  l.opportunityId = opp.id;
+  l.convertedAt = new Date().toISOString();
+  db.save(data);
+
+  res.json({ lead: l, opportunity: opp, contactId });
+});
+
+// 標記不合格
+app.post('/api/leads/:id/disqualify', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['admin','manager1','manager2'].includes(role))
+    return res.status(403).json({ error: '僅主管可標記不合格' });
+  const data = db.load();
+  const l = (data.leads || []).find(l => l.id === req.params.id);
+  if (!l) return res.status(404).json({ error: '找不到 Lead' });
+  l.status = 'disqualified';
+  l.disqualifyReason = req.body.reason || '';
+  l.disqualifiedAt = new Date().toISOString();
+  db.save(data);
+  res.json(l);
 });
 
 // ── 取得指定業務的客戶清單（供移轉功能使用）──────────────────

@@ -2684,6 +2684,34 @@ body {
 .pnl-margin-val.warn   { color: #ffcc02; }
 .pnl-margin-val.danger { color: #ff5252; }
 
+/* ── 行銷管理：活動卡片 & Lead ── */
+.campaign-card {
+  background: #fff; border-radius: 12px; padding: 18px 20px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.09); display: flex; flex-direction: column; gap: 8px;
+  transition: box-shadow .15s;
+}
+.campaign-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.13); }
+.campaign-card-header { display: flex; gap: 8px; align-items: center; }
+.campaign-type-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #e8f0fe; color: #1a73e8; font-weight: 600;
+}
+.campaign-status-badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: auto;
+}
+.campaign-card-name { font-size: 15px; font-weight: 700; color: #202124; }
+.campaign-card-date { font-size: 12px; color: #888; }
+.campaign-card-desc { font-size: 12px; color: #666; line-height: 1.5; }
+.campaign-card-stats { display: flex; gap: 16px; margin-top: 4px; }
+.campaign-stat { text-align: center; }
+.campaign-stat-val { font-size: 18px; font-weight: 700; color: #202124; }
+.campaign-stat-lbl { font-size: 11px; color: #aaa; margin-top: 2px; }
+.campaign-card-actions { display: flex; gap: 8px; margin-top: 8px; border-top: 1px solid #f0f0f0; padding-top: 10px; }
+
+/* Lead 狀態 badge */
+.lead-status-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.btn-xs { padding: 3px 8px !important; font-size: 12px !important; border-radius: 5px !important; }
+
 /* ── 管理儀表板（Executive Dashboard） ── */
 .exec-filter-bar {
   display: flex; align-items: center; flex-wrap: wrap;

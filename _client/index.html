@@ -64,6 +64,19 @@
           <span class="nav-label">管理儀表板</span>
         </div>
 
+        <!-- 行銷活動（marketing / manager / admin） -->
+        <div class="sidebar-nav-item" id="navCampaigns" data-section="campaigns" style="display:none">
+          <span class="nav-icon">&#128226;</span>
+          <span class="nav-label">行銷活動</span>
+        </div>
+
+        <!-- Lead 管理（marketing / manager / user 被分配者） -->
+        <div class="sidebar-nav-item" id="navLeads" data-section="leads" style="display:none">
+          <span class="nav-icon">&#127919;</span>
+          <span class="nav-label">Lead 管理</span>
+          <span class="nav-badge" id="leadsBadge" style="display:none">0</span>
+        </div>
+
         <div class="sidebar-nav-item" id="navQuotations" data-section="quotations">
           <span class="nav-icon">&#128203;</span>
           <span class="nav-label">報價單管理</span>
@@ -599,6 +612,238 @@
               </div>
             </div>
 
+          </div>
+        </div>
+
+        <!-- ── 行銷活動 ── -->
+        <div id="campaignsView" style="display:none">
+          <div class="view-toolbar">
+            <select id="campaignTypeFilter" class="forecast-year-sel">
+              <option value="">全部類型</option>
+              <option value="seminar">研討會</option>
+              <option value="webinar">Webinar</option>
+              <option value="digital">數位廣告</option>
+              <option value="exhibition">展覽</option>
+              <option value="other">其他</option>
+            </select>
+            <select id="campaignStatusFilter" class="forecast-year-sel">
+              <option value="">全部狀態</option>
+              <option value="planned">計畫中</option>
+              <option value="active">進行中</option>
+              <option value="completed">已完成</option>
+              <option value="cancelled">已取消</option>
+            </select>
+            <button class="btn btn-primary" id="addCampaignBtn">＋ 新增活動</button>
+          </div>
+          <div id="campaignCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:4px"></div>
+        </div>
+
+        <!-- ── Lead 管理 ── -->
+        <div id="leadsView" style="display:none">
+          <div class="view-toolbar" style="flex-wrap:wrap;gap:8px">
+            <input type="text" id="leadSearch" placeholder="搜尋公司、姓名…" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:180px">
+            <select id="leadStatusFilter" class="forecast-year-sel">
+              <option value="">全部狀態</option>
+              <option value="new">🆕 新進</option>
+              <option value="assigned">📋 已指派</option>
+              <option value="converted">✅ 已轉商機</option>
+              <option value="disqualified">❌ 不合格</option>
+            </select>
+            <select id="leadCampaignFilter" class="forecast-year-sel">
+              <option value="">全部活動</option>
+            </select>
+            <button class="btn btn-primary" id="addLeadBtn">＋ 新增 Lead</button>
+          </div>
+          <div class="table-wrap" style="margin-top:8px">
+            <table class="data-table" id="leadsTable">
+              <thead><tr>
+                <th>公司</th><th>姓名</th><th>職稱</th><th>活動來源</th>
+                <th>狀態</th><th>指派業務</th><th>建立日期</th><th>操作</th>
+              </tr></thead>
+              <tbody id="leadsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 指派 Lead Modal -->
+        <div class="modal-overlay" id="assignLeadOverlay">
+          <div class="modal-box" style="max-width:400px">
+            <div class="modal-header"><span>指派 Lead 給業務</span><button class="modal-close" onclick="closeAssignLeadModal()">✕</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="assignLeadId">
+              <div class="form-group">
+                <label>Lead：<span id="assignLeadName" style="font-weight:600;color:#1a73e8"></span></label>
+              </div>
+              <div class="form-group">
+                <label>指派給業務 <span style="color:red">*</span></label>
+                <select id="assignSalesSel" class="forecast-year-sel" style="width:100%">
+                  <option value="">請選擇…</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeAssignLeadModal()">取消</button>
+              <button class="btn btn-primary" id="assignLeadConfirmBtn">確認指派</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 轉換商機 Modal -->
+        <div class="modal-overlay" id="convertLeadOverlay">
+          <div class="modal-box" style="max-width:460px">
+            <div class="modal-header"><span>🎯 轉換為商機</span><button class="modal-close" onclick="closeConvertLeadModal()">✕</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="convertLeadId">
+              <div class="form-group">
+                <label>客戶</label>
+                <input type="text" id="convertLeadCompany" class="form-control" readonly style="background:#f5f5f5">
+              </div>
+              <div class="form-group">
+                <label>聯絡人</label>
+                <input type="text" id="convertLeadContact" class="form-control" readonly style="background:#f5f5f5">
+              </div>
+              <div class="form-group">
+                <label>商機名稱 / 產品 <span style="color:red">*</span></label>
+                <input type="text" id="convertOppName" class="form-control" placeholder="例：ERP 系統採購">
+              </div>
+              <div class="form-group">
+                <label>BU / 產品線</label>
+                <input type="text" id="convertOppCategory" class="form-control" placeholder="例：ERP">
+              </div>
+              <div class="form-group">
+                <label>初始階段</label>
+                <select id="convertOppStage" class="forecast-year-sel" style="width:100%">
+                  <option value="C">C｜Pipeline</option>
+                  <option value="B">B｜Upside</option>
+                  <option value="A">A｜Commit</option>
+                </select>
+              </div>
+              <div class="form-group" id="convertSalesWrap">
+                <label>負責業務 <span style="color:red">*</span></label>
+                <select id="convertSalesSel" class="forecast-year-sel" style="width:100%">
+                  <option value="">請選擇…</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeConvertLeadModal()">取消</button>
+              <button class="btn btn-primary" id="convertLeadConfirmBtn">✅ 確認轉換</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 行銷活動 Modal -->
+        <div class="modal-overlay" id="campaignModalOverlay">
+          <div class="modal-box" style="max-width:500px">
+            <div class="modal-header"><span id="campaignModalTitle">新增行銷活動</span><button class="modal-close" onclick="closeCampaignModal()">✕</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="campaignModalId">
+              <div class="form-group">
+                <label>活動名稱 <span style="color:red">*</span></label>
+                <input type="text" id="campaignModalName" class="form-control" placeholder="例：2026 ERP 研討會">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                  <label>活動類型</label>
+                  <select id="campaignModalType" class="form-control">
+                    <option value="seminar">研討會</option>
+                    <option value="webinar">Webinar</option>
+                    <option value="digital">數位廣告</option>
+                    <option value="exhibition">展覽</option>
+                    <option value="other">其他</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>狀態</label>
+                  <select id="campaignModalStatus" class="form-control">
+                    <option value="planned">計畫中</option>
+                    <option value="active">進行中</option>
+                    <option value="completed">已完成</option>
+                    <option value="cancelled">已取消</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                  <label>開始日期</label>
+                  <input type="date" id="campaignModalStart" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>結束日期</label>
+                  <input type="date" id="campaignModalEnd" class="form-control">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                  <label>目標人數</label>
+                  <input type="number" id="campaignModalTarget" class="form-control" placeholder="0" min="0">
+                </div>
+                <div class="form-group">
+                  <label>預算（萬）</label>
+                  <input type="number" id="campaignModalBudget" class="form-control" placeholder="0" min="0" step="0.1">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>活動說明</label>
+                <textarea id="campaignModalDesc" class="form-control" rows="3" placeholder="活動主題、目標客群…"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeCampaignModal()">取消</button>
+              <button class="btn btn-primary" id="campaignModalSaveBtn">儲存</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lead 新增/編輯 Modal -->
+        <div class="modal-overlay" id="leadModalOverlay">
+          <div class="modal-box" style="max-width:500px">
+            <div class="modal-header"><span id="leadModalHeading">新增 Lead</span><button class="modal-close" onclick="closeLeadModal()">✕</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="leadModalId">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                  <label>公司名稱 <span style="color:red">*</span></label>
+                  <input type="text" id="leadModalCompany" class="form-control" placeholder="公司名稱">
+                </div>
+                <div class="form-group">
+                  <label>聯絡人</label>
+                  <input type="text" id="leadModalContact" class="form-control" placeholder="姓名">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                  <label>職稱</label>
+                  <input type="text" id="leadModalJobTitle" class="form-control" placeholder="例：IT 主管">
+                </div>
+                <div class="form-group">
+                  <label>電話</label>
+                  <input type="tel" id="leadModalPhone" class="form-control" placeholder="02-xxxx-xxxx">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="leadModalEmail" class="form-control" placeholder="xxx@company.com">
+              </div>
+              <div class="form-group">
+                <label>來源活動</label>
+                <select id="leadModalCampaign" class="form-control">
+                  <option value="">-- 無活動 --</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>需求說明</label>
+                <input type="text" id="leadModalInterest" class="form-control" placeholder="例：ERP 採購詢問">
+              </div>
+              <div class="form-group">
+                <label>備註</label>
+                <textarea id="leadModalNote" class="form-control" rows="2"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeLeadModal()">取消</button>
+              <button class="btn btn-primary" id="leadModalSaveBtn">儲存</button>
+            </div>
           </div>
         </div>
 
