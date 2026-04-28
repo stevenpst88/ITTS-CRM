@@ -415,14 +415,16 @@
               <select id="forecastSalesFilter" class="forecast-year-sel" style="display:none">
                 <option value="">全部業務</option>
               </select>
-              <!-- 把握度篩選 -->
-              <select id="forecastStageFilter" class="forecast-year-sel" style="display:none">
-                <option value="">全部階段</option>
-                <option value="A">A｜Commit</option>
-                <option value="B">B｜Upside</option>
-                <option value="C">C｜Pipeline</option>
-                <option value="Won">🏆 Won</option>
-              </select>
+              <!-- 把握度多選篩選 -->
+              <div id="forecastStageWrap" class="fc-multisel-wrap" style="display:none;position:relative">
+                <button type="button" id="forecastStageBtn" class="forecast-year-sel fc-multisel-btn">全部階段 ▾</button>
+                <div id="forecastStagePanel" class="fc-multisel-panel" style="display:none">
+                  <label class="fc-chk-row"><input type="checkbox" class="fc-stage-chk" value="A"> A｜Commit</label>
+                  <label class="fc-chk-row"><input type="checkbox" class="fc-stage-chk" value="B"> B｜Upside</label>
+                  <label class="fc-chk-row"><input type="checkbox" class="fc-stage-chk" value="C"> C｜Pipeline</label>
+                  <label class="fc-chk-row"><input type="checkbox" class="fc-stage-chk" value="Won"> 🏆 Won</label>
+                </div>
+              </div>
               <span class="forecast-hint">依商機「預定簽約日期」所屬年度顯示</span>
             </div>
             <button class="btn btn-export" id="forecastExportBtn">&#11015; 匯出 Excel</button>

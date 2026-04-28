@@ -3285,6 +3285,7 @@ $('oppFilterStage').addEventListener('change', renderOppTable);
 
 // ── 銷售預測報表 ─────────────────────────────────────────
 let forecastYear = new Date().getFullYear();
+let forecastSelectedStages = [];   // 空陣列 = 全部階段
 
 // 階段 → 把握度%
 const STAGE_CONFIDENCE = { D: 10, C: 25, B: 50, A: 90, Won: 100 };
@@ -3335,12 +3336,10 @@ function initForecastYearSel() {
 function initForecastSalesFilter() {
   const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
   const salesFilter = $('forecastSalesFilter');
-  const stageFilter = $('forecastStageFilter');
   if (!canFilter) return;
 
-  // 顯示篩選欄
+  // 顯示業務篩選
   if (salesFilter) salesFilter.style.display = '';
-  if (stageFilter) stageFilter.style.display = '';
 
   // 填入業務人員（避免重複加）
   if (salesFilter) {
@@ -3353,29 +3352,73 @@ function initForecastSalesFilter() {
         salesFilter.appendChild(o);
       }
     });
-    // 只綁一次
     if (!salesFilter.dataset.bound) {
       salesFilter.addEventListener('change', renderForecastTable);
       salesFilter.dataset.bound = '1';
     }
   }
 
-  if (stageFilter && !stageFilter.dataset.bound) {
-    stageFilter.addEventListener('change', renderForecastTable);
-    stageFilter.dataset.bound = '1';
+  // 顯示並初始化階段多選下拉
+  initForecastStageMultiSel();
+}
+
+function initForecastStageMultiSel() {
+  const wrap  = $('forecastStageWrap');
+  const btn   = $('forecastStageBtn');
+  const panel = $('forecastStagePanel');
+  if (!wrap || !btn || !panel) return;
+  if (wrap.dataset.bound) return;
+  wrap.dataset.bound = '1';
+
+  wrap.style.display = '';
+
+  // 按鈕開/關 panel
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : '';
+  });
+
+  // 點 checkbox → 更新 state + 重算
+  panel.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('fc-stage-chk')) return;
+    forecastSelectedStages = Array.from(
+      panel.querySelectorAll('.fc-stage-chk:checked')
+    ).map(c => c.value);
+    _updateForecastStageBtn();
+    renderForecastTable();
+  });
+
+  // 點外部關閉
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) panel.style.display = 'none';
+  }, true);
+
+  function _updateForecastStageBtn() {
+    const n = forecastSelectedStages.length;
+    const STAGE_NAMES = { A:'Commit', B:'Upside', C:'Pipeline', Won:'Won' };
+    if (n === 0) {
+      btn.textContent = '全部階段 ▾';
+      btn.classList.remove('active');
+    } else if (n === 1) {
+      btn.textContent = (STAGE_NAMES[forecastSelectedStages[0]] || forecastSelectedStages[0]) + ' ▾';
+      btn.classList.add('active');
+    } else {
+      btn.textContent = `已選 ${n} 個階段 ▾`;
+      btn.classList.add('active');
+    }
   }
 }
 
 function getForecastOpps(year) {
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
-  const stageVal = $('forecastStageFilter') ? $('forecastStageFilter').value : '';
 
   return allOpportunities.filter(o => {
     if (!o.expectedDate) return false;
     if (o.stage === 'D') return false;          // D 階段不納入銷售預測
     if (new Date(o.expectedDate).getFullYear() !== year) return false;
     if (salesVal && o.owner !== salesVal) return false;   // 業務人員篩選
-    if (stageVal && o.stage !== stageVal) return false;   // 把握度篩選
+    if (forecastSelectedStages.length && !forecastSelectedStages.includes(o.stage)) return false;  // 多選階段篩選
     return true;
   });
 }
@@ -3396,10 +3439,10 @@ function renderForecastTable() {
 
   // ── 篩選標籤（顯示目前套用的條件）──
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
-  const stageVal = $('forecastStageFilter') ? $('forecastStageFilter').value : '';
   const salesLabel = salesVal ? (forecastUserMap[salesVal] || salesVal) : '';
-  const stageLabel = stageVal ? ({ A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', Won:'Won' }[stageVal] || stageVal) : '';
-  const filterTags = [salesLabel, stageLabel].filter(Boolean);
+  const STAGE_TAG_NAMES = { A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', Won:'Won' };
+  const stageLabels = forecastSelectedStages.map(s => STAGE_TAG_NAMES[s] || s);
+  const filterTags = [salesLabel, ...stageLabels].filter(Boolean);
   const filterHint = filterTags.length
     ? `<div style="font-size:12px;color:#1a73e8;margin-bottom:6px">
         篩選中：${filterTags.map(t=>`<span style="background:#e8f0fe;border-radius:4px;padding:2px 8px;margin-right:4px">${t}</span>`).join('')}
