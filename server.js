@@ -2552,7 +2552,7 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
 
   const result = {
     companyName: '', representative: '', capital: '', address: '', companyStatus: '',
-    listedType: '未上市櫃', stockCode: '', exchange: '',
+    listedType: '未上市櫃', stockCode: '', exchange: '', website: '',
     revenue2025: 'N/A', grossMargin2025: 'N/A',
     revenue2024: 'N/A', grossMargin2024: 'N/A',
     eps: 'N/A', epsYear: '',
@@ -2622,6 +2622,27 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
       }
     }
   } catch (e) { /* ignore */ }
+
+  // 2.5 抓取公司官網（MOPS 公開資訊觀測站）
+  if (result.stockCode) {
+    try {
+      const typek = result.listedType === '上市' ? 'sii' : 'otc';
+      const mopsR = await fetch(
+        `https://mops.twse.com.tw/mops/web/ajax_t108sb01?inpuType=co_id&TYPEK=${typek}&isnew=false&co_id=${result.stockCode}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' }, signal: AbortSignal.timeout(6000) }
+      );
+      if (mopsR.ok) {
+        const html = await mopsR.text();
+        // 解析 MOPS 頁面中的「公司網址」欄位
+        const linkMatch = html.match(/公司網址[\s\S]{0,200}?href=['"]([^'"]{5,})['"]/i);
+        const textMatch = html.match(/公司網址[\s\S]{0,200}?>(https?:\/\/[^\s<"']+)/i);
+        const rawUrl = (linkMatch?.[1] || textMatch?.[1] || '').trim();
+        if (rawUrl && /^https?:\/\//i.test(rawUrl)) {
+          result.website = rawUrl.replace(/\/$/, '');
+        }
+      }
+    } catch { /* ignore */ }
+  }
 
   // 3. 財務數據（僅上市/上櫃）
   if (result.stockCode) {

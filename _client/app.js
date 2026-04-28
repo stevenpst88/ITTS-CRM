@@ -1335,7 +1335,10 @@ $('lookupBtn').addEventListener('click', async () => {
     renderCompanyInfo(d);
     // 自動回填 Tab1 欄位（如果是空的）
     if (d.companyName && !$('company').value) $('company').value = d.companyName;
-    if (d.address && !$('address').value) $('address').value = d.address;
+    if (d.address   && !$('address').value)   $('address').value = d.address;
+    if (d.website   && !$('website').value)   $('website').value = d.website;
+    // 同步更新 AI 公司分析的網址欄位
+    if (d.website) $('companyInsightUrl').value = d.website;
   } catch { showToast('查詢失敗，請確認網路連線'); result.innerHTML = '<div class="lookup-hint">查詢失敗，請稍後再試</div>'; }
 });
 
