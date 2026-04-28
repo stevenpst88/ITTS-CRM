@@ -2558,7 +2558,7 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     eps: 'N/A', epsYear: '',
   };
 
-  // 1. 經濟部商業司
+  // 1. 經濟部商業司（基本資料 + 通訊資料）
   try {
     const r = await fetch(
       `https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO eq ${taxId}&$skip=0&$top=1`,
@@ -2567,14 +2567,51 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     if (r.ok) {
       const data = await r.json();
       if (data?.[0]) {
-        result.companyName  = data[0].Company_Name || '';
+        result.companyName   = data[0].Company_Name || '';
         result.representative = data[0].Responsible_Name || '';
-        result.capital      = formatCapital(data[0].Capital_Stock_Amount);
-        result.address      = data[0].Company_Location || '';
+        result.capital       = formatCapital(data[0].Capital_Stock_Amount);
+        result.address       = data[0].Company_Location || '';
         result.companyStatus = data[0].Company_Status_Desc || '';
+        // GCIS 有時含 Email 欄位，可推算官網 domain
+        const gcisEmail = data[0].Company_Email || data[0].E_Mail || '';
+        if (gcisEmail && gcisEmail.includes('@')) {
+          const domain = gcisEmail.split('@')[1].toLowerCase().trim();
+          if (domain && !domain.includes('gmail') && !domain.includes('yahoo') &&
+              !domain.includes('hotmail') && !domain.includes('outlook')) {
+            result._emailDomain = 'https://www.' + domain; // 暫存，稍後用作備援
+          }
+        }
       }
     }
   } catch (e) { /* ignore */ }
+
+  // 1.5 GCIS 通訊資料（含公司網址欄位）
+  try {
+    const r2 = await fetch(
+      `https://data.gcis.nat.gov.tw/od/data/api/9A6764F8-C567-4B97-985A-B2FFA47A7B4F?$format=json&$filter=Business_Accounting_NO eq ${taxId}&$skip=0&$top=1`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(6000) }
+    );
+    if (r2.ok) {
+      const d2 = await r2.json();
+      if (d2?.[0]) {
+        const rawWeb = d2[0].Company_Website || d2[0].Website || d2[0].website || '';
+        if (rawWeb && rawWeb.length > 4) {
+          result.website = /^https?:\/\//i.test(rawWeb) ? rawWeb : 'https://' + rawWeb;
+          result.website = result.website.replace(/\/$/, '');
+        }
+        // 備援 email domain
+        if (!result._emailDomain) {
+          const email2 = d2[0].Company_Email || d2[0].E_Mail || '';
+          if (email2 && email2.includes('@')) {
+            const domain = email2.split('@')[1].toLowerCase().trim();
+            if (domain && !['gmail.com','yahoo.com','yahoo.com.tw','hotmail.com','outlook.com'].includes(domain)) {
+              result._emailDomain = 'https://www.' + domain;
+            }
+          }
+        }
+      }
+    }
+  } catch { /* ignore */ }
 
   // 2. 上市/上櫃判斷
   try {
@@ -2643,6 +2680,39 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
       }
     } catch { /* ignore */ }
   }
+
+  // 2.6 未上市/上櫃備援：DuckDuckGo Instant Answer（免費，無需 API Key）
+  if (!result.website && result.companyName) {
+    try {
+      const query = encodeURIComponent(result.companyName + ' 官方網站');
+      const ddgR = await fetch(
+        `https://api.duckduckgo.com/?q=${query}&format=json&no_redirect=1&no_html=1&skip_disambig=1`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) }
+      );
+      if (ddgR.ok) {
+        const ddg = await ddgR.json();
+        // 從 Infobox 找 Website 欄位（知名企業通常有）
+        const infoItems = ddg.Infobox?.content || [];
+        const webItem = infoItems.find(item =>
+          /^(website|official website|官網|網址|home ?page)/i.test(item.label || '')
+        );
+        if (webItem?.value && /^https?:\/\//i.test(webItem.value)) {
+          result.website = webItem.value.replace(/\/+$/, '');
+        }
+        // 備援：AbstractURL 非 wikipedia 則使用
+        if (!result.website && ddg.AbstractURL &&
+            !/wikipedia|wikimedia/i.test(ddg.AbstractURL)) {
+          result.website = ddg.AbstractURL;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 2.7 最終備援：使用 GCIS Email 推算 domain（已知不是公版信箱）
+  if (!result.website && result._emailDomain) {
+    result.website = result._emailDomain;
+  }
+  delete result._emailDomain; // 清除暫存欄位
 
   // 3. 財務數據（僅上市/上櫃）
   if (result.stockCode) {
