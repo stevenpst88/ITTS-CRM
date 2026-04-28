@@ -687,6 +687,20 @@
         <!-- ── 業務年度目標 ── -->
         <div id="targetsView" style="display:none">
 
+          <!-- 主管業績達成率總覽（manager1/manager2/admin 才顯示） -->
+          <div id="managerAchSection" style="display:none;margin-bottom:20px">
+            <div class="pr-card" style="padding:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+                <div style="font-weight:700;font-size:16px;color:#1a73e8">📊 業務團隊業績達成率</div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <label style="font-size:13px;color:#555">年度：</label>
+                  <select id="managerAchYear" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff"></select>
+                </div>
+              </div>
+              <div id="managerAchTable"></div>
+            </div>
+          </div>
+
           <!-- 目標設定卡 -->
           <div class="target-set-card">
             <div class="target-set-title">&#127919; 設定年度業績目標</div>

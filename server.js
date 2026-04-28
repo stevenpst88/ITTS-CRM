@@ -1040,6 +1040,72 @@ app.delete('/api/visits/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ── 主管業績達成率總覽 ───────────────────────────────────
+app.get('/api/manager/achievement', requireAuth, (req, res) => {
+  const { role, username } = req.session.user;
+  if (!['manager1', 'manager2', 'admin'].includes(role)) {
+    return res.status(403).json({ error: '權限不足' });
+  }
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const auth = loadAuth();
+  const data = db.load();
+  const viewableUsernames = getViewableOwners(req, 'opportunities');
+
+  // 只列業務 & 二級主管（依角色過濾顯示範圍）
+  const salesUsers = auth.users.filter(u => viewableUsernames.includes(u.username));
+
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
+
+  const rows = salesUsers.map(u => {
+    const target = (data.targets || []).find(t => t.owner === u.username && t.year === year);
+    const myOpps = (data.opportunities || []).filter(o => o.owner === u.username);
+
+    // 成交：以 achievedDate 為準，無則 createdAt
+    const achieved = myOpps
+      .filter(o => o.stage === '成交' || o.stage === 'Won')
+      .filter(o => {
+        const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+        return d >= yearStart && d <= yearEnd;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+    // 在手商機（排除成交、D 停止中）
+    const pipeline = myOpps
+      .filter(o => !['成交','Won','D'].includes(o.stage))
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+    const wonCount = myOpps.filter(o => (o.stage === '成交' || o.stage === 'Won') && (() => {
+      const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+      return d >= yearStart && d <= yearEnd;
+    })()).length;
+
+    const targetAmt = target ? (parseFloat(target.amount) || 0) : 0;
+    const rate = targetAmt > 0 ? Math.round(achieved / targetAmt * 100) : null;
+
+    return {
+      username:    u.username,
+      displayName: u.displayName || u.username,
+      role:        u.role,
+      target:      targetAmt,
+      achieved,
+      pipeline,
+      wonCount,
+      rate,  // null = 未設目標
+    };
+  });
+
+  // 按達成率降冪，未設目標排最後
+  rows.sort((a, b) => {
+    if (a.rate === null && b.rate === null) return b.achieved - a.achieved;
+    if (a.rate === null) return 1;
+    if (b.rate === null) return -1;
+    return b.rate - a.rate;
+  });
+
+  res.json({ year, rows });
+});
+
 // ── 年度目標 CRUD ────────────────────────────────────────
 app.get('/api/targets', requireAuth, (req, res) => {
   const data = db.load();

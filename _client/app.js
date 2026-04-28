@@ -1952,11 +1952,13 @@ $('exportBtn').addEventListener('click', async () => {
 });
 
 // ── 登入者資訊 & 登出 ────────────────────────────────────
+window._myRole = 'user'; // 全域存角色，供其他函式判斷
 async function initUser() {
   try {
     const res = await fetch('/api/me');
     if (res.status === 401) { window.location.href = '/login.html'; return; }
     const user = await res.json();
+    window._myRole = user.role || 'user';
     $('sidebarUser').textContent = user.displayName;
     const ROLE_LABEL = { admin:'管理者', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'' };
     const roleLabel = ROLE_LABEL[user.role] || '';
@@ -2839,6 +2841,67 @@ $('oppEditSave').addEventListener('click', async () => {
   } catch { showToast('儲存失敗，請重試'); }
 });
 
+// ── 主管業績達成率總覽 ────────────────────────────────────
+let managerAchYearBuilt = false;
+
+async function loadManagerAchievement(year) {
+  const section = $('managerAchSection');
+  if (!section) return;
+  try {
+    const res = await fetch(`/api/manager/achievement?year=${year}`);
+    if (!res.ok) return;
+    const { rows } = await res.json();
+    const container = $('managerAchTable');
+
+    if (!rows.length) { container.innerHTML = '<div style="color:#aaa;text-align:center;padding:20px">暫無資料</div>'; return; }
+
+    const fmt = n => (n || 0).toLocaleString();
+    const rateColor = r => r === null ? '#aaa' : r >= 100 ? '#0a8a4a' : r >= 70 ? '#1a73e8' : r >= 40 ? '#f59e0b' : '#e53e3e';
+    const rateText  = r => r === null ? '未設目標' : r + '%';
+    const barW      = r => r === null ? 0 : Math.min(r, 100);
+
+    container.innerHTML = `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f0f4ff;color:#555">
+              <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e0e7ef">業務人員</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">年度目標</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">已成交</th>
+              <th style="padding:10px 12px;text-align:center;font-weight:600;border-bottom:2px solid #e0e7ef;min-width:200px">達成率</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">在手商機</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">成交件數</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r, i) => `
+              <tr style="border-bottom:1px solid #f0f0f0;${i % 2 === 1 ? 'background:#fafbff' : ''}">
+                <td style="padding:11px 12px;font-weight:600;color:#333">
+                  ${r.displayName}
+                  <span style="font-size:11px;color:#aaa;font-weight:400;margin-left:4px">${r.role === 'manager2' ? '(二級主管)' : r.role === 'manager1' ? '(一級主管)' : ''}</span>
+                </td>
+                <td style="padding:11px 12px;text-align:right;color:#555">${r.target ? fmt(r.target) + ' 萬' : '<span style="color:#ccc">未設定</span>'}</td>
+                <td style="padding:11px 12px;text-align:right;font-weight:600;color:#0a8a4a">${fmt(r.achieved)} 萬</td>
+                <td style="padding:11px 12px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;background:#eee;border-radius:4px;height:8px;overflow:hidden">
+                      <div style="width:${barW(r.rate)}%;background:${rateColor(r.rate)};height:100%;border-radius:4px;transition:width .4s"></div>
+                    </div>
+                    <span style="font-size:13px;font-weight:700;color:${rateColor(r.rate)};min-width:56px;text-align:right">${rateText(r.rate)}</span>
+                  </div>
+                </td>
+                <td style="padding:11px 12px;text-align:right;color:#1a73e8">${fmt(r.pipeline)} 萬</td>
+                <td style="padding:11px 12px;text-align:right;color:#555">${r.wonCount} 件</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    console.error('loadManagerAchievement error', e);
+  }
+}
+
 // ── 年度目標管理 ─────────────────────────────────────────
 let allTargets = [];
 let allLostOppsForTargets = [];
@@ -2914,6 +2977,28 @@ async function loadTargetsView() {
 
   // 歷史目標
   renderTargetHistory();
+
+  // ── 主管業績達成率總覽（manager1 / manager2 / admin 才顯示）──
+  if (['manager1', 'manager2', 'admin'].includes(window._myRole)) {
+    const section = $('managerAchSection');
+    if (section) {
+      section.style.display = 'block';
+      // 建立年度選單（只建一次）
+      if (!managerAchYearBuilt) {
+        managerAchYearBuilt = true;
+        const achYearSel = $('managerAchYear');
+        achYearSel.innerHTML = '';
+        for (let y = curYear + 1; y >= curYear - 3; y--) {
+          const opt = document.createElement('option');
+          opt.value = y; opt.textContent = y + ' 年';
+          if (y === curYear) opt.selected = true;
+          achYearSel.appendChild(opt);
+        }
+        achYearSel.addEventListener('change', () => loadManagerAchievement(parseInt(achYearSel.value)));
+      }
+      loadManagerAchievement(curYear);
+    }
+  }
 
   // 商機列表篩選年度選單
   const oppYearSel = $('oppFilterYear');
