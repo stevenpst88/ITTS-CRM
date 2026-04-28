@@ -1583,6 +1583,11 @@ function openModal(contact = null) {
     $('jobFunction').value = '';
     renderJfSelector('');
   }
+  // AI 公司背景分析：帶入官網網址、清空上次結果
+  $('companyInsightUrl').value            = contact?.website || '';
+  $('companyInsightResult').style.display = 'none';
+  $('companyInsightResult').innerHTML     = '';
+
   $('modalOverlay').classList.add('open');
   $('name').focus();
 }
