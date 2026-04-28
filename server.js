@@ -522,7 +522,7 @@ app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
     const daysToClose = opp.expectedDate
       ? Math.round((new Date(opp.expectedDate) - new Date()) / 86400000)
       : null;
-    const STAGE_LABEL_AI = { D:'D（靜止）', C:'C（Pipeline）', B:'B（Upside）', A:'A（Commit）', '成交':'成交', Won:'Won' };
+    const STAGE_LABEL_AI = { D:'D（靜止）', C:'C（Pipeline）', B:'B（Upside）', A:'A（Commit）', Won:'Won' };
 
     const model = gemini.getModel();
     const result = await model.generateContent(
@@ -588,7 +588,7 @@ app.post('/api/ai/contact-summary', requireAuth, requireAi, async (req, res) => 
 
     // 進行中商機
     const opps = (data.opportunities || []).filter(o =>
-      o.contactId === contactId && o.stage !== 'D' && o.stage !== '成交' && o.stage !== 'Won'
+      o.contactId === contactId && o.stage !== 'D' && o.stage !== 'Won'
     );
     const oppSummary = opps.length
       ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}萬`).join('；')
@@ -1063,19 +1063,19 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
 
     // 成交：以 achievedDate 為準，無則 createdAt
     const achieved = myOpps
-      .filter(o => o.stage === '成交' || o.stage === 'Won')
+      .filter(o => o.stage === 'Won')
       .filter(o => {
         const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
         return d >= yearStart && d <= yearEnd;
       })
       .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
-    // 在手商機（排除成交、D 停止中）
+    // 在手商機（排除 Won、D 停止中）
     const pipeline = myOpps
-      .filter(o => !['成交','Won','D'].includes(o.stage))
+      .filter(o => !['Won','D'].includes(o.stage))
       .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
-    const wonCount = myOpps.filter(o => (o.stage === '成交' || o.stage === 'Won') && (() => {
+    const wonCount = myOpps.filter(o => o.stage === 'Won' && (() => {
       const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
       return d >= yearStart && d <= yearEnd;
     })()).length;
@@ -1228,9 +1228,9 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
 });
 
 // ── 商機動態報表 ──────────────────────────────────────────
-// 從低到高排列：D(靜止) → C(Pipeline) → B(Upside) → A(Commit) → 成交
-const STAGE_ORDER = ['D','C','B','A','成交','Won'];
-const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A｜Commit', '成交':'✅ 成交', Won:'🏆 Won' };
+// 從低到高排列：D(靜止) → C(Pipeline) → B(Upside) → A(Commit) → Won
+const STAGE_ORDER = ['D','C','B','A','Won'];
+const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A｜Commit', Won:'🏆 Won' };
 app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const { from, to, owner: ownerFilter } = req.query;
   const now = new Date();
@@ -1317,8 +1317,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
     summary: {
-      totalPipeline: sum(opps.filter(o=>o.stage!=='成交'&&o.stage!=='Won'&&o.stage!=='D')),
-      totalCount:    opps.filter(o=>o.stage!=='成交'&&o.stage!=='Won'&&o.stage!=='D').length,
+      totalPipeline: sum(opps.filter(o=>o.stage!=='Won'&&o.stage!=='D')),
+      totalCount:    opps.filter(o=>o.stage!=='Won'&&o.stage!=='D').length,
       newAmount:  sum(newDeals), newCount: newDeals.length,
       lostAmount: sum(lostDeals), lostCount: lostDeals.length,
       promotedAmount: sum(promoted), promotedCount: promoted.length,
@@ -1403,7 +1403,7 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
   const zombies = [];
 
   (data.opportunities || [])
-    .filter(o => owners.includes(o.owner) && o.stage !== '成交' && o.stage !== 'Won')
+    .filter(o => owners.includes(o.owner) && o.stage !== 'Won')
     .forEach(o => {
       // 彙整此商機相關的所有拜訪
       const seen = new Set();
@@ -1513,8 +1513,8 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
 });
 
 // ── 銷售預測 Excel 匯出 ──────────────────────────────────
-const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, '成交': 100, Won: 100 };
-const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', '成交': '成交', Won: 'Won' };
+const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, Won: 100 };
+const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', Won: 'Won' };
 
 app.get('/api/forecast/export', requireAuth, (req, res) => {
   const yr   = parseInt(req.query.year) || new Date().getFullYear();
@@ -1612,11 +1612,11 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const userMap = {};
   (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
 
-  const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', '成交': '成交', Won: 'Won' };
+  const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', Won: 'Won' };
 
   const headers = [
     '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
-    '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/成交)',
+    '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
     '合約金額(萬元)', '預估毛利率(%)', '備註(description)',
     '建立時間', '商機ID'
   ];
@@ -1854,7 +1854,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     const displayToUser = {};
     (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
 
-    const VALID_STAGES = new Set(['A', 'B', 'C', '成交', 'D', 'Won']);
+    const VALID_STAGES = new Set(['A', 'B', 'C', 'D', 'Won']);
 
     const data = db.load();
     if (!data.opportunities) data.opportunities = [];
@@ -1879,7 +1879,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
       const stage = String(row[COL.stage] ?? '').trim();
       // 允許中文別名
-      const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C', 'won': 'Won', '成交': '成交' };
+      const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C', 'won': 'Won', '成交': 'Won' };
       const resolvedStage = VALID_STAGES.has(stage) ? stage : (stageMap[stage] || 'C');
 
       const opp = {
@@ -2880,6 +2880,29 @@ app.post('/api/admin/import-contacts-json', requireAdmin, (req, res) => {
 });
 
 // ── 資料遷移：為舊資料加上 owner ────────────────────────────
+// 一次性遷移：將資料庫中所有 stage==='成交' 改為 'Won'
+function migrateStage成交ToWon() {
+  const data = db.load();
+  let changed = 0;
+  ['opportunities', 'lostOpportunities'].forEach(key => {
+    if (!Array.isArray(data[key])) return;
+    data[key].forEach(o => {
+      if (o.stage === '成交') { o.stage = 'Won'; changed++; }
+      // 也修正 stageHistory 中的 from/to 欄位
+      if (Array.isArray(o.stageHistory)) {
+        o.stageHistory.forEach(h => {
+          if (h.from === '成交') { h.from = 'Won'; changed++; }
+          if (h.to   === '成交') { h.to   = 'Won'; changed++; }
+        });
+      }
+    });
+  });
+  if (changed > 0) {
+    db.save(data);
+    console.log(`[migrate] 成交→Won: 更新了 ${changed} 筆資料`);
+  }
+}
+
 function migrateOwner() {
   const data = db.load();
   let changed = false;
@@ -3546,6 +3569,7 @@ if (require.main === module) {
     try { await db.ready(); } catch (e) { console.error('[db] ready failed:', e); }
     app.listen(PORT, () => {
       migrateOwner();
+      migrateStage成交ToWon();
       console.log(`\n✅ 業務名片管理系統已啟動`);
       console.log(`👉 請開啟瀏覽器，前往 http://localhost:${PORT}\n`);
     });
@@ -3558,5 +3582,8 @@ if (require.main === module) {
     db.ready().catch((e) => console.error('[db] preload failed:', e));
   }
 }
+
+// Vercel serverless 環境下也執行遷移（冷啟動時）
+migrateStage成交ToWon();
 
 module.exports = app;
