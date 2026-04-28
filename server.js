@@ -3820,6 +3820,177 @@ app.use((err, req, res, next) => {
   if (!res.headersSent) res.status(statusCode).json({ error: message });
 });
 
+// ── 管理儀表板 API ────────────────────────────────────────
+
+function getOwnerOptions(req) {
+  const auth = loadAuth();
+  const allOwners = getViewableOwners(req, 'opportunities');
+  return allOwners.length > 1
+    ? allOwners.map(u => {
+        const usr = auth.users.find(x => x.username === u);
+        return { username: u, displayName: usr ? (usr.displayName || u) : u };
+      })
+    : [];
+}
+
+// 轉換率漏斗
+app.get('/api/exec/conversion', requireAuth, (req, res) => {
+  const { year, owner } = req.query;
+  const data = db.load();
+  const allOwners = getViewableOwners(req, 'opportunities');
+  const owners = (owner && allOwners.includes(owner)) ? [owner] : allOwners;
+  const yearNum = year ? parseInt(year) : new Date().getFullYear();
+
+  const opps = (data.opportunities || []).filter(o => owners.includes(o.owner));
+  const lost = (data.lostOpportunities || []).filter(o => {
+    if (!owners.includes(o.owner)) return false;
+    const d = o.deletedAt || o.createdAt;
+    return d && new Date(d).getFullYear() === yearNum;
+  });
+
+  const wonOpps = opps.filter(o => {
+    if (o.stage !== 'Won') return false;
+    const d = o.achievedDate || o.updatedAt || o.createdAt;
+    return d && new Date(d).getFullYear() === yearNum;
+  });
+
+  const totalWon = wonOpps.length;
+  const totalLost = lost.length;
+  const totalClosed = totalWon + totalLost;
+  const winRate = totalClosed > 0 ? Math.round(totalWon / totalClosed * 1000) / 10 : null;
+
+  const cycleDays = wonOpps
+    .filter(o => o.achievedDate && o.createdAt)
+    .map(o => Math.round((new Date(o.achievedDate) - new Date(o.createdAt)) / 86400000))
+    .filter(d => d >= 0);
+  const avgCycleDays = cycleDays.length > 0
+    ? Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length) : null;
+
+  const TRANSITIONS = [
+    { from: 'C', to: 'B' },
+    { from: 'B', to: 'A' },
+    { from: 'A', to: 'Won' },
+  ];
+
+  const stages = TRANSITIONS.map(({ from, to }) => {
+    const atFrom = new Set();
+    const movedOn = new Set();
+    const daysArr = [];
+
+    opps.forEach(o => {
+      const hist = (o.stageHistory || []).slice()
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      if (o.stage === from) atFrom.add(o.id);
+      hist.forEach((h, i) => {
+        if (h.from === from || h.to === from) atFrom.add(o.id);
+        if (h.from === from && h.to === to) {
+          movedOn.add(o.id);
+          // 找進入 from 的時間
+          let entryDate = null;
+          for (let j = i - 1; j >= 0; j--) {
+            if (hist[j].to === from) { entryDate = hist[j].date; break; }
+          }
+          if (!entryDate && from === 'C') entryDate = o.createdAt;
+          if (entryDate) {
+            const days = Math.round((new Date(h.date) - new Date(entryDate)) / 86400000);
+            if (days >= 0 && days < 1000) daysArr.push(days);
+          }
+        }
+      });
+    });
+
+    const rate = atFrom.size > 0 ? Math.round(movedOn.size / atFrom.size * 1000) / 10 : null;
+    const avgDays = daysArr.length > 0
+      ? Math.round(daysArr.reduce((a, b) => a + b, 0) / daysArr.length) : null;
+    return { from, to, count: movedOn.size, total: atFrom.size, rate, avgDays };
+  });
+
+  const stageCounts = ['C', 'B', 'A', 'Won'].reduce((acc, s) => {
+    acc[s] = opps.filter(o => o.stage === s).length;
+    return acc;
+  }, {});
+
+  res.json({ winRate, avgCycleDays, stages, totalClosed, totalWon, totalLost, stageCounts, ownerOptions: getOwnerOptions(req) });
+});
+
+// 月度業績趨勢（近 24 個月）
+app.get('/api/exec/trend', requireAuth, (req, res) => {
+  const { owner } = req.query;
+  const data = db.load();
+  const allOwners = getViewableOwners(req, 'opportunities');
+  const owners = (owner && allOwners.includes(owner)) ? [owner] : allOwners;
+
+  const wonOpps = (data.opportunities || []).filter(o =>
+    o.stage === 'Won' && owners.includes(o.owner)
+  );
+
+  const now = new Date();
+  const months = [];
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const map = {};
+  months.forEach(m => { map[m] = { month: m, amount: 0, count: 0 }; });
+  wonOpps.forEach(o => {
+    const month = (o.achievedDate || '').slice(0, 7);
+    if (map[month]) {
+      map[month].amount += parseFloat(o.amount) || 0;
+      map[month].count++;
+    }
+  });
+  res.json(months.map(m => map[m]));
+});
+
+// 產品 / BU 分析
+app.get('/api/exec/product-analysis', requireAuth, (req, res) => {
+  const { year, owner } = req.query;
+  const data = db.load();
+  const allOwners = getViewableOwners(req, 'opportunities');
+  const owners = (owner && allOwners.includes(owner)) ? [owner] : allOwners;
+  const yearNum = year ? parseInt(year) : new Date().getFullYear();
+
+  const inYear = (o, isLost) => {
+    const d = isLost
+      ? (o.deletedAt || o.createdAt)
+      : (o.stage === 'Won' ? (o.achievedDate || o.updatedAt || o.createdAt) : (o.expectedDate || o.createdAt));
+    return !yearNum || (d && new Date(d).getFullYear() === yearNum);
+  };
+
+  const opps = (data.opportunities || []).filter(o => owners.includes(o.owner) && inYear(o, false));
+  const lost = (data.lostOpportunities || []).filter(o => owners.includes(o.owner) && inYear(o, true));
+
+  const grouped = {};
+  const add = (o, isLost) => {
+    const cat = (o.category || '（未分類）').trim();
+    if (!grouped[cat]) grouped[cat] = { category: cat, count: 0, wonCount: 0, lostCount: 0, pipelineAmount: 0, wonAmount: 0, grossTotal: 0, grossCount: 0 };
+    const g = grouped[cat];
+    const amt = parseFloat(o.amount) || 0;
+    if (isLost) { g.lostCount++; g.count++; return; }
+    g.count++;
+    if (o.stage === 'Won') { g.wonCount++; g.wonAmount += amt; }
+    else { g.pipelineAmount += amt; }
+    if (o.grossMarginRate) { g.grossTotal += parseFloat(o.grossMarginRate); g.grossCount++; }
+  };
+  opps.forEach(o => add(o, false));
+  lost.forEach(o => add(o, true));
+
+  const result = Object.values(grouped).map(g => ({
+    category: g.category,
+    count: g.count,
+    wonCount: g.wonCount,
+    lostCount: g.lostCount,
+    pipelineAmount: Math.round(g.pipelineAmount * 10) / 10,
+    wonAmount: Math.round(g.wonAmount * 10) / 10,
+    winRate: (g.wonCount + g.lostCount) > 0
+      ? Math.round(g.wonCount / (g.wonCount + g.lostCount) * 1000) / 10 : null,
+    avgGrossMargin: g.grossCount > 0
+      ? Math.round(g.grossTotal / g.grossCount * 10) / 10 : null,
+  })).sort((a, b) => (b.wonAmount + b.pipelineAmount) - (a.wonAmount + a.pipelineAmount));
+
+  res.json(result);
+});
+
 // ── 404 fallback ─────────────────────────────────────────
 app.use((req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: '找不到此 API 端點' });

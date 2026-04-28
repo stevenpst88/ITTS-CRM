@@ -58,6 +58,12 @@
           <span class="nav-label">流失商機分析</span>
         </div>
 
+        <!-- 管理儀表板（主管/Admin 專用） -->
+        <div class="sidebar-nav-item" id="navExecDash" data-section="execDash" style="display:none">
+          <span class="nav-icon">&#128208;</span>
+          <span class="nav-label">管理儀表板</span>
+        </div>
+
         <div class="sidebar-nav-item" id="navQuotations" data-section="quotations">
           <span class="nav-icon">&#128203;</span>
           <span class="nav-label">報價單管理</span>
@@ -594,6 +600,29 @@
             </div>
 
           </div>
+        </div>
+
+        <!-- ── 管理儀表板 ── -->
+        <div id="execDashView" style="display:none">
+          <!-- 篩選列 -->
+          <div class="exec-filter-bar">
+            <select id="execYearSel" class="forecast-year-sel"></select>
+            <div id="execOwnerWrap" style="display:none;align-items:center;gap:6px">
+              <span style="font-size:13px;color:#555">👤 業務：</span>
+              <select id="execOwnerSel" class="forecast-year-sel">
+                <option value="">全部業務</option>
+              </select>
+            </div>
+            <div class="exec-tab-bar">
+              <button class="exec-tab-btn active" data-tab="conversion">🔀 轉換率漏斗</button>
+              <button class="exec-tab-btn" data-tab="trend">📈 業績趨勢</button>
+              <button class="exec-tab-btn" data-tab="product">📦 產品分析</button>
+            </div>
+          </div>
+          <!-- Tab 內容 -->
+          <div id="execTabConversion" class="exec-tab-pane"></div>
+          <div id="execTabTrend"      class="exec-tab-pane" style="display:none"></div>
+          <div id="execTabProduct"    class="exec-tab-pane" style="display:none"></div>
         </div>
 
         <!-- ── ERP MA 合約管理 ── -->

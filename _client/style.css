@@ -2684,3 +2684,80 @@ body {
 .pnl-margin-val.warn   { color: #ffcc02; }
 .pnl-margin-val.danger { color: #ff5252; }
 
+/* ── 管理儀表板（Executive Dashboard） ── */
+.exec-filter-bar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 18px; padding: 12px 16px;
+  background: #fff; border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.exec-tab-bar { display: flex; gap: 6px; margin-left: auto; }
+.exec-tab-btn {
+  padding: 6px 16px; border: 1.5px solid #ddd; background: #fafafa;
+  border-radius: 20px; font-size: 13px; cursor: pointer;
+  transition: all .15s; color: #555;
+}
+.exec-tab-btn.active { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: 600; }
+.exec-tab-btn:hover:not(.active) { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+.exec-tab-pane { animation: fadeIn .2s; }
+.exec-empty { padding: 48px; text-align: center; color: #aaa; font-size: 14px; }
+
+/* KPI 摘要卡 */
+.exec-kpi-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.exec-kpi-card {
+  flex: 1; min-width: 160px; background: #fff; border-radius: 10px;
+  padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  border-left: 3px solid #1a73e8;
+}
+.exec-kpi-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+.exec-kpi-val { font-size: 26px; font-weight: 700; color: #202124; line-height: 1.1; }
+.exec-kpi-sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+/* 轉換率漏斗 */
+.exec-funnel {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0; background: #fff; border-radius: 10px;
+  padding: 20px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  margin-bottom: 20px; justify-content: center;
+}
+.exec-funnel-stage { display: flex; align-items: center; }
+.exec-funnel-box {
+  border: 2px solid; border-radius: 10px;
+  padding: 14px 20px; text-align: center; min-width: 110px;
+}
+.exec-funnel-box-label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.exec-funnel-box-count { font-size: 28px; font-weight: 700; line-height: 1; }
+.exec-funnel-box-unit { font-size: 11px; color: #888; margin-top: 3px; }
+.exec-funnel-arrow {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 10px; gap: 2px;
+}
+.exec-funnel-rate { font-size: 13px; font-weight: 700; color: #1a73e8; }
+.exec-funnel-arrow-line { font-size: 22px; color: #bbb; line-height: 1; }
+.exec-funnel-days { font-size: 11px; color: #aaa; }
+.exec-rate-badge { padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 12px; }
+.exec-section-title { font-size: 14px; font-weight: 600; color: #444; margin: 4px 0 8px; }
+
+/* 業績趨勢 */
+.exec-trend-legend { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; font-size: 12px; color: #555; }
+.exec-legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; }
+.exec-chart-wrap {
+  background: #fff; border-radius: 10px; padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow-x: auto;
+}
+.exec-bar { transition: opacity .1s; }
+.exec-bar:hover { opacity: .75; }
+
+/* 產品分析表格 */
+.exec-prod-row:nth-child(even) { background: #fafafa; }
+.exec-prod-row:hover { background: #e8f0fe; }
+
+@media (max-width: 640px) {
+  .exec-funnel { flex-direction: column; }
+  .exec-funnel-arrow { flex-direction: row; padding: 4px 0; }
+  .exec-funnel-arrow-line { transform: rotate(90deg); }
+  .exec-kpi-val { font-size: 20px; }
+  .exec-tab-bar { margin-left: 0; width: 100%; }
+  .exec-tab-btn { flex: 1; text-align: center; }
+}
+

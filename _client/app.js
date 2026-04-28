@@ -71,6 +71,10 @@ function applyPermissions() {
       const el = $(id); if (el) el.style.display = '';
     });
   }
+  // 管理儀表板：主管 / admin 才顯示
+  if (role === 'manager1' || role === 'manager2' || role === 'admin') {
+    const el = $('navExecDash'); if (el) el.style.display = '';
+  }
 }
 
 let allContacts = [];
@@ -602,11 +606,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
+  ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
+  const titles = { null:'首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -624,7 +628,7 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','quotationsView','pipelineReportView','erpMaView','sapMaView',
+   'forecastView','lostOppView','execDashView','quotationsView','pipelineReportView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
   });
@@ -651,6 +655,7 @@ function showSection(section) {
   $('targetsView').style.display      = section === 'targets'     ? '' : 'none';
   $('pipelineView').style.display     = section === 'pipeline'    ? '' : 'none';
   $('forecastView').style.display     = section === 'forecast'    ? '' : 'none';
+  $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
   $('quotationsView').style.display       = section === 'quotations'     ? '' : 'none';
   $('pipelineReportView').style.display   = section === 'pipelineReport' ? '' : 'none';
@@ -669,6 +674,7 @@ function showSection(section) {
   if (section === 'targets')     loadTargetsView();
   if (section === 'pipeline')    loadPipelineView();
   if (section === 'forecast')    loadForecastView();
+  if (section === 'execDash')    loadExecDash();
   if (section === 'lostOpp')         loadLostOppView();
   if (section === 'quotations')      loadQuotationsView();
   if (section === 'pipelineReport')  loadPipelineReport();
@@ -687,6 +693,7 @@ $('navTargets').addEventListener('click',   () => showSection('targets'));
 $('navPipeline').addEventListener('click',  () => showSection('pipeline'));
 $('navForecast').addEventListener('click',  () => showSection('forecast'));
 $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
+$('navExecDash').addEventListener('click',        () => showSection('execDash'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
 $('navPipelineReport').addEventListener('click',  () => showSection('pipelineReport'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
@@ -5664,3 +5671,325 @@ function _renderAiSummary(c) {
   });
   mo.observe(document.getElementById('modalOverlay'), { attributes: true, attributeFilter: ['class'] });
 })();
+
+// ════════════════════════════════════════════════════════
+//  管理儀表板（Executive Dashboard）
+// ════════════════════════════════════════════════════════
+let execCurrentTab = 'conversion';
+let execYear = new Date().getFullYear();
+let execOwnerFilter = '';
+let execData = { conversion: null, trend: null, product: null };
+
+async function loadExecDash() {
+  // 初始化年份選單
+  const yrSel = $('execYearSel');
+  if (!yrSel.options.length) {
+    const cy = new Date().getFullYear();
+    for (let y = cy + 1; y >= cy - 3; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y + ' 年';
+      if (y === cy) o.selected = true;
+      yrSel.appendChild(o);
+    }
+    yrSel.addEventListener('change', () => { execYear = parseInt(yrSel.value); loadExecDash(); });
+
+    // Tab 切換
+    document.querySelectorAll('.exec-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.exec-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        execCurrentTab = btn.dataset.tab;
+        ['conversion','trend','product'].forEach(t => {
+          const el = $('execTab' + t.charAt(0).toUpperCase() + t.slice(1));
+          if (el) el.style.display = t === execCurrentTab ? '' : 'none';
+        });
+        renderExecCurrentTab();
+      });
+    });
+  }
+
+  // 拉取資料（三個 API 並行）
+  const qs = `year=${execYear}${execOwnerFilter ? '&owner=' + execOwnerFilter : ''}`;
+  const trendQs = execOwnerFilter ? `?owner=${execOwnerFilter}` : '';
+
+  const [conv, trend, prod] = await Promise.all([
+    fetch(`${API}/exec/conversion?${qs}`).then(r => r.json()).catch(() => null),
+    fetch(`${API}/exec/trend${trendQs}`).then(r => r.json()).catch(() => []),
+    fetch(`${API}/exec/product-analysis?${qs}`).then(r => r.json()).catch(() => []),
+  ]);
+  execData = { conversion: conv, trend: trend || [], product: prod || [] };
+
+  // 業務篩選器（主管才顯示）
+  const ownerWrap = $('execOwnerWrap');
+  if (conv && conv.ownerOptions && conv.ownerOptions.length > 0) {
+    ownerWrap.style.display = 'flex';
+    const sel = $('execOwnerSel');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">全部業務</option>';
+    conv.ownerOptions.forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.username; o.textContent = u.displayName;
+      if (u.username === curVal) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!sel._bound) {
+      sel._bound = true;
+      sel.addEventListener('change', () => { execOwnerFilter = sel.value; loadExecDash(); });
+    }
+  } else {
+    ownerWrap.style.display = 'none';
+  }
+
+  renderExecCurrentTab();
+}
+
+function renderExecCurrentTab() {
+  if (execCurrentTab === 'conversion') renderExecConversion(execData.conversion);
+  else if (execCurrentTab === 'trend')  renderExecTrend(execData.trend);
+  else if (execCurrentTab === 'product') renderExecProduct(execData.product);
+}
+
+// ── 轉換率漏斗 ──────────────────────────────────────────
+function renderExecConversion(d) {
+  const el = $('execTabConversion');
+  if (!d) { el.innerHTML = '<div class="exec-empty">載入中…</div>'; return; }
+
+  const STAGE_INFO = {
+    C: { label: 'C｜Pipeline', color: '#1a73e8', bg: '#e8f0fe' },
+    B: { label: 'B｜Upside',   color: '#e37400', bg: '#fef3e2' },
+    A: { label: 'A｜Commit',   color: '#c5221f', bg: '#fce8e6' },
+    Won: { label: '🏆 Won',    color: '#1e8e3e', bg: '#e6f4ea' },
+  };
+  const stages = ['C','B','A','Won'];
+
+  // 摘要卡
+  const wrCard = (label, val, sub) => `
+    <div class="exec-kpi-card">
+      <div class="exec-kpi-label">${label}</div>
+      <div class="exec-kpi-val">${val ?? '—'}</div>
+      ${sub ? `<div class="exec-kpi-sub">${sub}</div>` : ''}
+    </div>`;
+
+  const winRateColor = d.winRate === null ? '#888' : d.winRate >= 60 ? '#1e8e3e' : d.winRate >= 40 ? '#e37400' : '#c5221f';
+  const summaryHtml = `
+    <div class="exec-kpi-row">
+      ${wrCard('整體 Win Rate', d.winRate !== null ? `<span style="color:${winRateColor}">${d.winRate}%</span>` : '—',
+        `成交 ${d.totalWon} / 已關閉 ${d.totalClosed}`)}
+      ${wrCard('平均成交週期', d.avgCycleDays !== null ? `${d.avgCycleDays} 天` : '—', '從建立到成交')}
+      ${wrCard('本年成交件數', d.totalWon, `流失 ${d.totalLost} 件`)}
+    </div>`;
+
+  // 漏斗視覺（每個 stage box + 轉換箭頭）
+  let funnelHtml = '<div class="exec-funnel">';
+  stages.forEach((s, i) => {
+    const info = STAGE_INFO[s];
+    const count = d.stageCounts[s] || 0;
+    funnelHtml += `
+      <div class="exec-funnel-stage">
+        <div class="exec-funnel-box" style="border-color:${info.color};background:${info.bg}">
+          <div class="exec-funnel-box-label" style="color:${info.color}">${info.label}</div>
+          <div class="exec-funnel-box-count" style="color:${info.color}">${count}</div>
+          <div class="exec-funnel-box-unit">件在手</div>
+        </div>
+      </div>`;
+    if (i < stages.length - 1) {
+      const trans = d.stages[i];
+      const rateStr = trans && trans.rate !== null ? `${trans.rate}%` : '—';
+      const daysStr = trans && trans.avgDays !== null ? `avg ${trans.avgDays}d` : '';
+      funnelHtml += `
+        <div class="exec-funnel-arrow">
+          <div class="exec-funnel-rate">${rateStr}</div>
+          <div class="exec-funnel-arrow-line">→</div>
+          <div class="exec-funnel-days">${daysStr}</div>
+        </div>`;
+    }
+  });
+  funnelHtml += '</div>';
+
+  // 轉換率詳細表格
+  const tableRows = (d.stages || []).map(s => `
+    <tr>
+      <td>${s.from} → ${s.to}</td>
+      <td style="text-align:right">${s.total || 0}</td>
+      <td style="text-align:right">${s.count || 0}</td>
+      <td style="text-align:right">
+        <span class="exec-rate-badge" style="background:${s.rate >= 60 ? '#e6f4ea' : s.rate >= 40 ? '#fef3e2' : '#fce8e6'};color:${s.rate >= 60 ? '#1e8e3e' : s.rate >= 40 ? '#e37400' : '#c5221f'}">
+          ${s.rate !== null ? s.rate + '%' : '—'}
+        </span>
+      </td>
+      <td style="text-align:right">${s.avgDays !== null ? s.avgDays + ' 天' : '—'}</td>
+    </tr>`).join('');
+
+  el.innerHTML = summaryHtml + funnelHtml + `
+    <div class="exec-section-title">📋 階段轉換明細</div>
+    <div style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-top:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#fafafa;border-bottom:2px solid #eee">
+            <th style="padding:10px 16px;text-align:left;font-weight:600">轉換路徑</th>
+            <th style="padding:10px 16px;text-align:right;font-weight:600">進入數</th>
+            <th style="padding:10px 16px;text-align:right;font-weight:600">晉升數</th>
+            <th style="padding:10px 16px;text-align:right;font-weight:600">轉換率</th>
+            <th style="padding:10px 16px;text-align:right;font-weight:600">平均停留</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── 月度業績趨勢 ─────────────────────────────────────────
+function renderExecTrend(data) {
+  const el = $('execTabTrend');
+  if (!data || !data.length) { el.innerHTML = '<div class="exec-empty">暫無資料</div>'; return; }
+
+  const cy = new Date().getFullYear();
+  const maxAmt = Math.max(...data.map(d => d.amount), 1);
+  const W = 700, H = 220, PAD_L = 56, PAD_B = 38, PAD_T = 20, PAD_R = 16;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_B - PAD_T;
+  const barW = Math.max(4, Math.floor(chartW / data.length) - 3);
+
+  // Y axis gridlines
+  const yTicks = 4;
+  let gridLines = '', yLabels = '';
+  for (let i = 0; i <= yTicks; i++) {
+    const y = PAD_T + chartH - (i / yTicks) * chartH;
+    const val = Math.round(maxAmt * i / yTicks);
+    gridLines += `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#eee" stroke-width="1"/>`;
+    yLabels += `<text x="${PAD_L - 6}" y="${y + 4}" font-size="10" fill="#aaa" text-anchor="end">${val}</text>`;
+  }
+
+  // Bars
+  let bars = '', xLabels = '', tooltipData = [];
+  data.forEach((d, i) => {
+    const x = PAD_L + i * (chartW / data.length) + (chartW / data.length - barW) / 2;
+    const barH = d.amount > 0 ? Math.max(2, (d.amount / maxAmt) * chartH) : 0;
+    const y = PAD_T + chartH - barH;
+    const isThisYear = d.month && d.month.startsWith(String(cy));
+    const fill = isThisYear ? '#1a73e8' : '#c5d9f5';
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}"
+      rx="2" fill="${fill}" data-i="${i}" class="exec-bar">
+      <title>${d.month}：${d.amount.toLocaleString()} 萬（${d.count} 件）</title>
+    </rect>`;
+    // X axis: show label every 3 months
+    if (i % 3 === 0) {
+      const lx = x + barW / 2;
+      xLabels += `<text x="${lx.toFixed(1)}" y="${H - 6}" font-size="10" fill="#888" text-anchor="middle">${d.month.slice(0, 7)}</text>`;
+    }
+    tooltipData.push(d);
+  });
+
+  // Legend
+  const legend = `
+    <div class="exec-trend-legend">
+      <span class="exec-legend-dot" style="background:#1a73e8"></span><span>${cy} 年</span>
+      <span class="exec-legend-dot" style="background:#c5d9f5"></span><span>${cy - 1} 年</span>
+    </div>`;
+
+  // Total / summary
+  const thisYearData = data.filter(d => d.month.startsWith(String(cy)));
+  const totalAmt = thisYearData.reduce((s, d) => s + d.amount, 0);
+  const totalCnt = thisYearData.reduce((s, d) => s + d.count, 0);
+  const prevYearData = data.filter(d => d.month.startsWith(String(cy - 1)));
+  const prevAmt = prevYearData.reduce((s, d) => s + d.amount, 0);
+  const growth = prevAmt > 0 ? ((totalAmt - prevAmt) / prevAmt * 100).toFixed(1) : null;
+  const growthStr = growth !== null
+    ? `<span style="color:${parseFloat(growth) >= 0 ? '#1e8e3e' : '#c5221f'}">${parseFloat(growth) >= 0 ? '▲' : '▼'} ${Math.abs(growth)}%</span> vs 去年`
+    : '';
+
+  const kpis = `
+    <div class="exec-kpi-row" style="margin-bottom:16px">
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">${cy} 年 YTD 成交</div>
+        <div class="exec-kpi-val">${totalAmt.toLocaleString()} 萬</div>
+        <div class="exec-kpi-sub">${totalCnt} 件 ${growthStr}</div>
+      </div>
+      <div class="exec-kpi-card">
+        <div class="exec-kpi-label">${cy - 1} 年全年成交</div>
+        <div class="exec-kpi-val">${prevAmt.toLocaleString()} 萬</div>
+        <div class="exec-kpi-sub">${prevYearData.reduce((s,d)=>s+d.count,0)} 件</div>
+      </div>
+    </div>`;
+
+  el.innerHTML = kpis + legend + `
+    <div class="exec-chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block">
+        ${gridLines}${yLabels}
+        <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T + chartH}" stroke="#ddd" stroke-width="1"/>
+        <line x1="${PAD_L}" y1="${PAD_T + chartH}" x2="${W - PAD_R}" y2="${PAD_T + chartH}" stroke="#ddd" stroke-width="1"/>
+        ${bars}${xLabels}
+      </svg>
+    </div>`;
+}
+
+// ── 產品 / BU 分析 ────────────────────────────────────────
+let execProductSortKey = 'wonAmount';
+let execProductSortAsc = false;
+
+function renderExecProduct(data) {
+  const el = $('execTabProduct');
+  if (!data || !data.length) { el.innerHTML = '<div class="exec-empty">暫無資料</div>'; return; }
+
+  const sorted = [...data].sort((a, b) => {
+    const va = a[execProductSortKey] ?? -1;
+    const vb = b[execProductSortKey] ?? -1;
+    return execProductSortAsc ? va - vb : vb - va;
+  });
+  const maxWin = Math.max(...sorted.map(r => r.winRate || 0), 1);
+
+  const thStyle = (key) => {
+    const active = key === execProductSortKey;
+    return `style="padding:10px 14px;text-align:${key==='category'?'left':'right'};font-weight:600;cursor:pointer;${active ? 'color:#1a73e8;' : ''};white-space:nowrap;user-select:none"
+      data-sortkey="${key}"`;
+  };
+
+  const rows = sorted.map(r => {
+    const winColor = r.winRate === null ? '#888' : r.winRate >= 60 ? '#1e8e3e' : r.winRate >= 40 ? '#e37400' : '#c5221f';
+    const barPct = r.winRate !== null ? Math.round(r.winRate / 100 * 100) : 0;
+    return `<tr class="exec-prod-row">
+      <td style="padding:10px 14px;font-weight:500">${escapeHtml(r.category)}</td>
+      <td style="padding:10px 14px;text-align:right">${r.count}</td>
+      <td style="padding:10px 14px;text-align:right">${r.pipelineAmount.toLocaleString()}</td>
+      <td style="padding:10px 14px;text-align:right;color:#1e8e3e;font-weight:600">${r.wonAmount.toLocaleString()}</td>
+      <td style="padding:10px 14px;text-align:right">
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+          <div style="width:64px;height:8px;background:#eee;border-radius:4px;overflow:hidden">
+            <div style="width:${barPct}%;height:100%;background:${winColor};border-radius:4px"></div>
+          </div>
+          <span style="color:${winColor};font-weight:600;min-width:40px;text-align:right">${r.winRate !== null ? r.winRate + '%' : '—'}</span>
+        </div>
+      </td>
+      <td style="padding:10px 14px;text-align:right">${r.avgGrossMargin !== null ? r.avgGrossMargin + '%' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const sortArrow = (key) => key === execProductSortKey ? (execProductSortAsc ? ' ▲' : ' ▼') : '';
+
+  el.innerHTML = `
+    <div style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+      <table style="width:100%;border-collapse:collapse;font-size:13px" id="execProdTable">
+        <thead>
+          <tr style="background:#fafafa;border-bottom:2px solid #eee">
+            <th ${thStyle('category')}>產品線 / BU${sortArrow('category')}</th>
+            <th ${thStyle('count')}>商機數${sortArrow('count')}</th>
+            <th ${thStyle('pipelineAmount')}>在手金額(萬)${sortArrow('pipelineAmount')}</th>
+            <th ${thStyle('wonAmount')}>成交金額(萬)${sortArrow('wonAmount')}</th>
+            <th ${thStyle('winRate')}>Win Rate${sortArrow('winRate')}</th>
+            <th ${thStyle('avgGrossMargin')}>平均毛利率${sortArrow('avgGrossMargin')}</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  // 排序事件
+  el.querySelectorAll('th[data-sortkey]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortkey;
+      if (execProductSortKey === key) execProductSortAsc = !execProductSortAsc;
+      else { execProductSortKey = key; execProductSortAsc = false; }
+      renderExecProduct(execData.product);
+    });
+  });
+}
