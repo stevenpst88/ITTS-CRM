@@ -2513,7 +2513,7 @@ async function loadPipelineView() {
 }
 
 function renderKanban() {
-  const activeOpps = allOpportunities.filter(o => o.stage !== 'Won'); // Won 走「我的客戶」
+  const activeOpps = allOpportunities; // 所有階段（含 Won）都在看板顯示
 
   KANBAN_STAGES.forEach(({ key }) => {
     const stageOpps = activeOpps.filter(o => o.stage === key);
@@ -2552,17 +2552,22 @@ function renderKanban() {
       const opp = allOpportunities.find(x => x.id === dragOppId);
       if (!opp || opp.stage === newStage) return;
       try {
+        const body = { stage: newStage };
+        if (newStage === 'Won' && !opp.achievedDate) {
+          body.achievedDate = new Date().toISOString().slice(0, 10);
+        }
         const r = await fetch(`${API}/opportunities/${dragOppId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stage: newStage })
+          body: JSON.stringify(body)
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           showToast('❌ 更新失敗：' + (err.error || r.status));
           return;
         }
-        await loadOpportunities();
+        // 先在記憶體直接更新，保證 renderKanban 立即看到新狀態
+        Object.assign(opp, body);
         renderKanban();
         updateStatCards();
         renderDashboardCharts();
@@ -2572,6 +2577,8 @@ function renderKanban() {
           const stageLabel = KANBAN_STAGES.find(s => s.key === newStage)?.label.split('｜')[1] || newStage;
           showToast(`✅ 已移至 ${newStage}｜${stageLabel}`);
         }
+        // 背景同步，確保資料一致
+        loadOpportunities();
       } catch (err) { showToast('❌ 網路錯誤，請重試'); }
     }, sig);
   });
@@ -2658,15 +2665,20 @@ function celebrateWon(opp) {
 
 function buildKanbanCard(o) {
   const card = document.createElement('div');
-  card.className = 'kanban-card';
-  card.draggable = true;
+  const isWon = o.stage === 'Won';
+  card.className = 'kanban-card' + (isWon ? ' kanban-card-won' : '');
+  card.draggable = !isWon; // Won 卡片不可再拖移
   card.dataset.id = o.id;
 
   const amt  = o.amount ? '$' + Number(o.amount).toLocaleString() : '金額未填';
-  const date = o.expectedDate || '';
   const cat  = o.category ? `<span class="kanban-card-cat">${escapeHtml(o.category)}</span>` : '';
   const prod = o.product  ? `<div class="kanban-card-product" title="${escapeHtml(o.product)}">${escapeHtml(o.product)}</div>` : '';
   const amtStyle = o.amount ? '' : 'color:#bbb;font-weight:400';
+
+  // Won 顯示成交日；其他顯示預計結案日
+  const dateLabel = isWon
+    ? (o.achievedDate ? `🏆 ${o.achievedDate}` : '🏆 已成交')
+    : (o.expectedDate || '');
 
   card.innerHTML = `
     <div class="kanban-card-company">${escapeHtml(o.company) || '（未填公司）'}</div>
@@ -2674,18 +2686,20 @@ function buildKanbanCard(o) {
     ${cat}${prod}
     <div class="kanban-card-footer">
       <span class="kanban-card-amount" style="${amtStyle}">${escapeHtml(amt)} 萬</span>
-      <span class="kanban-card-date">${escapeHtml(date)}</span>
+      <span class="kanban-card-date">${escapeHtml(dateLabel)}</span>
     </div>
     <div class="kanban-card-edit-hint">點擊編輯</div>`;
 
-  card.addEventListener('dragstart', e => {
-    dragOppId = o.id;
-    setTimeout(() => card.classList.add('dragging'), 0);
-  });
-  card.addEventListener('dragend', () => {
-    dragOppId = null;
-    card.classList.remove('dragging');
-  });
+  if (!isWon) {
+    card.addEventListener('dragstart', () => {
+      dragOppId = o.id;
+      setTimeout(() => card.classList.add('dragging'), 0);
+    });
+    card.addEventListener('dragend', () => {
+      dragOppId = null;
+      card.classList.remove('dragging');
+    });
+  }
   // 點擊開啟編輯（拖曳時不觸發）
   card.addEventListener('click', () => {
     if (dragOppId) return;

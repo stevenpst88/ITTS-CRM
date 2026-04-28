@@ -1154,6 +1154,9 @@ body {
 .kanban-col-won .kanban-col-total { color: #1e8e3e; }
 .kanban-col-won .kanban-card { border-left: 3px solid #1e8e3e; }
 .kanban-col-won .kanban-card-amount { color: #1e8e3e; }
+.kanban-card-won { background: #f0faf3; cursor: default; }
+.kanban-card-won:hover { box-shadow: 0 2px 8px rgba(30,142,62,.15); }
+.kanban-card-won .kanban-card-date { color: #1e8e3e; font-weight: 500; }
 
 /* ── 簽約慶祝彈窗動畫 ── */
 @keyframes won-card-in {
