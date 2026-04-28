@@ -1985,11 +1985,11 @@ function openChangePw() {
   $('changePwNew').value     = '';
   $('changePwConfirm').value = '';
   $('changePwError').style.display = 'none';
-  $('changePwOverlay').style.display = '';
+  $('changePwOverlay').classList.add('open');
   setTimeout(() => $('changePwOld').focus(), 60);
 }
 function closeChangePw() {
-  $('changePwOverlay').style.display = 'none';
+  $('changePwOverlay').classList.remove('open');
 }
 
 $('changePwBtn').addEventListener('click', openChangePw);
