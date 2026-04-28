@@ -269,7 +269,7 @@ function pickFields(obj, fields) {
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction'];
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate'];
-const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','amount','salesPerson','note','type'];
+const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
 // ── 網址安全驗證 ──────────────────────────────────────────

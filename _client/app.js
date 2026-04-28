@@ -4353,42 +4353,64 @@ $('contractCancelBtn').addEventListener('click',  closeContractModal);
 $('contractModal').addEventListener('click', e => { if (e.target === $('contractModal')) closeContractModal(); });
 
 $('contractSaveBtn').addEventListener('click', async () => {
-  const company = $('contractCompany').value.trim();
-  if (!company) { showToast('請填入客戶名稱'); return; }
-  const endDate = $('contractEndDate').value;
-  if (!endDate) { showToast('請填入合約迄日'); return; }
-
-  const id = $('contractId').value;
-  const payload = {
-    contractNo:  $('contractNo').value.trim(),
-    company,
-    contactName: $('contractContact').value.trim(),
-    product:     $('contractProduct').value,
-    startDate:   $('contractStartDate').value,
-    endDate,
-    renewDate:   $('contractRenewDate').value,
-    amount:      $('contractAmount').value,
-    yearAmounts: Array.from($('contractYearFields').querySelectorAll('.year-amount-input'))
-                   .map(i => parseFloat(i.value) || 0),
-    tcv:         parseFloat($('contractTCV').value) || null,
-    salesPerson: $('contractSalesPerson').value.trim(),
-    note:        $('contractNote').value.trim(),
-    type:        $('contractTypeHidden').value || 'ERP_MA'
-  };
-
   try {
+    const company = ($('contractCompany').value || '').trim();
+    if (!company) { showToast('請填入客戶名稱'); return; }
+    const endDate = ($('contractEndDate').value || '').trim();
+    if (!endDate) { showToast('請填入合約迄日'); return; }
+
+    const id = $('contractId').value || '';
+    const yearAmountInputs = $('contractYearFields')
+      ? Array.from($('contractYearFields').querySelectorAll('.year-amount-input'))
+      : [];
+
+    const payload = {
+      contractNo:  ($('contractNo').value || '').trim(),
+      company,
+      contactName: ($('contractContact').value || '').trim(),
+      product:     $('contractProduct').value || '',
+      startDate:   $('contractStartDate').value || '',
+      endDate,
+      renewDate:   $('contractRenewDate').value || '',
+      amount:      $('contractAmount').value || '',
+      yearAmounts: yearAmountInputs.map(i => parseFloat(i.value) || 0),
+      tcv:         parseFloat($('contractTCV').value) || null,
+      salesPerson: ($('contractSalesPerson').value || '').trim(),
+      note:        ($('contractNote').value || '').trim(),
+      type:        ($('contractTypeHidden').value || 'ERP_MA')
+    };
+
     if (id) {
-      const r = await fetch(`${API}/contracts/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-      if (!r.ok) { const e = await r.json().catch(()=>{}); showToast('❌ 儲存失敗：' + (e?.error || r.status)); return; }
+      const r = await fetch(`${API}/contracts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        showToast('❌ 儲存失敗：' + (e.error || r.status));
+        return;
+      }
       showToast('合約已更新');
     } else {
-      const r = await fetch(`${API}/contracts`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-      if (!r.ok) { const e = await r.json().catch(()=>{}); showToast('❌ 新增失敗：' + (e?.error || r.status)); return; }
+      const r = await fetch(`${API}/contracts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        showToast('❌ 新增失敗：' + (e.error || r.status));
+        return;
+      }
       showToast('合約已新增');
     }
     closeContractModal();
     await reloadCurrentContractView();
-  } catch { showToast('儲存失敗，請重試'); }
+  } catch (err) {
+    console.error('[contractSave]', err);
+    showToast('❌ 儲存錯誤：' + (err.message || '請重試'));
+  }
 });
 
 // ── 續約（複製並延長一年）────────────────────────────────
