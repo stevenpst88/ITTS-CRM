@@ -2264,6 +2264,7 @@
 
       let offset = 0, totalUpdated = 0, totalNotFound = 0;
       let totalCompanies = 0, totalContacts = 0;
+      const allDebugSamples = [];
 
       try {
         while (true) {
@@ -2289,6 +2290,7 @@
           totalNotFound  += d.notFound;
           totalCompanies  = d.totalCompanies || totalCompanies;
           totalContacts   = d.totalContacts  || totalContacts;
+          if (Array.isArray(d.debugSamples)) allDebugSamples.push(...d.debugSamples);
 
           result.innerHTML = `
             ⏳ 進度：<strong>${Math.min(d.nextOffset, totalCompanies)} / ${totalCompanies}</strong> 家公司<br>
@@ -2302,11 +2304,19 @@
         // 完成
         result.style.background = '#f0faf0';
         result.style.border = '1px solid #a8d5b0';
+        const debugHtml = allDebugSamples.slice(0, 8).map(s =>
+          `<div style="font-size:11px;color:#666;border-top:1px dashed #ccc;padding:4px 0">
+            <strong>${s.company || '?'}</strong> ${s.taxId ? '統編:'+s.taxId : ''}
+            ${s.stockCode ? '股票:'+s.stockCode+'('+s.listedType+')' : ''}<br>
+            ${s.website ? '<span style="color:#1a73e8">✓ ' + s.website + '</span>' : '<span style="color:#999">未找到</span>'}
+            <span style="color:#aaa">| ${s.debug || s.err || ''}</span>
+          </div>`).join('');
         result.innerHTML = `
           <strong style="color:#1a5c2a">✅ 批次作業完成</strong><br>
           📊 待填入聯絡人：<strong>${totalContacts}</strong> 筆，共 <strong>${totalCompanies}</strong> 家公司<br>
           ✅ 成功填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆<br>
-          ❌ 未找到網址：<strong>${totalNotFound}</strong> 筆`;
+          ❌ 未找到網址：<strong>${totalNotFound}</strong> 筆
+          ${debugHtml ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #c5e0b4"><strong style="font-size:12px">🔍 診斷樣本（前 8 筆）：</strong>' + debugHtml + '</div>' : ''}`;
         hint.textContent = '完成！重新整理客戶頁面即可看到更新結果。';
 
       } catch (e) {

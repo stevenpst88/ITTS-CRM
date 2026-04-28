@@ -778,21 +778,32 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
         if (twseM) { stockCode = twseM['公司代號'] || ''; listedType = '上市'; }
         else if (tpexM) { stockCode = tpexM.SecuritiesCompanyCode || ''; listedType = '上櫃'; }
       }
-      const website = await fetchWebsiteOnly(task.taxId, task.companyName, stockCode, listedType);
-      return { task, website: website || '' };
+      const { website, debug } = await fetchWebsiteOnly(task.taxId, task.companyName, stockCode, listedType);
+      return { task, website: website || '', debug, stockCode, listedType };
     })
   );
 
   // 回填資料
   let updated = 0, notFound = 0;
+  const debugSamples = [];
   for (const r of results) {
-    if (r.status !== 'fulfilled') { notFound += r.reason?.task?.group?.length || 1; continue; }
-    const { task, website } = r.value;
+    if (r.status !== 'fulfilled') {
+      notFound += r.reason?.task?.group?.length || 1;
+      debugSamples.push({ company: '?', err: String(r.reason?.message || r.reason) });
+      continue;
+    }
+    const { task, website, debug, stockCode, listedType } = r.value;
     if (website) {
       task.group.forEach(c => { c.website = website; });
       updated += task.group.length;
     } else {
       notFound += task.group.length;
+    }
+    if (debugSamples.length < 5) {
+      debugSamples.push({
+        company: task.companyName, taxId: task.taxId,
+        stockCode, listedType, website, debug
+      });
     }
   }
 
@@ -800,7 +811,8 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
   res.json({
     success: true, updated, notFound, skipped: 0,
     totalContacts: targets.length, totalCompanies,
-    offset, nextOffset: offset + BATCH, hasMore
+    offset, nextOffset: offset + BATCH, hasMore,
+    debugSamples
   });
 });
 
@@ -2486,27 +2498,71 @@ async function getCompanyLists() {
   return companyCache;
 }
 
+// ── 上市/上櫃公司詳細資料快取（含公司網址欄位）──────────
+let _listedDetailsCache = null;
+let _listedDetailsCachedAt = 0;
+const LISTED_DETAILS_TTL = 24 * 3600 * 1000;
+
+async function getListedCompanyDetails() {
+  const now = Date.now();
+  if (_listedDetailsCache && now - _listedDetailsCachedAt < LISTED_DETAILS_TTL) {
+    return _listedDetailsCache;
+  }
+  const cache = { byStock: {} };
+
+  // TWSE 上市
+  try {
+    const r = await fetch('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (r.ok) {
+      const arr = await r.json();
+      for (const it of arr) {
+        const code = (it['公司代號'] || '').toString().trim();
+        const web  = (it['公司網址'] || '').trim();
+        if (code) cache.byStock[code] = web;
+      }
+    }
+  } catch (e) { console.warn('[TWSE OpenAPI]', e.message); }
+
+  // TPEX 上櫃
+  try {
+    const r = await fetch('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O', {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (r.ok) {
+      const arr = await r.json();
+      for (const it of arr) {
+        const code = (it['公司代號'] || it.SecuritiesCompanyCode || '').toString().trim();
+        const web  = (it['公司網址'] || it.CompanyWebsite || '').trim();
+        if (code) cache.byStock[code] = web;
+      }
+    }
+  } catch (e) { console.warn('[TPEX OpenAPI]', e.message); }
+
+  _listedDetailsCache = cache;
+  _listedDetailsCachedAt = now;
+  return cache;
+}
+
 // ── 共用：只查官網（給 bulk 及 company-lookup 使用）──────
 async function fetchWebsiteOnly(taxId, companyName, stockCode, listedType) {
   let website = '';
   let emailDomain = '';
+  const debug = [];
 
-  // 1. MOPS（上市/上櫃）
+  // 1. TWSE/TPEX OpenAPI（上市/上櫃，公司網址欄位）
   if (!website && stockCode) {
     try {
-      const typek = listedType === '上市' ? 'sii' : 'otc';
-      const r = await fetch(
-        `https://mops.twse.com.tw/mops/web/ajax_t108sb01?inpuType=co_id&TYPEK=${typek}&isnew=false&co_id=${stockCode}`,
-        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000) }
-      );
-      if (r.ok) {
-        const html = await r.text();
-        const lm = html.match(/公司網址[\s\S]{0,200}?href=['"]([^'"]{5,})['"]/i);
-        const tm = html.match(/公司網址[\s\S]{0,200}?>(https?:\/\/[^\s<"']+)/i);
-        const raw = (lm?.[1] || tm?.[1] || '').trim();
-        if (raw && /^https?:\/\//i.test(raw)) website = raw.replace(/\/$/, '');
-      }
-    } catch {}
+      const det = await getListedCompanyDetails();
+      const raw = (det.byStock[stockCode] || '').trim();
+      if (raw && raw.length > 4) {
+        website = (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw).replace(/\/$/, '');
+        debug.push('TWSE/TPEX OpenAPI ✓');
+      } else { debug.push('TWSE/TPEX 無資料'); }
+    } catch (e) { debug.push('TWSE/TPEX err: ' + e.message); }
   }
 
   // 2. GCIS 通訊資料（有統編才查）
@@ -2520,17 +2576,19 @@ async function fetchWebsiteOnly(taxId, companyName, stockCode, listedType) {
         const d = await r.json();
         if (d?.[0]) {
           const raw = d[0].Company_Website || d[0].Website || d[0].website || '';
-          if (raw && raw.length > 4)
+          if (raw && raw.length > 4) {
             website = (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw).replace(/\/$/, '');
+            debug.push('GCIS ✓');
+          }
           const email = d[0].Company_Email || d[0].E_Mail || '';
           if (!website && email && email.includes('@')) {
             const dom = email.split('@')[1].toLowerCase().trim();
             const PUBLIC = ['gmail.com','yahoo.com','yahoo.com.tw','hotmail.com','outlook.com'];
             if (dom && !PUBLIC.includes(dom)) emailDomain = 'https://www.' + dom;
           }
-        }
-      }
-    } catch {}
+        } else { debug.push('GCIS 查無資料'); }
+      } else { debug.push('GCIS HTTP ' + r.status); }
+    } catch (e) { debug.push('GCIS err: ' + e.message); }
   }
 
   // 3. DuckDuckGo Instant Answer
@@ -2546,18 +2604,24 @@ async function fetchWebsiteOnly(taxId, companyName, stockCode, listedType) {
         const webItem = (ddg.Infobox?.content || []).find(
           item => /^(website|official website|官網|網址|homepage)/i.test(item.label || '')
         );
-        if (webItem?.value && /^https?:\/\//i.test(webItem.value))
+        if (webItem?.value && /^https?:\/\//i.test(webItem.value)) {
           website = webItem.value.replace(/\/+$/, '');
-        if (!website && ddg.AbstractURL && !/wikipedia|wikimedia/i.test(ddg.AbstractURL))
+          debug.push('DDG Infobox ✓');
+        } else if (ddg.AbstractURL && !/wikipedia|wikimedia/i.test(ddg.AbstractURL)) {
           website = ddg.AbstractURL;
-      }
-    } catch {}
+          debug.push('DDG Abstract ✓');
+        } else { debug.push('DDG 無相符結果'); }
+      } else { debug.push('DDG HTTP ' + r.status); }
+    } catch (e) { debug.push('DDG err: ' + e.message); }
   }
 
   // 4. Email domain 備援
-  if (!website && emailDomain) website = emailDomain;
+  if (!website && emailDomain) {
+    website = emailDomain;
+    debug.push('Email domain ✓');
+  }
 
-  return website;
+  return { website, debug: debug.join(' / ') };
 }
 
 function formatCapital(amount) {
@@ -2811,23 +2875,13 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     }
   } catch (e) { /* ignore */ }
 
-  // 2.5 抓取公司官網（MOPS 公開資訊觀測站）
-  if (result.stockCode) {
+  // 2.5 抓取公司官網（TWSE/TPEX OpenAPI - 含公司網址欄位）
+  if (!result.website && result.stockCode) {
     try {
-      const typek = result.listedType === '上市' ? 'sii' : 'otc';
-      const mopsR = await fetch(
-        `https://mops.twse.com.tw/mops/web/ajax_t108sb01?inpuType=co_id&TYPEK=${typek}&isnew=false&co_id=${result.stockCode}`,
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' }, signal: AbortSignal.timeout(6000) }
-      );
-      if (mopsR.ok) {
-        const html = await mopsR.text();
-        // 解析 MOPS 頁面中的「公司網址」欄位
-        const linkMatch = html.match(/公司網址[\s\S]{0,200}?href=['"]([^'"]{5,})['"]/i);
-        const textMatch = html.match(/公司網址[\s\S]{0,200}?>(https?:\/\/[^\s<"']+)/i);
-        const rawUrl = (linkMatch?.[1] || textMatch?.[1] || '').trim();
-        if (rawUrl && /^https?:\/\//i.test(rawUrl)) {
-          result.website = rawUrl.replace(/\/$/, '');
-        }
+      const det = await getListedCompanyDetails();
+      const raw = (det.byStock[result.stockCode] || '').trim();
+      if (raw && raw.length > 4) {
+        result.website = (/^https?:\/\//i.test(raw) ? raw : 'https://' + raw).replace(/\/$/, '');
       }
     } catch { /* ignore */ }
   }
