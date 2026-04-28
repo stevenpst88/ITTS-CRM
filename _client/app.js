@@ -2866,7 +2866,7 @@ async function loadManagerAchievement(year) {
           <thead>
             <tr style="background:#f0f4ff;color:#555">
               <th style="padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e0e7ef">業務人員</th>
-              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">年度目標</th>
+              <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">年度目標（萬）<span style="font-size:11px;color:#aaa;font-weight:400;margin-left:4px">點擊編輯</span></th>
               <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">已成交</th>
               <th style="padding:10px 12px;text-align:center;font-weight:600;border-bottom:2px solid #e0e7ef;min-width:200px">達成率</th>
               <th style="padding:10px 12px;text-align:right;font-weight:600;border-bottom:2px solid #e0e7ef">在手商機</th>
@@ -2880,7 +2880,13 @@ async function loadManagerAchievement(year) {
                   ${r.displayName}
                   <span style="font-size:11px;color:#aaa;font-weight:400;margin-left:4px">${r.role === 'manager2' ? '(二級主管)' : r.role === 'manager1' ? '(一級主管)' : ''}</span>
                 </td>
-                <td style="padding:11px 12px;text-align:right;color:#555">${r.target ? fmt(r.target) + ' 萬' : '<span style="color:#ccc">未設定</span>'}</td>
+                <td style="padding:8px 12px;text-align:right">
+                  <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}">
+                    <span class="mgr-target-display" style="cursor:pointer;color:${r.target ? '#333' : '#ccc'};border-bottom:1px dashed #bbb;padding-bottom:1px" title="點擊設定目標">
+                      ${r.target ? fmt(r.target) : '未設定'}
+                    </span>
+                  </div>
+                </td>
                 <td style="padding:11px 12px;text-align:right;font-weight:600;color:#0a8a4a">${fmt(r.achieved)} 萬</td>
                 <td style="padding:11px 12px">
                   <div style="display:flex;align-items:center;gap:8px">
@@ -2897,6 +2903,57 @@ async function loadManagerAchievement(year) {
           </tbody>
         </table>
       </div>`;
+
+    // ── Inline 編輯：點擊目標欄位 ──
+    container.querySelectorAll('.mgr-target-cell').forEach(cell => {
+      const display = cell.querySelector('.mgr-target-display');
+      display.addEventListener('click', () => {
+        if (cell.querySelector('input')) return; // 已在編輯中
+        const username = cell.dataset.user;
+        const yr       = parseInt(cell.dataset.year);
+        const curAmt   = cell.dataset.amount || '';
+
+        // 換成 input + 確認/取消
+        cell.innerHTML = `
+          <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+            <input type="number" value="${curAmt}" min="0" placeholder="金額"
+              style="width:90px;font-size:13px;padding:3px 6px;border:1.5px solid #1a73e8;border-radius:5px;text-align:right">
+            <button class="mgr-save-btn" style="padding:3px 8px;font-size:12px;background:#1a73e8;color:#fff;border:none;border-radius:4px;cursor:pointer">✓</button>
+            <button class="mgr-cancel-btn" style="padding:3px 8px;font-size:12px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">✕</button>
+          </div>`;
+
+        const input  = cell.querySelector('input');
+        const saveBtn   = cell.querySelector('.mgr-save-btn');
+        const cancelBtn = cell.querySelector('.mgr-cancel-btn');
+        input.focus(); input.select();
+
+        const cancel = () => loadManagerAchievement(yr); // 取消重新渲染
+
+        const save = async () => {
+          const newAmt = parseFloat(input.value);
+          if (isNaN(newAmt) || newAmt < 0) { showToast('請輸入有效金額'); return; }
+          saveBtn.disabled = true; saveBtn.textContent = '…';
+          try {
+            const r = await fetch(`/api/manager/target/${encodeURIComponent(username)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ year: yr, amount: newAmt }),
+            });
+            if (!r.ok) { const e = await r.json(); showToast(e.error || '儲存失敗'); return; }
+            showToast('✅ 目標已更新');
+            loadManagerAchievement(yr); // 重新載入整個表格
+          } catch { showToast('儲存失敗，請重試'); }
+        };
+
+        saveBtn.addEventListener('click', save);
+        cancelBtn.addEventListener('click', cancel);
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') cancel();
+        });
+      });
+    });
+
   } catch (e) {
     console.error('loadManagerAchievement error', e);
   }

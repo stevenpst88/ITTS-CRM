@@ -1106,6 +1106,41 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   res.json({ year, rows });
 });
 
+// ── 主管幫特定業務設定年度目標 ──────────────────────────
+app.put('/api/manager/target/:username', requireAuth, (req, res) => {
+  const { role } = req.session.user;
+  if (!['manager1', 'manager2', 'admin'].includes(role)) {
+    return res.status(403).json({ error: '權限不足' });
+  }
+  const targetUsername = req.params.username;
+  const viewable = getViewableOwners(req, 'opportunities');
+  if (!viewable.includes(targetUsername)) {
+    return res.status(403).json({ error: '無權限編輯此業務目標' });
+  }
+  const year   = parseInt(req.body.year);
+  const amount = parseFloat(req.body.amount);
+  if (!year || isNaN(amount) || amount < 0) {
+    return res.status(400).json({ error: '請輸入正確的年度與金額' });
+  }
+  const data = db.load();
+  if (!data.targets) data.targets = [];
+  const existing = data.targets.find(t => t.year === year && t.owner === targetUsername);
+  if (existing) {
+    existing.amount = amount;
+    existing.updatedAt = new Date().toISOString();
+    existing.setByManager = req.session.user.username;
+  } else {
+    data.targets.push({
+      id: require('crypto').randomUUID(),
+      owner: targetUsername, year, amount,
+      createdAt: new Date().toISOString(),
+      setByManager: req.session.user.username,
+    });
+  }
+  db.save(data);
+  res.json({ success: true, username: targetUsername, year, amount });
+});
+
 // ── 年度目標 CRUD ────────────────────────────────────────
 app.get('/api/targets', requireAuth, (req, res) => {
   const data = db.load();
