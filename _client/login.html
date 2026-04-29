@@ -102,6 +102,8 @@
         });
         const data = await res.json();
         if (res.ok && data.success) {
+          // 標記本次為剛登入，供首頁依角色決定預設頁面
+          sessionStorage.setItem('justLoggedIn', '1');
           // 管理者直接進後台，其他角色進主系統
           window.location.href = data.role === 'admin' ? '/admin.html' : '/';
         } else {

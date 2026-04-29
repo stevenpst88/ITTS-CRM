@@ -2086,6 +2086,26 @@ async function initUser() {
     const h = new Date().getHours();
     const greet = h < 12 ? '早安' : h < 18 ? '午安' : '晚安';
     $('dashboardGreeting').textContent = greet + '，' + user.displayName + ' 👋';
+
+    // ── 登入後依角色決定預設頁面 ──────────────────────────
+    const isFirstLoad = !!sessionStorage.getItem('justLoggedIn');
+    if (isFirstLoad) {
+      sessionStorage.removeItem('justLoggedIn');
+      const role = user.role || 'user';
+      if (role === 'manager1' || role === 'manager2') {
+        // 一級 / 二級主管 → 主管首頁
+        showSection('managerHome');
+      } else {
+        // 其他角色（業務、秘書、行銷、admin 等）→ 一般首頁
+        // 若有上次記錄則還原，否則顯示首頁
+        const last = localStorage.getItem('lastSection');
+        if (last && last !== 'dashboard') {
+          showSection(last);
+        } else {
+          showDashboard();
+        }
+      }
+    }
   } catch { window.location.href = '/login.html'; }
 }
 
@@ -4737,7 +4757,9 @@ loadContacts(); // 背景載入聯絡人，供圖表與拜訪記錄使用
 })();
 
 // 還原上次所在頁面
+// 若是剛登入（sessionStorage.justLoggedIn），暫不還原，讓 initUser 依角色決定
 (function restoreLastSection() {
+  if (sessionStorage.getItem('justLoggedIn')) return; // initUser 接手
   const last = localStorage.getItem('lastSection');
   if (!last || last === 'dashboard') {
     showDashboard();
