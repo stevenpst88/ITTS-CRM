@@ -1393,7 +1393,30 @@ function renderCompanyInfo(d) {
     </div>`;
 }
 
-// ── Feature 6：AI 公司背景分析 ──────────────────────────
+// ── Feature 6：KA 客戶五構面分析 ─────────────────────────
+function renderKaDim(title, dim) {
+  const signalMap = {
+    green:  { icon: '🟢', label: '正向', cls: 'ka-signal-green' },
+    yellow: { icon: '🟡', label: '觀察', cls: 'ka-signal-yellow' },
+    red:    { icon: '🔴', label: '風險', cls: 'ka-signal-red' }
+  };
+  const s = signalMap[dim?.signal] || signalMap.yellow;
+  const rows = Object.entries(dim || {})
+    .filter(([k]) => k !== 'signal' && k !== 'salesHook')
+    .map(([, v]) => `<div class="ka-dim-row">${escapeHtml(String(v))}</div>`)
+    .join('');
+  return `
+    <div class="ka-dim-card ${s.cls}">
+      <div class="ka-dim-header">
+        <span>${s.icon}</span>
+        <span class="ka-dim-title">${title}</span>
+        <span class="ka-signal-label">${s.label}</span>
+      </div>
+      <div class="ka-dim-body">${rows}</div>
+      <div class="ka-dim-hook">💡 ${escapeHtml(dim?.salesHook || '')}</div>
+    </div>`;
+}
+
 $('companyInsightBtn').addEventListener('click', async () => {
   const btn = $('companyInsightBtn');
   const url = $('companyInsightUrl').value.trim();
@@ -1403,7 +1426,7 @@ $('companyInsightBtn').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = '分析中…';
   const resultDiv = $('companyInsightResult');
   resultDiv.style.display = '';
-  resultDiv.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">🤖 AI 正在分析中，請稍候（約 10-15 秒）…</div>';
+  resultDiv.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">🤖 AI 正在進行五構面分析，請稍候（約 15-20 秒）…</div>';
 
   try {
     const r = await fetch(`${API}/ai/company-insight`, {
@@ -1416,14 +1439,29 @@ $('companyInsightBtn').addEventListener('click', async () => {
       resultDiv.innerHTML = `<div class="ai-insight-error">${escapeHtml(d.error || 'AI 發生錯誤，請重試')}</div>`;
       return;
     }
+    const dims = [
+      ['戰略與市場', d.strategic],
+      ['財務構面',   d.financial],
+      ['營運與風險', d.operational],
+      ['人力資本',   d.humanCapital],
+      ['客戶與品牌', d.customerBrand],
+    ];
+    const opps = (d.topOpportunities || [])
+      .map((o, i) => `<span class="ka-opp-tag">${['①','②','③'][i]||'·'} ${escapeHtml(String(o))}</span>`)
+      .join('');
     resultDiv.innerHTML = `
-      <div class="ai-insight-card">
-        <div class="aic-row"><span class="aic-label">公司名稱</span><span>${escapeHtml(d.companyName||'—')}</span></div>
-        <div class="aic-row"><span class="aic-label">主要業務</span><span>${escapeHtml(d.mainBusiness||'—')}</span></div>
-        <div class="aic-row"><span class="aic-label">產品/服務</span><span>${escapeHtml(d.products||'—')}</span></div>
-        <div class="aic-row"><span class="aic-label">公司規模</span><span>${escapeHtml(d.scale||'—')}</span></div>
-        <div class="aic-row"><span class="aic-label">IT 需求痛點</span><span>${escapeHtml(d.painPoints||'—')}</span></div>
-        <div class="aic-summary">${escapeHtml(d.summary||'—')}</div>
+      <div class="ka-insight-wrap">
+        <div class="ka-company-name">${escapeHtml(d.companyName||'')}</div>
+        <div class="ka-analysis-base">📄 ${escapeHtml(d.analysisBase||'')}</div>
+        ${dims.map(([t, dim]) => renderKaDim(t, dim)).join('')}
+        <div class="ka-summary">
+          <div class="ka-summary-title">📋 整體建議</div>
+          <div class="ka-summary-text">${escapeHtml(d.executiveSummary||'')}</div>
+        </div>
+        <div class="ka-opps">
+          <div class="ka-opps-title">⭐ 優先機會點</div>
+          <div class="ka-opps-list">${opps}</div>
+        </div>
       </div>`;
   } catch (e) {
     resultDiv.innerHTML = `<div class="ai-insight-error">網路錯誤：${escapeHtml(e.message)}</div>`;

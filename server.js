@@ -696,7 +696,7 @@ app.post('/api/ai/company-insight', requireAuth, requireAi, async (req, res) => 
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s{2,}/g, ' ')
         .trim()
-        .slice(0, 4000);
+        .slice(0, 6000);
     } catch (fetchErr) {
       clearTimeout(timer);
       return res.status(400).json({ error: '無法存取此網址，請確認網址是否正確或網站是否允許存取' });
@@ -707,11 +707,13 @@ app.post('/api/ai/company-insight', requireAuth, requireAi, async (req, res) => 
 
     const model = gemini.getModel();
     const result = await model.generateContent(
-      `你是商業分析師。以下是一家公司官網的文字內容（已移除 HTML）：
+      `你是一位頂尖的 B2B Key Account 業務顧問，熟悉 ERP/IT 解決方案銷售。
+以下是客戶公司官網的文字內容（已移除 HTML）：
 ${pageText}
 
-請用繁體中文分析，只回傳 JSON，不要任何說明：
-{"companyName":"公司全名","mainBusiness":"主要業務（30字內）","products":"主要產品或服務（50字內）","scale":"公司規模推測（如：中型企業、上市公司）","painPoints":"可能的 IT/ERP 需求痛點（50字內）","summary":"整體背景摘要（100字內）"}`
+請從 KA 業務視角，對這家公司進行五構面分析。對於無法從官網確認的數據，請誠實標注「⚠️ 資料有限」並給出補充建議，不要捏造數字。
+只回傳 JSON，繁體中文，不要任何說明：
+{"companyName":"公司全名","analysisBase":"本次分析依據（如：官網首頁、產品頁、徵才頁等，20字內）","strategic":{"signal":"green|yellow|red","marketPosition":"市場定位與競爭態勢觀察（40字內）","industryTrend":"行業趨勢與政策風險推斷（40字內）","growthDriver":"增長動能與創新信號（40字內）","salesHook":"業務切入話題建議（30字內）"},"financial":{"signal":"green|yellow|red","profitability":"獲利能力推斷（40字內，資料不足請標注⚠️）","cashFlow":"現金流與投資傾向推斷（40字內）","capexSignal":"資本支出需求信號（40字內）","salesHook":"財務面切入話題（30字內）"},"operational":{"signal":"green|yellow|red","efficiency":"營運效率與IT成熟度觀察（40字內）","riskExposure":"合規與供應鏈風險點（40字內）","itNeed":"IT/ERP需求痛點推斷（40字內）","salesHook":"營運面切入話題（30字內）"},"humanCapital":{"signal":"green|yellow|red","talentStrategy":"人才策略與組織信號（40字內）","cultureSignal":"企業文化與轉型準備度（40字內）","leadershipSignal":"領導層穩定性觀察（40字內）","salesHook":"人力面切入話題（30字內）"},"customerBrand":{"signal":"green|yellow|red","brandStrength":"品牌影響力與客戶黏性觀察（40字內）","esgSignal":"ESG與社會責任信號（40字內）","loyaltySignal":"客戶忠誠度與口碑推斷（40字內）","salesHook":"品牌面切入話題（30字內）"},"executiveSummary":"給KA業務的整體建議與優先行動（120字內）","topOpportunities":["機會點1（25字內）","機會點2（25字內）","機會點3（25字內）"]}`
     );
 
     const text = result.response.text();
