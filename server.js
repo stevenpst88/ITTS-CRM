@@ -4476,6 +4476,107 @@ function getOwnerOptions(req) {
     : [];
 }
 
+// ── 主管首頁 Dashboard ─────────────────────────────────
+// 達成儀表盤 / 本月可成交 / 商機 Aging / 客戶 TOP 10
+app.get('/api/manager-home', requireAuth, (req, res) => {
+  try {
+    const role = req.session.user.role;
+    if (!['manager1','manager2','admin'].includes(role)) {
+      return res.status(403).json({ error: '權限不足' });
+    }
+    const yearNum = parseInt(req.query.year) || new Date().getFullYear();
+    const ownerFilter = req.query.owner || '';
+
+    const data = db.load();
+    const allOwners = getViewableOwners(req, 'opportunities');
+    const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
+
+    const opps = (data.opportunities || []).filter(o => owners.includes(o.owner));
+    const targets = (data.targets || []).filter(t => owners.includes(t.owner) && t.year === yearNum);
+
+    // ── 1. 業績達成度 ──
+    const totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const achieved = opps
+      .filter(o => o.stage === 'Won')
+      .filter(o => {
+        const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+        return d.getFullYear() === yearNum;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const achievementPct = totalTarget > 0 ? Math.round((achieved / totalTarget) * 100) : null;
+
+    // ── 2. 本月可望成交（expectedDate 落在當月、stage 非 Won/D）──
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const monthDeals = opps.filter(o => {
+      if (!o.expectedDate || ['Won','D'].includes(o.stage)) return false;
+      const ed = new Date(o.expectedDate);
+      return ed >= monthStart && ed <= monthEnd;
+    });
+    const daysSince = (createdAt) => Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+    const slim = (o) => ({
+      id: o.id, company: o.company, product: o.product || o.category || '',
+      amount: parseFloat(o.amount) || 0, stage: o.stage,
+      expectedDate: o.expectedDate, days: daysSince(o.createdAt), owner: o.owner
+    });
+    const confirmed = monthDeals.filter(o => o.stage === 'A' && daysSince(o.createdAt) <= 60);
+    const atRisk    = monthDeals.filter(o => ['A','B'].includes(o.stage) && daysSince(o.createdAt) > 60);
+    const uncertain = monthDeals.filter(o => o.stage === 'B' && daysSince(o.createdAt) <= 60);
+    const sumAmt = arr => arr.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+    // ── 3. 商機 Aging（依 stage × 天數區間，計件數）──
+    const stages = ['D','C','B','A'];
+    const buckets = ['0-7','8-30','31-60','61-90','90+'];
+    const aging = {};
+    stages.forEach(s => { aging[s] = {}; buckets.forEach(b => aging[s][b] = 0); });
+    opps.filter(o => stages.includes(o.stage)).forEach(o => {
+      const d = daysSince(o.createdAt);
+      const b = d <= 7 ? '0-7' : d <= 30 ? '8-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : '90+';
+      aging[o.stage][b]++;
+    });
+    // 算出「需介入」案件數（停滯 >60 天且階段 >=C）
+    const stalledCount = opps.filter(o => ['C','B','A'].includes(o.stage) && daysSince(o.createdAt) > 60).length;
+
+    // ── 4. 客戶 TOP 10（歷史成交 + 在手商機 累計金額）──
+    const byCompany = {};
+    opps.forEach(o => {
+      const c = o.company || '（未填公司）';
+      if (!byCompany[c]) byCompany[c] = { company: c, total: 0, won: 0, active: 0, count: 0 };
+      const amt = parseFloat(o.amount) || 0;
+      byCompany[c].total += amt;
+      byCompany[c].count++;
+      if (o.stage === 'Won') byCompany[c].won += amt;
+      else if (['C','B','A'].includes(o.stage)) byCompany[c].active += amt;
+    });
+    const topCustomers = Object.values(byCompany)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    // ── 業務篩選器選項（同 exec dashboard 模式）──
+    const auth = loadAuth();
+    const ownerOptions = (auth.users || [])
+      .filter(u => allOwners.includes(u.username))
+      .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
+
+    res.json({
+      year: yearNum,
+      achievement: { target: totalTarget, achieved, pct: achievementPct },
+      thisMonthCommit: {
+        confirmed: { count: confirmed.length, amount: sumAmt(confirmed), items: confirmed.map(slim) },
+        atRisk:    { count: atRisk.length,    amount: sumAmt(atRisk),    items: atRisk.map(slim) },
+        uncertain: { count: uncertain.length, amount: sumAmt(uncertain), items: uncertain.map(slim) },
+      },
+      aging: { stages, buckets, data: aging, stalledCount },
+      topCustomers,
+      ownerOptions,
+    });
+  } catch (e) {
+    console.error('[manager-home]', e);
+    res.status(500).json({ error: '載入失敗：' + e.message });
+  }
+});
+
 // 轉換率漏斗
 app.get('/api/exec/conversion', requireAuth, (req, res) => {
   const { year, owner } = req.query;

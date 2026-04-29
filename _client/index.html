@@ -23,6 +23,11 @@
           <span class="nav-icon">&#127968;</span>
           <span class="nav-label">首頁</span>
         </div>
+        <!-- 主管首頁（manager1/manager2/admin 專用） -->
+        <div class="sidebar-nav-item" id="navManagerHome" data-section="managerHome" style="display:none">
+          <span class="nav-icon">&#11088;</span>
+          <span class="nav-label">主管首頁</span>
+        </div>
         <div class="sidebar-nav-item" id="navProspects" data-section="prospects">
           <span class="nav-icon">&#128270;</span>
           <span class="nav-label">潛在客戶</span>
@@ -868,6 +873,55 @@
           <div id="execTabConversion" class="exec-tab-pane"></div>
           <div id="execTabTrend"      class="exec-tab-pane" style="display:none"></div>
           <div id="execTabProduct"    class="exec-tab-pane" style="display:none"></div>
+        </div>
+
+        <!-- ── 主管首頁 ── -->
+        <div id="managerHomeView" style="display:none">
+          <div class="mgr-filter-bar">
+            <select id="mgrYearSel" class="forecast-year-sel"></select>
+            <div id="mgrOwnerWrap" style="display:none;align-items:center;gap:6px">
+              <span style="font-size:13px;color:#555">👤 業務：</span>
+              <select id="mgrOwnerSel" class="forecast-year-sel">
+                <option value="">全公司</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="mgrRefreshBtn" style="font-size:13px;padding:6px 14px">🔄 重新整理</button>
+          </div>
+
+          <!-- 第一列：達成儀表盤 + 本月可成交 -->
+          <div class="mgr-row-2">
+            <div class="mgr-card mgr-card-gauge">
+              <div class="mgr-card-title">🎯 業績達成度</div>
+              <div class="mgr-gauge-wrap">
+                <canvas id="mgrGaugeChart"></canvas>
+                <div class="mgr-gauge-center">
+                  <div id="mgrGaugePct" class="mgr-gauge-pct">—</div>
+                  <div id="mgrGaugeLabel" class="mgr-gauge-label">載入中…</div>
+                </div>
+              </div>
+              <div id="mgrGaugeDetail" class="mgr-gauge-detail"></div>
+            </div>
+
+            <div class="mgr-card mgr-card-commit">
+              <div class="mgr-card-title">📅 本月可望成交</div>
+              <div id="mgrCommitContent" class="mgr-commit-content"><div class="mgr-loading">載入中…</div></div>
+            </div>
+          </div>
+
+          <!-- 第二列：商機 Aging -->
+          <div class="mgr-card mgr-card-full">
+            <div class="mgr-card-title">⏳ 商機停滯時間分析（Aging）</div>
+            <div class="mgr-card-sub">數字越偏右側、顏色越紅 = 該階段卡越久，建議優先介入</div>
+            <div style="position:relative;height:240px"><canvas id="mgrAgingChart"></canvas></div>
+            <div id="mgrAgingHint" class="mgr-aging-hint"></div>
+          </div>
+
+          <!-- 第三列：客戶 TOP 10 -->
+          <div class="mgr-card mgr-card-full">
+            <div class="mgr-card-title">🏆 客戶價值 TOP 10</div>
+            <div class="mgr-card-sub">含「歷史成交 + 在手商機」總金額排名</div>
+            <div style="position:relative;height:340px"><canvas id="mgrTopCustChart"></canvas></div>
+          </div>
         </div>
 
         <!-- ── ERP MA 合約管理 ── -->

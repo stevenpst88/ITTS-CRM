@@ -2837,6 +2837,74 @@ body {
 .lead-status-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .btn-xs { padding: 3px 8px !important; font-size: 12px !important; border-radius: 5px !important; }
 
+/* ── 主管首頁（Manager Home） ── */
+.mgr-filter-bar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 16px; padding: 12px 16px;
+  background: #fff; border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.mgr-row-2 {
+  display: grid; grid-template-columns: 360px 1fr; gap: 16px; margin-bottom: 16px;
+}
+@media (max-width: 1100px) { .mgr-row-2 { grid-template-columns: 1fr; } }
+.mgr-card {
+  background: #fff; border-radius: 12px;
+  padding: 16px 18px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.mgr-card-full { margin-bottom: 16px; }
+.mgr-card-title { font-size: 15px; font-weight: 700; color: #1a2c5b; margin-bottom: 4px; }
+.mgr-card-sub   { font-size: 12px; color: #888; margin-bottom: 12px; }
+
+/* 達成儀表盤 */
+.mgr-card-gauge { display: flex; flex-direction: column; }
+.mgr-gauge-wrap { position: relative; height: 200px; margin: 8px 0; }
+.mgr-gauge-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -30%);
+  text-align: center; pointer-events: none;
+}
+.mgr-gauge-pct   { font-size: 38px; font-weight: 800; color: #1a2c5b; line-height: 1; }
+.mgr-gauge-label { font-size: 13px; color: #666; margin-top: 4px; }
+.mgr-gauge-detail { text-align: center; font-size: 13px; color: #444; margin-top: 6px; }
+
+/* 本月可成交 */
+.mgr-card-commit { padding: 14px 16px; }
+.mgr-commit-content { display: flex; flex-direction: column; gap: 10px; }
+.mgr-loading { color: #888; font-size: 13px; padding: 20px; text-align: center; }
+.mgr-commit-block {
+  border-left: 4px solid #ccc; padding: 8px 12px;
+  background: #fafbfc; border-radius: 0 6px 6px 0;
+}
+.mgr-commit-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 2px;
+}
+.mgr-commit-label { font-weight: 700; font-size: 13px; color: #222; }
+.mgr-commit-stat  { font-size: 12px; color: #555; }
+.mgr-commit-stat b { color: #1a2c5b; font-size: 13px; }
+.mgr-commit-hint  { font-size: 11px; color: #888; margin-bottom: 6px; }
+.mgr-commit-empty { font-size: 12px; color: #aaa; padding: 4px 0; }
+.mgr-commit-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; padding: 3px 0; line-height: 1.4;
+}
+.mgr-commit-stage {
+  display: inline-block; min-width: 22px; text-align: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+  border-radius: 4px; padding: 1px 6px;
+}
+.mgr-commit-co   { font-weight: 600; color: #222; flex-shrink: 0; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-commit-prod { color: #666; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-commit-amt  { color: #1a2c5b; font-weight: 700; flex-shrink: 0; }
+.mgr-commit-more { font-size: 11px; color: #888; padding-top: 2px; padding-left: 30px; }
+
+/* Aging 提示 */
+.mgr-aging-hint {
+  margin-top: 10px; font-size: 13px; padding: 8px 12px;
+  background: #fafbfc; border-radius: 6px;
+}
+
 /* ── 管理儀表板（Executive Dashboard） ── */
 .exec-filter-bar {
   display: flex; align-items: center; flex-wrap: wrap;

@@ -71,9 +71,10 @@ function applyPermissions() {
       const el = $(id); if (el) el.style.display = '';
     });
   }
-  // 管理儀表板：主管 / admin 才顯示
+  // 管理儀表板 + 主管首頁：主管 / admin 才顯示
   if (role === 'manager1' || role === 'manager2' || role === 'admin') {
-    const el = $('navExecDash'); if (el) el.style.display = '';
+    const e1 = $('navExecDash');     if (e1) e1.style.display = '';
+    const e2 = $('navManagerHome');  if (e2) e2.style.display = '';
   }
   // 行銷功能
   if (role === 'marketing') {
@@ -618,11 +619,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
+  ['navHome','navManagerHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
+  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -640,7 +641,7 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','execDashView','campaignsView','leadsView',
+   'forecastView','lostOppView','execDashView','managerHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
@@ -669,6 +670,7 @@ function showSection(section) {
   $('pipelineView').style.display     = section === 'pipeline'    ? '' : 'none';
   $('forecastView').style.display     = section === 'forecast'    ? '' : 'none';
   $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
+  $('managerHomeView').style.display  = section === 'managerHome' ? '' : 'none';
   $('campaignsView').style.display    = section === 'campaigns'   ? '' : 'none';
   $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
@@ -690,6 +692,7 @@ function showSection(section) {
   if (section === 'pipeline')    loadPipelineView();
   if (section === 'forecast')    loadForecastView();
   if (section === 'execDash')    loadExecDash();
+  if (section === 'managerHome') loadManagerHome();
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
@@ -711,6 +714,7 @@ $('navPipeline').addEventListener('click',  () => showSection('pipeline'));
 $('navForecast').addEventListener('click',  () => showSection('forecast'));
 $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
 $('navExecDash').addEventListener('click',        () => showSection('execDash'));
+$('navManagerHome').addEventListener('click',     () => showSection('managerHome'));
 $('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
@@ -6133,6 +6137,214 @@ async function refreshLeadsBadge() {
       badge.style.display = pending > 0 ? '' : 'none';
     }
   } catch {}
+}
+
+// ════════════════════════════════════════════════════════
+//  主管首頁（Manager Home）
+// ════════════════════════════════════════════════════════
+let mgrYear = new Date().getFullYear();
+let mgrOwnerFilter = '';
+const _mgrCharts = { gauge: null, aging: null, topCust: null };
+
+async function loadManagerHome() {
+  // 初始化年份選單與事件（只綁一次）
+  const yrSel = $('mgrYearSel');
+  if (!yrSel.options.length) {
+    const cy = new Date().getFullYear();
+    for (let y = cy + 1; y >= cy - 3; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y + ' 年';
+      if (y === cy) o.selected = true;
+      yrSel.appendChild(o);
+    }
+    yrSel.addEventListener('change', () => { mgrYear = parseInt(yrSel.value); loadManagerHome(); });
+    $('mgrRefreshBtn').addEventListener('click', () => loadManagerHome());
+  }
+
+  const qs = `year=${mgrYear}${mgrOwnerFilter ? '&owner=' + mgrOwnerFilter : ''}`;
+  let d;
+  try {
+    const r = await fetch(`${API}/manager-home?${qs}`);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      showToast(err.error || '載入主管首頁失敗', 'error');
+      return;
+    }
+    d = await r.json();
+  } catch (e) {
+    showToast('網路錯誤：' + e.message, 'error');
+    return;
+  }
+
+  // 業務篩選器
+  const ownerWrap = $('mgrOwnerWrap');
+  if (d.ownerOptions && d.ownerOptions.length > 1) {
+    ownerWrap.style.display = 'flex';
+    const sel = $('mgrOwnerSel');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">全公司</option>';
+    d.ownerOptions.forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.username; o.textContent = u.displayName;
+      if (u.username === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!sel._bound) {
+      sel._bound = true;
+      sel.addEventListener('change', () => { mgrOwnerFilter = sel.value; loadManagerHome(); });
+    }
+  } else {
+    ownerWrap.style.display = 'none';
+  }
+
+  renderMgrGauge(d.achievement);
+  renderMgrCommit(d.thisMonthCommit);
+  renderMgrAging(d.aging);
+  renderMgrTopCust(d.topCustomers);
+}
+
+// ── 1. 達成儀表盤（doughnut） ─────────────────────────
+function renderMgrGauge(a) {
+  const pct = a.pct;
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  $('mgrGaugePct').textContent   = pct === null ? '—' : pct + '%';
+  $('mgrGaugeLabel').textContent = a.target > 0 ? '本年達成度' : '尚未設定目標';
+  $('mgrGaugeDetail').innerHTML = a.target > 0
+    ? `已達成 <b>${fmt(a.achieved)}</b> 萬 / 目標 <b>${fmt(a.target)}</b> 萬`
+    : `本年成交 <b>${fmt(a.achieved)}</b> 萬（無目標可比對）`;
+
+  // 顏色：>=90 綠 / 60-89 橘 / <60 紅
+  const color = pct === null ? '#bbb' : pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
+  const drawPct = pct === null ? 0 : Math.min(pct, 100);
+  const ctx = $('mgrGaugeChart').getContext('2d');
+  if (_mgrCharts.gauge) _mgrCharts.gauge.destroy();
+  _mgrCharts.gauge = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [drawPct, 100 - drawPct],
+        backgroundColor: [color, '#eef0f3'],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      cutout: '78%',
+      circumference: 270,
+      rotation: -135,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      responsive: true,
+      maintainAspectRatio: false
+    }
+  });
+}
+
+// ── 2. 本月可望成交 ─────────────────────────────────────
+function renderMgrCommit(c) {
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  const block = (label, color, group, hint) => {
+    const items = group.items.slice(0, 4).map(o => `
+      <div class="mgr-commit-item">
+        <span class="mgr-commit-stage" style="background:${color}">${o.stage}</span>
+        <span class="mgr-commit-co">${escapeHtml(o.company || '—')}</span>
+        <span class="mgr-commit-prod">${escapeHtml(o.product || '')}</span>
+        <span class="mgr-commit-amt">${fmt(o.amount)}萬</span>
+      </div>`).join('');
+    const more = group.items.length > 4 ? `<div class="mgr-commit-more">…還有 ${group.items.length - 4} 案</div>` : '';
+    return `
+      <div class="mgr-commit-block" style="border-left-color:${color}">
+        <div class="mgr-commit-head">
+          <span class="mgr-commit-label">${label}</span>
+          <span class="mgr-commit-stat">${group.count} 案 · <b>${fmt(group.amount)}萬</b></span>
+        </div>
+        <div class="mgr-commit-hint">${hint}</div>
+        ${items || '<div class="mgr-commit-empty">本月無此類案件</div>'}
+        ${more}
+      </div>`;
+  };
+  $('mgrCommitContent').innerHTML =
+    block('✅ 確定可成交', '#1e8e3e', c.confirmed, 'A 階段且推進中（建立 ≤60 天）') +
+    block('⚠️ 風險案件',   '#c5221f', c.atRisk,    'A/B 階段但建立 >60 天，需介入') +
+    block('❓ 變數較大',   '#e37400', c.uncertain, 'B 階段，需推進至 A 才有把握');
+}
+
+// ── 3. 商機 Aging（堆疊長條圖） ─────────────────────────
+function renderMgrAging(a) {
+  const bucketColors = {
+    '0-7':   '#34a853',
+    '8-30':  '#7cb342',
+    '31-60': '#fbbc04',
+    '61-90': '#fb8c00',
+    '90+':   '#ea4335',
+  };
+  const datasets = a.buckets.map(b => ({
+    label: b + ' 天',
+    data: a.stages.map(s => a.data[s][b]),
+    backgroundColor: bucketColors[b],
+    borderWidth: 0,
+    stack: 'stack-aging',
+  }));
+  const ctx = $('mgrAgingChart').getContext('2d');
+  if (_mgrCharts.aging) _mgrCharts.aging.destroy();
+  _mgrCharts.aging = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: a.stages.map(s => s + ' 階段'), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { stacked: true, title: { display: true, text: '案件數' } },
+        y: { stacked: true }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}：${c.parsed.x} 件` } }
+      }
+    }
+  });
+  $('mgrAgingHint').innerHTML = a.stalledCount > 0
+    ? `<span style="color:#c5221f;font-weight:600">⚠️ 共 ${a.stalledCount} 案在 C/B/A 階段停滯超過 60 天，建議優先檢視</span>`
+    : `<span style="color:#1e8e3e">✅ 各階段案件健康，無顯著停滯</span>`;
+}
+
+// ── 4. 客戶 TOP 10（橫條圖） ───────────────────────────
+function renderMgrTopCust(list) {
+  const ctx = $('mgrTopCustChart').getContext('2d');
+  if (_mgrCharts.topCust) _mgrCharts.topCust.destroy();
+  if (!list || list.length === 0) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    return;
+  }
+  const labels = list.map(c => c.company.length > 20 ? c.company.slice(0, 20) + '…' : c.company);
+  _mgrCharts.topCust = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '已成交（Won）', data: list.map(c => c.won),    backgroundColor: '#1e8e3e', stack: 's' },
+        { label: '在手商機',       data: list.map(c => c.active), backgroundColor: '#1a73e8', stack: 's' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { stacked: true, title: { display: true, text: '金額（萬）' } },
+        y: { stacked: true }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: (c) => `${c.dataset.label}：${Number(c.parsed.x).toLocaleString('zh-TW')} 萬`,
+            footer: (items) => {
+              const idx = items[0].dataIndex;
+              return `共 ${list[idx].count} 件商機`;
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 // ════════════════════════════════════════════════════════
