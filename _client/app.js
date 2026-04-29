@@ -5855,7 +5855,7 @@ function _renderAiSummary(c) {
     const isOpen = document.getElementById('modalOverlay').classList.contains('open');
     if (isOpen) {
       const hasId = !!document.getElementById('contactId').value;
-      tabAiBtn.style.display = hasId ? '' : 'none';
+      tabAiBtn.style.display = hasId ? 'inline-block' : 'none';
       if (!hasId) {
         // 若當前在 tab-ai，切回 tab-card
         if (!document.getElementById('tab-ai').classList.contains('hidden')) {
