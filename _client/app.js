@@ -1200,7 +1200,7 @@ $('email').addEventListener('input', function () {
   if (domains.length === 0) { dropdown.innerHTML = ''; dropdown.classList.remove('open'); return; }
 
   dropdown.innerHTML = domains.map(d =>
-    `<div class="domain-item" data-domain="${d}">${val.slice(0, atIdx + 1)}<strong>${d}</strong></div>`
+    `<div class="domain-item" data-domain="${escapeHtml(d)}">${escapeHtml(val.slice(0, atIdx + 1))}<strong>${escapeHtml(d)}</strong></div>`
   ).join('');
   dropdown.classList.add('open');
 });

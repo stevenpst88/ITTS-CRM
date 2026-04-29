@@ -297,36 +297,43 @@ function sanitizeUrl(url) {
 }
 
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
-app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html')));
-app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png')));
-app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg')));
+// Static assets：加 1 天快取，減少重複下載（瀏覽器仍會用 ETag 檢查更新）
+const STATIC_CACHE = { maxAge: '1d' };
+app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_CACHE));
+app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png'), STATIC_CACHE));
+app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg'), STATIC_CACHE));
 // admin.html 已移至受保護路由（需登入 + admin 角色）
 
 app.post('/api/login', loginLimiter, async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ success: false, message: '請輸入帳號與密碼' });
-  const authData = loadAuth();
-  const user = authData.users.find(u => u.username === username);
-  if (!user) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
-  if (user.active === false) return res.status(403).json({ success: false, message: '帳號已停用，請聯繫管理者' });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ success: false, message: '請輸入帳號與密碼' });
+    const authData = loadAuth();
+    const user = authData.users.find(u => u.username === username);
+    if (!user) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
+    if (user.active === false) return res.status(403).json({ success: false, message: '帳號已停用，請聯繫管理者' });
 
-  let isValid = false;
-  if (user.password && user.password.startsWith('$2b$')) {
-    // 已 hash 的密碼：bcrypt 比對
-    isValid = await bcrypt.compare(password, user.password);
-  } else {
-    // 舊明文密碼：比對後自動升級為 hash（首次登入自動遷移）
-    isValid = (user.password === password);
-    if (isValid) {
-      user.password = await bcrypt.hash(password, 12);
-      saveAuth(authData);
+    let isValid = false;
+    if (user.password && user.password.startsWith('$2b$')) {
+      // 已 hash 的密碼：bcrypt 比對
+      isValid = await bcrypt.compare(password, user.password);
+    } else {
+      // 舊明文密碼：比對後自動升級為 hash（首次登入自動遷移）
+      isValid = (user.password === password);
+      if (isValid) {
+        user.password = await bcrypt.hash(password, 12);
+        saveAuth(authData);
+      }
     }
-  }
 
-  if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
-  req.session.user = { username: user.username, displayName: user.displayName, role: user.role || 'user' };
-  writeLog('LOGIN', username, username, `登入成功`, req);
-  res.json({ success: true, displayName: user.displayName, role: user.role || 'user' });
+    if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
+    req.session.user = { username: user.username, displayName: user.displayName, role: user.role || 'user' };
+    writeLog('LOGIN', username, username, `登入成功`, req);
+    res.json({ success: true, displayName: user.displayName, role: user.role || 'user' });
+  } catch (e) {
+    console.error('[LOGIN ERROR]', e);
+    res.status(500).json({ success: false, message: '登入服務暫時無法使用，請稍後再試' });
+  }
 });
 
 app.post('/api/logout', (req, res) => {
@@ -344,7 +351,7 @@ app.get('/admin.html', requireAuth, (req, res) => {
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
   res.sendFile(path.join(__dirname, '_client', 'admin.html'));
 });
-app.use(requireAuth, express.static(path.join(__dirname, '_client')));
+app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_CACHE));
 // ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
 app.get('/uploads/:key', requireAuth, (req, res, next) => {
   Promise.resolve(storage.serveFile(req, res, req.params.key)).catch(next);
@@ -356,23 +363,28 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 // ── 自助更改密碼（登入者本人）────────────────────────────
 app.put('/api/user/password', requireAuth, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword)
-    return res.status(400).json({ error: '請填寫舊密碼與新密碼' });
-  if (newPassword.length < 6)
-    return res.status(400).json({ error: '新密碼至少需要 6 個字元' });
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword)
+      return res.status(400).json({ error: '請填寫舊密碼與新密碼' });
+    if (newPassword.length < 6)
+      return res.status(400).json({ error: '新密碼至少需要 6 個字元' });
 
-  const auth = loadAuth();
-  const user = auth.users.find(u => u.username === req.session.user.username);
-  if (!user) return res.status(404).json({ error: '找不到帳號' });
+    const auth = loadAuth();
+    const user = auth.users.find(u => u.username === req.session.user.username);
+    if (!user) return res.status(404).json({ error: '找不到帳號' });
 
-  const valid = await bcrypt.compare(currentPassword, user.password);
-  if (!valid) return res.status(401).json({ error: '舊密碼不正確' });
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(401).json({ error: '舊密碼不正確' });
 
-  user.password = await bcrypt.hash(newPassword, 12);
-  saveAuth(auth);
-  writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
-  res.json({ success: true });
+    user.password = await bcrypt.hash(newPassword, 12);
+    saveAuth(auth);
+    writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[CHANGE_PASSWORD ERROR]', e);
+    res.status(500).json({ error: '更改密碼失敗，請稍後再試' });
+  }
 });
 
 // ════════════════════════════════════════════════════════
