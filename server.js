@@ -14,6 +14,7 @@ const db = require('./db');
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
 const gemini = require('./ai/gemini');
+const apiMonitor = require('./lib/apiMonitor');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -109,21 +110,27 @@ app.use(cors({
 
 // ── 登入速率限制 ──────────────────────────────────────────
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 分鐘
-  max: 20,                   // 最多嘗試 20 次
-  message: { success: false, message: '嘗試次數過多，請 15 分鐘後再試' },
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiMonitor.recordRateLimit('login');
+    res.status(429).json({ success: false, message: '嘗試次數過多，請 15 分鐘後再試' });
+  }
 });
 
 // ── API 全域速率限制 ──────────────────────────────────────
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,  // 1 分鐘
-  max: 300,             // 每 IP 每分鐘最多 300 次 API 呼叫
-  message: { error: '請求過於頻繁，請稍後再試' },
+  windowMs: 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: req => /\.(css|js|png|svg|ico|woff2?)$/.test(req.path) // 靜態資源不計入
+  skip: req => /\.(css|js|png|svg|ico|woff2?)$/.test(req.path),
+  handler: (req, res) => {
+    apiMonitor.recordRateLimit('api');
+    res.status(429).json({ error: '請求過於頻繁，請稍後再試' });
+  }
 });
 
 app.use(express.json({ limit: '2mb' }));        // 限制 request body 大小
@@ -429,6 +436,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 只回傳 JSON 陣列，不要任何說明或 markdown。`
       ]);
 
+      apiMonitor.recordGemini('admin-ocr-card', result.response.usageMetadata);
       const text = result.response.text();
       let contacts;
       try {
@@ -441,6 +449,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
       res.json({ contacts });
     } catch (e) {
       console.error('[ai-ocr-card admin]', e.message);
+      apiMonitor.recordGemini('admin-ocr-card', null);
       const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('quota') || String(e.message).includes('RESOURCE_EXHAUSTED');
       res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : 'AI 辨識失敗：' + e.message });
     }
@@ -469,6 +478,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 只回傳 JSON 物件，不要任何說明或 markdown。`
       ]);
 
+      apiMonitor.recordGemini('ocr-card', result.response.usageMetadata);
       const text = result.response.text();
       let contact;
       try {
@@ -481,6 +491,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
       res.json({ contact });
     } catch (e) {
       console.error('[ai/ocr-card]', e.message);
+      apiMonitor.recordGemini('ocr-card', null);
       const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('quota') || String(e.message).includes('RESOURCE_EXHAUSTED');
       res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : 'AI 辨識失敗：' + e.message });
     }
@@ -510,6 +521,7 @@ app.post('/api/ai/visit-suggest', requireAuth, requireAi, async (req, res) => {
 {"nextAction":"...","keyTakeaways":["...","..."]}`
     );
 
+    apiMonitor.recordGemini('visit-suggest', result.response.usageMetadata);
     const text = result.response.text();
     try {
       const data = gemini.parseJson(text);
@@ -518,6 +530,7 @@ app.post('/api/ai/visit-suggest', requireAuth, requireAi, async (req, res) => {
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
     }
   } catch (e) {
+    apiMonitor.recordGemini('visit-suggest', null);
     const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED'); const status = is429 ? 429 : 500;
     const msg = is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
     res.status(status).json({ error: msg });
@@ -568,6 +581,7 @@ app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
 winRate 是 0–100 整數，factors 各項加總約等於 winRate。`
     );
 
+    apiMonitor.recordGemini('opp-win-rate', result.response.usageMetadata);
     const text = result.response.text();
     try {
       const aiData = gemini.parseJson(text);
@@ -583,6 +597,7 @@ winRate 是 0–100 整數，factors 各項加總約等於 winRate。`
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
     }
   } catch (e) {
+    apiMonitor.recordGemini('opp-win-rate', null);
     const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED'); const status = is429 ? 429 : 500;
     const msg = is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
     res.status(status).json({ error: msg });
@@ -640,6 +655,7 @@ ${visitSummary}
 只回傳 JSON：{"summary":"...","health":"良好"}`
     );
 
+    apiMonitor.recordGemini('contact-summary', result.response.usageMetadata);
     const text = result.response.text();
     try {
       const aiData = gemini.parseJson(text);
@@ -656,6 +672,7 @@ ${visitSummary}
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
     }
   } catch (e) {
+    apiMonitor.recordGemini('contact-summary', null);
     const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED'); const status = is429 ? 429 : 500;
     const msg = is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message);
     res.status(status).json({ error: msg });
@@ -685,6 +702,7 @@ app.post('/api/ai/follow-up-email', requireAuth, requireAi, async (req, res) => 
 只回傳 JSON，不要任何說明：{"subject":"...","body":"..."}`
     );
 
+    apiMonitor.recordGemini('follow-up-email', result.response.usageMetadata);
     const text = result.response.text();
     try {
       const data = gemini.parseJson(text);
@@ -693,6 +711,7 @@ app.post('/api/ai/follow-up-email', requireAuth, requireAi, async (req, res) => 
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
     }
   } catch (e) {
+    apiMonitor.recordGemini('follow-up-email', null);
     const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED');
     res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message) });
   }
@@ -744,6 +763,7 @@ ${pageText}
 {"companyName":"公司全名","analysisBase":"本次分析依據（如：官網首頁、產品頁、徵才頁等，20字內）","strategic":{"signal":"green|yellow|red","marketPosition":"市場定位與競爭態勢觀察（40字內）","industryTrend":"行業趨勢與政策風險推斷（40字內）","growthDriver":"增長動能與創新信號（40字內）","salesHook":"業務切入話題建議（30字內）"},"financial":{"signal":"green|yellow|red","profitability":"獲利能力推斷（40字內，資料不足請標注⚠️）","cashFlow":"現金流與投資傾向推斷（40字內）","capexSignal":"資本支出需求信號（40字內）","salesHook":"財務面切入話題（30字內）"},"operational":{"signal":"green|yellow|red","efficiency":"營運效率與IT成熟度觀察（40字內）","riskExposure":"合規與供應鏈風險點（40字內）","itNeed":"IT/ERP需求痛點推斷（40字內）","salesHook":"營運面切入話題（30字內）"},"humanCapital":{"signal":"green|yellow|red","talentStrategy":"人才策略與組織信號（40字內）","cultureSignal":"企業文化與轉型準備度（40字內）","leadershipSignal":"領導層穩定性觀察（40字內）","salesHook":"人力面切入話題（30字內）"},"customerBrand":{"signal":"green|yellow|red","brandStrength":"品牌影響力與客戶黏性觀察（40字內）","esgSignal":"ESG與社會責任信號（40字內）","loyaltySignal":"客戶忠誠度與口碑推斷（40字內）","salesHook":"品牌面切入話題（30字內）"},"executiveSummary":"給KA業務的整體建議與優先行動（120字內）","topOpportunities":["機會點1（25字內）","機會點2（25字內）","機會點3（25字內）"]}`
     );
 
+    apiMonitor.recordGemini('company-insight', result.response.usageMetadata);
     const text = result.response.text();
     try {
       const data = gemini.parseJson(text);
@@ -752,6 +772,7 @@ ${pageText}
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
     }
   } catch (e) {
+    apiMonitor.recordGemini('company-insight', null);
     const is429 = e.status === 429 || String(e.message).includes('429') || String(e.message).includes('RESOURCE_EXHAUSTED');
     res.status(is429 ? 429 : 500).json({ error: is429 ? 'AI 服務暫時忙碌，請稍後再試' : ('AI 發生錯誤：' + e.message) });
   }
@@ -2972,6 +2993,13 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     if (fin2.status === 'fulfilled') { result.revenue2024 = fin2.value.revenue; result.grossMargin2024 = fin2.value.grossMargin; }
   }
 
+  apiMonitor.recordCompanyLookup({
+    gcisSuccess:     result.companyName ? 1 : 0,
+    gcisError:       result.companyName ? 0 : 1,
+    twseTpexSuccess: result.listedType !== '未上市櫃' ? 1 : 0,
+    ddgSuccess:      0,
+    ddgError:        0,
+  });
   res.json(result);
 });
 
@@ -4054,6 +4082,17 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
   }
 });
 
+// ── API 使用量監控 ────────────────────────────────────────
+app.get('/api/admin/api-stats', requireAdmin, (req, res) => {
+  try {
+    const summary = apiMonitor.getSummary();
+    summary.generatedAt = new Date().toISOString();
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── 報價單功能 ─────────────────────────────────────────────
 const QUOTE_TEMPLATE = path.join(__dirname, 'templates', 'quotation_template.xlsx');
 
@@ -4748,6 +4787,7 @@ if (require.main === module) {
   // 本地執行：node server.js
   (async () => {
     try { await db.ready(); } catch (e) { console.error('[db] ready failed:', e); }
+    try { await apiMonitor.ready(); } catch (e) { console.error('[apiMonitor] ready failed:', e); }
     app.listen(PORT, () => {
       migrateOwner();
       migrateStage成交ToWon();
@@ -4766,6 +4806,7 @@ if (require.main === module) {
         migrateStage成交ToWon();
       })
       .catch((e) => console.error('[db] preload failed:', e));
+    apiMonitor.ready().catch((e) => console.error('[apiMonitor] preload failed:', e));
   }
 }
 

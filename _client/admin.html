@@ -342,6 +342,9 @@
       <div class="admin-nav-item" data-sec="storage">
         <span class="admin-nav-icon">💾</span> 容量空間監控
       </div>
+      <div class="admin-nav-item" data-sec="api-stats">
+        <span class="admin-nav-icon">📡</span> API 使用監控
+      </div>
       <div class="admin-nav-item" data-sec="version">
         <span class="admin-nav-icon">🏷️</span> 版本資訊
       </div>
@@ -959,6 +962,34 @@
         </div>
       </div>
 
+      <!-- ── API 使用量監控 ── -->
+      <div class="admin-section" id="sec-api-stats">
+        <div class="section-title">📡 API 使用量監控</div>
+        <div class="section-sub">Gemini AI Token 消耗、統一編號查詢次數與速率限制觸發統計</div>
+        <div id="apiStatRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px"></div>
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header">
+            <span class="admin-card-title">🤖 Gemini AI 呼叫分類（今日）</span>
+            <span id="geminiMonthBadge" style="font-size:12px;color:#888"></span>
+          </div>
+          <div class="admin-card-body" style="padding:8px 0" id="geminiFeatureList"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">🏢 統一編號查詢（今日）</span></div>
+            <div class="admin-card-body" id="companyLookupStats" style="padding:8px 0"></div>
+          </div>
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">🚫 Rate Limit 觸發次數</span></div>
+            <div class="admin-card-body" id="rateLimitStats" style="padding:8px 0"></div>
+          </div>
+        </div>
+        <div style="text-align:right;margin-top:4px">
+          <span id="apiStatsGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <button class="btn btn-sm" onclick="loadApiStats()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+        </div>
+      </div>
+
       <!-- ── 版本資訊 ── -->
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
@@ -1160,6 +1191,7 @@
         if (this.dataset.sec === 'contact-audit') initContactAudit();
         if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
         if (this.dataset.sec === 'storage') loadStorageInfo();
+        if (this.dataset.sec === 'api-stats') loadApiStats();
         if (this.dataset.sec === 'version') loadVersionInfo();
       });
     });
@@ -2137,6 +2169,104 @@
       const sizes = ['B','KB','MB','GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1)) + ' ' + sizes[i];
+    }
+
+    // ── API 使用量監控 ──────────────────────────────────────
+    const GEMINI_LABELS = {
+      'ocr-card':        '名片 OCR（業務）',
+      'admin-ocr-card':  '名片 OCR（管理）',
+      'visit-suggest':   '拜訪記錄建議',
+      'opp-win-rate':    '商機贏率預測',
+      'contact-summary': '客戶輪廓摘要',
+      'follow-up-email': '跟進信件草稿',
+      'company-insight': '公司背景分析'
+    };
+
+    async function loadApiStats() {
+      try {
+        const r = await adminFetch(`${API}/admin/api-stats`);
+        const d = await r.json();
+        const g  = d.gemini;
+        const cl = d.companyLookup;
+        const rl = d.rateLimitHits;
+
+        // 頂部摘要卡
+        const statCards = [
+          { icon: '🤖', label: 'Gemini 今日呼叫', color: '#1a73e8', bg: '#e8f0fe',
+            value: g.today.totalCalls, sub: `本月 ${g.thisMonth.totalCalls} 次` },
+          { icon: '🔤', label: 'Token 今日消耗', color: '#9c27b0', bg: '#f3e5f5',
+            value: (((g.today.totalPromptTokens || 0) + (g.today.totalOutputTokens || 0)) / 1000).toFixed(1) + 'K',
+            sub: `本月 ${(((g.thisMonth.totalPromptTokens || 0) + (g.thisMonth.totalOutputTokens || 0)) / 1000).toFixed(0)}K` },
+          { icon: '🏢', label: '統編查詢今日', color: '#34a853', bg: '#e6f4ea',
+            value: cl.today.calls, sub: `本月 ${cl.thisMonth.calls} 次` },
+          { icon: '🚫', label: 'Rate Limit 今日', color: '#ea4335', bg: '#fce8e6',
+            value: (rl.today.api + rl.today.login), sub: `本月 ${rl.thisMonth.api + rl.thisMonth.login} 次` }
+        ];
+        $('apiStatRow').innerHTML = statCards.map(c => `
+          <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.07);
+                      padding:16px;border-top:3px solid ${c.color};display:flex;align-items:center;gap:12px">
+            <div style="width:42px;height:42px;border-radius:10px;background:${c.bg};color:${c.color};
+                        display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${c.icon}</div>
+            <div style="min-width:0">
+              <div style="font-size:11px;color:#888;margin-bottom:2px">${c.label}</div>
+              <div style="font-size:20px;font-weight:800;color:${c.color};line-height:1.2">${c.value}</div>
+              <div style="font-size:11px;color:#bbb;margin-top:2px">${c.sub}</div>
+            </div>
+          </div>`).join('');
+
+        // Gemini feature 橫條
+        $('geminiMonthBadge').textContent =
+          `本月：${g.thisMonth.totalCalls} 次 / ${(((g.thisMonth.totalPromptTokens||0)+(g.thisMonth.totalOutputTokens||0))/1000).toFixed(0)}K tokens`;
+        const perFeature = g.today.perFeature || {};
+        const maxCalls = Math.max(...Object.values(perFeature).map(f => f.calls), 1);
+        $('geminiFeatureList').innerHTML = Object.entries(GEMINI_LABELS).map(([key, label]) => {
+          const f = perFeature[key] || { calls: 0, promptTokens: 0, outputTokens: 0, errors: 0 };
+          const pct = Math.max((f.calls / maxCalls) * 100, f.calls ? 3 : 0);
+          const tokens = (f.promptTokens || 0) + (f.outputTokens || 0);
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid #f5f5f5">
+              <span style="font-size:12px;font-weight:600;color:#555;min-width:130px;flex-shrink:0">${label}</span>
+              <div style="flex:1;height:14px;background:#f5f5f5;border-radius:7px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#1a73e8,#4da3ff);border-radius:7px;transition:width .4s"></div>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:#333;min-width:30px;text-align:right">${f.calls}</span>
+              <span style="font-size:11px;color:#888;min-width:70px;text-align:right">${tokens > 0 ? (tokens/1000).toFixed(1)+'K tok' : '—'}</span>
+              ${f.errors > 0 ? `<span style="font-size:10px;background:#fce8e6;color:#c62828;padding:1px 6px;border-radius:8px">✕${f.errors}</span>` : '<span style="min-width:42px"></span>'}
+            </div>`;
+        }).join('');
+
+        // 統一編號查詢
+        const clT = cl.today;
+        $('companyLookupStats').innerHTML = [
+          { label: '今日查詢次數', value: clT.calls,           color: '#1a2d52' },
+          { label: 'GCIS 成功',    value: clT.gcisSuccess,     color: '#34a853' },
+          { label: 'GCIS 失敗',    value: clT.gcisError,       color: '#ea4335' },
+          { label: 'TWSE/TPEX',   value: clT.twseTpexSuccess,  color: '#1a73e8' },
+          { label: '本月查詢',     value: cl.thisMonth.calls,  color: '#888' },
+        ].map(row => `
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      padding:8px 18px;border-bottom:1px solid #f5f5f5;font-size:13px">
+            <span style="color:#555;font-weight:600">${row.label}</span>
+            <span style="font-weight:700;color:${row.color}">${row.value}</span>
+          </div>`).join('');
+
+        // Rate Limit
+        $('rateLimitStats').innerHTML = [
+          { label: 'API 限速（今日）',  value: rl.today.api,       color: '#ea4335' },
+          { label: '登入限速（今日）',  value: rl.today.login,     color: '#ea4335' },
+          { label: 'API 限速（本月）',  value: rl.thisMonth.api,   color: '#888' },
+          { label: '登入限速（本月）',  value: rl.thisMonth.login, color: '#888' },
+        ].map(row => `
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      padding:8px 18px;border-bottom:1px solid #f5f5f5;font-size:13px">
+            <span style="color:#555;font-weight:600">${row.label}</span>
+            <span style="font-weight:700;color:${row.color}">${row.value}</span>
+          </div>`).join('');
+
+        $('apiStatsGenTime').textContent = '更新：' + new Date(d.generatedAt).toLocaleTimeString('zh-TW');
+      } catch(e) {
+        if (e.message !== 'Session expired') showToast('無法載入 API 統計：' + e.message);
+      }
     }
 
     async function loadStorageInfo() {
