@@ -129,6 +129,22 @@ const apiLimiter = rateLimit({
 app.use(express.json({ limit: '2mb' }));        // 限制 request body 大小
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 
+// ── DB 寫入完成保證 middleware ─────────────────────────────
+// 修復 bug：在 Vercel serverless，db.save() 是非同步背景寫入，
+// 若 function 在寫入完成前被回收，資料會遺失，過幾分鐘 cold start 從 DB 拉回舊資料 → 用戶看到「資料還原」
+// 解法：在 POST/PUT/DELETE/PATCH 的 response 送出前，自動 await db.flush()
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
+  const origEnd = res.end.bind(res);
+  res.end = function (...args) {
+    Promise.resolve(db.flush ? db.flush() : null)
+      .catch((e) => console.error('[db.flush] error before response:', e))
+      .finally(() => origEnd(...args));
+    return res;
+  };
+  next();
+});
+
 // ── API 全域速率限制套用 ──────────────────────────────────
 app.use('/api/', apiLimiter);
 

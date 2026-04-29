@@ -22,4 +22,6 @@ module.exports = {
   save: impl.save,
   // Postgres 特有：啟動時 preload。若是 JSON 則為 no-op
   ready: impl.ready || (async () => {}),
+  // Postgres 特有：等待所有背景寫入完成（Vercel serverless 必備）。JSON 是同步寫入，no-op 即可
+  flush: impl.flush || (async () => {}),
 };

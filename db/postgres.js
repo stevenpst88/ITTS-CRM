@@ -106,19 +106,29 @@ function save(data) {
   _cache     = data;
   _lastFetch = Date.now(); // 剛寫完，視同剛 fetch
   // 序列化寫入（避免併發寫衝突）
+  // 用 .catch(()=>null) 確保前次失敗不會卡住下一次寫入
   _writeQueue = _writeQueue
-    .then(() => saveAsync(data))
-    .catch((err) => console.error('[db/postgres] save failed:', err));
+    .catch(() => null)
+    .then(() => saveAsync(data));
+  // 額外掛一層 log，但不影響 _writeQueue 本身（讓呼叫者能 await 拿到錯誤）
+  _writeQueue.catch((err) => console.error('[db/postgres] save failed:', err));
   return _writeQueue;
+}
+
+// 等待所有排程中的寫入完成（Vercel serverless 必備：避免 function 在背景寫入完成前被回收）
+async function flush() {
+  try { await _writeQueue; } catch (e) { /* 已 log，不再拋出 */ }
 }
 
 // 啟動時呼叫：preload 資料到快取
 // 若快取存在但 TTL 到期，重新拉一次（支援外部工具寫入後自動感知）
+// 重要：若有 pending 寫入，先等寫入完成再決定是否 refetch（避免覆蓋本地新資料）
 async function ready() {
+  await flush(); // 確保任何背景寫入完成，避免 refetch 拉回舊資料
   const now = Date.now();
   if (_cache !== null && now - _lastFetch < REFRESH_TTL) return;
   _cache     = await loadAsync();
   _lastFetch = now;
 }
 
-module.exports = { load, save, ready, _loadAsync: loadAsync, _saveAsync: saveAsync };
+module.exports = { load, save, flush, ready, _loadAsync: loadAsync, _saveAsync: saveAsync };
