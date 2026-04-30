@@ -624,24 +624,25 @@
             </div>
 
           </div>
-        </div>
 
-        <!-- ── Pipeline 月度變動 ── -->
-        <div id="pipelineDateChangeView" style="display:none">
-          <div class="pr-controls" style="margin-bottom:16px">
-            <label style="font-size:13px;color:#555;font-weight:500">年度：</label>
-            <select id="pdcYearSel" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff;cursor:pointer"></select>
-            <button class="btn btn-primary btn-sm" id="pdcRefreshBtn" style="margin-left:8px">重新整理</button>
+          <!-- ── Pipeline 月度變動（嵌入商機動態報表下方，一級主管/秘書可見） ── -->
+          <div id="pdcSection" style="display:none;margin-top:24px">
+            <div style="font-size:15px;font-weight:700;color:#333;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #e8e8e8">📅 Pipeline 月度變動</div>
+            <div class="pr-controls" style="margin-bottom:16px">
+              <label style="font-size:13px;color:#555;font-weight:500">年度：</label>
+              <select id="pdcYearSel" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff;cursor:pointer"></select>
+              <button class="btn btn-primary btn-sm" id="pdcRefreshBtn" style="margin-left:8px">重新整理</button>
+            </div>
+            <div class="card" style="padding:0;overflow:auto">
+              <table id="pdcTable" style="width:100%;border-collapse:collapse;font-size:14px;min-width:1100px">
+                <thead id="pdcHead"></thead>
+                <tbody id="pdcBody"></tbody>
+              </table>
+            </div>
+            <p style="font-size:12px;color:#999;margin-top:10px">
+              退後：該月商機預計簽約日被延後的金額加總｜補進：移入或新增至該月的商機金額加總
+            </p>
           </div>
-          <div class="card" style="padding:0;overflow:auto">
-            <table id="pdcTable" style="width:100%;border-collapse:collapse;font-size:14px;min-width:1100px">
-              <thead id="pdcHead"></thead>
-              <tbody id="pdcBody"></tbody>
-            </table>
-          </div>
-          <p style="font-size:12px;color:#999;margin-top:10px">
-            退後：該月商機預計簽約日被延後的金額加總｜補進：移入或新增至該月的商機金額加總
-          </p>
         </div>
 
         <!-- ── 行銷活動 ── -->

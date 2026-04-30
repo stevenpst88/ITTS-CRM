@@ -88,9 +88,12 @@ function applyPermissions() {
   if (role === 'marketing') {
     ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
   }
-  // Pipeline 月度變動：一級主管 & 秘書才顯示
+  // Pipeline 月度變動：一級主管 & 秘書才顯示（嵌入商機動態報表下方）
   const navPDC = $('navPipelineDateChange');
-  if (navPDC) navPDC.style.display = ['manager1','secretary','admin'].includes(role) ? '' : 'none';
+  const pdcSec = $('pdcSection');
+  const canSeePDC = ['manager1','secretary','admin'].includes(role);
+  if (navPDC) navPDC.style.display = canSeePDC ? '' : 'none';
+  if (pdcSec) pdcSec.style.display = canSeePDC ? '' : 'none';
 }
 
 let allContacts = [];
@@ -679,7 +682,6 @@ function showSection(section) {
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
   $('quotationsView').style.display       = section === 'quotations'     ? '' : 'none';
   $('pipelineReportView').style.display        = section === 'pipelineReport'      ? '' : 'none';
-  $('pipelineDateChangeView').style.display    = section === 'pipelineDateChange'  ? '' : 'none';
   $('erpMaView').style.display        = section === 'erp-ma'      ? '' : 'none';
   $('sapMaView').style.display        = section === 'sap-ma'      ? '' : 'none';
   $('receivablesView').style.display  = section === 'receivables' ? '' : 'none';
@@ -701,8 +703,7 @@ function showSection(section) {
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
   if (section === 'quotations')      loadQuotationsView();
-  if (section === 'pipelineReport')      loadPipelineReport();
-  if (section === 'pipelineDateChange')  loadPipelineDateChange();
+  if (section === 'pipelineReport')      { loadPipelineReport(); if ($('pdcSection') && $('pdcSection').style.display !== 'none') loadPipelineDateChange(); }
   if (section === 'erp-ma')      loadErpMaView();
   if (section === 'sap-ma')      loadSapMaView();
   if (section === 'receivables') loadReceivablesView();
@@ -724,7 +725,7 @@ $('navCampaigns').addEventListener('click',       () => showSection('campaigns')
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
 $('navPipelineReport').addEventListener('click',       () => showSection('pipelineReport'));
-$('navPipelineDateChange').addEventListener('click',   () => showSection('pipelineDateChange'));
+$('navPipelineDateChange').addEventListener('click',   () => showSection('pipelineReport'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
