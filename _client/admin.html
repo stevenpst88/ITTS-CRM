@@ -157,18 +157,30 @@
     .perm-row:last-child { border-bottom: none; }
     .perm-label { font-size: 13px; font-weight: 600; color: #333; }
     .perm-desc  { font-size: 11px; color: #999; margin-top: 2px; }
+    /* ── Sidebar Group ── */
+    .admin-nav-group-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; font-size: 13px; font-weight: 700;
+      color: rgba(255,255,255,0.5); cursor: pointer; user-select: none;
+      letter-spacing: .4px; text-transform: uppercase;
+    }
+    .admin-nav-group-header:hover { color: rgba(255,255,255,0.75); }
+    .nav-group-arrow { margin-left: auto; font-size: 10px; transition: transform 0.2s; }
+    .admin-nav-group-header.collapsed .nav-group-arrow { transform: rotate(-90deg); }
+    .admin-nav-subitems { overflow: hidden; transition: max-height 0.25s ease; }
+    .admin-nav-subitems.collapsed { max-height: 0 !important; }
+    .admin-nav-subitem { padding-left: 38px !important; font-size: 13px !important; font-weight: 500 !important; }
     /* ── Log ── */
-    .log-item { padding: 12px 0; border-bottom: 1px solid #f5f5f5; display: flex; gap: 14px; }
+    .log-item { padding: 11px 18px; border-bottom: 1px solid #f5f5f5; }
     .log-item:last-child { border-bottom: none; }
-    .log-time { font-size: 11px; color: #aaa; white-space: nowrap; min-width: 140px; }
+    .log-time { font-size: 11px; color: #aaa; white-space: nowrap; }
     .log-action-badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-    .log-CREATE_USER { background: #e6f4ea; color: #1e7e34; }
-    .log-UPDATE_USER { background: #e8f0fe; color: #1a73e8; }
+    .log-CREATE_USER,.log-IMPORT_CONTACTS,.log-IMPORT_JSON { background: #e6f4ea; color: #1e7e34; }
+    .log-UPDATE_USER,.log-LOGIN,.log-CHANGE_PASSWORD { background: #e8f0fe; color: #1a73e8; }
     .log-DELETE_USER { background: #fce8e6; color: #c62828; }
-    .log-RESET_PASSWORD { background: #fff3e0; color: #e65100; }
-    .log-UPDATE_PERMISSION { background: #f3e5f5; color: #7b1fa2; }
-    .log-IMPORT_CONTACTS { background: #e6f4ea; color: #1e7e34; }
-    .log-LOGIN { background: #e8f0fe; color: #1a73e8; }
+    .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
+    .log-UPDATE_PERMISSION,.log-MIGRATE_JOB_FUNCTION { background: #f3e5f5; color: #7b1fa2; }
+    .log-IMPORT_CONTACTS_ADMIN { background: #e6f4ea; color: #1e7e34; }
     .log-detail { font-size: 13px; color: #444; }
     .log-operator { font-weight: 700; color: #1a73e8; }
     /* ── 名片稽核紀錄 ── */
@@ -306,26 +318,32 @@
       <div class="admin-nav-item" data-sec="transfer">
         <span class="admin-nav-icon">🔄</span> 名單移轉
       </div>
-      <div class="admin-nav-item" data-sec="import">
-        <span class="admin-nav-icon">📥</span> 名單匯入
+      <div class="admin-nav-group-header collapsed" data-group="group-io">
+        <span class="admin-nav-icon">📦</span> 資料匯出入
+        <span class="nav-group-arrow">▼</span>
       </div>
-      <div class="admin-nav-item" data-sec="bulk-website">
-        <span class="admin-nav-icon">🌐</span> 批次填入官網
-      </div>
-      <div class="admin-nav-item" data-sec="contact-io">
-        <span class="admin-nav-icon">👤</span> 客戶匯出入
-      </div>
-      <div class="admin-nav-item" data-sec="opp-io">
-        <span class="admin-nav-icon">📊</span> 商機匯出入
-      </div>
-      <div class="admin-nav-item" data-sec="visit-io">
-        <span class="admin-nav-icon">📝</span> 日報匯出入
-      </div>
-      <div class="admin-nav-item" data-sec="contract-io">
-        <span class="admin-nav-icon">📄</span> 合約匯出入
-      </div>
-      <div class="admin-nav-item" data-sec="card-ocr">
-        <span class="admin-nav-icon">📷</span> 名片辨識匯入
+      <div class="admin-nav-subitems collapsed" id="group-io" style="max-height:400px">
+        <div class="admin-nav-item admin-nav-subitem" data-sec="import">
+          <span class="admin-nav-icon">📥</span> 名單匯入
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="bulk-website">
+          <span class="admin-nav-icon">🌐</span> 批次填入官網
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="contact-io">
+          <span class="admin-nav-icon">👤</span> 客戶匯出入
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="opp-io">
+          <span class="admin-nav-icon">📊</span> 商機匯出入
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="visit-io">
+          <span class="admin-nav-icon">📝</span> 日報匯出入
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="contract-io">
+          <span class="admin-nav-icon">📄</span> 合約匯出入
+        </div>
+        <div class="admin-nav-item admin-nav-subitem" data-sec="card-ocr">
+          <span class="admin-nav-icon">📷</span> 名片辨識匯入
+        </div>
       </div>
       <div class="admin-nav-item" data-sec="jobfunc">
         <span class="admin-nav-icon">🏷️</span> 職能分類
@@ -1204,6 +1222,15 @@
       setTimeout(() => t.classList.remove('show'), duration);
     }
 
+    // ── 群組展開/收合 ──
+    document.querySelectorAll('.admin-nav-group-header').forEach(h => {
+      h.addEventListener('click', () => {
+        const groupEl = $(h.dataset.group);
+        const collapsed = h.classList.toggle('collapsed');
+        groupEl.classList.toggle('collapsed', collapsed);
+      });
+    });
+
     // ── 導覽切換 ──
     document.querySelectorAll('.admin-nav-item').forEach(item => {
       item.addEventListener('click', function() {
@@ -1211,6 +1238,15 @@
         document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
         this.classList.add('active');
         $('sec-' + this.dataset.sec).classList.add('active');
+        // 若點選子項目，自動展開父群組
+        const parent = this.closest('.admin-nav-subitems');
+        if (parent) {
+          const header = document.querySelector(`[data-group="${parent.id}"]`);
+          if (header && header.classList.contains('collapsed')) {
+            header.classList.remove('collapsed');
+            parent.classList.remove('collapsed');
+          }
+        }
         if (this.dataset.sec === 'logs') loadLogs();
         if (this.dataset.sec === 'contact-audit') initContactAudit();
         if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
@@ -1496,8 +1532,31 @@
     const ACTION_LABELS = {
       CREATE_USER: '新增帳號', UPDATE_USER: '更新帳號',
       DELETE_USER: '刪除帳號', RESET_PASSWORD: '重設密碼',
-      UPDATE_PERMISSION: '更新權限'
+      UPDATE_PERMISSION: '更新權限', LOGIN: '登入',
+      CHANGE_PASSWORD: '修改密碼', IMPORT_CONTACTS: '匯入名單',
+      IMPORT_CONTACTS_ADMIN: '批次匯入', IMPORT_JSON: '辨識匯入',
+      TRANSFER_CONTACTS: '名單移轉', MIGRATE_JOB_FUNCTION: '職能分類',
     };
+
+    function parseUA(ua) {
+      if (!ua) return '';
+      let os = '';
+      if (/Windows NT 1[01]/.test(ua))      os = 'Windows 10/11';
+      else if (/Windows NT 6/.test(ua))     os = 'Windows 7/8';
+      else if (/iPhone/.test(ua))           os = 'iPhone';
+      else if (/iPad/.test(ua))             os = 'iPad';
+      else if (/Android/.test(ua))          os = 'Android';
+      else if (/Mac OS X/.test(ua))         os = 'macOS';
+      else if (/Linux/.test(ua))            os = 'Linux';
+      let br = '';
+      if (/Edg\//.test(ua))                 br = 'Edge';
+      else if (/OPR\/|Opera/.test(ua))      br = 'Opera';
+      else if (/Chrome\//.test(ua))         br = 'Chrome';
+      else if (/Firefox\//.test(ua))        br = 'Firefox';
+      else if (/Safari\//.test(ua))         br = 'Safari';
+      return [os, br].filter(Boolean).join(' · ');
+    }
+
     async function loadLogs() {
       $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
       try {
@@ -1507,16 +1566,23 @@
           $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">尚無異動記錄</div>';
           return;
         }
-        $('logList').innerHTML = logs.map(l => `
+        $('logList').innerHTML = logs.map(l => {
+          const device = parseUA(l.userAgent);
+          const meta = [
+            l.ip   ? `🌐 ${l.ip}`     : '',
+            device ? `💻 ${device}`   : '',
+          ].filter(Boolean).join('<span style="margin:0 8px;color:#ddd">|</span>');
+          return `
           <div class="log-item">
-            <div class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</div>
-            <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+              <span class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</span>
               <span class="log-action-badge log-${l.action}">${ACTION_LABELS[l.action] || l.action}</span>
+              <span class="log-operator">${l.operator}</span>
             </div>
-            <div class="log-detail">
-              <span class="log-operator">${l.operator}</span> → ${l.detail}
-            </div>
-          </div>`).join('');
+            <div class="log-detail" style="margin-bottom:${meta ? '3px' : '0'}">→ ${l.detail}</div>
+            ${meta ? `<div style="font-size:11px;color:#aaa">${meta}</div>` : ''}
+          </div>`;
+        }).join('');
       } catch (e) {
         if (e.message !== 'Session expired')
           $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入失敗</div>';
