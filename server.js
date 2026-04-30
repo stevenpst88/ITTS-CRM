@@ -352,12 +352,34 @@ app.post('/api/logout', (req, res) => {
 });
 
 // ── 受保護路由（需驗證）─────────────────────────────────
+// 伺服器啟動時間戳，用於前端資源版本控制（每次重啟強制瀏覽器重抓）
+const BUILD_VERSION = Date.now().toString();
+
+function serveHtmlWithVersion(htmlPath, res) {
+  fs.readFile(htmlPath, 'utf8', (err, html) => {
+    if (err) { res.status(500).send('Internal Server Error'); return; }
+    const versioned = html
+      .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
+      .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
+      .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(versioned);
+  });
+}
+
+// 根路徑與 /index.html：動態注入版本號到 JS/CSS 連結
+app.get(['/', '/index.html'], requireAuth, (req, res) => {
+  serveHtmlWithVersion(path.join(__dirname, '_client', 'index.html'), res);
+});
+
 // admin.html：需登入且需 admin 角色，且帳號必須為啟用狀態
 app.get('/admin.html', requireAuth, (req, res) => {
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
-  res.sendFile(path.join(__dirname, '_client', 'admin.html'));
+  serveHtmlWithVersion(path.join(__dirname, '_client', 'admin.html'), res);
 });
 app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_NO_CACHE));
 // ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
