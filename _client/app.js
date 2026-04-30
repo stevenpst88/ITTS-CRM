@@ -88,11 +88,9 @@ function applyPermissions() {
   if (role === 'marketing') {
     ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
   }
-  // Pipeline 月度變動：一級主管 & 秘書才顯示（嵌入商機動態報表下方）
-  const navPDC = $('navPipelineDateChange');
+  // Pipeline 月度變動：嵌入商機動態報表下方，側邊欄項目永久隱藏
   const pdcSec = $('pdcSection');
   const canSeePDC = ['manager1','secretary','admin'].includes(role);
-  if (navPDC) navPDC.style.display = canSeePDC ? '' : 'none';
   if (pdcSec) pdcSec.style.display = canSeePDC ? '' : 'none';
 }
 
@@ -725,7 +723,6 @@ $('navCampaigns').addEventListener('click',       () => showSection('campaigns')
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
 $('navPipelineReport').addEventListener('click',       () => showSection('pipelineReport'));
-$('navPipelineDateChange').addEventListener('click',   () => showSection('pipelineReport'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
