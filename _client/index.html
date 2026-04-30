@@ -633,16 +633,9 @@
             <select id="pdcYearSel" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff;cursor:pointer"></select>
             <button class="btn btn-primary btn-sm" id="pdcRefreshBtn" style="margin-left:8px">重新整理</button>
           </div>
-          <div class="card" style="padding:0;overflow:hidden">
-            <table id="pdcTable" style="width:100%;border-collapse:collapse;font-size:14px">
-              <thead>
-                <tr style="background:#f8f9fa;border-bottom:2px solid #e0e0e0">
-                  <th style="padding:12px 16px;text-align:left;color:#555;font-weight:600;width:90px">月份</th>
-                  <th style="padding:12px 16px;text-align:right;color:#e53935;font-weight:600">商機退後（萬）</th>
-                  <th style="padding:12px 16px;text-align:right;color:#1976d2;font-weight:600">商機補進（萬）</th>
-                  <th style="padding:12px 16px;text-align:right;font-weight:600">差異（萬）</th>
-                </tr>
-              </thead>
+          <div class="card" style="padding:0;overflow:auto">
+            <table id="pdcTable" style="width:100%;border-collapse:collapse;font-size:14px;min-width:1100px">
+              <thead id="pdcHead"></thead>
               <tbody id="pdcBody"></tbody>
             </table>
           </div>
@@ -941,9 +934,19 @@
 
           <!-- 第二列：商機 Aging -->
           <div class="mgr-card mgr-card-full">
-            <div class="mgr-card-title">⏳ 商機停滯時間分析（Aging）</div>
-            <div class="mgr-card-sub">數字越偏右側、顏色越紅 = 該階段卡越久，建議優先介入</div>
-            <div style="position:relative;height:240px"><canvas id="mgrAgingChart"></canvas></div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div>
+                <div class="mgr-card-title">⏳ 商機停滯時間分析（Aging）</div>
+                <div class="mgr-card-sub">數字越偏右側、顏色越紅 = 該階段卡越久，建議優先介入</div>
+              </div>
+              <div id="agingOwnerWrap" style="display:none;align-items:center;gap:6px;flex-shrink:0;margin-top:2px">
+                <span style="font-size:13px;color:#555">👤 業務：</span>
+                <select id="agingOwnerSel" class="forecast-year-sel">
+                  <option value="">全部</option>
+                </select>
+              </div>
+            </div>
+            <div style="position:relative;height:240px;margin-top:10px"><canvas id="mgrAgingChart"></canvas></div>
             <div id="mgrAgingHint" class="mgr-aging-hint"></div>
           </div>
 

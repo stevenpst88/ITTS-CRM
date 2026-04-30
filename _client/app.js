@@ -4008,27 +4008,48 @@ async function loadPipelineDateChange() {
 
   try {
     const res = await fetch(`/api/pipeline-date-changes?year=${year}`);
-    if (!res.ok) { $('pdcBody').innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#e53935">無權限或讀取失敗</td></tr>'; return; }
+    if (!res.ok) {
+      $('pdcHead').innerHTML = '';
+      $('pdcBody').innerHTML = '<tr><td style="padding:20px;text-align:center;color:#e53935">無權限或讀取失敗</td></tr>';
+      return;
+    }
     const { months } = await res.json();
 
-    const fmt = v => v === 0 ? '—' : v.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
-    const sign = v => v > 0 ? `+${fmt(v)}` : fmt(v);
-    const diffColor = v => v > 0 ? '#1976d2' : v < 0 ? '#e53935' : '#888';
+    const CN_NUM = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
+    const fmt = v => v.toLocaleString('zh-TW');
+    const numCellBase = 'padding:10px 12px;text-align:right;border-left:1px solid #f2e8d6;white-space:nowrap';
+    const headCellBase = 'padding:10px 12px;text-align:center;color:#7a5a30;font-weight:600;background:#fce8b6;border-left:1px solid #f2d9a0';
 
-    $('pdcBody').innerHTML = months.map((m, i) => {
-      const bg = i % 2 === 0 ? '#fff' : '#fafafa';
-      const outStyle = m.outflow ? 'color:#e53935;font-weight:500' : 'color:#bbb';
-      const inStyle  = m.inflow  ? 'color:#1976d2;font-weight:500' : 'color:#bbb';
-      const diffStyle = `color:${diffColor(m.diff)};font-weight:600`;
-      return `<tr style="background:${bg};border-bottom:1px solid #f0f0f0">
-        <td style="padding:11px 16px;font-weight:500;color:#333">${m.label}</td>
-        <td style="padding:11px 16px;text-align:right;${outStyle}">${m.outflow ? `-${fmt(m.outflow)}` : '—'}</td>
-        <td style="padding:11px 16px;text-align:right;${inStyle}">${m.inflow ? `+${fmt(m.inflow)}` : '—'}</td>
-        <td style="padding:11px 16px;text-align:right;${diffStyle}">${m.diff !== 0 ? sign(m.diff) : '—'}</td>
-      </tr>`;
-    }).join('');
+    // 表頭：預計簽約月份 + 一月～十二月
+    $('pdcHead').innerHTML = `
+      <tr>
+        <th style="padding:10px 14px;text-align:left;color:#7a5a30;font-weight:700;background:#fce8b6;width:140px;border-bottom:2px solid #e0c890">預計簽約月份</th>
+        ${CN_NUM.map(n => `<th style="${headCellBase};border-bottom:2px solid #e0c890">${n}月</th>`).join('')}
+      </tr>
+    `;
+
+    const rowLabelStyle = 'padding:10px 14px;font-weight:600;color:#333;background:#fafafa;border-right:1px solid #eee';
+
+    $('pdcBody').innerHTML = `
+      <tr style="border-bottom:1px solid #f0f0f0">
+        <td style="${rowLabelStyle}">商機退後</td>
+        ${months.map(m => `<td style="${numCellBase};color:#e53935;font-weight:${m.outflow ? 500 : 400}">${m.outflow ? fmt(-m.outflow) : ''}</td>`).join('')}
+      </tr>
+      <tr style="border-bottom:1px solid #f0f0f0">
+        <td style="${rowLabelStyle}">商機補進</td>
+        ${months.map(m => `<td style="${numCellBase};color:#1976d2;font-weight:${m.inflow ? 500 : 400}">${m.inflow ? fmt(m.inflow) : ''}</td>`).join('')}
+      </tr>
+      <tr style="background:#f8f9fa">
+        <td style="${rowLabelStyle};background:#f0f2f5">差異</td>
+        ${months.map(m => {
+          const c = m.diff > 0 ? '#1976d2' : m.diff < 0 ? '#e53935' : '#bbb';
+          return `<td style="${numCellBase};color:${c};font-weight:700">${m.diff !== 0 ? fmt(m.diff) : ''}</td>`;
+        }).join('')}
+      </tr>
+    `;
   } catch (e) {
-    $('pdcBody').innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#999">載入失敗</td></tr>';
+    $('pdcHead').innerHTML = '';
+    $('pdcBody').innerHTML = '<tr><td colspan="13" style="padding:20px;text-align:center;color:#999">載入失敗</td></tr>';
   }
 }
 
