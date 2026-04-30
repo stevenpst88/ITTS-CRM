@@ -4734,10 +4734,30 @@ loadContacts(); // 背景載入聯絡人，供圖表與拜訪記錄使用
       if (!stored) return;
       var order = JSON.parse(stored);
       if (!Array.isArray(order) || !order.length) return;
+      // 先記錄目前 DOM 順序（HTML 原始順序），方便為新項目找參考錨點
+      var originalOrder = Array.from(nav.children).map(function(el){ return el.id || ''; });
+      var savedSet = new Set(order.filter(Boolean));
+      // 步驟 1：依存檔順序把舊項目重新排好（appendChild = 移到末尾）
       order.forEach(function(id) {
         if (!id) return;
         var el = document.getElementById(id);
         if (el && el.parentNode === nav) nav.appendChild(el);
+      });
+      // 步驟 2：新項目（在 DOM 但不在存檔中）依原 HTML 順序，插入到「在 HTML 中緊跟著它的舊項目」之前
+      originalOrder.forEach(function(id, idx) {
+        if (!id || savedSet.has(id)) return;
+        var el = document.getElementById(id);
+        if (!el || el.parentNode !== nav) return;
+        // 找原 HTML 中該項目之後第一個「在存檔內」的舊項目作為錨點
+        var anchor = null;
+        for (var j = idx + 1; j < originalOrder.length; j++) {
+          if (savedSet.has(originalOrder[j])) {
+            anchor = document.getElementById(originalOrder[j]);
+            break;
+          }
+        }
+        if (anchor && anchor.parentNode === nav) nav.insertBefore(el, anchor);
+        else nav.appendChild(el);
       });
     } catch(e) {}
   }
@@ -6218,6 +6238,7 @@ async function refreshLeadsBadge() {
 // ════════════════════════════════════════════════════════
 let mgrYear = new Date().getFullYear();
 let mgrOwnerFilter = '';
+let mgrAgingOwnerFilter = '';
 const _mgrCharts = { gauge: null, aging: null, topCust: null };
 
 async function loadManagerHome() {
@@ -6235,7 +6256,7 @@ async function loadManagerHome() {
     $('mgrRefreshBtn').addEventListener('click', () => loadManagerHome());
   }
 
-  const qs = `year=${mgrYear}${mgrOwnerFilter ? '&owner=' + mgrOwnerFilter : ''}`;
+  const qs = `year=${mgrYear}${mgrOwnerFilter ? '&owner=' + mgrOwnerFilter : ''}${mgrAgingOwnerFilter ? '&agingOwner=' + mgrAgingOwnerFilter : ''}`;
   let d;
   try {
     const r = await fetch(`${API}/manager-home?${qs}`);
@@ -6250,7 +6271,7 @@ async function loadManagerHome() {
     return;
   }
 
-  // 業務篩選器
+  // 全域業務篩選器
   const ownerWrap = $('mgrOwnerWrap');
   if (d.ownerOptions && d.ownerOptions.length > 1) {
     ownerWrap.style.display = 'flex';
@@ -6269,6 +6290,27 @@ async function loadManagerHome() {
     }
   } else {
     ownerWrap.style.display = 'none';
+  }
+
+  // Aging 專屬業務篩選器
+  const agingOwnerWrap = $('agingOwnerWrap');
+  if (d.ownerOptions && d.ownerOptions.length > 1) {
+    agingOwnerWrap.style.display = 'flex';
+    const agingSel = $('agingOwnerSel');
+    const agingCur = agingSel.value;
+    agingSel.innerHTML = '<option value="">全部</option>';
+    d.ownerOptions.forEach(u => {
+      const o = document.createElement('option');
+      o.value = u.username; o.textContent = u.displayName;
+      if (u.username === agingCur) o.selected = true;
+      agingSel.appendChild(o);
+    });
+    if (!agingSel._bound) {
+      agingSel._bound = true;
+      agingSel.addEventListener('change', () => { mgrAgingOwnerFilter = agingSel.value; loadManagerHome(); });
+    }
+  } else {
+    agingOwnerWrap.style.display = 'none';
   }
 
   renderMgrGauge(d.achievement);
@@ -6371,7 +6413,22 @@ function renderMgrAging(a) {
       },
       plugins: {
         legend: { position: 'bottom' },
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}：${c.parsed.x} 件` } }
+        tooltip: {
+          callbacks: {
+            label: (c) => `${c.dataset.label}：${c.parsed.x} 件`,
+            afterBody: (tooltipItems) => {
+              const c = tooltipItems[0];
+              if (!c) return [];
+              const stage = a.stages[c.dataIndex];
+              const bucket = a.buckets[c.datasetIndex];
+              const list = ((a.items || {})[stage] || {})[bucket] || [];
+              if (!list.length) return [];
+              const lines = list.slice(0, 8).map(i => `  • ${i.company}${i.product ? '｜' + i.product : ''}`);
+              if (list.length > 8) lines.push(`  … 還有 ${list.length - 8} 件`);
+              return lines;
+            }
+          }
+        }
       }
     }
   });
