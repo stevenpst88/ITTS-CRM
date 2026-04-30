@@ -88,6 +88,9 @@ function applyPermissions() {
   if (role === 'marketing') {
     ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
   }
+  // Pipeline 月度變動：一級主管 & 秘書才顯示
+  const navPDC = $('navPipelineDateChange');
+  if (navPDC) navPDC.style.display = ['manager1','secretary','admin'].includes(role) ? '' : 'none';
 }
 
 let allContacts = [];
@@ -675,7 +678,8 @@ function showSection(section) {
   $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
   $('quotationsView').style.display       = section === 'quotations'     ? '' : 'none';
-  $('pipelineReportView').style.display   = section === 'pipelineReport' ? '' : 'none';
+  $('pipelineReportView').style.display        = section === 'pipelineReport'      ? '' : 'none';
+  $('pipelineDateChangeView').style.display    = section === 'pipelineDateChange'  ? '' : 'none';
   $('erpMaView').style.display        = section === 'erp-ma'      ? '' : 'none';
   $('sapMaView').style.display        = section === 'sap-ma'      ? '' : 'none';
   $('receivablesView').style.display  = section === 'receivables' ? '' : 'none';
@@ -697,7 +701,8 @@ function showSection(section) {
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
   if (section === 'quotations')      loadQuotationsView();
-  if (section === 'pipelineReport')  loadPipelineReport();
+  if (section === 'pipelineReport')      loadPipelineReport();
+  if (section === 'pipelineDateChange')  loadPipelineDateChange();
   if (section === 'erp-ma')      loadErpMaView();
   if (section === 'sap-ma')      loadSapMaView();
   if (section === 'receivables') loadReceivablesView();
@@ -718,7 +723,8 @@ $('navManagerHome').addEventListener('click',     () => showSection('managerHome
 $('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
-$('navPipelineReport').addEventListener('click',  () => showSection('pipelineReport'));
+$('navPipelineReport').addEventListener('click',       () => showSection('pipelineReport'));
+$('navPipelineDateChange').addEventListener('click',   () => showSection('pipelineDateChange'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
@@ -3978,6 +3984,52 @@ function getPrDateRange(period) {
 function fmtPeriodLabel(from, to) {
   const f = d => `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
   return `${f(from)} ～ ${f(to)}`;
+}
+
+// ── Pipeline 月度變動 ─────────────────────────────────────
+async function loadPipelineDateChange() {
+  const sel = $('pdcYearSel');
+  const curYear = new Date().getFullYear();
+
+  // 初始化年度選單（只建一次）
+  if (sel && !sel.dataset.init) {
+    sel.dataset.init = '1';
+    for (let y = curYear; y >= curYear - 3; y--) {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = `${y} 年`;
+      if (y === curYear) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', loadPipelineDateChange);
+    $('pdcRefreshBtn').addEventListener('click', loadPipelineDateChange);
+  }
+
+  const year = sel ? parseInt(sel.value) : curYear;
+
+  try {
+    const res = await fetch(`/api/pipeline-date-changes?year=${year}`);
+    if (!res.ok) { $('pdcBody').innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#e53935">無權限或讀取失敗</td></tr>'; return; }
+    const { months } = await res.json();
+
+    const fmt = v => v === 0 ? '—' : v.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+    const sign = v => v > 0 ? `+${fmt(v)}` : fmt(v);
+    const diffColor = v => v > 0 ? '#1976d2' : v < 0 ? '#e53935' : '#888';
+
+    $('pdcBody').innerHTML = months.map((m, i) => {
+      const bg = i % 2 === 0 ? '#fff' : '#fafafa';
+      const outStyle = m.outflow ? 'color:#e53935;font-weight:500' : 'color:#bbb';
+      const inStyle  = m.inflow  ? 'color:#1976d2;font-weight:500' : 'color:#bbb';
+      const diffStyle = `color:${diffColor(m.diff)};font-weight:600`;
+      return `<tr style="background:${bg};border-bottom:1px solid #f0f0f0">
+        <td style="padding:11px 16px;font-weight:500;color:#333">${m.label}</td>
+        <td style="padding:11px 16px;text-align:right;${outStyle}">${m.outflow ? `-${fmt(m.outflow)}` : '—'}</td>
+        <td style="padding:11px 16px;text-align:right;${inStyle}">${m.inflow ? `+${fmt(m.inflow)}` : '—'}</td>
+        <td style="padding:11px 16px;text-align:right;${diffStyle}">${m.diff !== 0 ? sign(m.diff) : '—'}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    $('pdcBody').innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#999">載入失敗</td></tr>';
+  }
 }
 
 async function loadPipelineReport() {

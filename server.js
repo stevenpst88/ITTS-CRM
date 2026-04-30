@@ -1457,6 +1457,14 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
     createdAt:    new Date().toISOString()
   };
   data.opportunities.push(opp);
+  if (opp.expectedDate) {
+    if (!data.opportunityDateChanges) data.opportunityDateChanges = [];
+    data.opportunityDateChanges.push({
+      dealId: opp.id, dealValue: parseFloat(opp.amount) || 0,
+      oldDate: null, newDate: opp.expectedDate,
+      changedAt: new Date().toISOString(), owner: opp.owner
+    });
+  }
   db.save(data);
   writeLog('CREATE_OPP', owner, opp.company || opp.contactName,
     `${opp.product} 階段:C 金額:${opp.amount}`, req);
@@ -1475,8 +1483,19 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到此商機' });
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
+  const oldExpectedDate = data.opportunities[idx].expectedDate || null;
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   const newStage = data.opportunities[idx].stage;
+  // 記錄預計簽約日變動歷史
+  const newExpectedDate = data.opportunities[idx].expectedDate || null;
+  if (newExpectedDate && oldExpectedDate !== newExpectedDate) {
+    if (!data.opportunityDateChanges) data.opportunityDateChanges = [];
+    data.opportunityDateChanges.push({
+      dealId: req.params.id, dealValue: parseFloat(data.opportunities[idx].amount) || 0,
+      oldDate: oldExpectedDate, newDate: newExpectedDate,
+      changedAt: new Date().toISOString(), owner
+    });
+  }
   // 記錄階段變動歷史
   if (oldStage && newStage && oldStage !== newStage) {
     if (!data.opportunities[idx].stageHistory) data.opportunities[idx].stageHistory = [];
@@ -1491,6 +1510,39 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
     `${data.opportunities[idx].product}${stageDetail}`, req);
   res.json(data.opportunities[idx]);
+});
+
+// ── Pipeline 月度變動報表 ─────────────────────────────────
+app.get('/api/pipeline-date-changes', requireAuth, (req, res) => {
+  const { role } = req.session.user;
+  if (!['admin', 'manager1', 'secretary'].includes(role)) {
+    return res.status(403).json({ error: '無此頁面權限' });
+  }
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const data = db.load();
+  const changes = data.opportunityDateChanges || [];
+
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1;
+    const pfx = `${year}-${String(m).padStart(2, '0')}`;
+
+    // 補進：newDate 落在此月，且 oldDate 不在此月（或 oldDate 為 null）
+    const inflow = changes
+      .filter(c => c.newDate && c.newDate.startsWith(pfx) &&
+                   (c.oldDate === null || !c.oldDate.startsWith(pfx)))
+      .reduce((s, c) => s + (c.dealValue || 0), 0);
+
+    // 退後：oldDate 落在此月，且 newDate 比 oldDate 更晚（且不在同月）
+    const outflow = changes
+      .filter(c => c.oldDate && c.oldDate.startsWith(pfx) &&
+                   c.newDate && c.newDate > c.oldDate &&
+                   !c.newDate.startsWith(pfx))
+      .reduce((s, c) => s + (c.dealValue || 0), 0);
+
+    return { month: m, label: `${m}月`, inflow, outflow, diff: inflow - outflow };
+  });
+
+  res.json({ year, months });
 });
 
 // ── 商機動態報表 ──────────────────────────────────────────

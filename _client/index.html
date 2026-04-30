@@ -58,6 +58,12 @@
           <span class="nav-label">商機動態報表</span>
         </div>
 
+        <!-- Pipeline 月度變動（一級主管/秘書專用） -->
+        <div class="sidebar-nav-item" id="navPipelineDateChange" data-section="pipelineDateChange" style="display:none">
+          <span class="nav-icon">&#128202;</span>
+          <span class="nav-label">Pipeline 月度變動</span>
+        </div>
+
         <div class="sidebar-nav-item" id="navLostOpp" data-section="lostOpp">
           <span class="nav-icon">&#128197;</span>
           <span class="nav-label">流失商機分析</span>
@@ -618,6 +624,31 @@
             </div>
 
           </div>
+        </div>
+
+        <!-- ── Pipeline 月度變動 ── -->
+        <div id="pipelineDateChangeView" style="display:none">
+          <div class="pr-controls" style="margin-bottom:16px">
+            <label style="font-size:13px;color:#555;font-weight:500">年度：</label>
+            <select id="pdcYearSel" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff;cursor:pointer"></select>
+            <button class="btn btn-primary btn-sm" id="pdcRefreshBtn" style="margin-left:8px">重新整理</button>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden">
+            <table id="pdcTable" style="width:100%;border-collapse:collapse;font-size:14px">
+              <thead>
+                <tr style="background:#f8f9fa;border-bottom:2px solid #e0e0e0">
+                  <th style="padding:12px 16px;text-align:left;color:#555;font-weight:600;width:90px">月份</th>
+                  <th style="padding:12px 16px;text-align:right;color:#e53935;font-weight:600">商機退後（萬）</th>
+                  <th style="padding:12px 16px;text-align:right;color:#1976d2;font-weight:600">商機補進（萬）</th>
+                  <th style="padding:12px 16px;text-align:right;font-weight:600">差異（萬）</th>
+                </tr>
+              </thead>
+              <tbody id="pdcBody"></tbody>
+            </table>
+          </div>
+          <p style="font-size:12px;color:#999;margin-top:10px">
+            退後：該月商機預計簽約日被延後的金額加總｜補進：移入或新增至該月的商機金額加總
+          </p>
         </div>
 
         <!-- ── 行銷活動 ── -->
