@@ -170,19 +170,28 @@
     .admin-nav-subitems { overflow: hidden; transition: max-height 0.25s ease; }
     .admin-nav-subitems.collapsed { max-height: 0 !important; }
     .admin-nav-subitem { padding-left: 38px !important; font-size: 13px !important; font-weight: 500 !important; }
-    /* ── Log ── */
-    .log-item { padding: 11px 18px; border-bottom: 1px solid #f5f5f5; }
-    .log-item:last-child { border-bottom: none; }
+    /* ── Log table ── */
+    .log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .log-table th { background: #f8f9fa; color: #888; font-weight: 600; font-size: 11px; padding: 8px 12px; text-align: left; border-bottom: 2px solid #eee; white-space: nowrap; }
+    .log-table td { padding: 9px 12px; border-bottom: 1px solid #f5f5f5; vertical-align: middle; }
+    .log-table tr:last-child td { border-bottom: none; }
+    .log-table tr:hover td { background: #fafbff; }
     .log-time { font-size: 11px; color: #aaa; white-space: nowrap; }
-    .log-action-badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-    .log-CREATE_USER,.log-IMPORT_CONTACTS,.log-IMPORT_JSON { background: #e6f4ea; color: #1e7e34; }
-    .log-UPDATE_USER,.log-LOGIN,.log-CHANGE_PASSWORD { background: #e8f0fe; color: #1a73e8; }
-    .log-DELETE_USER { background: #fce8e6; color: #c62828; }
+    .log-action-badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; display: inline-block; }
+    .log-operator { font-weight: 700; color: #1a73e8; }
+    .log-detail { color: #444; }
+    .log-device { font-size: 11px; color: #aaa; white-space: nowrap; }
+    /* Badge colors by action group */
+    .log-CREATE_USER,.log-IMPORT_CONTACTS,.log-IMPORT_JSON,.log-IMPORT_CONTACTS_ADMIN,
+    .log-CREATE_VISIT,.log-CREATE_OPP,.log-CREATE_CONTRACT,.log-CREATE_RECEIVABLE
+      { background: #e6f4ea; color: #1e7e34; }
+    .log-UPDATE_USER,.log-LOGIN,.log-CHANGE_PASSWORD,
+    .log-UPDATE_VISIT,.log-UPDATE_OPP,.log-UPDATE_CONTRACT,.log-UPDATE_RECEIVABLE,.log-SET_TARGET
+      { background: #e8f0fe; color: #1a73e8; }
+    .log-DELETE_USER,.log-DELETE_VISIT,.log-DELETE_OPP,.log-DELETE_CONTRACT,.log-DELETE_RECEIVABLE
+      { background: #fce8e6; color: #c62828; }
     .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
     .log-UPDATE_PERMISSION,.log-MIGRATE_JOB_FUNCTION { background: #f3e5f5; color: #7b1fa2; }
-    .log-IMPORT_CONTACTS_ADMIN { background: #e6f4ea; color: #1e7e34; }
-    .log-detail { font-size: 13px; color: #444; }
-    .log-operator { font-weight: 700; color: #1a73e8; }
     /* ── 名片稽核紀錄 ── */
     .audit-item { padding: 14px 0; border-bottom: 1px solid #f0f2f5; }
     .audit-item:last-child { border-bottom: none; }
@@ -863,13 +872,13 @@
       <!-- ── 異動記錄 ── -->
       <div class="admin-section" id="sec-logs">
         <div class="section-title">異動記錄</div>
-        <div class="section-sub">所有帳號新增、修改、刪除、密碼重設的操作記錄</div>
+        <div class="section-sub">所有操作記錄，包含登入、帳號管理、拜訪、商機、合約、帳款異動</div>
         <div class="admin-card">
           <div class="admin-card-header">
             <span class="admin-card-title">操作日誌</span>
             <button class="btn btn-sm" onclick="loadLogs()" style="background:#f0f2f5;color:#333">重新整理</button>
           </div>
-          <div class="admin-card-body" id="logList" style="max-height:600px;overflow-y:auto">
+          <div style="overflow-x:auto;max-height:620px;overflow-y:auto" id="logList">
             <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
           </div>
         </div>
@@ -1536,6 +1545,11 @@
       CHANGE_PASSWORD: '修改密碼', IMPORT_CONTACTS: '匯入名單',
       IMPORT_CONTACTS_ADMIN: '批次匯入', IMPORT_JSON: '辨識匯入',
       TRANSFER_CONTACTS: '名單移轉', MIGRATE_JOB_FUNCTION: '職能分類',
+      CREATE_VISIT: '新增拜訪', UPDATE_VISIT: '更新拜訪', DELETE_VISIT: '刪除拜訪',
+      CREATE_OPP: '新增商機', UPDATE_OPP: '更新商機', DELETE_OPP: '刪除商機',
+      CREATE_CONTRACT: '新增合約', UPDATE_CONTRACT: '更新合約', DELETE_CONTRACT: '刪除合約',
+      CREATE_RECEIVABLE: '新增帳款', UPDATE_RECEIVABLE: '更新帳款', DELETE_RECEIVABLE: '刪除帳款',
+      SET_TARGET: '設定目標',
     };
 
     function parseUA(ua) {
@@ -1566,23 +1580,27 @@
           $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">尚無異動記錄</div>';
           return;
         }
-        $('logList').innerHTML = logs.map(l => {
+        const rows = logs.map(l => {
           const device = parseUA(l.userAgent);
-          const meta = [
-            l.ip   ? `🌐 ${l.ip}`     : '',
-            device ? `💻 ${device}`   : '',
-          ].filter(Boolean).join('<span style="margin:0 8px;color:#ddd">|</span>');
-          return `
-          <div class="log-item">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
-              <span class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</span>
-              <span class="log-action-badge log-${l.action}">${ACTION_LABELS[l.action] || l.action}</span>
-              <span class="log-operator">${l.operator}</span>
-            </div>
-            <div class="log-detail" style="margin-bottom:${meta ? '3px' : '0'}">→ ${l.detail}</div>
-            ${meta ? `<div style="font-size:11px;color:#aaa">${meta}</div>` : ''}
-          </div>`;
+          const deviceHtml = [
+            l.ip ? `🌐 ${l.ip}` : '',
+            device ? `💻 ${device}` : '',
+          ].filter(Boolean).join('<br>');
+          return `<tr>
+            <td class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</td>
+            <td><span class="log-action-badge log-${l.action}">${ACTION_LABELS[l.action] || l.action}</span></td>
+            <td class="log-operator">${l.operator}</td>
+            <td class="log-detail">${l.target ? `<span style="color:#888;margin-right:4px">${l.target}</span>` : ''}${l.detail || ''}</td>
+            <td class="log-device">${deviceHtml}</td>
+          </tr>`;
         }).join('');
+        $('logList').innerHTML = `
+          <table class="log-table">
+            <thead><tr>
+              <th>時間</th><th>動作</th><th>操作者</th><th>說明</th><th>裝置 / IP</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
       } catch (e) {
         if (e.message !== 'Session expired')
           $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入失敗</div>';
@@ -1762,10 +1780,7 @@
       }
     });
 
-    // ── 異動記錄：顯示匯入標籤 ──
-    const _origActionLabels = ACTION_LABELS;
-    ACTION_LABELS['IMPORT_CONTACTS'] = '匯入名單';
-    ACTION_LABELS['LOGIN'] = '登入';
+
 
     // ════════════════════════════════════════════════════
     // ── 客戶名單匯入 ──────────────────────────────────────

@@ -1255,6 +1255,8 @@ app.post('/api/visits', requireAuth, (req, res) => {
   };
   data.visits.push(visit);
   db.save(data);
+  writeLog('CREATE_VISIT', owner, visit.contactName || visit.id,
+    `${visit.visitType} ${visit.visitDate} 主題:${visit.topic}`, req);
   res.status(201).json(visit);
 });
 
@@ -1266,6 +1268,8 @@ app.put('/api/visits/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到此記錄' });
   data.visits[idx] = { ...data.visits[idx], ...pickFields(req.body, VISIT_FIELDS), id: req.params.id, owner };
   db.save(data);
+  writeLog('UPDATE_VISIT', owner, data.visits[idx].contactName || req.params.id,
+    `${data.visits[idx].visitType} ${data.visits[idx].visitDate}`, req);
   res.json(data.visits[idx]);
 });
 
@@ -1273,8 +1277,11 @@ app.delete('/api/visits/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const data = db.load();
   if (!data.visits) return res.json({ success: true });
+  const v = data.visits.find(v => v.id === req.params.id && v.owner === owner);
   data.visits = data.visits.filter(v => !(v.id === req.params.id && v.owner === owner));
   db.save(data);
+  if (v) writeLog('DELETE_VISIT', owner, v.contactName || req.params.id,
+    `${v.visitType} ${v.visitDate}`, req);
   res.json({ success: true });
 });
 
@@ -1413,11 +1420,13 @@ app.post('/api/targets', requireAuth, (req, res) => {
     existing.amount = amount;
     existing.updatedAt = new Date().toISOString();
     db.save(data);
+    writeLog('SET_TARGET', owner, owner, `${year} 年目標更新為 ${amount}`, req);
     return res.json(existing);
   }
   const target = { id: uuidv4(), owner, year, amount, createdAt: new Date().toISOString() };
   data.targets.push(target);
   db.save(data);
+  writeLog('SET_TARGET', owner, owner, `${year} 年目標 ${amount}`, req);
   res.status(201).json(target);
 });
 
@@ -1449,6 +1458,8 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   };
   data.opportunities.push(opp);
   db.save(data);
+  writeLog('CREATE_OPP', owner, opp.company || opp.contactName,
+    `${opp.product} 階段:C 金額:${opp.amount}`, req);
   res.status(201).json(opp);
 });
 
@@ -1476,6 +1487,9 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     });
   }
   db.save(data);
+  const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
+  writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
+    `${data.opportunities[idx].product}${stageDetail}`, req);
   res.json(data.opportunities[idx]);
 });
 
@@ -1597,6 +1611,8 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
   });
   data.opportunities = data.opportunities.filter(o => !(o.id === req.params.id && o.owner === owner));
   db.save(data);
+  writeLog('DELETE_OPP', owner, opp.company || opp.contactName,
+    `${opp.product} 原因:${deleteReason || '未說明'}`, req);
   res.json({ success: true });
 });
 
@@ -2441,6 +2457,8 @@ app.post('/api/contracts', requireAuth, (req, res) => {
   };
   data.contracts.push(c);
   db.save(data);
+  writeLog('CREATE_CONTRACT', owner, c.company,
+    `合約No:${c.contractNo} 產品:${c.product} 金額:${c.amount}`, req);
   res.status(201).json(c);
 });
 
@@ -2457,6 +2475,8 @@ app.put('/api/contracts/:id', requireAuth, (req, res) => {
   const owner = data.contracts[idx].owner; // 保留原 owner，不讓前端改
   data.contracts[idx] = { ...data.contracts[idx], ...pickFields(req.body, CONTRACT_FIELDS), id: req.params.id, owner };
   db.save(data);
+  writeLog('UPDATE_CONTRACT', username, data.contracts[idx].company,
+    `合約No:${data.contracts[idx].contractNo}`, req);
   res.json(data.contracts[idx]);
 });
 
@@ -2464,8 +2484,10 @@ app.delete('/api/contracts/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const data = db.load();
   if (!data.contracts) return res.json({ success: true });
+  const c = data.contracts.find(c => c.id === req.params.id && c.owner === owner);
   data.contracts = data.contracts.filter(c => !(c.id === req.params.id && c.owner === owner));
   db.save(data);
+  if (c) writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
   res.json({ success: true });
 });
 
@@ -3185,6 +3207,8 @@ app.post('/api/receivables', requireAuth, (req, res) => {
   };
   data.receivables.push(item);
   db.save(data);
+  writeLog('CREATE_RECEIVABLE', owner, item.company,
+    `發票:${item.invoiceNo} 金額:${item.amount}`, req);
   res.status(201).json(item);
 });
 
@@ -3197,14 +3221,18 @@ app.put('/api/receivables/:id', requireAuth, (req, res) => {
   if (req.body.amount !== undefined) data.receivables[idx].amount = parseFloat(req.body.amount) || 0;
   if (req.body.paidAmount !== undefined) data.receivables[idx].paidAmount = parseFloat(req.body.paidAmount) || 0;
   db.save(data);
+  writeLog('UPDATE_RECEIVABLE', owner, data.receivables[idx].company,
+    `發票:${data.receivables[idx].invoiceNo} 狀態:${data.receivables[idx].status}`, req);
   res.json(data.receivables[idx]);
 });
 
 app.delete('/api/receivables/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const data = db.load();
+  const r = (data.receivables || []).find(r => r.id === req.params.id && r.owner === owner);
   data.receivables = (data.receivables || []).filter(r => !(r.id === req.params.id && r.owner === owner));
   db.save(data);
+  if (r) writeLog('DELETE_RECEIVABLE', owner, r.company, `發票:${r.invoiceNo}`, req);
   res.json({ success: true });
 });
 

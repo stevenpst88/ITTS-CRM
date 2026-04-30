@@ -49,3 +49,7 @@ tmp_*.js
 # ════════════════════════════════════════
 coverage/
 .nyc_output/
+
+# 本地資料目錄
+data/
+storage/
