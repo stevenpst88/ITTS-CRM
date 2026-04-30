@@ -304,9 +304,10 @@ function sanitizeUrl(url) {
 }
 
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
-// Static assets：加 1 天快取，減少重複下載（瀏覽器仍會用 ETag 檢查更新）
-const STATIC_CACHE = { maxAge: '1d' };
-app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_CACHE));
+// Static assets：圖片快取 1 天；HTML/JS/CSS 不快取（確保部署後立即生效）
+const STATIC_CACHE      = { maxAge: '1d' };
+const STATIC_NO_CACHE   = { maxAge: 0, etag: false, lastModified: false };
+app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_NO_CACHE));
 app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png'), STATIC_CACHE));
 app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg'), STATIC_CACHE));
 // admin.html 已移至受保護路由（需登入 + admin 角色）
@@ -358,7 +359,7 @@ app.get('/admin.html', requireAuth, (req, res) => {
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
   res.sendFile(path.join(__dirname, '_client', 'admin.html'));
 });
-app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_CACHE));
+app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_NO_CACHE));
 // ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
 app.get('/uploads/:key', requireAuth, (req, res, next) => {
   Promise.resolve(storage.serveFile(req, res, req.params.key)).catch(next);
@@ -4723,18 +4724,27 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const uncertain = monthDeals.filter(o => o.stage === 'B' && daysSince(o.createdAt) <= 60);
     const sumAmt = arr => arr.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
-    // ── 3. 商機 Aging（依 stage × 天數區間，計件數）──
+    // ── 3. 商機 Aging（依 stage × 天數區間，計件數 + 細項）──
     const stages = ['D','C','B','A'];
     const buckets = ['0-7','8-30','31-60','61-90','90+'];
+    const agingOwner = req.query.agingOwner || '';
+    const agingOwners = (agingOwner && allOwners.includes(agingOwner)) ? [agingOwner] : allOwners;
+    const agingOpps = (data.opportunities || []).filter(o => agingOwners.includes(o.owner));
     const aging = {};
-    stages.forEach(s => { aging[s] = {}; buckets.forEach(b => aging[s][b] = 0); });
-    opps.filter(o => stages.includes(o.stage)).forEach(o => {
+    const agingItems = {};
+    stages.forEach(s => {
+      aging[s] = {};
+      agingItems[s] = {};
+      buckets.forEach(b => { aging[s][b] = 0; agingItems[s][b] = []; });
+    });
+    agingOpps.filter(o => stages.includes(o.stage)).forEach(o => {
       const d = daysSince(o.createdAt);
       const b = d <= 7 ? '0-7' : d <= 30 ? '8-30' : d <= 60 ? '31-60' : d <= 90 ? '61-90' : '90+';
       aging[o.stage][b]++;
+      agingItems[o.stage][b].push({ company: o.company || '—', product: o.product || o.category || '' });
     });
     // 算出「需介入」案件數（停滯 >60 天且階段 >=C）
-    const stalledCount = opps.filter(o => ['C','B','A'].includes(o.stage) && daysSince(o.createdAt) > 60).length;
+    const stalledCount = agingOpps.filter(o => ['C','B','A'].includes(o.stage) && daysSince(o.createdAt) > 60).length;
 
     // ── 4. 客戶 TOP 10（歷史成交 + 在手商機 累計金額）──
     const byCompany = {};
@@ -4765,7 +4775,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
         atRisk:    { count: atRisk.length,    amount: sumAmt(atRisk),    items: atRisk.map(slim) },
         uncertain: { count: uncertain.length, amount: sumAmt(uncertain), items: uncertain.map(slim) },
       },
-      aging: { stages, buckets, data: aging, stalledCount },
+      aging: { stages, buckets, data: aging, items: agingItems, stalledCount },
       topCustomers,
       ownerOptions,
     });
