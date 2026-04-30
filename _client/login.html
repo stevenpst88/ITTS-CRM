@@ -6,123 +6,563 @@
   <title>登入 - 東捷資訊業務管理系統</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
-      background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+      background: linear-gradient(135deg, #0d2347 0%, #1a3c7a 55%, #1e4d9b 100%);
       min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
+      display: flex;
+      overflow: hidden;
     }
-    .login-box {
-      background: #fff;
-      border-radius: 20px;
-      padding: 48px 40px;
-      width: 400px;
-      max-width: 95vw;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    }
-    .login-logo {
-      text-align: center;
-      margin-bottom: 32px;
-    }
-    .login-logo .icon { font-size: 48px; margin-bottom: 12px; }
-    .login-logo img { height: 56px; margin-bottom: 16px; }
-    .login-logo h1 { font-size: 20px; font-weight: 700; color: #1a3c7a; line-height: 1.4; }
-    .login-logo p { font-size: 13px; color: #888; margin-top: 6px; }
 
-    .form-group { margin-bottom: 18px; }
-    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; }
-    .form-group input {
-      width: 100%; padding: 12px 14px;
-      border: 1.5px solid #e0e2e5; border-radius: 10px;
-      font-size: 15px; outline: none;
-      transition: border-color .2s; font-family: inherit;
+    /* ── 粒子 ── */
+    #particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    .particle {
+      position: absolute; border-radius: 50%;
+      background: rgba(255,255,255,0.75);
+      animation: float-up linear infinite;
     }
-    .form-group input:focus { border-color: #1a73e8; }
+    @keyframes float-up {
+      0%   { opacity: 0; transform: translateY(0); }
+      10%  { opacity: 1; }
+      90%  { opacity: 0.5; }
+      100% { opacity: 0; transform: translateY(-110px); }
+    }
+
+    /* ── 左側 ── */
+    .globe-side {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      position: relative; z-index: 1; padding: 40px 20px;
+    }
+    .globe-headline {
+      color: rgba(255,255,255,0.95); font-size: 26px; font-weight: 700;
+      text-align: center; letter-spacing: 1px;
+      text-shadow: 0 0 30px rgba(100,200,255,0.55), 0 2px 8px rgba(0,0,60,0.4);
+      margin-bottom: 6px;
+    }
+    .globe-sub {
+      color: rgba(255,255,255,0.5); font-size: 11px;
+      letter-spacing: 3px; text-align: center; margin-bottom: 32px;
+    }
+
+    /* 地球 + 平台整體場景 */
+    .globe-scene {
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    /* 地球容器 */
+    .globe-wrap {
+      position: relative; width: 360px; height: 360px;
+      perspective: 900px; flex-shrink: 0;
+    }
+    #globeCanvas {
+      position: absolute; top: 0; left: 0;
+      filter: drop-shadow(0 0 24px rgba(80,180,255,0.5));
+    }
+
+    /* 軌道環 */
+    .orbit {
+      position: absolute; top: 50%; left: 50%;
+      border: 1px solid rgba(120,210,255,0.3);
+      border-radius: 50%;
+      animation: orbit-rotate linear infinite;
+    }
+    .orbit::after {
+      content: ''; position: absolute; top: -4px; left: 50%;
+      width: 7px; height: 7px;
+      background: #7ee8ff; border-radius: 50%;
+      box-shadow: 0 0 10px 3px rgba(100,220,255,0.8);
+      transform: translateX(-50%);
+    }
+    .orbit-1 { width: 350px; height: 124px; margin: -62px 0 0 -175px; animation-duration: 7s; }
+    .orbit-2 { width: 290px; height: 102px; margin: -51px 0 0 -145px; animation-duration: 11s; animation-direction: reverse; border-color: rgba(120,210,255,0.18); }
+    .orbit-2::after { background: rgba(210,245,255,0.9); box-shadow: 0 0 7px 2px rgba(200,240,255,0.5); }
+
+    @keyframes orbit-rotate {
+      from { transform: rotateX(72deg) rotateZ(0deg); }
+      to   { transform: rotateX(72deg) rotateZ(360deg); }
+    }
+
+    /* 掃描扇 */
+    .scan-fan {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 180px; height: 180px; border-radius: 50%;
+      background: conic-gradient(transparent 0deg, rgba(100,200,255,0.12) 18deg, transparent 36deg);
+      animation: scan-spin 5s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes scan-spin {
+      from { transform: translate(-50%,-50%) rotate(0deg); }
+      to   { transform: translate(-50%,-50%) rotate(360deg); }
+    }
+
+    /* ══ 平台底座 ══ */
+    .platform {
+      position: relative; width: 560px; height: 80px;
+      margin-top: -20px; flex-shrink: 0;
+    }
+
+    /* 扁平橢圓發光環 */
+    .p-ring {
+      position: absolute; left: 50%; border-radius: 50%;
+      transform-origin: center center;
+    }
+    .p-ring-1 {
+      width: 220px; height: 220px; margin-left: -110px; bottom: 26px;
+      border: 2px solid rgba(100,215,255,0.75);
+      box-shadow: 0 0 8px rgba(100,210,255,0.6), 0 0 18px rgba(80,190,255,0.3),
+                  inset 0 0 8px rgba(120,220,255,0.25);
+      transform: translateX(-50%) scaleY(0.14);
+      animation: ring-pulse 3s ease-in-out infinite 0s;
+    }
+    .p-ring-2 {
+      width: 320px; height: 320px; margin-left: -160px; bottom: 18px;
+      border: 1.5px solid rgba(80,195,255,0.55);
+      box-shadow: 0 0 10px rgba(80,190,255,0.35), 0 0 20px rgba(60,170,255,0.15);
+      transform: translateX(-50%) scaleY(0.13);
+      animation: ring-pulse 3s ease-in-out infinite 0.35s;
+    }
+    .p-ring-3 {
+      width: 420px; height: 420px; margin-left: -210px; bottom: 12px;
+      border: 1px solid rgba(60,175,255,0.38);
+      box-shadow: 0 0 12px rgba(60,170,255,0.2);
+      transform: translateX(-50%) scaleY(0.12);
+      animation: ring-pulse 3s ease-in-out infinite 0.7s;
+    }
+    .p-ring-4 {
+      width: 520px; height: 520px; margin-left: -260px; bottom: 6px;
+      border: 1px solid rgba(40,150,255,0.22);
+      transform: translateX(-50%) scaleY(0.11);
+      animation: ring-pulse 3s ease-in-out infinite 1.05s;
+    }
+    .p-ring-5 {
+      width: 620px; height: 620px; margin-left: -310px; bottom: 0;
+      border: 1px solid rgba(30,130,255,0.13);
+      transform: translateX(-50%) scaleY(0.10);
+      animation: ring-pulse 3s ease-in-out infinite 1.4s;
+    }
+    @keyframes ring-pulse {
+      0%, 100% { opacity: 0.65; }
+      50%       { opacity: 1; }
+    }
+
+    /* 平台中心光暈（地球底部接觸面） */
+    .platform-glow {
+      position: absolute; bottom: 30px; left: 50%;
+      transform: translateX(-50%);
+      width: 160px; height: 18px;
+      background: radial-gradient(ellipse at center,
+        rgba(180,235,255,0.85) 0%, rgba(100,210,255,0.45) 40%, transparent 70%);
+      border-radius: 50%;
+      animation: center-pulse 2.8s ease-in-out infinite;
+    }
+    @keyframes center-pulse {
+      0%, 100% { opacity: 0.75; transform: translateX(-50%) scaleX(1); }
+      50%       { opacity: 1; transform: translateX(-50%) scaleX(1.12); }
+    }
+
+    /* ── 右側表單 ── */
+    .form-side {
+      width: 400px; min-width: 360px;
+      background: rgba(255,255,255,0.97);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 52px 40px;
+      position: relative; z-index: 1;
+      box-shadow: -8px 0 48px rgba(0,0,0,0.28);
+    }
+    .form-side::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: linear-gradient(180deg, transparent, #1a3c7a 25%, #1a3c7a 75%, transparent);
+    }
+
+    .login-logo { text-align: center; margin-bottom: 36px; }
+    .login-logo img { height: 54px; display: block; margin: 0 auto 14px; }
+    .logo-fallback {
+      width: 56px; height: 56px; border-radius: 12px;
+      background: linear-gradient(135deg, #1a3c7a, #1e4d9b);
+      display: none; align-items: center; justify-content: center;
+      font-size: 26px; margin: 0 auto 14px;
+      box-shadow: 0 4px 16px rgba(26,60,122,0.4);
+    }
+    .login-logo h1 { font-size: 19px; font-weight: 700; color: #1a3c7a; line-height: 1.4; }
+    .login-logo p  { font-size: 12px; color: #999; margin-top: 5px; letter-spacing: 0.5px; }
+
+    .form-wrap { width: 100%; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 7px; }
+
+    .input-wrap { position: relative; }
+    .input-icon {
+      position: absolute; left: 12px; top: 50%;
+      transform: translateY(-50%); font-size: 15px; color: #1a3c7a; opacity: 0.75;
+      pointer-events: none;
+    }
+    .form-group input {
+      width: 100%; padding: 12px 14px 12px 40px;
+      border: 1.5px solid #e4e7ef; border-radius: 10px;
+      font-size: 14px; outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      font-family: inherit; background: #f7f9ff; color: #333;
+    }
+    .form-group input:focus {
+      border-color: #1a3c7a;
+      box-shadow: 0 0 0 3px rgba(26,60,122,0.1);
+      background: #fff;
+    }
+    .form-group input::placeholder { color: #bbb; font-size: 13px; }
 
     .login-btn {
       width: 100%; padding: 13px;
-      background: #1a73e8; color: #fff;
-      border: none; border-radius: 10px;
-      font-size: 16px; font-weight: 600;
-      cursor: pointer; transition: background .2s;
-      margin-top: 8px;
+      background: linear-gradient(90deg, #1a3c7a 0%, #1e4d9b 100%);
+      color: #fff; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity .2s, box-shadow .2s;
+      margin-top: 6px; letter-spacing: 2px;
+      box-shadow: 0 4px 16px rgba(26,60,122,0.4);
     }
-    .login-btn:hover { background: #1558b0; }
+    .login-btn:hover { opacity: 0.9; box-shadow: 0 6px 20px rgba(26,60,122,0.5); }
     .login-btn:active { transform: scale(0.99); }
 
     .error-msg {
       background: #fce8e6; color: #c5352a;
       padding: 10px 14px; border-radius: 8px;
-      font-size: 13px; margin-bottom: 16px;
-      display: none;
+      font-size: 13px; margin-bottom: 16px; display: none;
     }
     .error-msg.show { display: block; }
+    .footer-note { text-align: center; font-size: 11px; color: #ccc; margin-top: 32px; }
 
-    .footer-note { text-align: center; font-size: 12px; color: #bbb; margin-top: 24px; }
+    @media (max-width: 800px) {
+      body { flex-direction: column; }
+      .globe-side { padding: 28px 12px 8px; min-height: 300px; }
+      .globe-wrap { width: 270px; height: 270px; }
+      .orbit-1 { width: 260px; height: 92px; margin: -46px 0 0 -130px; }
+      .orbit-2 { width: 210px; height: 74px; margin: -37px 0 0 -105px; }
+      .platform { width: 380px; }
+      .form-side { width: 100%; min-width: 0; padding: 32px 24px; box-shadow: none; }
+    }
   </style>
 </head>
 <body>
-  <div class="login-box">
-    <div class="login-logo">
-      <img src="/itts-logo.png" alt="ITTS Logo">
-      <h1>東捷資訊業務管理系統</h1>
-      <p>請登入以繼續使用</p>
+
+<div id="particles"></div>
+
+<!-- ── 左側地球 ── -->
+<div class="globe-side">
+  <div class="globe-headline">東捷資訊業務管理系統</div>
+  <div class="globe-sub">ITTS BUSINESS MANAGEMENT SYSTEM</div>
+
+  <div class="globe-scene">
+    <div class="globe-wrap" id="globeWrap">
+      <canvas id="globeCanvas" width="360" height="360"></canvas>
+      <div class="orbit orbit-1"></div>
+      <div class="orbit orbit-2"></div>
+      <div class="scan-fan"></div>
     </div>
 
-    <div class="error-msg" id="errorMsg">帳號或密碼錯誤，請重新輸入</div>
+    <!-- 平台底座 -->
+    <div class="platform">
+      <div class="p-ring p-ring-5"></div>
+      <div class="p-ring p-ring-4"></div>
+      <div class="p-ring p-ring-3"></div>
+      <div class="p-ring p-ring-2"></div>
+      <div class="p-ring p-ring-1"></div>
+      <div class="platform-glow"></div>
+    </div>
+  </div>
+</div>
 
-    <form id="loginForm">
-      <div class="form-group">
-        <label>帳號</label>
-        <input type="text" id="username" placeholder="請輸入帳號" autocomplete="username" required>
-      </div>
-      <div class="form-group">
-        <label>密碼</label>
-        <input type="password" id="password" placeholder="請輸入密碼" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="login-btn">登入</button>
-    </form>
-
-    <p class="footer-note">© 東捷資訊業務管理系統</p>
+<!-- ── 右側表單 ── -->
+<div class="form-side">
+  <div class="login-logo">
+    <img src="/itts-logo.png" alt="ITTS"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <div class="logo-fallback">🏢</div>
+    <h1>東捷資訊業務管理系統</h1>
+    <p>Business Management System</p>
   </div>
 
-  <script>
-    $('loginForm', document).addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      const errorMsg = document.getElementById('errorMsg');
-      errorMsg.classList.remove('show');
+  <div class="form-wrap">
+    <div class="error-msg" id="errorMsg">帳號或密碼錯誤，請重新輸入</div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>帳　號</label>
+        <div class="input-wrap">
+          <span class="input-icon">👤</span>
+          <input type="text" id="username" placeholder="請輸入帳號" autocomplete="username" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>密　碼</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" id="password" placeholder="請輸入密碼" autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="login-btn">登　入</button>
+    </form>
+    <p class="footer-note">© 東捷資訊服務股份有限公司</p>
+  </div>
+</div>
 
-      try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          // 標記本次為剛登入，供首頁依角色決定預設頁面
-          sessionStorage.setItem('justLoggedIn', '1');
-          // 管理者直接進後台，其他角色進主系統
-          window.location.href = data.role === 'admin' ? '/admin.html' : '/';
-        } else {
-          errorMsg.classList.add('show');
-          document.getElementById('password').value = '';
-          document.getElementById('password').focus();
-        }
-      } catch {
-        errorMsg.textContent = '連線失敗，請稍後再試';
-        errorMsg.classList.add('show');
+<script>
+/* ── 粒子 ── */
+const pWrap = document.getElementById('particles');
+for (let i = 0; i < 50; i++) {
+  const d = document.createElement('div');
+  d.className = 'particle';
+  const s = 1 + Math.random() * 2.2;
+  d.style.cssText = `left:${Math.random()*62}%;top:${Math.random()*100}%;width:${s}px;height:${s}px;` +
+    `animation-delay:${(Math.random()*6).toFixed(2)}s;animation-duration:${(4+Math.random()*5).toFixed(2)}s;opacity:0`;
+  pWrap.appendChild(d);
+}
+
+/* ── 大陸遮罩（離線 Canvas 採樣）── */
+const CONTINENTS = [
+  // 格陵蘭
+  [[83,-55],[83,-18],[76,-15],[72,-22],[72,-38],[76,-55]],
+  // 北美
+  [[70,-140],[72,-110],[62,-95],[52,-88],[46,-84],[42,-80],[37,-75],[25,-80],[20,-87],[20,-100],[30,-110],[32,-117],[36,-120],[40,-124],[52,-128],[62,-138],[68,-140]],
+  // 墨西哥/中美洲
+  [[20,-87],[20,-100],[15,-92],[10,-85],[10,-77],[12,-72],[18,-70],[20,-74]],
+  // 南美
+  [[12,-72],[8,-62],[5,-52],[0,-50],[-5,-35],[-15,-38],[-25,-44],[-35,-55],[-55,-68],[-55,-72],[-42,-73],[-25,-70],[-18,-71],[0,-80],[8,-77]],
+  // 冰島
+  [[65,-24],[65,-13],[63,-13],[63,-24]],
+  // 英倫
+  [[58,-5],[58,0],[51,0],[51,-5]],
+  // 歐洲本土
+  [[72,26],[70,26],[68,15],[62,5],[56,-2],[50,-5],[43,-8],[36,-5],[35,5],[40,15],[45,13],[47,8],[50,10],[55,15],[60,22],[65,22],[70,22],[72,26]],
+  // 斯堪地那維亞
+  [[72,26],[68,28],[66,30],[65,28],[63,22],[65,20],[68,18],[70,20],[72,26]],
+  // 俄羅斯/西伯利亞
+  [[72,26],[72,65],[72,105],[70,140],[62,165],[58,158],[55,140],[50,140],[45,135],[40,130],[35,120],[30,105],[25,90],[28,70],[35,55],[37,37],[42,40],[48,40],[55,40],[65,40],[70,35]],
+  // 中東/阿拉伯
+  [[30,35],[37,37],[35,55],[28,68],[22,58],[12,44],[12,42],[15,40],[20,38],[25,37]],
+  // 印度次大陸
+  [[28,65],[28,88],[20,88],[8,78],[8,77],[22,68]],
+  // 東南亞大陸
+  [[25,90],[25,105],[20,105],[15,100],[10,100],[10,104],[5,100],[10,92],[22,92]],
+  // 非洲
+  [[37,10],[37,37],[30,35],[22,37],[15,42],[12,44],[10,42],[5,40],[-5,40],[-20,35],[-35,25],[-35,18],[-20,15],[0,10],[-5,0],[0,-8],[15,-17],[20,-17]],
+  // 馬達加斯加
+  [[-13,44],[-25,44],[-25,48],[-13,48]],
+  // 澳洲
+  [[-15,130],[-15,138],[-20,148],[-28,153],[-38,145],[-40,140],[-42,148],[-44,147],[-44,142],[-40,132],[-32,116],[-22,114]],
+  // 南極
+  [[-70,180],[-70,-180],[-90,-180],[-90,180]],
+];
+
+function buildLandMask() {
+  const W = 360, H = 180;
+  const oc = document.createElement('canvas');
+  oc.width = W; oc.height = H;
+  const c = oc.getContext('2d');
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#fff';
+  CONTINENTS.forEach(pts => {
+    c.beginPath();
+    pts.forEach(([lat, lon], i) => {
+      const x = lon + 180, y = 90 - lat;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    });
+    c.closePath(); c.fill();
+  });
+  const px = c.getImageData(0, 0, W, H).data;
+  return (lat, lon) => {
+    const x = ((Math.round(lon + 180) % W) + W) % W;
+    const y = Math.max(0, Math.min(H - 1, Math.round(90 - lat)));
+    return px[(y * W + x) * 4] > 128;
+  };
+}
+
+const isLand = buildLandMask();
+
+/* 預先分類點雲（避免每幀判斷） */
+const STEP = 2.5;
+const LAND_DOTS = [], SEA_DOTS = [];
+for (let lat = -88; lat <= 88; lat += STEP) {
+  for (let lon = -180; lon < 180; lon += STEP) {
+    (isLand(lat, lon) ? LAND_DOTS : SEA_DOTS).push([
+      (90 - lat) * Math.PI / 180,
+      lon * Math.PI / 180
+    ]);
+  }
+}
+
+/* ── 地球繪製 ── */
+const canvas = document.getElementById('globeCanvas');
+const ctx    = canvas.getContext('2d');
+let rotAngle = 0;
+
+function project(phi, thetaBase, r) {
+  const theta = thetaBase + rotAngle * Math.PI / 180;
+  return {
+    x:  r * Math.sin(phi) * Math.cos(theta),
+    y:  r * Math.cos(phi),
+    z:  r * Math.sin(phi) * Math.sin(theta)
+  };
+}
+
+function drawGlobe() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, r = W * 0.41;
+
+  /* 外部光暈 */
+  const og = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.3);
+  og.addColorStop(0, 'rgba(80,170,255,0.09)');
+  og.addColorStop(1, 'transparent');
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2);
+  ctx.fillStyle = og; ctx.fill();
+
+  /* 球體基底 */
+  const bg = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.25, 0, cx, cy, r);
+  bg.addColorStop(0, 'rgba(40,120,220,0.22)');
+  bg.addColorStop(0.6, 'rgba(20,60,160,0.14)');
+  bg.addColorStop(1, 'rgba(10,30,100,0.18)');
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = bg; ctx.fill();
+
+  /* 海洋點（暗淡） */
+  for (const [phi, thetaBase] of SEA_DOTS) {
+    const p = project(phi, thetaBase * 180 / Math.PI, r);
+    if (p.z > 0) {
+      const dep = p.z / r;
+      if (dep < 0.25) continue;
+      ctx.beginPath();
+      ctx.arc(cx + p.x, cy - p.y, 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(70,140,230,${0.08 + dep * 0.1})`;
+      ctx.fill();
+    }
+  }
+
+  /* 陸地點（明亮） */
+  for (const [phi, thetaBase] of LAND_DOTS) {
+    const p = project(phi, thetaBase * 180 / Math.PI, r);
+    if (p.z > 0) {
+      const dep = p.z / r;
+      const size = 1.0 + dep * 1.6;
+      const alpha = 0.45 + dep * 0.55;
+      ctx.beginPath();
+      ctx.arc(cx + p.x, cy - p.y, size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(120,220,255,${alpha})`;
+      ctx.fill();
+    }
+  }
+
+  /* 城市熱點 */
+  const hotspots = [
+    [25,121],[35,139],[22,114],[1,103],[-6,107],[13,100],[31,121],
+    [39,116],[37,-122],[40,-74],[51,-0],[48,2],[55,37],[28,77]
+  ];
+  const t = Date.now() / 700;
+  for (const [lat, lon] of hotspots) {
+    const phi   = (90 - lat) * Math.PI / 180;
+    const theta = lon * Math.PI / 180;
+    const p = project(phi, theta * 180 / Math.PI, r);
+    if (p.z > 0) {
+      const dep = p.z / r;
+      const pulse = 0.6 + 0.4 * Math.sin(t + lat * 0.3);
+      ctx.beginPath();
+      ctx.arc(cx + p.x, cy - p.y, 3.5 * dep * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,240,140,${0.7 * dep * pulse})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + p.x, cy - p.y, 6 * dep, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,220,80,${0.22 * dep})`;
+      ctx.lineWidth = 0.8; ctx.stroke();
+    }
+  }
+
+  /* 緯線（細） */
+  function strokeLats(lats, color, lw) {
+    for (const lat of lats) {
+      const phi = (90 - lat) * Math.PI / 180;
+      ctx.strokeStyle = color; ctx.lineWidth = lw;
+      let open = false;
+      for (let lon = -180; lon <= 180; lon += 2) {
+        const theta = lon * Math.PI / 180;
+        const p = project(phi, theta * 180 / Math.PI, r);
+        const sx = cx + p.x, sy = cy - p.y;
+        if (p.z >= 0) {
+          if (!open) { ctx.beginPath(); ctx.moveTo(sx, sy); open = true; }
+          else ctx.lineTo(sx, sy);
+        } else { if (open) { ctx.stroke(); open = false; } }
       }
-    });
+      if (open) ctx.stroke();
+    }
+  }
+  strokeLats([-60,-45,-30,-15,15,30,45,60], 'rgba(100,190,255,0.18)', 0.5);
+  strokeLats([0], 'rgba(120,220,255,0.45)', 1.0); // 赤道
 
-    function $(id, ctx) { return (ctx || document).getElementById(id); }
+  /* 經線（細） */
+  for (let lon = 0; lon < 360; lon += 30) {
+    ctx.strokeStyle = 'rgba(100,190,255,0.18)'; ctx.lineWidth = 0.5;
+    let open = false;
+    for (let lat = -90; lat <= 90; lat += 2) {
+      const phi = (90 - lat) * Math.PI / 180;
+      const p = project(phi, lon, r);
+      const sx = cx + p.x, sy = cy - p.y;
+      if (p.z >= 0) {
+        if (!open) { ctx.beginPath(); ctx.moveTo(sx, sy); open = true; }
+        else ctx.lineTo(sx, sy);
+      } else { if (open) { ctx.stroke(); open = false; } }
+    }
+    if (open) ctx.stroke();
+  }
 
-    // Enter 鍵提交
-    document.getElementById('password').addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('loginForm').requestSubmit();
+  /* 高光 */
+  const sh = ctx.createRadialGradient(cx - r * 0.38, cy - r * 0.38, 0, cx, cy, r);
+  sh.addColorStop(0, 'rgba(200,235,255,0.13)');
+  sh.addColorStop(0.45, 'transparent');
+  sh.addColorStop(1, 'rgba(0,15,70,0.22)');
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = sh; ctx.fill();
+
+  /* 邊框發光 */
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(100,200,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  rotAngle += 0.10;
+  requestAnimationFrame(drawGlobe);
+}
+
+drawGlobe();
+
+/* ── 登入邏輯 ── */
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errorMsg = document.getElementById('errorMsg');
+  errorMsg.classList.remove('show');
+  const btn = document.querySelector('.login-btn');
+  btn.disabled = true; btn.textContent = '登入中…';
+  try {
+    const res  = await fetch('/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
     });
-  </script>
+    const data = await res.json();
+    if (res.ok && data.success) {
+      sessionStorage.setItem('justLoggedIn', '1');
+      window.location.href = data.role === 'admin' ? '/admin.html' : '/';
+    } else {
+      errorMsg.classList.add('show');
+      document.getElementById('password').value = '';
+      document.getElementById('password').focus();
+      btn.disabled = false; btn.textContent = '登　入';
+    }
+  } catch {
+    errorMsg.textContent = '連線失敗，請稍後再試';
+    errorMsg.classList.add('show');
+    btn.disabled = false; btn.textContent = '登　入';
+  }
+});
+</script>
 </body>
 </html>
