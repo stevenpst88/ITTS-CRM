@@ -4082,6 +4082,85 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
   }
 });
 
+// ── 雲端基礎設施監控 ──────────────────────────────────────
+app.get('/api/admin/infra-stats', requireAdmin, async (req, res) => {
+  const result = {
+    db:      null,
+    storage: null,
+    runtime: null,
+    vercel:  null,
+  };
+
+  // ── 1. Supabase PostgreSQL 統計（需要 postgres 後端）──
+  if (process.env.DB_BACKEND === 'postgres' && process.env.DATABASE_URL) {
+    try {
+      const { Pool } = require('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+        max: 1, connectionTimeoutMillis: 5000,
+      });
+      const [sizeRow, connRow, tablesRow, storageRow] = await Promise.all([
+        pool.query(`SELECT pg_database_size(current_database()) AS db_bytes,
+                          pg_size_pretty(pg_database_size(current_database())) AS db_pretty`),
+        pool.query(`SELECT count(*) FILTER (WHERE state = 'active') AS active,
+                          count(*) AS total
+                   FROM pg_stat_activity`),
+        pool.query(`SELECT relname AS name,
+                          n_live_tup AS rows,
+                          pg_size_pretty(pg_total_relation_size(relid)) AS size,
+                          pg_total_relation_size(relid) AS size_bytes
+                   FROM pg_stat_user_tables
+                   ORDER BY pg_total_relation_size(relid) DESC
+                   LIMIT 10`),
+        pool.query(`SELECT COUNT(*) AS files,
+                          COALESCE(SUM((metadata->>'size')::bigint), 0) AS total_bytes
+                   FROM storage.objects
+                   WHERE bucket_id = $1`, [process.env.SUPABASE_BUCKET || 'uploads']),
+      ]);
+      await pool.end();
+
+      result.db = {
+        sizeBytes:   parseInt(sizeRow.rows[0].db_bytes),
+        sizePretty:  sizeRow.rows[0].db_pretty,
+        connections: { active: parseInt(connRow.rows[0].active), total: parseInt(connRow.rows[0].total) },
+        tables:      tablesRow.rows.map(r => ({ name: r.name, rows: parseInt(r.rows), size: r.size, sizeBytes: parseInt(r.size_bytes) })),
+      };
+      result.storage = {
+        files:      parseInt(storageRow.rows[0].files),
+        totalBytes: parseInt(storageRow.rows[0].total_bytes),
+        bucket:     process.env.SUPABASE_BUCKET || 'uploads',
+      };
+    } catch (e) {
+      result.db = { error: e.message };
+    }
+  }
+
+  // ── 2. 執行時資訊（本地 + Vercel 都能取得）──
+  const mem = process.memoryUsage();
+  result.runtime = {
+    uptimeSeconds: Math.floor(process.uptime()),
+    nodeVersion:   process.version,
+    env:           process.env.NODE_ENV || 'development',
+    heapUsed:      mem.heapUsed,
+    heapTotal:     mem.heapTotal,
+    rss:           mem.rss,
+    backend:       process.env.DB_BACKEND || 'json',
+    storageBackend: process.env.STORAGE_BACKEND || 'local',
+  };
+
+  // ── 3. Vercel 環境（只在 Vercel 上有值）──
+  result.vercel = {
+    url:        process.env.VERCEL_URL || null,
+    productionUrl: process.env.VERCEL_PROJECT_PRODUCTION_URL || null,
+    region:     process.env.VERCEL_REGION || (process.env.VERCEL_URL ? 'hnd1' : null),
+    isVercel:   !!process.env.VERCEL_URL,
+  };
+
+  result.generatedAt = new Date().toISOString();
+  res.json(result);
+});
+
 // ── API 使用量監控 ────────────────────────────────────────
 app.get('/api/admin/api-stats', requireAdmin, (req, res) => {
   try {
