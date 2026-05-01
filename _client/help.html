@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>操作手冊 — 東捷資訊業務管理系統</title>
+  <style>
+    :root {
+      --blue: #1a3c7a;
+      --blue-light: #1e4d9b;
+      --accent: #1a73e8;
+      --sidebar-w: 260px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      background: #f4f6fb;
+      color: #333;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── 側邊目錄 ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--blue);
+      color: #fff;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      overflow-y: auto;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .sidebar-header .logo {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 10px;
+    }
+    .sidebar-header img { height: 32px; filter: brightness(0) invert(1); }
+    .sidebar-header h2 { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.9); line-height: 1.4; }
+    .sidebar-header p  { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+    .toc { padding: 10px 0; flex: 1; }
+    .toc-group { margin-bottom: 2px; }
+    .toc-group-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      color: rgba(255,255,255,0.4);
+      padding: 10px 18px 4px;
+      text-transform: uppercase;
+    }
+    .toc-item {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 18px; font-size: 13px;
+      color: rgba(255,255,255,0.75);
+      cursor: pointer; border-left: 3px solid transparent;
+      transition: background .15s, color .15s, border-color .15s;
+      text-decoration: none;
+    }
+    .toc-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+    .toc-item.active { background: rgba(255,255,255,0.12); color: #fff; border-left-color: #7ec8ff; }
+    .toc-item .num {
+      font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.35);
+      min-width: 18px;
+    }
+
+    .sidebar-footer {
+      padding: 14px 18px;
+      border-top: 1px solid rgba(255,255,255,0.10);
+      font-size: 11px; color: rgba(255,255,255,0.35);
+    }
+    .back-btn {
+      display: flex; align-items: center; gap: 6px;
+      color: rgba(255,255,255,0.6); font-size: 12px;
+      cursor: pointer; margin-bottom: 10px;
+      text-decoration: none;
+    }
+    .back-btn:hover { color: #fff; }
+
+    /* ── 主內容區 ── */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      padding: 0;
+    }
+    .main-header {
+      background: #fff;
+      border-bottom: 1px solid #e8eaf0;
+      padding: 20px 48px;
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .main-header h1 { font-size: 18px; font-weight: 700; color: var(--blue); }
+    .main-header .version { font-size: 12px; color: #aaa; }
+
+    .content { padding: 40px 48px; max-width: 980px; }
+
+    /* ── 章節 ── */
+    .chapter {
+      margin-bottom: 64px;
+      scroll-margin-top: 80px;
+    }
+    .chapter-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #e8eaf0;
+    }
+    .chapter-num {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--blue); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; flex-shrink: 0;
+    }
+    .chapter-title { font-size: 20px; font-weight: 700; color: var(--blue); }
+    .chapter-badge {
+      font-size: 11px; padding: 3px 9px; border-radius: 20px;
+      font-weight: 600;
+    }
+    .badge-all    { background: #e8f0fe; color: #1a73e8; }
+    .badge-mgr    { background: #fce8b2; color: #b06000; }
+    .badge-admin  { background: #fce8e6; color: #c5352a; }
+    .badge-mkt    { background: #e6f4ea; color: #1e7e34; }
+
+    /* 說明文字 */
+    .section-intro {
+      background: #f8f9ff; border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px; margin-bottom: 20px;
+      font-size: 14px; line-height: 1.7; color: #444;
+    }
+
+    /* 截圖 */
+    .screenshot-wrap {
+      margin: 20px 0;
+      border: 1px solid #e0e4ef;
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+    .screenshot-label {
+      background: #f4f6fb;
+      border-bottom: 1px solid #e0e4ef;
+      padding: 8px 16px;
+      font-size: 12px; color: #888; font-weight: 500;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .screenshot-label::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: #ff5f57; box-shadow: 12px 0 0 #febc2e, 24px 0 0 #28c840;
+      flex-shrink: 0;
+    }
+    .screenshot-wrap img {
+      width: 100%; display: block;
+    }
+
+    /* 步驟清單 */
+    .steps { margin: 16px 0; padding-left: 0; list-style: none; }
+    .steps li {
+      display: flex; gap: 12px; align-items: flex-start;
+      margin-bottom: 10px; font-size: 14px; line-height: 1.6;
+    }
+    .step-num {
+      min-width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+    }
+
+    /* 功能表格 */
+    .feat-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+    .feat-table th {
+      background: var(--blue); color: #fff;
+      padding: 10px 14px; text-align: left; font-weight: 600;
+    }
+    .feat-table td { padding: 9px 14px; border-bottom: 1px solid #eef0f6; vertical-align: top; }
+    .feat-table tr:nth-child(even) td { background: #f8f9ff; }
+
+    /* 提示框 */
+    .tip {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: #e8f4fd; border-radius: 8px;
+      padding: 12px 14px; margin: 14px 0; font-size: 13.5px; line-height: 1.6;
+    }
+    .tip.warn { background: #fff8e6; }
+    .tip.danger { background: #fce8e6; }
+    .tip-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* 角色標籤 */
+    .role-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; padding: 2px 8px; border-radius: 20px;
+      font-weight: 600; margin-right: 4px;
+    }
+    .role-user { background: #e8f0fe; color: #1a73e8; }
+    .role-mgr  { background: #fce8b2; color: #b06000; }
+    .role-admin { background: #fce8e6; color: #c5352a; }
+
+    /* 快捷鍵 */
+    kbd {
+      background: #f0f2f6; border: 1px solid #d0d4e0;
+      border-radius: 4px; padding: 2px 7px;
+      font-size: 12px; font-family: monospace;
+    }
+
+    /* 頁面頂部錨點偏移（避免被 sticky header 遮住） */
+    [id] { scroll-margin-top: 80px; }
+  </style>
+</head>
+<body>
+
+<!-- ── 側邊目錄 ── -->
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <img src="/itts-logo.png" alt="ITTS">
+    </div>
+    <h2>東捷資訊業務管理系統</h2>
+    <p>操作手冊 v1.0</p>
+  </div>
+
+  <div class="toc">
+    <div class="toc-group">
+      <div class="toc-group-label">入門</div>
+      <a class="toc-item" href="#ch1"><span class="num">01</span>系統登入</a>
+      <a class="toc-item" href="#ch2"><span class="num">02</span>介面總覽</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">日常操作</div>
+      <a class="toc-item" href="#ch3"><span class="num">03</span>名片管理</a>
+      <a class="toc-item" href="#ch4"><span class="num">04</span>拜訪記錄</a>
+      <a class="toc-item" href="#ch5"><span class="num">05</span>商機管理</a>
+      <a class="toc-item" href="#ch6"><span class="num">06</span>合約管理</a>
+      <a class="toc-item" href="#ch7"><span class="num">07</span>帳款管理</a>
+      <a class="toc-item" href="#ch8"><span class="num">08</span>報價單</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">AI 功能</div>
+      <a class="toc-item" href="#ch9"><span class="num">09</span>AI 輔助功能</a>
+      <a class="toc-item" href="#ch10"><span class="num">10</span>統一編號查詢</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">分析報表</div>
+      <a class="toc-item" href="#ch11"><span class="num">11</span>業績目標</a>
+      <a class="toc-item" href="#ch12"><span class="num">12</span>商機動態報表</a>
+      <a class="toc-item" href="#ch13"><span class="num">13</span>主管儀表板</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">行銷</div>
+      <a class="toc-item" href="#ch14"><span class="num">14</span>行銷活動</a>
+      <a class="toc-item" href="#ch15"><span class="num">15</span>Lead 管理</a>
+    </div>
+    <div class="toc-group">
+      <div class="toc-group-label">管理員</div>
+      <a class="toc-item" href="#ch16"><span class="num">16</span>帳號管理</a>
+      <a class="toc-item" href="#ch17"><span class="num">17</span>操作日誌</a>
+      <a class="toc-item" href="#ch18"><span class="num">18</span>API 使用監控</a>
+      <a class="toc-item" href="#ch19"><span class="num">19</span>資料匯出入</a>
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <a class="back-btn" href="/">← 返回系統</a>
+    © 東捷資訊服務股份有限公司
+  </div>
+</nav>
+
+<!-- ── 主內容 ── -->
+<div class="main">
+  <div class="main-header">
+    <h1>📖 操作手冊</h1>
+    <span class="version">東捷資訊業務管理系統 · 2026</span>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ CH1 登入 ══ -->
+    <div class="chapter" id="ch1">
+      <div class="chapter-header">
+        <div class="chapter-num">1</div>
+        <div class="chapter-title">系統登入</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        開啟瀏覽器前往系統網址，輸入管理員指派的帳號與密碼即可登入。系統會依據您的角色自動導向對應的預設頁面。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">登入頁面</div>
+        <img src="/help-img/login.png" alt="登入頁面">
+      </div>
+      <ol class="steps">
+        <li><div class="step-num">1</div><div>在「帳號」欄位輸入您的使用者名稱</div></li>
+        <li><div class="step-num">2</div><div>在「密碼」欄位輸入密碼（區分大小寫）</div></li>
+        <li><div class="step-num">3</div><div>點選「登入」按鈕，或按 <kbd>Enter</kbd></div></li>
+        <li><div class="step-num">4</div><div>登入成功後，系統依角色自動跳轉：<span class="role-tag role-admin">admin</span>→後台，<span class="role-tag role-mgr">主管</span>→主管儀表板，<span class="role-tag role-user">業務</span>→商機看板</div></li>
+      </ol>
+      <div class="tip warn">
+        <span class="tip-icon">⚠️</span>
+        <span>若連續輸入錯誤密碼超過次數限制，帳號將暫時鎖定。請聯絡系統管理員解鎖。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH2 介面總覽 ══ -->
+    <div class="chapter" id="ch2">
+      <div class="chapter-header">
+        <div class="chapter-num">2</div>
+        <div class="chapter-title">介面總覽</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        系統由左側導覽列與右側主畫面組成。導覽列依角色顯示對應的功能項目。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">系統主介面 — 名片管理</div>
+        <img src="/help-img/contacts.png" alt="系統介面總覽">
+      </div>
+      <table class="feat-table">
+        <tr><th>區域</th><th>說明</th></tr>
+        <tr><td>左側導覽列</td><td>點選各項目切換功能頁面；可拖曳排序調整順序</td></tr>
+        <tr><td>頂部工具列</td><td>搜尋、篩選、新增按鈕依頁面不同而變化</td></tr>
+        <tr><td>主畫面</td><td>顯示對應功能的資料列表、看板或圖表</td></tr>
+      </table>
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <span>導覽列項目可拖曳排序，偏好的功能順序會自動記憶在瀏覽器中。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH3 名片管理 ══ -->
+    <div class="chapter" id="ch3">
+      <div class="chapter-header">
+        <div class="chapter-num">3</div>
+        <div class="chapter-title">名片管理</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        名片管理是系統的核心功能，用於儲存客戶聯絡資訊。支援手動新增、AI OCR 名片辨識、以及從統一編號自動帶入公司資料。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">名片管理列表</div>
+        <img src="/help-img/contacts.png" alt="名片管理">
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>說明</th></tr>
+        <tr><td>新增名片</td><td>點選「＋ 新增名片」，手動填寫或拍照後使用 AI OCR 辨識</td></tr>
+        <tr><td>搜尋</td><td>支援姓名、公司、電話、Email 關鍵字即時搜尋</td></tr>
+        <tr><td>篩選</td><td>依業務人員、標籤或建立日期篩選</td></tr>
+        <tr><td>匯出</td><td>可將名片清單匯出為 Excel</td></tr>
+        <tr><td>AI 摘要</td><td>對特定聯絡人產生 AI 往來摘要報告</td></tr>
+      </table>
+      <ol class="steps">
+        <li><div class="step-num">1</div><div>點選「＋ 新增名片」</div></li>
+        <li><div class="step-num">2</div><div>選擇「手動輸入」或「AI OCR 辨識」（上傳名片照片）</div></li>
+        <li><div class="step-num">3</div><div>填入統一編號後，點選查詢可自動帶入公司名稱與地址</div></li>
+        <li><div class="step-num">4</div><div>儲存後名片出現在列表中，可直接點開編輯或建立拜訪記錄</div></li>
+      </ol>
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <span>OCR 辨識後請務必核對資料正確性再儲存，辨識率受名片設計影響。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH4 拜訪記錄 ══ -->
+    <div class="chapter" id="ch4">
+      <div class="chapter-header">
+        <div class="chapter-num">4</div>
+        <div class="chapter-title">拜訪記錄</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        記錄每次客戶拜訪的內容、結論與後續行動，支援 AI 自動產生拜訪摘要與跟進建議。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">拜訪記錄列表</div>
+        <img src="/help-img/visits.png" alt="拜訪記錄">
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>說明</th></tr>
+        <tr><td>新增拜訪</td><td>選擇聯絡人、填寫拜訪日期、地點、內容與結論</td></tr>
+        <tr><td>跟進事項</td><td>設定下次跟進日期與待辦事項</td></tr>
+        <tr><td>AI 摘要</td><td>自動從拜訪紀錄產生重點摘要</td></tr>
+        <tr><td>跟進建議</td><td>AI 依據往來記錄提供下一步行動建議</td></tr>
+      </table>
+      <ol class="steps">
+        <li><div class="step-num">1</div><div>點選「＋ 新增拜訪」</div></li>
+        <li><div class="step-num">2</div><div>選擇對應聯絡人（可從名片管理直接跳入）</div></li>
+        <li><div class="step-num">3</div><div>填寫拜訪內容、結論與跟進日期</div></li>
+        <li><div class="step-num">4</div><div>點選「AI 摘要」可自動整理重點</div></li>
+      </ol>
+    </div>
+
+    <!-- ══ CH5 商機管理 ══ -->
+    <div class="chapter" id="ch5">
+      <div class="chapter-header">
+        <div class="chapter-num">5</div>
+        <div class="chapter-title">商機管理</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        以看板（Kanban）方式管理銷售商機的推進狀態。每張商機卡片可拖曳至不同階段欄位，系統自動記錄異動歷程。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">商機看板</div>
+        <img src="/help-img/pipeline.png" alt="商機看板">
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>說明</th></tr>
+        <tr><td>新增商機</td><td>填入商機名稱、金額、預計簽約日、負責業務</td></tr>
+        <tr><td>拖曳推進</td><td>將商機卡片拖曳到下一個階段欄位</td></tr>
+        <tr><td>AI 勝率評估</td><td>AI 分析商機資訊，預測成交機率</td></tr>
+        <tr><td>流失標記</td><td>商機未成交可標記為流失並記錄原因</td></tr>
+        <tr><td>預計簽約日</td><td>更改日期時，系統記錄於 Pipeline 月度變動</td></tr>
+      </table>
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <span>商機推進後系統會自動記錄時間戳，主管可在「商機動態報表」查看階段變化趨勢。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH6 合約管理 ══ -->
+    <div class="chapter" id="ch6">
+      <div class="chapter-header">
+        <div class="chapter-num">6</div>
+        <div class="chapter-title">合約管理</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        管理與客戶簽訂的合約資訊，追蹤合約金額、期間、付款條件及續約狀態。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">ERP MA 管理（合約系列）</div>
+        <img src="/help-img/erp-ma.png" alt="合約管理">
+      </div>
+      <table class="feat-table">
+        <tr><th>欄位</th><th>說明</th></tr>
+        <tr><td>合約編號</td><td>系統自動產生或手動填入</td></tr>
+        <tr><td>合約金額</td><td>總金額（含稅/未稅可選）</td></tr>
+        <tr><td>合約期間</td><td>起始日與到期日，到期前系統發出提醒</td></tr>
+        <tr><td>付款條件</td><td>分期、里程碑付款或一次付清</td></tr>
+        <tr><td>狀態</td><td>草稿、生效中、已到期、已終止</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH7 帳款管理 ══ -->
+    <div class="chapter" id="ch7">
+      <div class="chapter-header">
+        <div class="chapter-num">7</div>
+        <div class="chapter-title">帳款管理</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        追蹤客戶的應收帳款狀況，管理發票、收款記錄與逾期提醒。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">帳款管理</div>
+        <img src="/help-img/receivables.png" alt="帳款管理">
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>說明</th></tr>
+        <tr><td>新增帳款</td><td>關聯合約後填入發票號、金額、應收日期</td></tr>
+        <tr><td>付款登錄</td><td>收到款項後登錄實際收款日與金額</td></tr>
+        <tr><td>逾期標示</td><td>超過應收日期未收款，系統自動標示紅色提醒</td></tr>
+        <tr><td>統計</td><td>顯示本月應收、已收、逾期金額總覽</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH8 報價單 ══ -->
+    <div class="chapter" id="ch8">
+      <div class="chapter-header">
+        <div class="chapter-num">8</div>
+        <div class="chapter-title">報價單</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        建立客戶報價單，可多版本管理報價，並關聯至對應商機。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">報價單管理</div>
+        <img src="/help-img/quotations.png" alt="報價單">
+      </div>
+      <ol class="steps">
+        <li><div class="step-num">1</div><div>點選「＋ 新增報價單」，選擇對應客戶與商機</div></li>
+        <li><div class="step-num">2</div><div>填入報價項目、單價、數量</div></li>
+        <li><div class="step-num">3</div><div>確認後可下載 PDF 或轉寄給客戶</div></li>
+        <li><div class="step-num">4</div><div>客戶接受後可一鍵轉為合約</div></li>
+      </ol>
+    </div>
+
+    <!-- ══ CH9 AI 功能 ══ -->
+    <div class="chapter" id="ch9">
+      <div class="chapter-header">
+        <div class="chapter-num">9</div>
+        <div class="chapter-title">AI 輔助功能</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        系統整合 Google Gemini AI，提供多項智慧輔助功能，協助業務人員提升工作效率。
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>入口位置</th><th>說明</th></tr>
+        <tr><td>名片 OCR 辨識</td><td>名片管理 → 新增</td><td>上傳名片照片，AI 自動填寫欄位</td></tr>
+        <tr><td>拜訪摘要</td><td>拜訪記錄 → 詳細</td><td>從拜訪內容自動產生重點摘要</td></tr>
+        <tr><td>跟進建議</td><td>拜訪記錄 → 詳細</td><td>AI 建議下一步跟進行動</td></tr>
+        <tr><td>商機勝率評估</td><td>商機卡片 → 詳細</td><td>分析商機資訊預測成交機率</td></tr>
+        <tr><td>客戶洞察</td><td>名片管理 → 詳細</td><td>查詢客戶公司背景與產業資訊</td></tr>
+        <tr><td>跟進 Email 草稿</td><td>拜訪記錄 → 詳細</td><td>AI 自動產生跟進 Email 草稿</td></tr>
+        <tr><td>聯絡人摘要</td><td>名片管理 → 詳細</td><td>彙整與該聯絡人的往來紀錄摘要</td></tr>
+      </table>
+      <div class="tip warn">
+        <span class="tip-icon">⚠️</span>
+        <span>AI 功能使用 Gemini API，每次使用會計入 Token 用量。管理員可在後台查看使用統計。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH10 統編查詢 ══ -->
+    <div class="chapter" id="ch10">
+      <div class="chapter-header">
+        <div class="chapter-num">10</div>
+        <div class="chapter-title">統一編號查詢</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        輸入公司統一編號，系統自動從政府開放資料（GCIS）查詢公司名稱、地址、負責人等基本資料，並自動填入名片欄位。
+      </div>
+      <ol class="steps">
+        <li><div class="step-num">1</div><div>在新增/編輯名片時，找到「統一編號」欄位</div></li>
+        <li><div class="step-num">2</div><div>輸入 8 碼統一編號</div></li>
+        <li><div class="step-num">3</div><div>點選「查詢」，系統自動帶入公司資料</div></li>
+        <li><div class="step-num">4</div><div>確認資料正確後儲存</div></li>
+      </ol>
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <span>查詢依序使用 GCIS → 台股/興櫃查詢 → DuckDuckGo 三層 fallback，確保盡可能找到資料。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH11 業績目標 ══ -->
+    <div class="chapter" id="ch11">
+      <div class="chapter-header">
+        <div class="chapter-num">11</div>
+        <div class="chapter-title">業績目標</div>
+        <span class="chapter-badge badge-all">全員</span>
+      </div>
+      <div class="section-intro">
+        設定個人或團隊的年度/季度業績目標，並即時追蹤達成率。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">業績目標頁面</div>
+        <img src="/help-img/targets.png" alt="業績目標">
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>說明</th></tr>
+        <tr><td>設定目標</td><td>主管為各業務設定年度目標金額（需 manager / admin 權限）</td></tr>
+        <tr><td>達成率</td><td>系統自動計算當期合約金額 vs 目標的達成率</td></tr>
+        <tr><td>預測</td><td>根據管道中的商機金額計算預估達成</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH12 商機動態報表 ══ -->
+    <div class="chapter" id="ch12">
+      <div class="chapter-header">
+        <div class="chapter-num">12</div>
+        <div class="chapter-title">商機動態報表</div>
+        <span class="chapter-badge badge-mgr">主管／秘書</span>
+      </div>
+      <div class="section-intro">
+        以漏斗圖和動態清單分析選定期間內商機的階段推進、退後、新增與流失狀況。下方附帶 Pipeline 月度變動表，顯示年度各月份的商機進退金額。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">商機動態報表</div>
+        <img src="/help-img/pipelineReport.png" alt="商機動態報表">
+      </div>
+      <table class="feat-table">
+        <tr><th>區塊</th><th>說明</th></tr>
+        <tr><td>期間選擇</td><td>本月、上月、本季、自訂日期範圍</td></tr>
+        <tr><td>摘要卡片</td><td>新增商機數、進帳金額、流失金額總覽</td></tr>
+        <tr><td>當前商機漏斗</td><td>各階段商機數量與金額</td></tr>
+        <tr><td>本期商機動態</td><td>晉升、退後、新增、流失的商機明細</td></tr>
+        <tr><td>Pipeline 月度變動</td><td>全年各月份商機退後／補進金額（橫向表格）</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH13 主管儀表板 ══ -->
+    <div class="chapter" id="ch13">
+      <div class="chapter-header">
+        <div class="chapter-num">13</div>
+        <div class="chapter-title">主管儀表板</div>
+        <span class="chapter-badge badge-mgr">主管</span>
+      </div>
+      <div class="section-intro">
+        一覽式儀表板，讓主管快速掌握全團隊的商機、業績、拜訪活動概況。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">主管儀表板</div>
+        <img src="/help-img/managerHome.png" alt="主管儀表板">
+      </div>
+      <table class="feat-table">
+        <tr><th>卡片</th><th>說明</th></tr>
+        <tr><td>本月業績進度</td><td>全員目標達成率長條圖</td></tr>
+        <tr><td>商機漏斗</td><td>各階段商機總金額</td></tr>
+        <tr><td>近期拜訪</td><td>最近 7 天的拜訪記錄</td></tr>
+        <tr><td>待跟進提醒</td><td>逾期未跟進的商機清單</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH14 行銷活動 ══ -->
+    <div class="chapter" id="ch14">
+      <div class="chapter-header">
+        <div class="chapter-num">14</div>
+        <div class="chapter-title">行銷活動</div>
+        <span class="chapter-badge badge-mkt">行銷／主管</span>
+      </div>
+      <div class="section-intro">
+        管理研討會、Webinar、展覽等行銷活動，並追蹤活動帶來的 Lead 數量。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">行銷活動</div>
+        <img src="/help-img/campaigns.png" alt="行銷活動">
+      </div>
+      <table class="feat-table">
+        <tr><th>欄位</th><th>說明</th></tr>
+        <tr><td>活動類型</td><td>研討會、Webinar、數位廣告、展覽、其他</td></tr>
+        <tr><td>狀態</td><td>計畫中、進行中、已完成、已取消</td></tr>
+        <tr><td>預算/實際費用</td><td>活動成本追蹤</td></tr>
+        <tr><td>Lead 來源關聯</td><td>活動產生的 Lead 數量統計</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH15 Lead 管理 ══ -->
+    <div class="chapter" id="ch15">
+      <div class="chapter-header">
+        <div class="chapter-num">15</div>
+        <div class="chapter-title">Lead 管理</div>
+        <span class="chapter-badge badge-mkt">行銷／主管</span>
+      </div>
+      <div class="section-intro">
+        管理從各管道收集的潛在客戶，分配給業務跟進並追蹤轉換狀態。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">Lead 管理</div>
+        <img src="/help-img/leads.png" alt="Lead 管理">
+      </div>
+      <table class="feat-table">
+        <tr><th>狀態</th><th>說明</th></tr>
+        <tr><td>🆕 新進</td><td>剛收到，尚未處理</td></tr>
+        <tr><td>📋 已指派</td><td>已分配給業務人員</td></tr>
+        <tr><td>✅ 已轉商機</td><td>業務確認有機會，已建立商機</td></tr>
+        <tr><td>❌ 不合格</td><td>確認沒有跟進價值</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH16 帳號管理 ══ -->
+    <div class="chapter" id="ch16">
+      <div class="chapter-header">
+        <div class="chapter-num">16</div>
+        <div class="chapter-title">帳號管理</div>
+        <span class="chapter-badge badge-admin">Admin</span>
+      </div>
+      <div class="section-intro">
+        管理系統使用者帳號，包含新增、停用、重設密碼及角色設定。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">後台帳號管理</div>
+        <img src="/help-img/admin-users.png" alt="帳號管理">
+      </div>
+      <table class="feat-table">
+        <tr><th>角色</th><th>可使用功能</th></tr>
+        <tr><td>user（業務）</td><td>名片、拜訪、商機、合約、帳款、報價、AI功能</td></tr>
+        <tr><td>manager1（一級主管）</td><td>同上 + 主管儀表板、商機報表、Pipeline月度變動</td></tr>
+        <tr><td>manager2（二級主管）</td><td>同 manager1</td></tr>
+        <tr><td>secretary（秘書）</td><td>同 manager1</td></tr>
+        <tr><td>marketing（行銷）</td><td>行銷活動、Lead 管理</td></tr>
+        <tr><td>admin（系統管理員）</td><td>全部功能 + 後台管理</td></tr>
+      </table>
+      <div class="tip danger">
+        <span class="tip-icon">🔒</span>
+        <span>停用帳號後，該使用者將無法登入。已儲存的資料不會被刪除。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH17 操作日誌 ══ -->
+    <div class="chapter" id="ch17">
+      <div class="chapter-header">
+        <div class="chapter-num">17</div>
+        <div class="chapter-title">操作日誌</div>
+        <span class="chapter-badge badge-admin">Admin</span>
+      </div>
+      <div class="section-intro">
+        完整記錄所有使用者的新增、修改、刪除操作，包含操作者、時間、IP 位址與裝置資訊。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">操作日誌</div>
+        <img src="/help-img/admin-logs.png" alt="操作日誌">
+      </div>
+      <table class="feat-table">
+        <tr><th>欄位</th><th>說明</th></tr>
+        <tr><td>時間</td><td>操作發生的日期與時間</td></tr>
+        <tr><td>操作者</td><td>執行操作的使用者帳號</td></tr>
+        <tr><td>動作</td><td>CREATE / UPDATE / DELETE / LOGIN 等</td></tr>
+        <tr><td>對象</td><td>被操作的資料名稱</td></tr>
+        <tr><td>IP / 裝置</td><td>操作來源的 IP 位址與瀏覽器資訊</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH18 API 監控 ══ -->
+    <div class="chapter" id="ch18">
+      <div class="chapter-header">
+        <div class="chapter-num">18</div>
+        <div class="chapter-title">API 使用監控</div>
+        <span class="chapter-badge badge-admin">Admin</span>
+      </div>
+      <div class="section-intro">
+        監控 Gemini AI Token 用量、統一編號查詢次數及速率限制觸發記錄。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">API 使用監控</div>
+        <img src="/help-img/admin-api.png" alt="API 監控">
+      </div>
+      <table class="feat-table">
+        <tr><th>指標</th><th>說明</th></tr>
+        <tr><td>Gemini Token 用量</td><td>各功能的 input / output token 消耗量</td></tr>
+        <tr><td>統編查詢次數</td><td>每日統一編號查詢次數統計</td></tr>
+        <tr><td>Rate Limit 觸發</td><td>超過速率限制的次數記錄</td></tr>
+      </table>
+    </div>
+
+    <!-- ══ CH19 匯出入 ══ -->
+    <div class="chapter" id="ch19">
+      <div class="chapter-header">
+        <div class="chapter-num">19</div>
+        <div class="chapter-title">資料匯出入</div>
+        <span class="chapter-badge badge-admin">Admin</span>
+      </div>
+      <div class="section-intro">
+        支援將系統資料匯出為 Excel，或從 Excel 批次匯入資料，方便資料備份與批量建檔。
+      </div>
+      <table class="feat-table">
+        <tr><th>功能</th><th>格式</th><th>說明</th></tr>
+        <tr><td>名片匯出</td><td>Excel (.xlsx)</td><td>匯出所有聯絡人資料</td></tr>
+        <tr><td>名片匯入</td><td>Excel (.xlsx)</td><td>依範本格式批次匯入</td></tr>
+        <tr><td>拜訪記錄匯出</td><td>Excel (.xlsx)</td><td>匯出所有拜訪紀錄</td></tr>
+        <tr><td>商機匯出</td><td>Excel (.xlsx)</td><td>匯出商機清單</td></tr>
+        <tr><td>完整備份</td><td>JSON</td><td>匯出完整系統資料（僅 Admin）</td></tr>
+      </table>
+      <div class="tip warn">
+        <span class="tip-icon">⚠️</span>
+        <span>匯入前請先下載範本格式，確保欄位對應正確。匯入時重複資料系統會提示是否覆蓋。</span>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+  /* 側邊欄 active 狀態跟隨捲動 */
+  const chapters = document.querySelectorAll('.chapter');
+  const tocItems = document.querySelectorAll('.toc-item');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        tocItems.forEach(item => {
+          item.classList.toggle('active', item.getAttribute('href') === `#${id}`);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  chapters.forEach(ch => observer.observe(ch));
+
+  /* 平滑捲動 */
+  tocItems.forEach(item => {
+    item.addEventListener('click', e => {
+      e.preventDefault();
+      const target = document.querySelector(item.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+</body>
+</html>
