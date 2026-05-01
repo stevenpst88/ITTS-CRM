@@ -381,7 +381,7 @@ app.get('/help', requireAuth, (req, res) => {
 app.get('/help.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, '_client', 'help.html'));
 });
-app.use('/help-img', requireAuth, express.static(path.join(__dirname, '_client', 'help-img'), STATIC_CACHE));
+app.use('/help-img', requireAuth, express.static(path.join(__dirname, '_client', 'help-img'), STATIC_NO_CACHE));
 
 // admin.html：需登入且需 admin 角色，且帳號必須為啟用狀態
 app.get('/admin.html', requireAuth, (req, res) => {
