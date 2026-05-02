@@ -94,7 +94,15 @@
       display: flex; align-items: center; justify-content: space-between;
     }
     .main-header h1 { font-size: 18px; font-weight: 700; color: var(--blue); }
+    .main-header .header-right { display: flex; align-items: center; gap: 12px; }
     .main-header .version { font-size: 12px; color: #aaa; }
+    .role-banner {
+      display: none;
+      align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700;
+      background: #1a3c7a; color: #fff;
+      padding: 4px 12px; border-radius: 20px;
+    }
 
     .content { padding: 40px 48px; max-width: 980px; }
 
@@ -124,6 +132,7 @@
     .badge-mgr    { background: #fce8b2; color: #b06000; }
     .badge-admin  { background: #fce8e6; color: #c5352a; }
     .badge-mkt    { background: #e6f4ea; color: #1e7e34; }
+    .badge-sec    { background: #f3e8ff; color: #7b1fa2; }
 
     /* 說明文字 */
     .section-intro {
@@ -218,46 +227,47 @@
       <img src="/itts-logo.png" alt="ITTS">
     </div>
     <h2>東捷資訊業務管理系統</h2>
-    <p>操作手冊 v1.0</p>
+    <p>操作手冊 v2.0</p>
   </div>
 
   <div class="toc">
-    <div class="toc-group">
+    <div class="toc-group" data-grp="intro">
       <div class="toc-group-label">入門</div>
-      <a class="toc-item" href="#ch1"><span class="num">01</span>系統登入</a>
-      <a class="toc-item" href="#ch2"><span class="num">02</span>介面總覽</a>
+      <a class="toc-item" data-ch="ch1" href="#ch1"><span class="num">01</span>系統登入</a>
+      <a class="toc-item" data-ch="ch2" href="#ch2"><span class="num">02</span>介面總覽</a>
     </div>
-    <div class="toc-group">
+    <div class="toc-group" data-grp="daily">
       <div class="toc-group-label">日常操作</div>
-      <a class="toc-item" href="#ch3"><span class="num">03</span>名片管理</a>
-      <a class="toc-item" href="#ch4"><span class="num">04</span>拜訪記錄</a>
-      <a class="toc-item" href="#ch5"><span class="num">05</span>商機管理</a>
-      <a class="toc-item" href="#ch6"><span class="num">06</span>合約管理</a>
-      <a class="toc-item" href="#ch7"><span class="num">07</span>帳款管理</a>
-      <a class="toc-item" href="#ch8"><span class="num">08</span>報價單</a>
+      <a class="toc-item" data-ch="ch3" href="#ch3"><span class="num">03</span>名片管理</a>
+      <a class="toc-item" data-ch="ch4" href="#ch4"><span class="num">04</span>拜訪記錄</a>
+      <a class="toc-item" data-ch="ch5" href="#ch5"><span class="num">05</span>商機管理</a>
+      <a class="toc-item" data-ch="ch6" href="#ch6"><span class="num">06</span>合約管理</a>
+      <a class="toc-item" data-ch="ch7" href="#ch7"><span class="num">07</span>帳款管理</a>
+      <a class="toc-item" data-ch="ch8" href="#ch8"><span class="num">08</span>報價單</a>
     </div>
-    <div class="toc-group">
+    <div class="toc-group" data-grp="ai">
       <div class="toc-group-label">AI 功能</div>
-      <a class="toc-item" href="#ch9"><span class="num">09</span>AI 輔助功能</a>
-      <a class="toc-item" href="#ch10"><span class="num">10</span>統一編號查詢</a>
+      <a class="toc-item" data-ch="ch9" href="#ch9"><span class="num">09</span>AI 輔助功能</a>
+      <a class="toc-item" data-ch="ch10" href="#ch10"><span class="num">10</span>統一編號查詢</a>
     </div>
-    <div class="toc-group">
+    <div class="toc-group" data-grp="report">
       <div class="toc-group-label">分析報表</div>
-      <a class="toc-item" href="#ch11"><span class="num">11</span>業績目標</a>
-      <a class="toc-item" href="#ch12"><span class="num">12</span>商機動態報表</a>
-      <a class="toc-item" href="#ch13"><span class="num">13</span>主管儀表板</a>
+      <a class="toc-item" data-ch="ch11" href="#ch11"><span class="num">11</span>業績目標</a>
+      <a class="toc-item" data-ch="ch-forecast" href="#ch-forecast"><span class="num">12</span>銷售預測</a>
+      <a class="toc-item" data-ch="ch12" href="#ch12"><span class="num">13</span>商機動態報表</a>
+      <a class="toc-item" data-ch="ch13" href="#ch13"><span class="num">14</span>主管儀表板</a>
     </div>
-    <div class="toc-group">
+    <div class="toc-group" data-grp="mkt">
       <div class="toc-group-label">行銷</div>
-      <a class="toc-item" href="#ch14"><span class="num">14</span>行銷活動</a>
-      <a class="toc-item" href="#ch15"><span class="num">15</span>Lead 管理</a>
+      <a class="toc-item" data-ch="ch14" href="#ch14"><span class="num">15</span>行銷活動</a>
+      <a class="toc-item" data-ch="ch15" href="#ch15"><span class="num">16</span>Lead 管理</a>
     </div>
-    <div class="toc-group">
+    <div class="toc-group" data-grp="admin">
       <div class="toc-group-label">管理員</div>
-      <a class="toc-item" href="#ch16"><span class="num">16</span>帳號管理</a>
-      <a class="toc-item" href="#ch17"><span class="num">17</span>操作日誌</a>
-      <a class="toc-item" href="#ch18"><span class="num">18</span>API 使用監控</a>
-      <a class="toc-item" href="#ch19"><span class="num">19</span>資料匯出入</a>
+      <a class="toc-item" data-ch="ch16" href="#ch16"><span class="num">17</span>帳號管理</a>
+      <a class="toc-item" data-ch="ch17" href="#ch17"><span class="num">18</span>操作日誌</a>
+      <a class="toc-item" data-ch="ch18" href="#ch18"><span class="num">19</span>API 使用監控</a>
+      <a class="toc-item" data-ch="ch19" href="#ch19"><span class="num">20</span>資料匯出入</a>
     </div>
   </div>
 
@@ -271,13 +281,16 @@
 <div class="main">
   <div class="main-header">
     <h1>📖 操作手冊</h1>
-    <span class="version">東捷資訊業務管理系統 · 2026</span>
+    <div class="header-right">
+      <span class="role-banner" id="roleBadge"></span>
+      <span class="version">東捷資訊業務管理系統 · 2026</span>
+    </div>
   </div>
 
   <div class="content">
 
     <!-- ══ CH1 登入 ══ -->
-    <div class="chapter" id="ch1">
+    <div class="chapter" id="ch1" data-roles="user,manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">1</div>
         <div class="chapter-title">系統登入</div>
@@ -288,7 +301,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">登入頁面</div>
-        <img src="/help-img/login.png?v=20260501" alt="登入頁面">
+        <img data-img="login.png" src="" alt="登入頁面">
       </div>
       <ol class="steps">
         <li><div class="step-num">1</div><div>在「帳號」欄位輸入您的使用者名稱</div></li>
@@ -303,18 +316,18 @@
     </div>
 
     <!-- ══ CH2 介面總覽 ══ -->
-    <div class="chapter" id="ch2">
+    <div class="chapter" id="ch2" data-roles="user,manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">2</div>
         <div class="chapter-title">介面總覽</div>
         <span class="chapter-badge badge-all">全員</span>
       </div>
       <div class="section-intro">
-        系統由左側導覽列與右側主畫面組成。導覽列依角色顯示對應的功能項目。
+        系統由左側導覽列與右側主畫面組成。導覽列依角色顯示對應的功能項目，不同角色的側邊欄項目數量不同。
       </div>
       <div class="screenshot-wrap">
-        <div class="screenshot-label">系統主介面 — 名片管理</div>
-        <img src="/help-img/contacts.png?v=20260501" alt="系統介面總覽">
+        <div class="screenshot-label">系統主介面（依角色顯示對應功能）</div>
+        <img data-img="interface.png" src="" alt="系統介面總覽">
       </div>
       <table class="feat-table">
         <tr><th>區域</th><th>說明</th></tr>
@@ -329,18 +342,18 @@
     </div>
 
     <!-- ══ CH3 名片管理 ══ -->
-    <div class="chapter" id="ch3">
+    <div class="chapter" id="ch3" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">3</div>
         <div class="chapter-title">名片管理</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
-        名片管理是系統的核心功能，用於儲存客戶聯絡資訊。支援手動新增、AI OCR 名片辨識、以及從統一編號自動帶入公司資料。
+        名片管理是系統的核心功能，用於儲存客戶聯絡資訊。支援手動新增、AI OCR 名片辨識、以及從統一編號自動帶入公司資料。業務人員只能看到自己負責的客戶；主管可看到所有業務的客戶資料。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">名片管理列表</div>
-        <img src="/help-img/contacts.png?v=20260501" alt="名片管理">
+        <img data-img="contacts.png" src="" alt="名片管理">
       </div>
       <table class="feat-table">
         <tr><th>功能</th><th>說明</th></tr>
@@ -363,18 +376,18 @@
     </div>
 
     <!-- ══ CH4 拜訪記錄 ══ -->
-    <div class="chapter" id="ch4">
+    <div class="chapter" id="ch4" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">4</div>
         <div class="chapter-title">拜訪記錄</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
-        記錄每次客戶拜訪的內容、結論與後續行動，支援 AI 自動產生拜訪摘要與跟進建議。
+        記錄每次客戶拜訪的內容、結論與後續行動，支援 AI 自動產生拜訪摘要與跟進建議。業務人員只能看到自己的拜訪記錄；主管可查看全團隊記錄。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">拜訪記錄列表</div>
-        <img src="/help-img/visits.png?v=20260501" alt="拜訪記錄">
+        <img data-img="visits.png" src="" alt="拜訪記錄">
       </div>
       <table class="feat-table">
         <tr><th>功能</th><th>說明</th></tr>
@@ -392,18 +405,18 @@
     </div>
 
     <!-- ══ CH5 商機管理 ══ -->
-    <div class="chapter" id="ch5">
+    <div class="chapter" id="ch5" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">5</div>
         <div class="chapter-title">商機管理</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
-        以看板（Kanban）方式管理銷售商機的推進狀態。每張商機卡片可拖曳至不同階段欄位，系統自動記錄異動歷程。
+        以看板（Kanban）方式管理銷售商機的推進狀態。每張商機卡片可拖曳至不同階段欄位，系統自動記錄異動歷程。業務人員看到自己的商機；主管可看到全團隊。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">商機看板</div>
-        <img src="/help-img/pipeline.png?v=20260501" alt="商機看板">
+        <img data-img="pipeline.png" src="" alt="商機看板">
       </div>
       <table class="feat-table">
         <tr><th>功能</th><th>說明</th></tr>
@@ -420,7 +433,7 @@
     </div>
 
     <!-- ══ CH6 合約管理 ══ -->
-    <div class="chapter" id="ch6">
+    <div class="chapter" id="ch6" data-roles="user,manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">6</div>
         <div class="chapter-title">合約管理</div>
@@ -431,7 +444,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">ERP MA 管理（合約系列）</div>
-        <img src="/help-img/erp-ma.png?v=20260501" alt="合約管理">
+        <img data-img="erp-ma.png" src="" alt="合約管理">
       </div>
       <table class="feat-table">
         <tr><th>欄位</th><th>說明</th></tr>
@@ -444,7 +457,7 @@
     </div>
 
     <!-- ══ CH7 帳款管理 ══ -->
-    <div class="chapter" id="ch7">
+    <div class="chapter" id="ch7" data-roles="user,manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">7</div>
         <div class="chapter-title">帳款管理</div>
@@ -455,7 +468,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">帳款管理</div>
-        <img src="/help-img/receivables.png?v=20260501" alt="帳款管理">
+        <img data-img="receivables.png" src="" alt="帳款管理">
       </div>
       <table class="feat-table">
         <tr><th>功能</th><th>說明</th></tr>
@@ -467,7 +480,7 @@
     </div>
 
     <!-- ══ CH8 報價單 ══ -->
-    <div class="chapter" id="ch8">
+    <div class="chapter" id="ch8" data-roles="user,manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">8</div>
         <div class="chapter-title">報價單</div>
@@ -478,7 +491,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">報價單管理</div>
-        <img src="/help-img/quotations.png?v=20260501" alt="報價單">
+        <img data-img="quotations.png" src="" alt="報價單">
       </div>
       <ol class="steps">
         <li><div class="step-num">1</div><div>點選「＋ 新增報價單」，選擇對應客戶與商機</div></li>
@@ -489,11 +502,11 @@
     </div>
 
     <!-- ══ CH9 AI 功能 ══ -->
-    <div class="chapter" id="ch9">
+    <div class="chapter" id="ch9" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">9</div>
         <div class="chapter-title">AI 輔助功能</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
         系統整合 Google Gemini AI，提供多項智慧輔助功能，協助業務人員提升工作效率。
@@ -515,11 +528,11 @@
     </div>
 
     <!-- ══ CH10 統編查詢 ══ -->
-    <div class="chapter" id="ch10">
+    <div class="chapter" id="ch10" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">10</div>
         <div class="chapter-title">統一編號查詢</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
         輸入公司統一編號，系統自動從政府開放資料（GCIS）查詢公司名稱、地址、負責人等基本資料，並自動填入名片欄位。
@@ -537,18 +550,18 @@
     </div>
 
     <!-- ══ CH11 業績目標 ══ -->
-    <div class="chapter" id="ch11">
+    <div class="chapter" id="ch11" data-roles="user,manager,admin">
       <div class="chapter-header">
         <div class="chapter-num">11</div>
         <div class="chapter-title">業績目標</div>
-        <span class="chapter-badge badge-all">全員</span>
+        <span class="chapter-badge badge-all">業務／主管</span>
       </div>
       <div class="section-intro">
-        設定個人或團隊的年度/季度業績目標，並即時追蹤達成率。
+        設定個人或團隊的年度/季度業績目標，並即時追蹤達成率。業務人員可查看自己的目標達成情形；主管可設定並查看全員目標。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">業績目標頁面</div>
-        <img src="/help-img/targets.png?v=20260501" alt="業績目標">
+        <img data-img="targets.png" src="" alt="業績目標">
       </div>
       <table class="feat-table">
         <tr><th>功能</th><th>說明</th></tr>
@@ -558,10 +571,37 @@
       </table>
     </div>
 
-    <!-- ══ CH12 商機動態報表 ══ -->
-    <div class="chapter" id="ch12">
+    <!-- ══ CH-FORECAST 銷售預測 ══ -->
+    <div class="chapter" id="ch-forecast" data-roles="manager,secretary,admin">
       <div class="chapter-header">
         <div class="chapter-num">12</div>
+        <div class="chapter-title">銷售預測</div>
+        <span class="chapter-badge badge-mgr">主管／秘書</span>
+      </div>
+      <div class="section-intro">
+        以視覺化圖表顯示全年各月份的銷售達成趨勢，協助主管與秘書掌握整體業績走勢與預測。
+      </div>
+      <div class="screenshot-wrap">
+        <div class="screenshot-label">銷售預測報表</div>
+        <img data-img="forecast.png" src="" alt="銷售預測">
+      </div>
+      <table class="feat-table">
+        <tr><th>區塊</th><th>說明</th></tr>
+        <tr><td>年度趨勢圖</td><td>折線圖顯示各月份目標 vs 實際達成金額</td></tr>
+        <tr><td>各業務達成</td><td>個人業績達成率長條圖</td></tr>
+        <tr><td>預測達成</td><td>根據現有商機計算預估年度達成</td></tr>
+        <tr><td>年份切換</td><td>可切換查看不同年份的歷史趨勢</td></tr>
+      </table>
+      <div class="tip">
+        <span class="tip-icon">💡</span>
+        <span>銷售預測資料來源為已簽約的合約金額，加上 Pipeline 中勝率高的商機預估值。</span>
+      </div>
+    </div>
+
+    <!-- ══ CH12 商機動態報表 ══ -->
+    <div class="chapter" id="ch12" data-roles="manager,secretary,admin">
+      <div class="chapter-header">
+        <div class="chapter-num">13</div>
         <div class="chapter-title">商機動態報表</div>
         <span class="chapter-badge badge-mgr">主管／秘書</span>
       </div>
@@ -570,7 +610,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">商機動態報表</div>
-        <img src="/help-img/pipelineReport.png?v=20260501" alt="商機動態報表">
+        <img data-img="pipelineReport.png" src="" alt="商機動態報表">
       </div>
       <table class="feat-table">
         <tr><th>區塊</th><th>說明</th></tr>
@@ -583,9 +623,9 @@
     </div>
 
     <!-- ══ CH13 主管儀表板 ══ -->
-    <div class="chapter" id="ch13">
+    <div class="chapter" id="ch13" data-roles="manager,admin">
       <div class="chapter-header">
-        <div class="chapter-num">13</div>
+        <div class="chapter-num">14</div>
         <div class="chapter-title">主管儀表板</div>
         <span class="chapter-badge badge-mgr">主管</span>
       </div>
@@ -594,7 +634,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">主管儀表板</div>
-        <img src="/help-img/managerHome.png?v=20260501" alt="主管儀表板">
+        <img data-img="managerHome.png" src="" alt="主管儀表板">
       </div>
       <table class="feat-table">
         <tr><th>卡片</th><th>說明</th></tr>
@@ -606,18 +646,18 @@
     </div>
 
     <!-- ══ CH14 行銷活動 ══ -->
-    <div class="chapter" id="ch14">
+    <div class="chapter" id="ch14" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">14</div>
+        <div class="chapter-num">15</div>
         <div class="chapter-title">行銷活動</div>
-        <span class="chapter-badge badge-mkt">行銷／主管</span>
+        <span class="chapter-badge badge-admin">Admin</span>
       </div>
       <div class="section-intro">
         管理研討會、Webinar、展覽等行銷活動，並追蹤活動帶來的 Lead 數量。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">行銷活動</div>
-        <img src="/help-img/campaigns.png?v=20260501" alt="行銷活動">
+        <img data-img="campaigns.png" src="" alt="行銷活動">
       </div>
       <table class="feat-table">
         <tr><th>欄位</th><th>說明</th></tr>
@@ -629,18 +669,18 @@
     </div>
 
     <!-- ══ CH15 Lead 管理 ══ -->
-    <div class="chapter" id="ch15">
+    <div class="chapter" id="ch15" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">15</div>
+        <div class="chapter-num">16</div>
         <div class="chapter-title">Lead 管理</div>
-        <span class="chapter-badge badge-mkt">行銷／主管</span>
+        <span class="chapter-badge badge-admin">Admin</span>
       </div>
       <div class="section-intro">
         管理從各管道收集的潛在客戶，分配給業務跟進並追蹤轉換狀態。
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">Lead 管理</div>
-        <img src="/help-img/leads.png?v=20260501" alt="Lead 管理">
+        <img data-img="leads.png" src="" alt="Lead 管理">
       </div>
       <table class="feat-table">
         <tr><th>狀態</th><th>說明</th></tr>
@@ -652,9 +692,9 @@
     </div>
 
     <!-- ══ CH16 帳號管理 ══ -->
-    <div class="chapter" id="ch16">
+    <div class="chapter" id="ch16" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">16</div>
+        <div class="chapter-num">17</div>
         <div class="chapter-title">帳號管理</div>
         <span class="chapter-badge badge-admin">Admin</span>
       </div>
@@ -663,14 +703,14 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">後台帳號管理</div>
-        <img src="/help-img/admin-users.png?v=20260501" alt="帳號管理">
+        <img data-img="admin-users.png" src="" alt="帳號管理">
       </div>
       <table class="feat-table">
         <tr><th>角色</th><th>可使用功能</th></tr>
         <tr><td>user（業務）</td><td>名片、拜訪、商機、合約、帳款、報價、AI功能</td></tr>
-        <tr><td>manager1（一級主管）</td><td>同上 + 主管儀表板、商機報表、Pipeline月度變動</td></tr>
+        <tr><td>manager1（一級主管）</td><td>同上 + 主管儀表板、商機報表、銷售預測、Pipeline月度變動</td></tr>
         <tr><td>manager2（二級主管）</td><td>同 manager1</td></tr>
-        <tr><td>secretary（秘書）</td><td>同 manager1</td></tr>
+        <tr><td>secretary（秘書）</td><td>合約、帳款、報價、銷售預測、商機動態報表</td></tr>
         <tr><td>marketing（行銷）</td><td>行銷活動、Lead 管理</td></tr>
         <tr><td>admin（系統管理員）</td><td>全部功能 + 後台管理</td></tr>
       </table>
@@ -681,9 +721,9 @@
     </div>
 
     <!-- ══ CH17 操作日誌 ══ -->
-    <div class="chapter" id="ch17">
+    <div class="chapter" id="ch17" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">17</div>
+        <div class="chapter-num">18</div>
         <div class="chapter-title">操作日誌</div>
         <span class="chapter-badge badge-admin">Admin</span>
       </div>
@@ -692,7 +732,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">操作日誌</div>
-        <img src="/help-img/admin-logs.png?v=20260501" alt="操作日誌">
+        <img data-img="admin-logs.png" src="" alt="操作日誌">
       </div>
       <table class="feat-table">
         <tr><th>欄位</th><th>說明</th></tr>
@@ -705,9 +745,9 @@
     </div>
 
     <!-- ══ CH18 API 監控 ══ -->
-    <div class="chapter" id="ch18">
+    <div class="chapter" id="ch18" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">18</div>
+        <div class="chapter-num">19</div>
         <div class="chapter-title">API 使用監控</div>
         <span class="chapter-badge badge-admin">Admin</span>
       </div>
@@ -716,7 +756,7 @@
       </div>
       <div class="screenshot-wrap">
         <div class="screenshot-label">API 使用監控</div>
-        <img src="/help-img/admin-api.png?v=20260501" alt="API 監控">
+        <img data-img="admin-api.png" src="" alt="API 監控">
       </div>
       <table class="feat-table">
         <tr><th>指標</th><th>說明</th></tr>
@@ -727,9 +767,9 @@
     </div>
 
     <!-- ══ CH19 匯出入 ══ -->
-    <div class="chapter" id="ch19">
+    <div class="chapter" id="ch19" data-roles="admin">
       <div class="chapter-header">
-        <div class="chapter-num">19</div>
+        <div class="chapter-num">20</div>
         <div class="chapter-title">資料匯出入</div>
         <span class="chapter-badge badge-admin">Admin</span>
       </div>
@@ -754,8 +794,92 @@
 </div><!-- /main -->
 
 <script>
-  /* 側邊欄 active 狀態跟隨捲動 */
-  const chapters = document.querySelectorAll('.chapter');
+const VER = '20260502';
+
+const ROLE_LABEL = {
+  user: '業務', manager: '主管', secretary: '秘書', admin: '系統管理員'
+};
+
+/* 決定角色對應的圖片資料夾 */
+function roleToFolder(rawRole) {
+  if (rawRole === 'manager1' || rawRole === 'manager2') return 'manager';
+  if (rawRole === 'user')      return 'user';
+  if (rawRole === 'secretary') return 'secretary';
+  return 'admin';
+}
+
+/* 設定所有截圖路徑，依序嘗試：角色資料夾 → admin 資料夾 → 根目錄 */
+function setImages(folder) {
+  document.querySelectorAll('img[data-img]').forEach(img => {
+    const filename = img.dataset.img;
+    if (filename === 'login.png') {
+      img.src = `/help-img/login.png?v=${VER}`;
+      return;
+    }
+    // 建立不重複的 fallback 鏈
+    const seen = new Set();
+    const chain = [];
+    [`/help-img/${folder}/${filename}?v=${VER}`,
+     `/help-img/admin/${filename}?v=${VER}`,
+     `/help-img/${filename}?v=${VER}`
+    ].forEach(p => { if (!seen.has(p)) { seen.add(p); chain.push(p); } });
+
+    let idx = 0;
+    function tryNext() {
+      if (idx >= chain.length) { img.onerror = null; return; }
+      img.src = chain[idx++];
+      img.onerror = tryNext;
+    }
+    tryNext();
+  });
+}
+
+/* 根據角色過濾章節與目錄 */
+function applyRoleFilter(folder) {
+  const visibleIds = new Set();
+
+  document.querySelectorAll('.chapter[data-roles]').forEach(ch => {
+    const roles = ch.dataset.roles.split(',');
+    if (roles.includes(folder)) {
+      visibleIds.add(ch.id);
+    } else {
+      ch.style.display = 'none';
+    }
+  });
+
+  document.querySelectorAll('.toc-item[data-ch]').forEach(item => {
+    if (!visibleIds.has(item.dataset.ch)) {
+      item.style.display = 'none';
+    }
+  });
+
+  // 隱藏已無子項目的群組標題
+  document.querySelectorAll('.toc-group').forEach(group => {
+    const anyVisible = Array.from(group.querySelectorAll('.toc-item'))
+      .some(i => i.style.display !== 'none');
+    if (!anyVisible) group.style.display = 'none';
+  });
+}
+
+async function initHelp() {
+  let folder = 'admin';
+  try {
+    const me = await fetch('/api/me').then(r => r.json());
+    folder = roleToFolder(me.role || 'user');
+
+    // 顯示角色徽章
+    const badge = document.getElementById('roleBadge');
+    badge.textContent = ROLE_LABEL[folder] || folder;
+    badge.style.display = 'inline-flex';
+  } catch(e) {
+    // 無法取得角色時顯示全部章節
+  }
+
+  applyRoleFilter(folder);
+  setImages(folder);
+
+  // ── 重新初始化捲動追蹤（只追蹤可見章節）──
+  const visibleChapters = document.querySelectorAll('.chapter:not([style*="display: none"])');
   const tocItems = document.querySelectorAll('.toc-item');
 
   const observer = new IntersectionObserver((entries) => {
@@ -769,16 +893,19 @@
     });
   }, { rootMargin: '-20% 0px -70% 0px' });
 
-  chapters.forEach(ch => observer.observe(ch));
+  visibleChapters.forEach(ch => observer.observe(ch));
+}
 
-  /* 平滑捲動 */
-  tocItems.forEach(item => {
-    item.addEventListener('click', e => {
-      e.preventDefault();
-      const target = document.querySelector(item.getAttribute('href'));
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+/* 平滑捲動 */
+document.querySelectorAll('.toc-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(item.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+});
+
+initHelp();
 </script>
 </body>
 </html>
