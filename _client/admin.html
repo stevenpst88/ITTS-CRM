@@ -892,6 +892,34 @@
           <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
           <button id="qrSaveBtn" class="btn btn-primary" disabled>儲存設定</button>
         </div>
+
+        <!-- OPR 目標區間設定 -->
+        <div style="margin-top:28px;padding-top:24px;border-top:1px solid #e5e7eb">
+          <div style="font-size:14px;font-weight:700;color:#1a3c7a;margin-bottom:6px">📊 商機預算比（OPR）目標區間</div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:16px">OPR＝各季 Pipeline（A+B+C）÷ 季度目標。設定達標區間，業務首頁季度卡將以顏色顯示狀態。</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:360px;margin-bottom:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">下限（min）</div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <input type="number" id="oprMin" min="0.1" max="3" step="0.05" value="1.1"
+                  style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="validateOpr()">
+              </div>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">上限（max）</div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <input type="number" id="oprMax" min="0.1" max="3" step="0.05" value="1.2"
+                  style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="validateOpr()">
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div id="oprValidLabel" style="font-size:12px;color:#6b7280">
+              🟡 略低（&lt;min）　🟢 達標（min~max）　🔵 充足（&gt;max）　🔴 嚴重不足（&lt;1.0）
+            </div>
+            <button id="oprSaveBtn" class="btn btn-primary">儲存 OPR 設定</button>
+          </div>
+        </div>
       </div>
 
       <!-- ── 職能分類批次 Mapping ── -->
@@ -3243,6 +3271,64 @@
   // 進入季度設定 section 時載入
   document.querySelector('[data-sec="quarter-ratios"]').addEventListener('click', () => {
     loadQrRatios();
+    loadOprRangeSetting();
+  });
+
+  // ── OPR 目標區間 ──────────────────────────────────────────
+  function validateOpr() {
+    const min = parseFloat(document.getElementById('oprMin').value);
+    const max = parseFloat(document.getElementById('oprMax').value);
+    const btn = document.getElementById('oprSaveBtn');
+    const lbl = document.getElementById('oprValidLabel');
+    if (isNaN(min) || isNaN(max) || min <= 0 || max <= min) {
+      lbl.style.color = '#ef4444';
+      lbl.textContent = '❌ 請確認：min/max 需為正數且 min < max';
+      btn.disabled = true;
+    } else {
+      lbl.style.color = '#6b7280';
+      lbl.textContent = `🟡 略低（<${min}）　🟢 達標（${min}~${max}）　🔵 充足（>${max}）　🔴 嚴重不足（<1.0）`;
+      btn.disabled = false;
+    }
+  }
+  window.validateOpr = validateOpr;
+
+  async function loadOprRangeSetting() {
+    try {
+      const r = await fetch('/api/settings/opr-range');
+      if (!r.ok) return;
+      const d = await r.json();
+      document.getElementById('oprMin').value = d.min ?? 1.1;
+      document.getElementById('oprMax').value = d.max ?? 1.2;
+      validateOpr();
+    } catch {}
+  }
+
+  document.getElementById('oprSaveBtn').addEventListener('click', async () => {
+    const min = parseFloat(document.getElementById('oprMin').value);
+    const max = parseFloat(document.getElementById('oprMax').value);
+    const btn = document.getElementById('oprSaveBtn');
+    btn.disabled = true;
+    btn.textContent = '儲存中…';
+    try {
+      const r = await fetch('/api/settings/opr-range', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ min, max })
+      });
+      const d = await r.json();
+      if (d.success) {
+        btn.textContent = '✅ 已儲存';
+        setTimeout(() => { btn.textContent = '儲存 OPR 設定'; btn.disabled = false; }, 2000);
+      } else {
+        alert(d.error || '儲存失敗');
+        btn.textContent = '儲存 OPR 設定';
+        btn.disabled = false;
+      }
+    } catch {
+      alert('網路錯誤，請重試');
+      btn.textContent = '儲存 OPR 設定';
+      btn.disabled = false;
+    }
   });
 
   </script>

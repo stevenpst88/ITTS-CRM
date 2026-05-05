@@ -655,7 +655,7 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
   });
@@ -3158,6 +3158,7 @@ let allLostOppsForTargets = [];
 let allZombieOpps = [];
 
 let allQuarterRatios = {}; // { "2026": [20,30,30,20] }
+let allOprRange = { min: 1.1, max: 1.2 };
 
 async function loadTargets() {
   try {
@@ -3171,6 +3172,28 @@ async function loadQuarterRatios() {
     const res = await fetch(`${API}/settings/quarter-ratios`);
     allQuarterRatios = res.ok ? await res.json() : {};
   } catch { allQuarterRatios = {}; }
+}
+
+async function loadOprRange() {
+  try {
+    const res = await fetch(`${API}/settings/opr-range`);
+    allOprRange = res.ok ? await res.json() : { min: 1.1, max: 1.2 };
+  } catch { allOprRange = { min: 1.1, max: 1.2 }; }
+}
+
+// 取得某年某季的 Pipeline 金額（A+B+C stage，預計成交日落在該季）
+function getQuarterPipeline(year, q) {
+  const qStart = (q - 1) * 3 + 1;
+  const qEnd   = q * 3;
+  return allOpportunities
+    .filter(o => ['A', 'B', 'C'].includes(o.stage))
+    .filter(o => {
+      if (!o.expectedDate) return false;
+      const d = new Date(o.expectedDate);
+      const m = d.getMonth() + 1;
+      return d.getFullYear() === year && m >= qStart && m <= qEnd;
+    })
+    .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
 }
 
 // 取得某年某季的成交金額（q=1~4）
@@ -3253,8 +3276,31 @@ function updateQuarterCards(annualAmount, year) {
       ? `▲ ${Math.abs(gap).toLocaleString()} 萬`
       : `▼ ${Math.abs(gap).toLocaleString()} 萬`);
 
+    // OPR 計算
+    const pipeline = getQuarterPipeline(year, q);
+    const opr = qTarget > 0 ? pipeline / qTarget : 0;
+    const oprMin = allOprRange.min || 1.1;
+    const oprMax = allOprRange.max || 1.2;
+    let oprColorClass, oprStatusClass, oprStatusText;
+    if (opr < 1.0)            { oprColorClass = 'opr-red';    oprStatusClass = 's-crit'; oprStatusText = '🔴 嚴重不足'; }
+    else if (opr < oprMin)    { oprColorClass = 'opr-orange'; oprStatusClass = 's-low';  oprStatusText = '🟡 略低'; }
+    else if (opr <= oprMax)   { oprColorClass = 'opr-green';  oprStatusClass = 's-ok';   oprStatusText = '🟢 達標 ✓'; }
+    else                      { oprColorClass = 'opr-blue';   oprStatusClass = 's-hi';   oprStatusText = '🔵 充足'; }
+
+    // Zone bar：以 2.0 為最大值做比例；min/max 綠帶位置
+    const barMax = Math.max(oprMax * 1.8, 2.0);
+    const zonePct  = (v) => Math.min(100, Math.round(v / barMax * 100));
+    const zoneLeft = zonePct(oprMin);
+    const zoneW    = zonePct(oprMax) - zoneLeft;
+    const fillLeft = Math.min(100, Math.round(opr / barMax * 100));
+    let fillColor;
+    if (opr < 1.0)          fillColor = '#ef4444';
+    else if (opr < oprMin)  fillColor = '#f59e0b';
+    else if (opr <= oprMax) fillColor = '#10b981';
+    else                    fillColor = '#3b82f6';
+
     card.innerHTML = `
-      ${isCurrent ? '<div class="q-current-badge">當前季度</div>' : ''}
+      ${isCurrent ? '<div class="cur-strip">▶ 當前季度</div>' : ''}
       <div class="q-header">
         <div>
           <div class="q-label">${label}</div>
@@ -3278,7 +3324,21 @@ function updateQuarterCards(annualAmount, year) {
       </div>
       <div class="q-prog-wrap">
         <div class="q-prog-fill ${pct >= 100 ? 'q-prog-over' : ''}" style="width:${pct}%"></div>
-      </div>`;
+      </div>
+      <div class="opr-divider"></div>
+      <div class="opr-title-row">
+        <span class="opr-label">📊 商機預算比</span>
+        <span class="opr-val ${oprColorClass}">${opr.toFixed(2)}</span>
+      </div>
+      <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${oprMin}~${oprMax}）</span>
+      <div class="zone-bar-wrap">
+        <div class="zone-bar-zone" style="left:${zoneLeft}%;width:${zoneW}%"></div>
+        <div class="zone-bar-fill" style="left:${fillLeft}%;background:${fillColor}"></div>
+      </div>
+      <div class="zone-bar-labels">
+        <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
+      </div>
+      <div class="opr-pipeline">Pipeline ${pipeline.toLocaleString()} 萬</div>`;
     grid.appendChild(card);
   });
 }

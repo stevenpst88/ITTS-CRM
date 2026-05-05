@@ -1490,6 +1490,27 @@ app.put('/api/settings/quarter-ratios', requireAdmin, (req, res) => {
   res.json({ success: true, year: y, ratios: data.settings.quarterRatios[y] });
 });
 
+// GET  /api/settings/opr-range → { min:1.1, max:1.2 }
+// PUT  /api/settings/opr-range → body { min, max }
+app.get('/api/settings/opr-range', requireAuth, (req, res) => {
+  const data = db.load();
+  res.json((data.settings && data.settings.oprRange) || { min: 1.1, max: 1.2 });
+});
+
+app.put('/api/settings/opr-range', requireAdmin, (req, res) => {
+  const min = parseFloat(req.body.min);
+  const max = parseFloat(req.body.max);
+  if (isNaN(min) || isNaN(max) || min <= 0 || max <= min) {
+    return res.status(400).json({ error: '格式錯誤：min/max 需為正數且 min < max' });
+  }
+  const data = db.load();
+  if (!data.settings) data.settings = {};
+  data.settings.oprRange = { min, max };
+  db.save(data);
+  writeLog('SET_OPR_RANGE', req.session.user.username, '-', `OPR範圍: ${min}~${max}`, req);
+  res.json({ success: true, min, max });
+});
+
 // ── 商機 CRUD ────────────────────────────────────────────
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();
