@@ -239,7 +239,7 @@
               <div class="target-ach-year" id="targetAchYear">2026 年度業績目標</div>
               <div class="target-ach-numbers">
                 <div class="target-ach-item">
-                  <span class="target-ach-label">目標金額</span>
+                  <span class="target-ach-label">業績目標</span>
                   <span class="target-ach-value" id="targetAmountDisplay">尚未設定</span>
                 </div>
                 <div class="target-ach-sep">／</div>
@@ -258,6 +258,17 @@
               </div>
             </div>
             <button class="target-set-btn" id="goSetTargetBtn">&#127919; 設定目標</button>
+          </div>
+
+          <!-- 季度業績進度卡 -->
+          <div id="quarterCardsWrap" style="display:none;margin-bottom:16px">
+            <div style="font-size:13px;font-weight:600;color:#666;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+              📅 季度業績進度
+              <span style="font-size:11px;color:#bbb;font-weight:400">季度目標＝年度業績目標 × 各季配比</span>
+            </div>
+            <div class="quarter-grid" id="quarterGrid">
+              <!-- 由 JS 動態產生 Q1~Q4 -->
+            </div>
           </div>
 
           <!-- 統計數字卡 -->

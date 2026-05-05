@@ -1462,6 +1462,34 @@ app.post('/api/targets', requireAuth, (req, res) => {
   res.status(201).json(target);
 });
 
+// ── 季度配比設定 ─────────────────────────────────────────
+// GET  /api/settings/quarter-ratios          → { "2026":[20,30,30,20], ... }
+// PUT  /api/settings/quarter-ratios          → body { year, ratios:[q1,q2,q3,q4] }
+app.get('/api/settings/quarter-ratios', requireAuth, (req, res) => {
+  const data = db.load();
+  res.json((data.settings && data.settings.quarterRatios) || {});
+});
+
+app.put('/api/settings/quarter-ratios', requireAdmin, (req, res) => {
+  const { year, ratios } = req.body;
+  const y = parseInt(year);
+  if (!y || !Array.isArray(ratios) || ratios.length !== 4) {
+    return res.status(400).json({ error: '格式錯誤：需提供 year 與 ratios[4]' });
+  }
+  const sum = ratios.reduce((a, v) => a + (parseFloat(v) || 0), 0);
+  if (Math.round(sum) !== 100) {
+    return res.status(400).json({ error: `配比合計需為 100，目前為 ${sum}` });
+  }
+  const data = db.load();
+  if (!data.settings) data.settings = {};
+  if (!data.settings.quarterRatios) data.settings.quarterRatios = {};
+  data.settings.quarterRatios[y] = ratios.map(v => parseFloat(v) || 0);
+  db.save(data);
+  writeLog('SET_QUARTER_RATIO', req.session.user.username, String(y),
+    `Q1~Q4配比: ${ratios.join('/')}`, req);
+  res.json({ success: true, year: y, ratios: data.settings.quarterRatios[y] });
+});
+
 // ── 商機 CRUD ────────────────────────────────────────────
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();

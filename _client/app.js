@@ -655,7 +655,7 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
   });
@@ -3157,11 +3157,34 @@ let allTargets = [];
 let allLostOppsForTargets = [];
 let allZombieOpps = [];
 
+let allQuarterRatios = {}; // { "2026": [20,30,30,20] }
+
 async function loadTargets() {
   try {
     const res = await fetch(`${API}/targets`);
     allTargets = await res.json();
   } catch { /* ignore */ }
+}
+
+async function loadQuarterRatios() {
+  try {
+    const res = await fetch(`${API}/settings/quarter-ratios`);
+    allQuarterRatios = res.ok ? await res.json() : {};
+  } catch { allQuarterRatios = {}; }
+}
+
+// 取得某年某季的成交金額（q=1~4）
+function getQuarterAchieved(year, q) {
+  const qStart = (q - 1) * 3 + 1; // 月份 1~12
+  const qEnd   = q * 3;
+  return allOpportunities
+    .filter(o => o.stage === 'Won')
+    .filter(o => {
+      const d = o.achievedDate ? new Date(o.achievedDate) : new Date(o.createdAt);
+      const m = d.getMonth() + 1;
+      return d.getFullYear() === year && m >= qStart && m <= qEnd;
+    })
+    .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
 }
 
 function getAchievedAmount(year) {
@@ -3185,12 +3208,79 @@ function updateTargetCard() {
     $('targetAmountDisplay').textContent = '尚未設定';
     $('targetRateDisplay').textContent = '--';
     $('targetProgressFill').style.width = '0%';
+    updateQuarterCards(null, year);
     return;
   }
   const rate = Math.min(100, Math.round(achieved / target.amount * 100));
   $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' 萬';
   $('targetRateDisplay').textContent = rate + '%';
   $('targetProgressFill').style.width = rate + '%';
+  updateQuarterCards(target.amount, year);
+}
+
+function updateQuarterCards(annualAmount, year) {
+  const wrap = $('quarterCardsWrap');
+  if (!wrap) return;
+
+  const ratios = allQuarterRatios[year] || allQuarterRatios[String(year)];
+  if (!ratios || !annualAmount) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = '';
+  const now = new Date();
+  const curQ = Math.ceil((now.getMonth() + 1) / 3); // 1~4
+
+  const labels  = ['Q1','Q2','Q3','Q4'];
+  const months  = ['1 月 — 3 月','4 月 — 6 月','7 月 — 9 月','10 月 — 12 月'];
+
+  const grid = $('quarterGrid');
+  grid.innerHTML = '';
+
+  labels.forEach((label, i) => {
+    const q = i + 1;
+    const ratio   = ratios[i] || 0;
+    const qTarget = Math.round(annualAmount * ratio / 100);
+    const qAch    = getQuarterAchieved(year, q);
+    const gap     = qAch - qTarget;
+    const isFuture = q > curQ;
+    const isCurrent = q === curQ;
+    const pct     = qTarget > 0 ? Math.min(100, Math.round(qAch / qTarget * 100)) : 0;
+
+    const card = document.createElement('div');
+    card.className = 'q-card' + (isCurrent ? ' q-current' : '');
+
+    const gapClass = isFuture ? 'q-muted' : (gap >= 0 ? 'q-gap-pos' : 'q-gap-neg');
+    const gapText  = isFuture ? '—' : (gap >= 0
+      ? `▲ ${Math.abs(gap).toLocaleString()} 萬`
+      : `▼ ${Math.abs(gap).toLocaleString()} 萬`);
+
+    card.innerHTML = `
+      ${isCurrent ? '<div class="q-current-badge">當前季度</div>' : ''}
+      <div class="q-header">
+        <div>
+          <div class="q-label">${label}</div>
+          <div class="q-months">${months[i]}</div>
+        </div>
+        <div class="q-ratio-badge">${ratio}%</div>
+      </div>
+      <div class="q-nums">
+        <div class="q-row">
+          <span class="q-row-label">季度目標</span>
+          <span class="q-row-val">${qTarget.toLocaleString()} 萬</span>
+        </div>
+        <div class="q-row">
+          <span class="q-row-label">已達成</span>
+          <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' 萬'}</span>
+        </div>
+        <div class="q-row">
+          <span class="q-row-label">落差</span>
+          <span class="q-row-val ${gapClass}">${gapText}</span>
+        </div>
+      </div>
+      <div class="q-prog-wrap">
+        <div class="q-prog-fill ${pct >= 100 ? 'q-prog-over' : ''}" style="width:${pct}%"></div>
+      </div>`;
+    grid.appendChild(card);
+  });
 }
 
 async function loadTargetsView() {

@@ -2982,3 +2982,35 @@ body {
   .exec-tab-btn { flex: 1; text-align: center; }
 }
 
+
+/* ── 季度業績進度卡 ─────────────────────────────────────── */
+.quarter-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+@media (max-width:900px) { .quarter-grid { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:560px) { .quarter-grid { grid-template-columns:1fr; } }
+
+.q-card {
+  background:#fff; border-radius:14px; padding:16px 14px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06); border-top:3px solid #e5e7eb;
+  position:relative; transition:.18s;
+}
+.q-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.1); }
+.q-card.q-current { border-top-color:#1a3c7a; background:linear-gradient(180deg,#f0f4ff 0%,#fff 100%); }
+.q-card .q-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+.q-label { font-size:13px; font-weight:700; color:#374151; }
+.q-months { font-size:11px; color:#9ca3af; margin-top:2px; }
+.q-ratio-badge { font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; background:#eff6ff; color:#1a3c7a; flex-shrink:0; }
+.q-nums { display:flex; flex-direction:column; gap:7px; margin-bottom:10px; }
+.q-row { display:flex; justify-content:space-between; align-items:center; }
+.q-row-label { font-size:12px; color:#6b7280; }
+.q-row-val { font-size:13px; font-weight:600; color:#111827; }
+.q-row-val.q-gap-neg { color:#ef4444; }
+.q-row-val.q-gap-pos { color:#10b981; }
+.q-row-val.q-muted { color:#9ca3af; }
+.q-prog-wrap { background:#f3f4f6; border-radius:6px; height:5px; overflow:hidden; }
+.q-prog-fill { height:100%; border-radius:6px; background:#1a3c7a; transition:width .6s ease; }
+.q-prog-fill.q-prog-over { background:#10b981; }
+.q-current-badge {
+  position:absolute; top:9px; right:10px;
+  font-size:10px; background:#1a3c7a; color:#fff;
+  padding:2px 7px; border-radius:99px;
+}

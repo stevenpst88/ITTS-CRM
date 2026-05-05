@@ -354,6 +354,9 @@
           <span class="admin-nav-icon">📷</span> 名片辨識匯入
         </div>
       </div>
+      <div class="admin-nav-item" data-sec="quarter-ratios">
+        <span class="admin-nav-icon">📅</span> 季度業績配比
+      </div>
       <div class="admin-nav-item" data-sec="jobfunc">
         <span class="admin-nav-icon">🏷️</span> 職能分類
       </div>
@@ -836,6 +839,58 @@
             </div>
 
           </div>
+        </div>
+      </div>
+
+      <!-- ── 季度業績配比設定 ── -->
+      <div class="admin-section" id="sec-quarter-ratios">
+        <div class="section-title">📅 季度業績配比設定</div>
+        <div class="section-sub">設定各年度 Q1~Q4 的業績目標分配比例，合計須等於 100%。設定後業務首頁的「季度業績進度」將即時套用。</div>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+          <label style="font-size:13px;font-weight:600;color:#555">設定年度</label>
+          <select id="qrYearSel" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px" id="qrGrid">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="qrQ1" min="0" max="100" step="1" placeholder="25"
+                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+              <span style="color:#6b7280;flex-shrink:0">%</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="qrQ2" min="0" max="100" step="1" placeholder="25"
+                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+              <span style="color:#6b7280;flex-shrink:0">%</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="qrQ3" min="0" max="100" step="1" placeholder="25"
+                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+              <span style="color:#6b7280;flex-shrink:0">%</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="qrQ4" min="0" max="100" step="1" placeholder="25"
+                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+              <span style="color:#6b7280;flex-shrink:0">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
+          <button id="qrSaveBtn" class="btn btn-primary" disabled>儲存設定</button>
         </div>
       </div>
 
@@ -3110,6 +3165,85 @@
         img.src = url;
       });
     }
+
+  // ── 季度業績配比設定 ──────────────────────────────────────
+  let qrAllRatios = {};
+
+  function calcQrSum() {
+    const vals = ['qrQ1','qrQ2','qrQ3','qrQ4'].map(id => parseFloat(document.getElementById(id).value) || 0);
+    const s = vals.reduce((a, v) => a + v, 0);
+    const lbl = document.getElementById('qrSumLabel');
+    const btn = document.getElementById('qrSaveBtn');
+    const ok = Math.round(s) === 100;
+    lbl.textContent = `合計：${s}%` + (ok ? '  ✅' : '  ❌ 需等於 100%');
+    lbl.style.color = ok ? '#10b981' : '#ef4444';
+    lbl.style.fontWeight = '700';
+    btn.disabled = !ok;
+  }
+  window.calcQrSum = calcQrSum;
+
+  async function loadQrRatios() {
+    try {
+      const r = await fetch('/api/settings/quarter-ratios');
+      qrAllRatios = r.ok ? await r.json() : {};
+    } catch { qrAllRatios = {}; }
+    populateQrYear();
+  }
+
+  function populateQrYear() {
+    const sel = document.getElementById('qrYearSel');
+    if (!sel) return;
+    const cur = new Date().getFullYear();
+    sel.innerHTML = '';
+    for (let y = cur + 1; y >= cur - 2; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y + ' 年';
+      if (y === cur) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', fillQrInputs);
+    fillQrInputs();
+  }
+
+  function fillQrInputs() {
+    const year = parseInt(document.getElementById('qrYearSel').value);
+    const ratios = qrAllRatios[year] || qrAllRatios[String(year)] || [25, 25, 25, 25];
+    ['qrQ1','qrQ2','qrQ3','qrQ4'].forEach((id, i) => {
+      document.getElementById(id).value = ratios[i] ?? '';
+    });
+    calcQrSum();
+  }
+
+  document.getElementById('qrSaveBtn').addEventListener('click', async () => {
+    const year = parseInt(document.getElementById('qrYearSel').value);
+    const ratios = ['qrQ1','qrQ2','qrQ3','qrQ4'].map(id => parseFloat(document.getElementById(id).value) || 0);
+    const btn = document.getElementById('qrSaveBtn');
+    btn.disabled = true; btn.textContent = '儲存中...';
+    try {
+      const r = await fetch('/api/settings/quarter-ratios', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, ratios })
+      });
+      const data = await r.json();
+      if (data.success) {
+        qrAllRatios[year] = ratios;
+        btn.textContent = '✅ 已儲存';
+        setTimeout(() => { btn.textContent = '儲存設定'; btn.disabled = false; }, 1800);
+      } else {
+        alert('儲存失敗：' + (data.error || '未知錯誤'));
+        btn.textContent = '儲存設定'; btn.disabled = false;
+      }
+    } catch(e) {
+      alert('網路錯誤：' + e.message);
+      btn.textContent = '儲存設定'; btn.disabled = false;
+    }
+  });
+
+  // 進入季度設定 section 時載入
+  document.querySelector('[data-sec="quarter-ratios"]').addEventListener('click', () => {
+    loadQrRatios();
+  });
 
   </script>
 </body>
