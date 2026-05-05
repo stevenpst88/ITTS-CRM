@@ -6572,7 +6572,7 @@ function renderMgrAging(a) {
   if (_mgrCharts.aging) _mgrCharts.aging.destroy();
   _mgrCharts.aging = new Chart(ctx, {
     type: 'bar',
-    data: { labels: a.stages.map(s => s + ' 階段'), datasets },
+    data: { labels: a.stages.map(s => ({ A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', D:'D｜Idle' }[s] || s + ' 階段')), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       indexAxis: 'y',
