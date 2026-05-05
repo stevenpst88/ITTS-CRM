@@ -4806,7 +4806,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const sumAmt = arr => arr.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
     // ── 3. 商機 Aging（依 stage × 天數區間，計件數 + 細項）──
-    const stages = ['D','C','B','A'];
+    const stages = ['A','B','C','D'];
     const buckets = ['0-7','8-30','31-60','61-90','90+'];
     const agingOwner = req.query.agingOwner || '';
     const agingOwners = (agingOwner && allOwners.includes(agingOwner)) ? [agingOwner] : allOwners;
