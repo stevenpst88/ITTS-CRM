@@ -3338,7 +3338,7 @@ function updateQuarterCards(annualAmount, year) {
       <div class="zone-bar-labels">
         <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
       </div>
-      <div class="opr-pipeline">Pipeline ${pipeline.toLocaleString()} 萬</div>`;
+      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} 萬</div>`;
     grid.appendChild(card);
   });
 }
