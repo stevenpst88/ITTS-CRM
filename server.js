@@ -1476,17 +1476,18 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   const opp = {
     id: uuidv4(),
     owner,
-    contactId:    req.body.contactId    || '',
-    contactName:  req.body.contactName  || '',
-    company:      req.body.company      || '',
-    category:     req.body.category     || '',
-    product:      req.body.product      || '',
-    amount:       req.body.amount       || '',
-    expectedDate: req.body.expectedDate || '',
-    description:  req.body.description  || '',
-    stage:        'C',
-    visitId:      req.body.visitId      || '',
-    createdAt:    new Date().toISOString()
+    contactId:       req.body.contactId       || '',
+    contactName:     req.body.contactName     || '',
+    company:         req.body.company         || '',
+    category:        req.body.category        || '',
+    product:         req.body.product         || '',
+    amount:          req.body.amount          || '',
+    expectedDate:    req.body.expectedDate    || '',
+    description:     req.body.description     || '',
+    grossMarginRate: req.body.grossMarginRate || '',
+    stage:           'C',
+    visitId:         req.body.visitId         || '',
+    createdAt:       new Date().toISOString()
   };
   data.opportunities.push(opp);
   if (opp.expectedDate) {
