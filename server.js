@@ -1721,7 +1721,7 @@ app.put('/api/monthly-budget', requireAuth, (req, res) => {
   if (!['admin', 'manager1', 'manager2'].includes(role)) {
     return res.status(403).json({ error: '無設定權限' });
   }
-  const { username, year, months } = req.body;
+  const { username, year, months, grossMargin } = req.body;
   if (!username || !year || !Array.isArray(months) || months.length !== 12) {
     return res.status(400).json({ error: '參數錯誤：需提供 username, year, months[12]' });
   }
@@ -1730,12 +1730,18 @@ app.put('/api/monthly-budget', requireAuth, (req, res) => {
   const y = parseInt(year);
   const idx = data.monthlyBudgets.findIndex(b => b.owner === username && b.year === y);
   const now = new Date().toISOString();
+  const existing = idx >= 0 ? data.monthlyBudgets[idx] : {};
   const record = {
-    id: idx >= 0 ? data.monthlyBudgets[idx].id : uuidv4(),
+    id: existing.id || uuidv4(),
     owner: username,
     year: y,
     months: months.map(v => parseFloat(v) || 0),
-    createdAt: idx >= 0 ? data.monthlyBudgets[idx].createdAt : now,
+    grossMargin: Array.isArray(grossMargin) && grossMargin.length === 12
+      ? grossMargin.map(v => parseFloat(v) || 0)
+      : (existing.grossMargin || Array(12).fill(0)),
+    actuals: existing.actuals || null,
+    grossMarginActuals: existing.grossMarginActuals || null,
+    createdAt: existing.createdAt || now,
     updatedAt: now,
     setBy: req.session.user.username
   };
@@ -1752,7 +1758,7 @@ app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
   if (!['admin', 'secretary'].includes(role)) {
     return res.status(403).json({ error: '僅 admin / 秘書 可設定認列值' });
   }
-  const { username, year, actuals } = req.body;
+  const { username, year, actuals, grossMarginActuals } = req.body;
   if (!username || !year || !Array.isArray(actuals) || actuals.length !== 12) {
     return res.status(400).json({ error: '參數錯誤：需提供 username, year, actuals[12]' });
   }
@@ -1764,12 +1770,17 @@ app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
     // 尚無預算記錄時自動建立空預算
     const now = new Date().toISOString();
     data.monthlyBudgets.push({ id: uuidv4(), owner: username, year: y,
-      months: Array(12).fill(0), createdAt: now, updatedAt: now, setBy: req.session.user.username });
+      months: Array(12).fill(0), grossMargin: Array(12).fill(0),
+      createdAt: now, updatedAt: now, setBy: req.session.user.username });
     idx = data.monthlyBudgets.length - 1;
   }
-  data.monthlyBudgets[idx].actuals = actuals.map(v =>
+  const parseActuals = arr => arr.map(v =>
     (v === null || v === '' || v === undefined) ? null : parseFloat(v)
   );
+  data.monthlyBudgets[idx].actuals = parseActuals(actuals);
+  if (Array.isArray(grossMarginActuals) && grossMarginActuals.length === 12) {
+    data.monthlyBudgets[idx].grossMarginActuals = parseActuals(grossMarginActuals);
+  }
   data.monthlyBudgets[idx].updatedAt = new Date().toISOString();
   db.save(data);
   writeLog('SET_MONTHLY_ACTUALS', req.session.user.username, username, `月度認列 ${y}年`, req);
