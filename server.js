@@ -1702,6 +1702,50 @@ app.put('/api/settings/opr-range', requireAdmin, (req, res) => {
   res.json({ success: true, min, max });
 });
 
+// ── 月度業績預算 ──────────────────────────────────────────
+// GET /api/monthly-budget — 業務=自己；主管/admin=全部
+app.get('/api/monthly-budget', requireAuth, (req, res) => {
+  const data = db.load();
+  const budgets = data.monthlyBudgets || [];
+  const role = req.session.user.role;
+  const username = req.session.user.username;
+  if (['admin', 'manager1', 'manager2', 'secretary'].includes(role)) {
+    return res.json(budgets);
+  }
+  res.json(budgets.filter(b => b.owner === username));
+});
+
+// PUT /api/monthly-budget — manager/admin 設定某業務某年的 12 月預算
+app.put('/api/monthly-budget', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (!['admin', 'manager1', 'manager2'].includes(role)) {
+    return res.status(403).json({ error: '無設定權限' });
+  }
+  const { username, year, months } = req.body;
+  if (!username || !year || !Array.isArray(months) || months.length !== 12) {
+    return res.status(400).json({ error: '參數錯誤：需提供 username, year, months[12]' });
+  }
+  const data = db.load();
+  if (!data.monthlyBudgets) data.monthlyBudgets = [];
+  const y = parseInt(year);
+  const idx = data.monthlyBudgets.findIndex(b => b.owner === username && b.year === y);
+  const now = new Date().toISOString();
+  const record = {
+    id: idx >= 0 ? data.monthlyBudgets[idx].id : uuidv4(),
+    owner: username,
+    year: y,
+    months: months.map(v => parseFloat(v) || 0),
+    createdAt: idx >= 0 ? data.monthlyBudgets[idx].createdAt : now,
+    updatedAt: now,
+    setBy: req.session.user.username
+  };
+  if (idx >= 0) data.monthlyBudgets[idx] = record;
+  else data.monthlyBudgets.push(record);
+  db.save(data);
+  writeLog('SET_MONTHLY_BUDGET', req.session.user.username, username, `月度預算 ${y}年`, req);
+  res.json({ success: true, record });
+});
+
 // ── 商機 CRUD ────────────────────────────────────────────
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();

@@ -3248,3 +3248,100 @@ body {
   color: #1a3c7a;
   font-weight: 500;
 }
+
+/* ══════════════════════════════════════════════════════════
+   月度業績計畫卡
+   ══════════════════════════════════════════════════════════ */
+.mb-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  overflow: hidden;
+}
+.mb-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.mb-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a3c7a;
+}
+.mb-section {
+  padding: 10px 18px 14px;
+}
+.mb-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.mb-year-badge {
+  font-size: 12px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #1a3c7a;
+  padding: 2px 10px;
+  border-radius: 99px;
+}
+.mb-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mb-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px;
+  font-size: 12px;
+}
+.mb-th-label {
+  width: 52px;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 700;
+  color: #6b7280;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+.mb-th {
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+  min-width: 62px;
+}
+.mb-total-col {
+  font-weight: 700;
+  color: #374151;
+  border-left: 2px solid #e5e7eb;
+}
+.mb-row-label {
+  padding: 7px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9ca3af;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.mb-td {
+  padding: 7px 8px;
+  text-align: center;
+  color: #374151;
+  font-weight: 600;
+  border-bottom: 1px solid #f9fafb;
+  white-space: nowrap;
+}
+/* 當前月份欄 */
+.mb-cur-month {
+  border-left: 3px solid #1a3c7a !important;
+  background: #f0f4ff;
+}
+/* 狀態色 */
+.mb-td-green  { color: #10b981 !important; }
+.mb-td-orange { color: #f59e0b !important; }
+.mb-td-muted  { color: #d1d5db !important; }

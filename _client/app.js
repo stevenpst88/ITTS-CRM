@@ -655,9 +655,10 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
+    renderMonthBudgetCard();
   });
   loadBirthdayReminders();
   loadZombieAlertCard();
@@ -3425,6 +3426,7 @@ let allZombieOpps = [];
 let allQuarterRatios = {}; // { "2026": [20,30,30,20] }  — 全域預設配比
 let allUserQuarterRatios = {}; // { username: { "2026": [20,30,30,20] } } — 個人配比
 let allOprRange = { min: 1.1, max: 1.2 };
+let allMonthlyBudgets  = []; // [{ owner, year, months:[12] }]
 let visitsOwnerFilter  = ''; // 業務日報篩選
 let kanbanOwnerFilter  = ''; // 商機推進進度篩選
 let _ownerMapCache     = null; // { username: displayName }
@@ -3502,6 +3504,143 @@ async function loadOprRange() {
     const res = await fetch(`${API}/settings/opr-range`);
     allOprRange = res.ok ? await res.json() : { min: 1.1, max: 1.2 };
   } catch { allOprRange = { min: 1.1, max: 1.2 }; }
+}
+
+async function loadMonthlyBudget() {
+  try {
+    const res = await fetch(`${API}/monthly-budget`);
+    allMonthlyBudgets = res.ok ? await res.json() : [];
+  } catch { allMonthlyBudgets = []; }
+}
+
+// 取得某業務某年某月的實際成交金額（從 Won 商機的 achievedDate）
+function getMonthActual(year, month, ownerFilter = '') {
+  return allOpportunities
+    .filter(o => o.stage === 'Won')
+    .filter(o => !ownerFilter || o.owner === ownerFilter)
+    .filter(o => {
+      const d = new Date(o.achievedDate || o.createdAt);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    })
+    .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+}
+
+// 渲染月度業績計畫卡
+function renderMonthBudgetCard() {
+  const wrap = $('monthBudgetWrap');
+  if (!wrap) return;
+
+  const year = new Date().getFullYear();
+  const nowMonth = new Date().getMonth() + 1; // 1~12
+  const role = window._myRole || '';
+  const myUsername = window._myUsername || '';
+
+  // 決定要顯示哪些業務的資料
+  // manager1 視角：顯示全團隊彙總
+  // 其他：只顯示自己
+  let budgetRows; // [{ displayName, months:[12預算], owner }]
+
+  if (['admin', 'manager1', 'manager2', 'secretary'].includes(role)) {
+    // 主管視角：每一位有預算的業務各一行（或顯示合計）
+    // 這裡為了簡潔，主管看的是自己的預算（如果有）+ 可切換年度
+    // 若想看全體，後台有設定頁面
+    budgetRows = allMonthlyBudgets.filter(b => b.year === year);
+  } else {
+    budgetRows = allMonthlyBudgets.filter(b => b.year === year && b.owner === myUsername);
+  }
+
+  if (!budgetRows.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = '';
+
+  // 月份標題列
+  const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+  // 為每個業務（或合計）產生一個表格
+  const tables = budgetRows.map(b => {
+    // 計算各月實際與達成率
+    const actuals = monthLabels.map((_, i) => getMonthActual(year, i + 1, b.owner));
+    const totalBudget = b.months.reduce((s, v) => s + v, 0);
+    const totalActual = actuals.reduce((s, v) => s + v, 0);
+    const totalPct = totalBudget > 0 ? Math.round(totalActual / totalBudget * 100) : 0;
+
+    const headerCells = monthLabels.map((m, i) => {
+      const isCur = (i + 1) === nowMonth;
+      return `<th class="mb-th${isCur ? ' mb-cur-month' : ''}">${m}</th>`;
+    }).join('');
+
+    const budgetCells = b.months.map((v, i) => {
+      const isCur = (i + 1) === nowMonth;
+      return `<td class="mb-td${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
+    }).join('');
+
+    const actualCells = actuals.map((v, i) => {
+      const isCur = (i + 1) === nowMonth;
+      const budget = b.months[i];
+      let cls = 'mb-td-muted';
+      if (v > 0 && budget > 0) cls = v >= budget ? 'mb-td-green' : 'mb-td-orange';
+      else if (v > 0) cls = 'mb-td-orange';
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
+    }).join('');
+
+    const pctCells = actuals.map((v, i) => {
+      const isCur = (i + 1) === nowMonth;
+      const budget = b.months[i];
+      const p = budget > 0 && v > 0 ? Math.round(v / budget * 100) : null;
+      let cls = 'mb-td-muted';
+      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${p !== null ? p + '%' : '—'}</td>`;
+    }).join('');
+
+    const totalActualCls = totalActual > 0 ? (totalActual >= totalBudget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
+    const totalPctCls = totalPct > 0 ? (totalPct >= 100 ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
+
+    return `
+      <div class="mb-section">
+        <div class="mb-section-header">
+          <span class="mb-year-badge">${year} 年</span>
+        </div>
+        <div class="mb-table-wrap">
+          <table class="mb-table">
+            <thead>
+              <tr>
+                <th class="mb-th-label"></th>
+                ${headerCells}
+                <th class="mb-th mb-total-col">合計</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mb-row-label">預算</td>
+                ${budgetCells}
+                <td class="mb-td mb-total-col">${totalBudget > 0 ? totalBudget.toLocaleString() : '—'}</td>
+              </tr>
+              <tr>
+                <td class="mb-row-label">實際</td>
+                ${actualCells}
+                <td class="mb-td ${totalActualCls} mb-total-col">${totalActual > 0 ? totalActual.toLocaleString() : '—'}</td>
+              </tr>
+              <tr>
+                <td class="mb-row-label">達成</td>
+                ${pctCells}
+                <td class="mb-td ${totalPctCls} mb-total-col">${totalPct > 0 ? totalPct + '%' : '—'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  });
+
+  wrap.innerHTML = `
+    <div class="mb-card">
+      <div class="mb-card-header">
+        <span class="mb-card-title">📅 月度業績計畫</span>
+      </div>
+      ${tables.join('')}
+    </div>`;
 }
 
 async function loadGroups() {

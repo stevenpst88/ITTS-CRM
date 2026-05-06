@@ -375,6 +375,9 @@
       <div class="admin-nav-item" data-sec="quarter-ratios">
         <span class="admin-nav-icon">📅</span> 季度業績配比
       </div>
+      <div class="admin-nav-item" data-sec="monthly-budget">
+        <span class="admin-nav-icon">📆</span> 月度業績預算
+      </div>
       <div class="admin-nav-item" data-sec="jobfunc">
         <span class="admin-nav-icon">🏷️</span> 職能分類
       </div>
@@ -956,6 +959,51 @@
         </div>
       </div>
 
+      <!-- ── 月度業績預算 ── -->
+      <div class="admin-section" id="sec-monthly-budget">
+        <div class="section-title">📆 月度業績預算</div>
+        <div class="section-sub">為每位業務員設定個別的 1~12 月業績預算金額（單位：萬）。業務員首頁將自動顯示預算 vs 實際成交對照表。</div>
+
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">設定月度預算</span>
+          </div>
+          <div class="admin-card-body">
+            <!-- 年度 + 業務員選擇 -->
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:13px;color:#6b7280;font-weight:600">年度</label>
+                <select id="mbYearSel" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:13px;color:#6b7280;font-weight:600">業務員</label>
+                <select id="mbUserSel" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                  <option value="">— 選擇業務員 —</option>
+                </select>
+              </div>
+              <button class="btn btn-sm btn-outline" onclick="loadMbForEdit()">載入</button>
+            </div>
+
+            <!-- 12 個月輸入格 -->
+            <div id="mbInputWrap" style="display:none">
+              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px" id="mbInputGrid">
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid #f3f4f6">
+                <span style="font-size:13px;color:#6b7280">合計：<strong id="mbTotalLabel" style="color:#1a3c7a">0</strong> 萬</span>
+                <button class="btn btn-primary" onclick="saveMbBudget()">💾 儲存</button>
+              </div>
+            </div>
+
+            <!-- 已設定列表 -->
+            <div style="margin-top:20px" id="mbExistingWrap">
+              <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">已設定預算</div>
+              <div id="mbExistingList" style="color:#9ca3af;font-size:13px">載入中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── 職能分類批次 Mapping ── -->
       <div class="admin-section" id="sec-jobfunc">
         <div class="section-title">職能分類管理</div>
@@ -1404,6 +1452,7 @@
         if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
         if (this.dataset.sec === 'storage') loadStorageInfo();
         if (this.dataset.sec === 'data-completeness') loadCompleteness();
+        if (this.dataset.sec === 'monthly-budget') initMonthlyBudgetAdmin();
         if (this.dataset.sec === 'api-stats') loadApiStats();
         if (this.dataset.sec === 'infra-stats') loadInfraStats();
         if (this.dataset.sec === 'version') loadVersionInfo();
@@ -3604,6 +3653,130 @@
       const isOpen = !detail.classList.contains('collapsed');
       detail.classList.toggle('collapsed', isOpen);
       chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
+
+    // ── 月度業績預算 ──────────────────────────────────────────
+    let _mbAllBudgets = [];
+    let _mbUsers = [];
+
+    async function initMonthlyBudgetAdmin() {
+      // 載入業務員清單
+      try {
+        const r = await adminFetch(`${API}/admin/users`);
+        if (r.ok) {
+          const users = await r.json();
+          _mbUsers = users.filter(u => !['admin'].includes(u.role));
+          const sel = document.getElementById('mbUserSel');
+          if (sel) {
+            sel.innerHTML = '<option value="">— 選擇業務員 —</option>';
+            _mbUsers.forEach(u => {
+              const o = document.createElement('option');
+              o.value = u.username;
+              o.textContent = u.displayName || u.username;
+              sel.appendChild(o);
+            });
+          }
+        }
+      } catch(e) { console.error(e); }
+
+      // 填入年度選單
+      const ySel = document.getElementById('mbYearSel');
+      if (ySel && !ySel._built) {
+        ySel._built = true;
+        const cur = new Date().getFullYear();
+        for (let y = cur + 1; y >= cur - 2; y--) {
+          const o = document.createElement('option');
+          o.value = y; o.textContent = y + ' 年';
+          if (y === cur) o.selected = true;
+          ySel.appendChild(o);
+        }
+      }
+
+      // 載入已設定預算
+      await refreshMbExisting();
+    }
+
+    async function refreshMbExisting() {
+      const wrap = document.getElementById('mbExistingList');
+      if (!wrap) return;
+      try {
+        const r = await adminFetch(`${API}/monthly-budget`);
+        if (!r.ok) { wrap.innerHTML = '<span style="color:#ef4444">載入失敗</span>'; return; }
+        _mbAllBudgets = await r.json();
+        if (!_mbAllBudgets.length) {
+          wrap.innerHTML = '<span style="color:#9ca3af">尚無設定記錄</span>';
+          return;
+        }
+        const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+        wrap.innerHTML = _mbAllBudgets.map(b => {
+          const total = b.months.reduce((s,v) => s + v, 0);
+          const userLabel = _mbUsers.find(u => u.username === b.owner)?.displayName || b.owner;
+          return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:13px;font-weight:700;color:#374151">${userLabel} — ${b.year} 年</span>
+              <span style="font-size:12px;color:#6b7280">合計 ${total.toLocaleString()} 萬　by ${b.setBy || '—'}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
+              ${b.months.map((v,i) => `<div style="text-align:center;font-size:11px;background:#f9fafb;border-radius:6px;padding:4px 2px">
+                <div style="color:#9ca3af;margin-bottom:1px">${monthLabels[i]}</div>
+                <div style="font-weight:600;color:#374151">${v > 0 ? v.toLocaleString() : '—'}</div>
+              </div>`).join('')}
+            </div>
+          </div>`;
+        }).join('');
+      } catch(e) { console.error(e); wrap.innerHTML = '<span style="color:#ef4444">載入失敗</span>'; }
+    }
+
+    function updateMbTotal() {
+      const inputs = document.querySelectorAll('#mbInputGrid input[type="number"]');
+      const total = Array.from(inputs).reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0);
+      const lbl = document.getElementById('mbTotalLabel');
+      if (lbl) lbl.textContent = total.toLocaleString();
+    }
+
+    async function loadMbForEdit() {
+      const username = document.getElementById('mbUserSel')?.value;
+      const year = parseInt(document.getElementById('mbYearSel')?.value);
+      if (!username) { alert('請選擇業務員'); return; }
+
+      const wrap = document.getElementById('mbInputWrap');
+      const grid = document.getElementById('mbInputGrid');
+      if (!wrap || !grid) return;
+
+      const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+      const existing = _mbAllBudgets.find(b => b.owner === username && b.year === year);
+      const vals = existing ? existing.months : Array(12).fill(0);
+
+      grid.innerHTML = monthLabels.map((m, i) => `
+        <div>
+          <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;text-align:center">${m}</div>
+          <input type="number" min="0" step="any" value="${vals[i] || 0}"
+            style="width:100%;padding:7px 6px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center"
+            oninput="updateMbTotal()">
+        </div>`).join('');
+
+      updateMbTotal();
+      wrap.style.display = '';
+    }
+
+    async function saveMbBudget() {
+      const username = document.getElementById('mbUserSel')?.value;
+      const year = parseInt(document.getElementById('mbYearSel')?.value);
+      if (!username) { alert('請選擇業務員'); return; }
+
+      const inputs = document.querySelectorAll('#mbInputGrid input[type="number"]');
+      const months = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+
+      try {
+        const r = await adminFetch(`${API}/monthly-budget`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, year, months })
+        });
+        if (!r.ok) { const e = await r.json(); alert('儲存失敗：' + (e.error || r.status)); return; }
+        alert('✅ 儲存成功！');
+        await refreshMbExisting();
+      } catch(e) { alert('儲存失敗：' + e.message); }
     }
 
   </script>
