@@ -2198,6 +2198,11 @@ async function loadVisits() {
   try {
     const res = await fetch(`${API}/visits`);
     allVisits = await res.json();
+    await loadOwnerMap();
+    buildOwnerSelect('visitsOwnerSel', 'visitsOwnerWrap', visitsOwnerFilter, () => {
+      visitsOwnerFilter = $('visitsOwnerSel').value;
+      renderCalendar();
+    });
     renderCalendar();
   } catch { showToast('無法載入拜訪記錄'); }
 }
@@ -2215,9 +2220,12 @@ function renderCalendar() {
   $('calMonthTitle').textContent =
     `${calYear} 年 ${calMonth + 1} 月`;
 
-  // 建立日期→拜訪 map
+  // 建立日期→拜訪 map（依業務篩選）
+  const visitsFiltered = visitsOwnerFilter
+    ? allVisits.filter(v => v.owner === visitsOwnerFilter)
+    : allVisits;
   const visitMap = {};
-  allVisits.forEach(v => {
+  visitsFiltered.forEach(v => {
     if (!v.visitDate) return;
     (visitMap[v.visitDate] = visitMap[v.visitDate] || []).push(v);
   });
@@ -2647,12 +2655,18 @@ const KANBAN_STAGES = [
 let dragOppId = null;
 
 async function loadPipelineView() {
-  await loadOpportunities();
+  await Promise.all([loadOpportunities(), loadOwnerMap()]);
+  buildOwnerSelect('kanbanOwnerSel', 'kanbanOwnerWrap', kanbanOwnerFilter, () => {
+    kanbanOwnerFilter = $('kanbanOwnerSel').value;
+    renderKanban();
+  });
   renderKanban();
 }
 
 function renderKanban() {
-  const activeOpps = allOpportunities; // 所有階段（含 Won）都在看板顯示
+  const activeOpps = kanbanOwnerFilter
+    ? allOpportunities.filter(o => o.owner === kanbanOwnerFilter)
+    : allOpportunities;
 
   KANBAN_STAGES.forEach(({ key }) => {
     const stageOpps = activeOpps.filter(o => o.stage === key);
@@ -3159,6 +3173,45 @@ let allZombieOpps = [];
 
 let allQuarterRatios = {}; // { "2026": [20,30,30,20] }
 let allOprRange = { min: 1.1, max: 1.2 };
+let visitsOwnerFilter  = ''; // 業務日報篩選
+let kanbanOwnerFilter  = ''; // 商機推進進度篩選
+let _ownerMapCache     = null; // { username: displayName }
+
+async function loadOwnerMap() {
+  if (_ownerMapCache) return _ownerMapCache;
+  try {
+    const r = await fetch(`${API}/usermap`);
+    _ownerMapCache = r.ok ? await r.json() : {};
+  } catch { _ownerMapCache = {}; }
+  return _ownerMapCache;
+}
+
+// 填充業務篩選下拉選單（僅主管/秘書/admin 才顯示）
+function buildOwnerSelect(selId, wrapId, currentVal, onChange) {
+  const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
+  const wrap = $(wrapId);
+  const sel  = $(selId);
+  if (!wrap || !sel) return;
+  if (!canFilter || !_ownerMapCache || Object.keys(_ownerMapCache).length <= 1) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'flex';
+  // 填入選項（避免重複）
+  const existing = new Set(Array.from(sel.options).map(o => o.value));
+  Object.entries(_ownerMapCache).forEach(([username, displayName]) => {
+    if (!existing.has(username)) {
+      const o = document.createElement('option');
+      o.value = username; o.textContent = displayName || username;
+      sel.appendChild(o);
+    }
+  });
+  sel.value = currentVal;
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', onChange);
+  }
+}
 
 async function loadTargets() {
   try {

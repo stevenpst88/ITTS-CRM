@@ -364,6 +364,12 @@
 
         <!-- ── 商機推進進度（Kanban）── -->
         <div id="pipelineView" style="display:none">
+          <div id="kanbanOwnerWrap" style="display:none;align-items:center;gap:6px;padding:0 0 12px">
+            <label style="font-size:12px;color:#666;white-space:nowrap">業務人員</label>
+            <select id="kanbanOwnerSel" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+              <option value="">全部</option>
+            </select>
+          </div>
           <div class="kanban-board">
 
             <!-- D 靜止中 -->
@@ -1179,6 +1185,12 @@
             <div class="cal-month-title" id="calMonthTitle"></div>
             <button class="cal-nav-btn" id="calNextBtn">&#9654;</button>
             <button class="cal-today-btn" id="calTodayBtn">今天</button>
+            <div id="visitsOwnerWrap" style="display:none;margin-left:auto;align-items:center;gap:6px">
+              <label style="font-size:12px;color:#666;white-space:nowrap">業務人員</label>
+              <select id="visitsOwnerSel" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                <option value="">全部</option>
+              </select>
+            </div>
           </div>
           <div class="cal-weekdays">
             <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
