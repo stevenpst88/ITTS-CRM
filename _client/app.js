@@ -1215,6 +1215,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       $('cOppNoIdNote').style.display = hasId ? 'none' : '';
       $('cOppForm').style.display     = hasId ? '' : 'none';
       $('cOppSaveBtn').disabled       = !hasId;
+      setupBuSelector('cOppBu', 'cOppBuGroup');
     } else {
       $('saveBtn').style.display    = '';
       $('cOppSaveBtn').style.display = 'none';
@@ -1289,6 +1290,7 @@ $('cOppSaveBtn').addEventListener('click', async () => {
     grossMarginRate:$('cOppGrossMargin').value,
     expectedDate:   $('cOppExpectedDate').value,
     description:    $('cOppDescription').value.trim(),
+    bu:             ($('cOppBu') && $('cOppBu').value) || undefined,
   };
 
   try {
@@ -1727,6 +1729,43 @@ function renderJfSelector(selectedKey) {
 }
 
 // ── 新增/編輯 Modal ──────────────────────────────────────
+// 填入 BU 下拉，並依用戶 BU 數量決定是否顯示
+// selectId: BU select 的 id；groupId: 包外層 .form-group 的 id（控制顯示）
+// presetBu: 編輯模式下預先選的值
+function setupBuSelector(selectId, groupId, presetBu) {
+  const sel = document.getElementById(selectId);
+  const grp = document.getElementById(groupId);
+  if (!sel || !grp) return;
+  const myBus = window._myBus || [];
+  const role = window._myRole || '';
+  const isCrossBu = role === 'admin' || role === 'executive';
+  const ALL_BUS = ['ERP','ITS','MDM','CRM'];
+  const options = isCrossBu ? ALL_BUS : myBus;
+
+  if (options.length <= 1 && !isCrossBu) {
+    // 單 BU 用戶：隱藏下拉（後端會自動帶入唯一 BU）
+    grp.style.display = 'none';
+    sel.innerHTML = '';
+    if (options.length === 1) {
+      const o = document.createElement('option');
+      o.value = options[0]; o.textContent = options[0]; o.selected = true;
+      sel.appendChild(o);
+    }
+    return;
+  }
+
+  // 多 BU 用戶 / 跨 BU 角色：顯示下拉
+  grp.style.display = '';
+  sel.innerHTML = '';
+  options.forEach(b => {
+    const o = document.createElement('option');
+    o.value = b; o.textContent = b;
+    sel.appendChild(o);
+  });
+  // 預設值：editing 用 preset；新建用第一個
+  sel.value = presetBu || options[0] || '';
+}
+
 function openModal(contact = null) {
   $('contactForm').reset();
   $('contactId').value = '';
@@ -1735,6 +1774,9 @@ function openModal(contact = null) {
   $('previewImg').src = '';
   $('cardImagePreview').querySelector('.upload-hint').style.display = 'flex';
   $('imageActions').style.display = 'none';
+
+  // BU 下拉
+  setupBuSelector('contactBu', 'contactBuGroup', contact?.bu);
 
   if (contact) {
     $('modalTitle').textContent = '編輯名片';
@@ -2096,6 +2138,7 @@ $('saveBtn').addEventListener('click', async () => {
     note: $('note').value.trim(),
     cardImage: $('cardImageUrl').value,
     jobFunction: $('jobFunction').value,
+    bu: ($('contactBu') && $('contactBu').value) || undefined,
     ...getPersonalInfo()
   };
 
@@ -2728,6 +2771,8 @@ function openVisitModal(visit = null) {
   $v('visitId').value = '';
   $v('visitDate').value = new Date().toISOString().slice(0, 10);
   resetVisitModalTabs();
+  // 商機 Tab 的 BU 下拉
+  setupBuSelector('oppBu', 'oppBuGroup', visit?.bu);
 
   if (visit) {
     const contact = allContacts.find(c => c.id === visit.contactId);
@@ -2769,6 +2814,7 @@ $v('visitSaveBtn').addEventListener('click', async () => {
     topic,
     content: $v('visitContent').value.trim(),
     nextAction: $v('visitNextAction').value.trim(),
+    bu: ($v('oppBu') && $v('oppBu').value) || undefined,
   };
 
   const id = $v('visitId').value;
@@ -2795,6 +2841,7 @@ $v('visitSaveBtn').addEventListener('click', async () => {
         expectedDate: $v('oppExpectedDate').value,
         description: $v('oppDescription').value.trim(),
         visitId,
+        bu: ($v('oppBu') && $v('oppBu').value) || undefined,
       };
       await fetch(`${API}/opportunities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oppPayload) });
       await loadOpportunities();
@@ -3133,6 +3180,7 @@ function openOppEdit(id) {
   $('oppEditId').value             = o.id;
   $('oppEditCompany').value        = o.company         || '';
   $('oppEditContact').value        = o.contactName     || '';
+  setupBuSelector('oppEditBu', 'oppEditBuGroup', o.bu);
   $('oppEditCategory').value       = o.category        || '';
   $('oppEditStage').value          = o.stage           || 'C';
   $('oppEditAmount').value         = o.amount          || '';
@@ -3245,6 +3293,7 @@ $('oppEditSave').addEventListener('click', async () => {
     grossMarginRate: gmRaw !== '' ? parseFloat(gmRaw) : '',
     expectedDate:    $('oppEditExpectedDate').value,
     description:     $('oppEditDescription').value.trim(),
+    bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
   };
   if (newStage === 'Won' && !payload.achievedDate) {
     payload.achievedDate = new Date().toISOString().slice(0, 10);

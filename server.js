@@ -289,9 +289,9 @@ function writeContactAudit(action, req, target, changes) {
 function pickFields(obj, fields) {
   return fields.reduce((acc, f) => { if (f in obj) acc[f] = obj[f]; return acc; }, {});
 }
-const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo'];
-const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction'];
-const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate'];
+const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
+const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu'];
+const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
@@ -604,8 +604,11 @@ app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
 
     const data   = db.load();
     const viewable = getViewableOwners(req, 'opportunities');
-    const opp = (data.opportunities || []).find(o => o.id === oppId && viewable.includes(o.owner));
-    if (!opp) return res.status(404).json({ error: '找不到此商機' });
+    const candidate = (data.opportunities || []).find(o => o.id === oppId && viewable.includes(o.owner));
+    if (!candidate) return res.status(404).json({ error: '找不到此商機' });
+    const visibleAfterBu = filterByBu(req, [candidate]);
+    if (!visibleAfterBu.length) return res.status(404).json({ error: '找不到此商機' });
+    const opp = candidate;
 
     // 統計拜訪活躍度
     const now = Date.now();
@@ -672,8 +675,12 @@ app.post('/api/ai/contact-summary', requireAuth, requireAi, async (req, res) => 
     const data  = db.load();
     const username = req.session.user.username;
     const viewable = getViewableOwners(req, 'contacts');
-    const contact = (data.contacts || []).find(c => c.id === contactId && viewable.includes(c.owner) && !c.deleted);
-    if (!contact) return res.status(404).json({ error: '找不到此聯絡人' });
+    const candidate = (data.contacts || []).find(c => c.id === contactId && viewable.includes(c.owner) && !c.deleted);
+    if (!candidate) return res.status(404).json({ error: '找不到此聯絡人' });
+    // BU 過濾
+    const visibleAfterBu = filterByBu(req, [candidate]);
+    if (!visibleAfterBu.length) return res.status(404).json({ error: '找不到此聯絡人' });
+    const contact = visibleAfterBu[0];
 
     // 最近 5 筆拜訪
     const visits = (data.visits || [])
@@ -1198,6 +1205,66 @@ function getMyBus(req) {
   return normalizeBu(me?.bu);
 }
 
+// 為單一資料推斷 BU：優先用 item.bu，其次回退到 owner 的第一個 BU
+function inferItemBu(item, authOrUsersArr) {
+  if (item && item.bu && typeof item.bu === 'string' && VALID_BUS.includes(item.bu)) {
+    return item.bu;
+  }
+  const users = Array.isArray(authOrUsersArr) ? authOrUsersArr : (authOrUsersArr?.users || []);
+  const owner = users.find(u => u.username === item.owner);
+  if (!owner) return null;
+  const ownerBus = normalizeBu(owner.bu);
+  return ownerBus[0] || null;
+}
+
+// 依「資料 BU」過濾：admin/executive 全可看；其他角色看自己的或 BU 在自己範圍內的
+// items 已先經過 owner 過濾（getViewableOwners）
+function filterByBu(req, items) {
+  const role = req.session.user.role;
+  if (role === 'admin' || role === 'executive') return items;
+  const myBus = getMyBus(req);
+  const myUsername = req.session.user.username;
+  if (!myBus.length) return items.filter(it => it.owner === myUsername);
+  const auth = loadAuth();
+  return items.filter(item => {
+    if (item.owner === myUsername) return true;       // 自己的資料一律可見
+    const itemBu = inferItemBu(item, auth);
+    return itemBu && myBus.includes(itemBu);
+  });
+}
+
+// 為新建資料決定 bu：若 body 給了則驗證，否則預設用建立者的第一個 BU
+function resolveItemBuOnCreate(req, bodyBu) {
+  const role = req.session.user.role;
+  // admin / executive 不一定有 BU，允許指定也可以為 null
+  if (role === 'admin' || role === 'executive') {
+    if (bodyBu && VALID_BUS.includes(bodyBu)) return { bu: bodyBu };
+    return { bu: null };
+  }
+  const myBus = getMyBus(req);
+  if (!myBus.length) return { error: '使用者尚未指派 BU，無法建立資料' };
+  if (bodyBu) {
+    if (!VALID_BUS.includes(bodyBu)) return { error: '無效的 BU' };
+    if (!myBus.includes(bodyBu)) return { error: '不能建立非自己 BU 的資料' };
+    return { bu: bodyBu };
+  }
+  return { bu: myBus[0] }; // 預設第一個 BU
+}
+
+// 為更新資料驗證 bu（若 body 含 bu 才會呼叫）
+function resolveItemBuOnUpdate(req, bodyBu) {
+  const role = req.session.user.role;
+  if (role === 'admin' || role === 'executive') {
+    if (bodyBu === null || bodyBu === '') return { bu: null };
+    if (!VALID_BUS.includes(bodyBu)) return { error: '無效的 BU' };
+    return { bu: bodyBu };
+  }
+  const myBus = getMyBus(req);
+  if (!VALID_BUS.includes(bodyBu)) return { error: '無效的 BU' };
+  if (!myBus.includes(bodyBu)) return { error: '不能將資料指派到非自己 BU' };
+  return { bu: bodyBu };
+}
+
 // ── 生日提醒（N 天內）──────────────────────────────────
 app.get('/api/birthday-reminders', requireAuth, (req, res) => {
   const days = parseInt(req.query.days) || 3;   // 預設提前 3 天
@@ -1209,9 +1276,10 @@ app.get('/api/birthday-reminders', requireAuth, (req, res) => {
   if (role === 'secretary') return res.json([]);
 
   const owners = getViewableOwners(req, 'contacts');
-  const contacts = (data.contacts || []).filter(c =>
+  let contacts = (data.contacts || []).filter(c =>
     !c.deleted && owners.includes(c.owner) && c.personalBirthday
   );
+  contacts = filterByBu(req, contacts);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1257,6 +1325,7 @@ app.get('/api/contacts', requireAuth, (req, res) => {
   if (role === 'secretary') return res.json([]);
   const owners = getViewableOwners(req, 'contacts');
   let contacts = (data.contacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
+  contacts = filterByBu(req, contacts);
   if (search) {
     const kw = search.toLowerCase();
     contacts = contacts.filter(c =>
@@ -1275,10 +1344,13 @@ app.get('/api/contacts', requireAuth, (req, res) => {
 // ── 新增聯絡人 ──────────────────────────────────────────
 app.post('/api/contacts', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const buCheck = resolveItemBuOnCreate(req, req.body.bu);
+  if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const data = db.load();
   const contact = {
     id: uuidv4(),
     owner,
+    bu: buCheck.bu,
     name: req.body.name || '',
     nameEn: req.body.nameEn || '',
     company: req.body.company || '',
@@ -1321,6 +1393,11 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const old = data.contacts[idx];
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
+  if (safeBody.bu !== undefined) {
+    const buCheck = resolveItemBuOnUpdate(req, safeBody.bu);
+    if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+    safeBody.bu = buCheck.bu;
+  }
   const updated = { ...old, ...safeBody, id: req.params.id, owner };
   updated.isPrimary = req.body.isPrimary === true || req.body.isPrimary === 'true';
   // 若設為主要聯繫窗口，取消同公司（同擁有者）其他人的主要狀態
@@ -1431,7 +1508,9 @@ app.get('/api/export', requireAuth, (req, res, next) => {
 }, (req, res) => {
   const data = db.load();
   const exportOwners = getViewableOwners(req, 'contacts');
-  const rows = (data.contacts || []).filter(c => exportOwners.includes(c.owner) && !c.deleted).map(c => ({
+  let exportRows = (data.contacts || []).filter(c => exportOwners.includes(c.owner) && !c.deleted);
+  exportRows = filterByBu(req, exportRows);
+  const rows = exportRows.map(c => ({
     '姓名': c.name,
     '英文名稱': c.nameEn,
     '公司': c.company,
@@ -1466,16 +1545,20 @@ app.get('/api/visits', requireAuth, (req, res) => {
   const role = req.session.user.role;
   if (role === 'secretary') return res.json([]);
   const owners = getViewableOwners(req, 'visits');
-  res.json((data.visits || []).filter(v => owners.includes(v.owner)));
+  const items = (data.visits || []).filter(v => owners.includes(v.owner));
+  res.json(filterByBu(req, items));
 });
 
 app.post('/api/visits', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const buCheck = resolveItemBuOnCreate(req, req.body.bu);
+  if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const data = db.load();
   if (!data.visits) data.visits = [];
   const visit = {
     id: uuidv4(),
     owner,
+    bu: buCheck.bu,
     contactId:   req.body.contactId   || '',
     contactName: req.body.contactName || '',
     visitDate:   req.body.visitDate   || '',
@@ -1498,6 +1581,11 @@ app.put('/api/visits/:id', requireAuth, (req, res) => {
   if (!data.visits) data.visits = [];
   const idx = data.visits.findIndex(v => v.id === req.params.id && v.owner === owner);
   if (idx === -1) return res.status(404).json({ error: '找不到此記錄' });
+  if (req.body.bu !== undefined) {
+    const buCheck = resolveItemBuOnUpdate(req, req.body.bu);
+    if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+    req.body.bu = buCheck.bu;
+  }
   data.visits[idx] = { ...data.visits[idx], ...pickFields(req.body, VISIT_FIELDS), id: req.params.id, owner };
   db.save(data);
   writeLog('UPDATE_VISIT', owner, data.visits[idx].contactName || req.params.id,
@@ -1560,7 +1648,7 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     } else {
       rowOwners = [u.username];
     }
-    const myOpps = (data.opportunities || []).filter(o => rowOwners.includes(o.owner));
+    const myOpps = filterByBu(req, (data.opportunities || []).filter(o => rowOwners.includes(o.owner)));
 
     // 成交：逐月計算（手動認列優先，否則從 Won 商機加總）
     let achieved = 0;
@@ -1882,16 +1970,20 @@ app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();
   const owners = getViewableOwners(req, 'opportunities');
-  res.json((data.opportunities || []).filter(o => owners.includes(o.owner)));
+  const items = (data.opportunities || []).filter(o => owners.includes(o.owner));
+  res.json(filterByBu(req, items));
 });
 
 app.post('/api/opportunities', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const buCheck = resolveItemBuOnCreate(req, req.body.bu);
+  if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
   const opp = {
     id: uuidv4(),
     owner,
+    bu: buCheck.bu,
     contactId:       req.body.contactId       || '',
     contactName:     req.body.contactName     || '',
     company:         req.body.company         || '',
@@ -1933,6 +2025,12 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   const oldExpectedDate = data.opportunities[idx].expectedDate || null;
+  // BU 更新驗證
+  if (req.body.bu !== undefined) {
+    const buCheck = resolveItemBuOnUpdate(req, req.body.bu);
+    if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+    req.body.bu = buCheck.bu;
+  }
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   const newStage = data.opportunities[idx].stage;
   // 記錄預計簽約日變動歷史
@@ -2015,8 +2113,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
         return { username: u, displayName: usr ? (usr.displayName || u) : u };
       })
     : [];
-  const opps   = (data.opportunities || []).filter(o => owners.includes(o.owner));
-  const lostAll= (data.lostOpportunities || []).filter(o => owners.includes(o.owner));
+  const opps   = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
+  const lostAll= filterByBu(req, (data.lostOpportunities || []).filter(o => owners.includes(o.owner)));
 
   // 當前各階段漏斗（排除成交，成交單獨計算）
   const funnel = STAGE_ORDER.map(stage => {
@@ -2171,8 +2269,7 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
 
   const zombies = [];
 
-  (data.opportunities || [])
-    .filter(o => owners.includes(o.owner) && o.stage !== 'Won')
+  filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner) && o.stage !== 'Won'))
     .forEach(o => {
       // 彙整此商機相關的所有拜訪
       const seen = new Set();
@@ -5140,7 +5237,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const allOwners = getViewableOwners(req, 'opportunities');
     const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
 
-    const opps = (data.opportunities || []).filter(o => owners.includes(o.owner));
+    const opps = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
     // manager1 的目標由部屬加總（排除自身），避免手動設定的殘留值影響計算
     const targetOwners = role === 'manager1'
       ? owners.filter(u => u !== req.session.user.username)
@@ -5210,7 +5307,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const buckets = ['0-7','8-30','31-60','61-90','90+'];
     const agingOwner = req.query.agingOwner || '';
     const agingOwners = (agingOwner && allOwners.includes(agingOwner)) ? [agingOwner] : allOwners;
-    const agingOpps = (data.opportunities || []).filter(o => agingOwners.includes(o.owner));
+    const agingOpps = filterByBu(req, (data.opportunities || []).filter(o => agingOwners.includes(o.owner)));
     const aging = {};
     const agingItems = {};
     stages.forEach(s => {
@@ -5274,12 +5371,12 @@ app.get('/api/exec/conversion', requireAuth, (req, res) => {
   const owners = (owner && allOwners.includes(owner)) ? [owner] : allOwners;
   const yearNum = year ? parseInt(year) : new Date().getFullYear();
 
-  const opps = (data.opportunities || []).filter(o => owners.includes(o.owner));
-  const lost = (data.lostOpportunities || []).filter(o => {
+  const opps = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
+  const lost = filterByBu(req, (data.lostOpportunities || []).filter(o => {
     if (!owners.includes(o.owner)) return false;
     const d = o.deletedAt || o.createdAt;
     return d && new Date(d).getFullYear() === yearNum;
-  });
+  }));
 
   const wonOpps = opps.filter(o => {
     if (o.stage !== 'Won') return false;

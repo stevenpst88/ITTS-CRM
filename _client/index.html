@@ -1463,6 +1463,11 @@
                   <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
                 </div>
               </div>
+              <div class="form-group full-width" id="contactBuGroup" style="display:none">
+                <label>所屬 BU <span style="font-size:11px;color:#888;font-weight:normal">（決定哪些主管能看到此名片）</span></label>
+                <select id="contactBu">
+                </select>
+              </div>
               <div class="form-group required">
                 <label>姓名</label>
                 <input type="text" id="name" placeholder="請輸入姓名" required>
@@ -1606,6 +1611,10 @@
           </div>
           <div id="cOppForm">
             <div class="form-grid">
+              <div class="form-group full-width" id="cOppBuGroup" style="display:none">
+                <label>所屬 BU <span style="font-size:11px;color:#888;font-weight:normal">（決定哪些主管能看到此商機）</span></label>
+                <select id="cOppBu"></select>
+              </div>
               <div class="form-group full-width">
                 <label>商機類別 <span class="required">*</span></label>
                 <select id="cOppCategory">
@@ -1858,6 +1867,10 @@
             &#128161; 商機將連結至上方選擇的客戶與聯絡人，預設階段為 <strong>C｜Pipeline</strong>
           </div>
           <div class="form-grid">
+            <div class="form-group full-width" id="oppBuGroup" style="display:none">
+              <label>所屬 BU <span style="font-size:11px;color:#888;font-weight:normal">（決定哪些主管能看到此商機）</span></label>
+              <select id="oppBu"></select>
+            </div>
             <div class="form-group full-width required">
               <label>商機類別</label>
               <select id="oppCategory">
@@ -1946,6 +1959,10 @@
           <div class="form-group full-width">
             <label>聯絡人</label>
             <input type="text" id="oppEditContact" readonly style="background:#f8f9fa;color:#888">
+          </div>
+          <div class="form-group full-width" id="oppEditBuGroup" style="display:none">
+            <label>所屬 BU</label>
+            <select id="oppEditBu"></select>
           </div>
           <div class="form-group">
             <label>商機類別</label>
