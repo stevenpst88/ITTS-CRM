@@ -3605,9 +3605,21 @@ function _userBus(username) {
   if (Array.isArray(v)) return v;
   return v ? [v] : [];
 }
+function _userPrimaryBu(username) {
+  return _userBus(username)[0] || null;
+}
+
+// 推斷單筆資料 BU：item.bu 優先，缺則用 owner 第一個 BU
+function _inferItemBu(item) {
+  if (item && item.bu) return item.bu;
+  return _userPrimaryBu(item.owner);
+}
 
 // 渲染 BU 業績拆分卡（僅 executive / admin 看得到）
-// 多 BU 用戶的預算/實際會「平均拆分」到所屬各 BU，避免重複計算
+// 規則：
+//   ① 目標不均分：多 BU 業務的月度預算「全額計入」每個所屬 BU
+//   ② 達成依商機 BU 標籤分流：opp.bu='ERP' 算進 ERP；opp.bu='ITS' 算進 ITS
+//   ③ 手動認列只計入 owner 主 BU（陣列第一個）
 function renderBuBreakdown() {
   const wrap = $('buBreakdownWrap');
   if (!wrap) return;
@@ -3620,49 +3632,53 @@ function renderBuBreakdown() {
   const BUS = ['ERP','ITS','MDM','CRM'];
   const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
 
-  // 預先計算每位 owner 的 target/achieved 與其 BU 數量
-  const ownerStats = {}; // username -> { target, achieved, buCount }
-  allMonthlyBudgets.filter(b => b.year === year).forEach(b => {
-    const bus = _userBus(b.owner);
-    const buCount = Math.max(bus.length, 1);
-    let target = b.months.reduce((s, v) => s + (v || 0), 0);
-    let achieved = 0;
-    for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
-    ownerStats[b.owner] = { target, achieved, buCount, bus };
-  });
-  // 沒月度預算記錄但有 Won 商機的人
-  const budgetOwners = new Set(Object.keys(ownerStats));
-  allOpportunities.filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner)).forEach(o => {
-    const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
-    if (y !== year) return;
-    if (!ownerStats[o.owner]) {
-      const bus = _userBus(o.owner);
-      ownerStats[o.owner] = { target: 0, achieved: 0, buCount: Math.max(bus.length, 1), bus };
-    }
-    ownerStats[o.owner].achieved += parseFloat(o.amount) || 0;
-  });
-
   const cards = BUS.map(bu => {
-    let target = 0, achieved = 0, headcount = 0;
-    Object.entries(ownerStats).forEach(([username, s]) => {
-      if (!s.bus.includes(bu)) return;
-      // 拆分：多 BU 用戶的目標/達成均分到所屬各 BU
-      target   += s.target   / s.buCount;
-      achieved += s.achieved / s.buCount;
-      headcount++;
-    });
-    target = Math.round(target);
-    achieved = Math.round(achieved);
-    if (headcount === 0) {
+    // 此 BU 包含的人員（用於 target / 手動認列計算）
+    const usersInBu = Object.keys(_userBuCache).filter(u => _userBus(u).includes(bu));
+    if (!usersInBu.length) {
       return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]};opacity:.45">
         <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
         <div style="font-size:11px;color:#9ca3af;margin-top:8px">無人員</div>
       </div>`;
     }
+
+    // ① 目標：全額計入（不切分）
+    let target = 0;
+    allMonthlyBudgets
+      .filter(b => b.year === year && usersInBu.includes(b.owner))
+      .forEach(b => { target += b.months.reduce((s, v) => s + (v || 0), 0); });
+
+    // ② / ③ 達成：依月份計算
+    //   - 若該月有手動認列值且 owner 主 BU 為當前 BU → 用手動認列值
+    //   - 否則用該月「BU 標籤=此 BU」的 Won 商機加總
+    let achieved = 0;
+    usersInBu.forEach(owner => {
+      const isOwnerPrimary = _userPrimaryBu(owner) === bu;
+      const budRec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
+      for (let m = 1; m <= 12; m++) {
+        const manual = budRec && budRec.actuals ? budRec.actuals[m - 1] : null;
+        if (manual !== null && manual !== undefined) {
+          if (isOwnerPrimary) achieved += manual;
+          // 非主 BU：手動認列不算進此 BU；該月也不再加 Won 商機（避免雙重計算）
+          continue;
+        }
+        // 無手動認列 → 該月該 BU 的 Won 商機
+        achieved += allOpportunities
+          .filter(o => o.stage === 'Won' && o.owner === owner && _inferItemBu(o) === bu)
+          .filter(o => {
+            const d = new Date(o.achievedDate || o.createdAt);
+            return d.getFullYear() === year && d.getMonth() + 1 === m;
+          })
+          .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+      }
+    });
+
+    target = Math.round(target);
+    achieved = Math.round(achieved);
     const rate = target > 0 ? Math.min(100, Math.round(achieved / target * 100)) : 0;
     const color = rate >= 90 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444';
     return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]}">
-      <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu} <span style="font-size:10px;color:#9ca3af;font-weight:500">${headcount}人</span></div>
+      <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu} <span style="font-size:10px;color:#9ca3af;font-weight:500">${usersInBu.length}人</span></div>
       <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 萬</span></div>
       <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 萬</span></div>
       <div class="bu-card-rate" style="color:${color}">${target > 0 ? rate + '%' : '—'}</div>
@@ -3675,7 +3691,7 @@ function renderBuBreakdown() {
     <div class="bu-breakdown-card">
       <div class="bu-breakdown-header">
         <span class="bu-breakdown-title">📊 各 BU 業績總覽 — ${year} 年</span>
-        <span style="font-size:11px;color:#9ca3af">多 BU 業務目標／實際依所屬 BU 數均分</span>
+        <span style="font-size:11px;color:#9ca3af">目標全額計入｜達成依商機 BU 標籤分流</span>
       </div>
       <div class="bu-breakdown-grid">${cards}</div>
     </div>
@@ -4003,7 +4019,20 @@ function getMonthActualFinal(year, month, owner) {
   const rec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
   if (rec && rec.actuals) {
     const v = rec.actuals[month - 1];
-    if (v !== null && v !== undefined) return v;
+    if (v !== null && v !== undefined) {
+      // BU 規則：手動認列只算進 owner「主 BU」
+      // 看自己的資料、admin/executive、或主 BU 在 viewer 範圍內 → 認列
+      // 否則回退用該月 BU 標籤的 Won 商機（已 BU 過濾）
+      const viewerRole = window._myRole;
+      const viewerBus = window._myBus || [];
+      const isSelf = owner === window._myUsername;
+      const isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+      if (isSelf || isCrossViewer) return v;
+      const ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
+      const ownerPrimaryBu = ownerBus[0] || null;
+      if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
+      // 此 viewer 不能認 owner 的手動認列 → 走 Won 商機（allOpportunities 已 BU 過濾）
+    }
   }
   return getMonthActual(year, month, owner);
 }
@@ -4024,12 +4053,21 @@ function getGmActual(year, month, ownerFilter) {
     }, 0);
 }
 
-// 毛利實際：手動認列優先，否則自動計算
+// 毛利實際：手動認列優先，否則自動計算（同樣套用 BU 規則：手動認列只算 owner 主 BU）
 function getGmActualFinal(year, month, owner) {
   var rec = allMonthlyBudgets.find(function(b) { return b.owner === owner && b.year === year; });
   if (rec && rec.grossMarginActuals) {
     var v = rec.grossMarginActuals[month - 1];
-    if (v !== null && v !== undefined) return v;
+    if (v !== null && v !== undefined) {
+      var viewerRole = window._myRole;
+      var viewerBus = window._myBus || [];
+      var isSelf = owner === window._myUsername;
+      var isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+      if (isSelf || isCrossViewer) return v;
+      var ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
+      var ownerPrimaryBu = ownerBus[0] || null;
+      if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
+    }
   }
   return getGmActual(year, month, owner);
 }

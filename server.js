@@ -1650,15 +1650,26 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     }
     const myOpps = filterByBu(req, (data.opportunities || []).filter(o => rowOwners.includes(o.owner)));
 
-    // 成交：逐月計算（手動認列優先，否則從 Won 商機加總）
+    // 成交：逐月計算
+    //   ① 手動認列：只算進 owner 主 BU；非主 BU 的 viewer 不算
+    //   ② Won 商機：myOpps 已 BU 過濾，直接加總
     let achieved = 0;
     const monthlyBudgetsData = data.monthlyBudgets || [];
+    const myBus = getMyBus(req);
+    const isCrossBuViewer = role === 'admin' || role === 'executive';
     rowOwners.forEach(owner => {
+      const ownerBus = normalizeBu(auth.users.find(uu => uu.username === owner)?.bu);
+      const ownerPrimaryBu = ownerBus[0] || null;
+      const countsManual = isCrossBuViewer ||
+        (ownerPrimaryBu && myBus.includes(ownerPrimaryBu));
       const budRec = monthlyBudgetsData.find(b => b.owner === owner && b.year === year);
       for (let m = 1; m <= 12; m++) {
         if (budRec && budRec.actuals) {
           const v = budRec.actuals[m - 1];
-          if (v !== null && v !== undefined) { achieved += v; continue; }
+          if (v !== null && v !== undefined) {
+            if (countsManual) achieved += v;
+            continue;
+          }
         }
         const ownerOpps = myOpps.filter(o => o.owner === owner && o.stage === 'Won');
         achieved += ownerOpps.filter(o => {
@@ -5258,17 +5269,31 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
       totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
     }
 
-    // 已達成：逐月計算（手動認列優先，否則從 Won 商機加總）
+    // 已達成：逐月計算
+    //   ① 手動認列：只算進 owner「主 BU」（陣列第一個）；非主 BU 的 viewer 不算
+    //   ② Won 商機：opps 已經 BU 過濾過（filterByBu），直接加總
     const monthlyBudgets = data.monthlyBudgets || [];
+    const authForBu = loadAuth();
+    const myBus = getMyBus(req); // viewer 的 BU 範圍
+    const isCrossBuViewer = role === 'admin' || role === 'executive';
     let achieved = 0;
     owners.forEach(owner => {
+      const ownerBus = normalizeBu(authForBu.users.find(u => u.username === owner)?.bu);
+      const ownerPrimaryBu = ownerBus[0] || null;
+      // 此 viewer 是否能「認」owner 的手動認列：admin/executive 永遠認；BU manager 只在 owner 主 BU 屬於 viewer 範圍時認
+      const countsManualForViewer = isCrossBuViewer ||
+        (ownerPrimaryBu && myBus.includes(ownerPrimaryBu));
+
       const budRec = monthlyBudgets.find(b => b.owner === owner && b.year === yearNum);
       for (let m = 1; m <= 12; m++) {
         if (budRec && budRec.actuals) {
           const v = budRec.actuals[m - 1];
-          if (v !== null && v !== undefined) { achieved += v; continue; }
+          if (v !== null && v !== undefined) {
+            if (countsManualForViewer) achieved += v;
+            continue; // 已用手動認列覆蓋，不再加 Won 商機
+          }
         }
-        // 無手動認列 → 從 Won 商機抓該月
+        // 無手動認列 → 從 Won 商機抓該月（已 BU 過濾）
         const monthActual = opps
           .filter(o => o.owner === owner && o.stage === 'Won')
           .filter(o => {
