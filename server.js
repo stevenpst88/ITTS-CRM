@@ -303,6 +303,24 @@ function sanitizeUrl(url) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : '';
 }
 
+// ── 公司層級欄位同步（新增/更新名片時自動補齊同公司空白欄位）──
+const COMPANY_SYNC_FIELDS = ['phone', 'industry', 'address', 'website', 'systemVendor'];
+function syncCompanyFields(data, contact) {
+  if (!contact.company) return;
+  const siblings = data.contacts.filter(c =>
+    !c.deleted && c.owner === contact.owner &&
+    c.company === contact.company && c.id !== contact.id
+  );
+  if (siblings.length === 0) return;
+  COMPANY_SYNC_FIELDS.forEach(field => {
+    const val = contact[field];
+    if (!val) return;          // 來源欄位是空的，無需同步
+    siblings.forEach(c => {
+      if (!c[field]) c[field] = val;  // 只補空白，不蓋掉已有值
+    });
+  });
+}
+
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
 // Static assets：圖片快取 1 天；HTML/JS/CSS 不快取（確保部署後立即生效）
 const STATIC_CACHE      = { maxAge: '1d' };
@@ -1219,6 +1237,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     });
   }
   data.contacts.push(contact);
+  syncCompanyFields(data, contact);  // 同步公司層級欄位到同公司其他空白名片
   db.save(data);
   writeContactAudit('CREATE', req, contact, []);
   res.status(201).json(contact);
@@ -1246,6 +1265,7 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
     .filter(f => String(old[f] ?? '') !== String(updated[f] ?? ''))
     .map(f => ({ field: f, fieldLabel: FIELD_LABELS[f] || f, oldValue: old[f] ?? '', newValue: updated[f] ?? '' }));
   data.contacts[idx] = updated;
+  syncCompanyFields(data, updated);  // 同步公司層級欄位到同公司其他空白名片
   db.save(data);
   if (changes.length > 0) writeContactAudit('UPDATE', req, updated, changes);
   res.json(data.contacts[idx]);
