@@ -3941,13 +3941,15 @@ function updateTargetCard() {
   const isM1 = window._myRole === 'manager1';
   let achieved = 0;
   if (isM1) {
-    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year);
+    // 一級主管：排除自身的預算記錄，避免雙重計算
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
     const budgetOwners = new Set(budgetRecs.map(b => b.owner));
     budgetRecs.forEach(b => {
       for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
     });
+    // 沒有月度預算記錄的部屬：直接從 Won 商機加總（也排除 manager1 自己）
     achieved += allOpportunities
-      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner))
+      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner) && o.owner !== myUsername)
       .filter(o => {
         const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
         return y === year;
