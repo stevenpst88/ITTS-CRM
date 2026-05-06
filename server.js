@@ -10,6 +10,7 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const compression = require('compression');
 const db = require('./db');
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
@@ -146,6 +147,12 @@ const apiLimiter = rateLimit({
 
 app.use(express.json({ limit: '2mb' }));        // 限制 request body 大小
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+
+// ── 回應壓縮（gzip）：JSON / HTML 回應省 60-80% 頻寬 ───────────
+app.use(compression({
+  threshold: 1024,    // <1KB 不壓縮（壓縮反而變大）
+  level: 6,           // 預設等級，平衡壓縮率與 CPU
+}));
 
 // ── DB 寫入完成保證 middleware ─────────────────────────────
 // 修復 bug：在 Vercel serverless，db.save() 是非同步背景寫入，
@@ -350,18 +357,12 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!user) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
     if (user.active === false) return res.status(403).json({ success: false, message: '帳號已停用，請聯繫管理者' });
 
+    // 一律 bcrypt 比對（明文遷移已於 2026-05 完成，移除 fallback 以消除 timing attack 風險）
     let isValid = false;
     if (user.password && user.password.startsWith('$2b$')) {
-      // 已 hash 的密碼：bcrypt 比對
       isValid = await bcrypt.compare(password, user.password);
-    } else {
-      // 舊明文密碼：比對後自動升級為 hash（首次登入自動遷移）
-      isValid = (user.password === password);
-      if (isValid) {
-        user.password = await bcrypt.hash(password, 12);
-        saveAuth(authData);
-      }
     }
+    // 若密碼非 bcrypt 格式，視為帳號異常，要求管理員重設
 
     if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
@@ -438,14 +439,37 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
 });
 
+// ── 密碼強度檢查（12+ 字元 + 至少 3 種字元類型）────────────
+// 字元類型：小寫、大寫、數字、特殊符號
+function validatePasswordStrength(pw) {
+  if (typeof pw !== 'string' || pw.length < 12) {
+    return '密碼至少需要 12 個字元';
+  }
+  let categories = 0;
+  if (/[a-z]/.test(pw)) categories++;
+  if (/[A-Z]/.test(pw)) categories++;
+  if (/[0-9]/.test(pw)) categories++;
+  if (/[^a-zA-Z0-9]/.test(pw)) categories++;
+  if (categories < 3) {
+    return '密碼必須至少包含 3 種類型：大寫、小寫、數字、特殊符號';
+  }
+  // 排除常見弱密碼（簡易檢查）
+  const lower = pw.toLowerCase();
+  const weak = ['password', 'admin123', 'qwerty', 'letmein', '12345678'];
+  if (weak.some(w => lower.includes(w))) {
+    return '密碼包含常見弱字串，請避免';
+  }
+  return null; // 通過
+}
+
 // ── 自助更改密碼（登入者本人）────────────────────────────
 app.put('/api/user/password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
       return res.status(400).json({ error: '請填寫舊密碼與新密碼' });
-    if (newPassword.length < 6)
-      return res.status(400).json({ error: '新密碼至少需要 6 個字元' });
+    const pwErr = validatePasswordStrength(newPassword);
+    if (pwErr) return res.status(400).json({ error: pwErr });
 
     const auth = loadAuth();
     const user = auth.users.find(u => u.username === req.session.user.username);
@@ -979,7 +1003,8 @@ function validateBuInput(role, buInput) {
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
-  if (password.length < 6) return res.status(400).json({ error: '密碼至少需要 6 個字元' });
+  const pwErr = validatePasswordStrength(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   const auth = loadAuth();
   if (auth.users.find(u => u.username === username)) return res.status(400).json({ error: '帳號已存在' });
 
@@ -1033,7 +1058,8 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
 app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: '新密碼不能為空' });
-  if (password.length < 6) return res.status(400).json({ error: '密碼至少需要 6 個字元' });
+  const pwErr = validatePasswordStrength(password);
+  if (pwErr) return res.status(400).json({ error: pwErr });
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.params.username);
   if (!user) return res.status(404).json({ error: '找不到此帳號' });
