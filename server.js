@@ -353,9 +353,14 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     }
 
     if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
-    req.session.user = { username: user.username, displayName: user.displayName, role: user.role || 'user' };
+    req.session.user = {
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role || 'user',
+      bu: user.bu || null
+    };
     writeLog('LOGIN', username, username, `登入成功`, req);
-    res.json({ success: true, displayName: user.displayName, role: user.role || 'user' });
+    res.json({ success: true, displayName: user.displayName, role: user.role || 'user', bu: user.bu || null });
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ success: false, message: '登入服務暫時無法使用，請稍後再試' });
@@ -415,7 +420,10 @@ app.get('/uploads/:key', requireAuth, (req, res, next) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json(req.session.user);
+  // 補上 bu 資訊（session 內可能沒有，從 auth.json 即時讀取最新）
+  const auth = loadAuth();
+  const me = auth.users.find(u => u.username === req.session.user.username);
+  res.json({ ...req.session.user, bu: me?.bu || null });
 });
 
 // ── 自助更改密碼（登入者本人）────────────────────────────
@@ -917,6 +925,11 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
   });
 });
 
+// 合法 BU 值
+const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+// 跨 BU 角色（bu 應為 null）
+const CROSS_BU_ROLES = ['admin', 'executive'];
+
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const auth = loadAuth();
@@ -924,6 +937,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     username: u.username,
     displayName: u.displayName,
     role: u.role || 'user',
+    bu: u.bu || null,
     canDownloadContacts: u.canDownloadContacts || false,
     canSetTargets: u.canSetTargets || false,
     active: u.active !== false
@@ -933,17 +947,30 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
-  const { username, password, displayName, role, canDownloadContacts, canSetTargets } = req.body;
+  const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   if (password.length < 6) return res.status(400).json({ error: '密碼至少需要 6 個字元' });
   const auth = loadAuth();
   if (auth.users.find(u => u.username === username)) return res.status(400).json({ error: '帳號已存在' });
+
+  // BU 規則校驗
+  const finalRole = role || 'user';
+  let finalBu = bu || null;
+  if (CROSS_BU_ROLES.includes(finalRole)) {
+    finalBu = null; // admin / executive 一律 null
+  } else {
+    if (!finalBu || !VALID_BUS.includes(finalBu)) {
+      return res.status(400).json({ error: '此角色必須指定有效的 BU（ERP / ITS / MDM / CRM）' });
+    }
+  }
+
   const hashedPassword = await bcrypt.hash(password, 12);
   const newUser = {
     username: username.trim(),
     password: hashedPassword,
     displayName: displayName || username,
-    role: role || 'user',
+    role: finalRole,
+    bu: finalBu,
     canDownloadContacts: !!canDownloadContacts,
     canSetTargets: !!canSetTargets,
     active: true,
@@ -951,7 +978,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   };
   auth.users.push(newUser);
   saveAuth(auth);
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）`, req);
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${finalBu || '全公司'}`, req);
   res.json({ success: true });
 });
 
@@ -960,14 +987,26 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
-  const { displayName, role, canDownloadContacts, canSetTargets, active } = req.body;
+  const { displayName, role, bu, canDownloadContacts, canSetTargets, active } = req.body;
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
   if (role !== undefined)               auth.users[idx].role = role;
+  // BU 處理：若角色為跨 BU，自動清為 null；否則必須是合法 BU
+  const effectiveRole = auth.users[idx].role;
+  if (bu !== undefined || role !== undefined) {
+    if (CROSS_BU_ROLES.includes(effectiveRole)) {
+      auth.users[idx].bu = null;
+    } else if (bu !== undefined) {
+      if (!VALID_BUS.includes(bu)) {
+        return res.status(400).json({ error: '無效的 BU（必須是 ERP / ITS / MDM / CRM）' });
+      }
+      auth.users[idx].bu = bu;
+    }
+  }
   if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
   if (active !== undefined)             auth.users[idx].active = !!active;
   saveAuth(auth);
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定`, req);
+  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${auth.users[idx].bu || '全公司'}）`, req);
   res.json({ success: true });
 });
 
@@ -1073,6 +1112,7 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
   if (!user) return res.status(404).json({ error: '找不到帳號' });
   res.json({
     role: user.role || 'user',
+    bu: user.bu || null,
     canDownloadContacts: user.canDownloadContacts || false,
     canSetTargets: user.canSetTargets || false,
     active: user.active !== false
@@ -1099,24 +1139,34 @@ const upload = multer({
 // ── 角色可視範圍：取得此用戶可見的 owner 清單 ──────────────
 function getViewableOwners(req, dataType) {
   const { username, role } = req.session.user;
+  const auth = loadAuth();
+  const me = auth.users.find(u => u.username === username);
+  const myBu = me?.bu || null;
+
+  // 跨 BU 全看（系統管理員、董事長/總經理）
+  if (role === 'admin' || role === 'executive') {
+    return auth.users.map(u => u.username);
+  }
+
+  // 判斷是否為同一個 BU（若 viewer 沒設 BU 則無人同 BU）
+  const sameBu = u => myBu && u.bu === myBu;
+
   if (role === 'manager1') {
-    const auth = loadAuth();
     return auth.users
-      .filter(u => u.role === 'user' || u.role === 'manager2' || u.username === username)
+      .filter(u => u.username === username ||
+                   (sameBu(u) && (u.role === 'user' || u.role === 'manager2' || u.role === 'secretary')))
       .map(u => u.username);
   }
   if (role === 'manager2') {
-    const auth = loadAuth();
     return auth.users
-      .filter(u => u.role === 'user' || u.username === username)
+      .filter(u => u.username === username || (sameBu(u) && u.role === 'user'))
       .map(u => u.username);
   }
   if (role === 'secretary') {
-    // 秘書可看商機預測及應收帳款（業務 + 二級 + 一級主管）
+    // 秘書可看同 BU 的商機預測及應收帳款（業務 + 二級 + 一級主管）
     if (dataType === 'opportunities' || dataType === 'receivables') {
-      const auth = loadAuth();
       return auth.users
-        .filter(u => u.role === 'user' || u.role === 'manager2' || u.role === 'manager1')
+        .filter(u => sameBu(u) && (u.role === 'user' || u.role === 'manager2' || u.role === 'manager1'))
         .map(u => u.username);
     }
     return []; // 聯絡人、拜訪記錄、合約、年度目標秘書看不到
@@ -1127,6 +1177,13 @@ function getViewableOwners(req, dataType) {
     return [];
   }
   return [username]; // 一般業務只看自己
+}
+
+// 取得使用者所屬 BU（給其他需用 BU 過濾邏輯的 API 使用）
+function getMyBu(req) {
+  const auth = loadAuth();
+  const me = auth.users.find(u => u.username === req.session.user.username);
+  return me?.bu || null;
 }
 
 // ── 生日提醒（N 天內）──────────────────────────────────
@@ -1451,7 +1508,7 @@ app.delete('/api/visits/:id', requireAuth, (req, res) => {
 // ── 主管業績達成率總覽 ───────────────────────────────────
 app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['manager1', 'manager2', 'admin'].includes(role)) {
+  if (!['manager1', 'manager2', 'admin', 'executive'].includes(role)) {
     return res.status(403).json({ error: '權限不足' });
   }
   const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -1550,7 +1607,7 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
 // ── 主管幫特定業務設定年度目標 ──────────────────────────
 app.put('/api/manager/target/:username', requireAuth, (req, res) => {
   const { role } = req.session.user;
-  if (!['manager1', 'manager2', 'admin'].includes(role)) {
+  if (!['manager1', 'manager2', 'admin', 'executive'].includes(role)) {
     return res.status(403).json({ error: '權限不足' });
   }
   const targetUsername = req.params.username;
@@ -1648,7 +1705,14 @@ app.get('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
   const role = req.session.user.role;
   const username = req.session.user.username;
   const all = (data.settings && data.settings.userQuarterRatios) || {};
-  if (role === 'admin' || role === 'manager1') return res.json(all);
+  // admin/executive：全部；manager1：只給同 BU 的；其他：只給自己
+  if (role === 'admin' || role === 'executive') return res.json(all);
+  if (role === 'manager1') {
+    const owners = new Set(getViewableOwners(req, 'opportunities'));
+    const filtered = {};
+    Object.entries(all).forEach(([u, v]) => { if (owners.has(u)) filtered[u] = v; });
+    return res.json(filtered);
+  }
   return res.json(all[username] ? { [username]: all[username] } : {});
 });
 
@@ -1712,27 +1776,28 @@ app.put('/api/settings/opr-range', requireAdmin, (req, res) => {
 });
 
 // ── 月度業績預算 ──────────────────────────────────────────
-// GET /api/monthly-budget — 業務=自己；主管/admin=全部
+// GET /api/monthly-budget — 依可見範圍過濾（含 BU 隔離）
 app.get('/api/monthly-budget', requireAuth, (req, res) => {
   const data = db.load();
   const budgets = data.monthlyBudgets || [];
-  const role = req.session.user.role;
-  const username = req.session.user.username;
-  if (['admin', 'manager1', 'manager2', 'secretary'].includes(role)) {
-    return res.json(budgets);
-  }
-  res.json(budgets.filter(b => b.owner === username));
+  const owners = getViewableOwners(req, 'opportunities');
+  res.json(budgets.filter(b => owners.includes(b.owner)));
 });
 
 // PUT /api/monthly-budget — manager/admin 設定某業務某年的 12 月預算
 app.put('/api/monthly-budget', requireAuth, (req, res) => {
   const role = req.session.user.role;
-  if (!['admin', 'manager1', 'manager2'].includes(role)) {
+  if (!['admin', 'manager1', 'manager2', 'executive'].includes(role)) {
     return res.status(403).json({ error: '無設定權限' });
   }
   const { username, year, months, grossMargin } = req.body;
   if (!username || !year || !Array.isArray(months) || months.length !== 12) {
     return res.status(400).json({ error: '參數錯誤：需提供 username, year, months[12]' });
+  }
+  // BU 隔離：manager1/manager2 只能改同 BU 同管轄範圍的人
+  const viewable = getViewableOwners(req, 'opportunities');
+  if (!viewable.includes(username)) {
+    return res.status(403).json({ error: '無權限設定此業務的月度預算（不在你的 BU 管轄範圍）' });
   }
   const data = db.load();
   if (!data.monthlyBudgets) data.monthlyBudgets = [];
@@ -1764,12 +1829,17 @@ app.put('/api/monthly-budget', requireAuth, (req, res) => {
 // PUT /api/monthly-budget/actuals — admin/secretary 手動輸入每月認列實際值
 app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
   const role = req.session.user.role;
-  if (!['admin', 'secretary'].includes(role)) {
-    return res.status(403).json({ error: '僅 admin / 秘書 可設定認列值' });
+  if (!['admin', 'secretary', 'executive'].includes(role)) {
+    return res.status(403).json({ error: '僅 admin / 秘書 / 董總可設定認列值' });
   }
   const { username, year, actuals, grossMarginActuals } = req.body;
   if (!username || !year || !Array.isArray(actuals) || actuals.length !== 12) {
     return res.status(400).json({ error: '參數錯誤：需提供 username, year, actuals[12]' });
+  }
+  // BU 隔離：secretary 只能設定同 BU 範圍內的人；admin / executive 跨 BU
+  const viewable = getViewableOwners(req, 'opportunities');
+  if (!viewable.includes(username)) {
+    return res.status(403).json({ error: '無權限設定此業務的認列值（不在你的 BU 管轄範圍）' });
   }
   const data = db.load();
   if (!data.monthlyBudgets) data.monthlyBudgets = [];
@@ -1882,7 +1952,7 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
 // ── Pipeline 月度變動報表 ─────────────────────────────────
 app.get('/api/pipeline-date-changes', requireAuth, (req, res) => {
   const { role } = req.session.user;
-  if (!['admin', 'manager1', 'secretary'].includes(role)) {
+  if (!['admin', 'manager1', 'secretary', 'executive'].includes(role)) {
     return res.status(403).json({ error: '無此頁面權限' });
   }
   const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -2886,7 +2956,7 @@ app.put('/api/contracts/:id', requireAuth, (req, res) => {
   const data = db.load();
   if (!data.contracts) data.contracts = [];
   // admin / manager1 可編輯任何人的合約；一般業務只能編自己的
-  const canEditAll = ['admin', 'manager1', 'manager2'].includes(role);
+  const canEditAll = ['admin', 'manager1', 'manager2', 'executive'].includes(role);
   const idx = data.contracts.findIndex(c =>
     c.id === req.params.id && (canEditAll || c.owner === username)
   );
@@ -3444,26 +3514,28 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
   res.json(result);
 });
 
+// ── 用戶 BU 對應表（admin / executive / manager1 用於跨 BU 顯示）─────
+app.get('/api/users-bu', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (!['admin', 'executive', 'manager1', 'manager2', 'secretary'].includes(role)) {
+    return res.status(403).json({ error: '無權限' });
+  }
+  const auth = loadAuth();
+  const map = {};
+  auth.users.forEach(u => { map[u.username] = u.bu || null; });
+  res.json(map);
+});
+
 // ── 可視用戶名稱對應表（供前端顯示業務人員姓名）──────────────
 app.get('/api/usermap', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
+  const { username } = req.session.user;
   const auth = loadAuth();
-  let visibleRoles;
-  if (role === 'manager1') {
-    visibleRoles = ['user', 'manager2', 'manager1'];
-  } else if (role === 'manager2') {
-    visibleRoles = ['user', 'manager2'];
-  } else if (role === 'secretary') {
-    visibleRoles = ['user', 'manager2', 'manager1'];
-  } else {
-    visibleRoles = [];
-  }
-  const map = {};
+  // 透過 getViewableOwners 取得可見範圍（已內建 BU 過濾）
+  const viewable = new Set(getViewableOwners(req, 'opportunities'));
   // 自己一定包含
-  const me = auth.users.find(u => u.username === username);
-  if (me) map[me.username] = me.displayName || me.username;
-  // 加入可見角色
-  auth.users.filter(u => visibleRoles.includes(u.role)).forEach(u => {
+  viewable.add(username);
+  const map = {};
+  auth.users.filter(u => viewable.has(u.username)).forEach(u => {
     map[u.username] = u.displayName || u.username;
   });
   res.json(map);
@@ -3834,7 +3906,7 @@ app.get('/api/campaigns', requireAuth, (req, res) => {
   let list = data.campaigns || [];
   if (role === 'marketing') {
     list = list.filter(c => c.owner === username);
-  } else if (!['admin','manager1','manager2'].includes(role)) {
+  } else if (!['admin','manager1','manager2','executive'].includes(role)) {
     return res.json([]);
   }
   // 附加每個活動的 lead 統計
@@ -3849,7 +3921,7 @@ app.get('/api/campaigns', requireAuth, (req, res) => {
 
 app.post('/api/campaigns', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['marketing','admin','manager1','manager2'].includes(role))
+  if (!['marketing','admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
   const data = db.load();
   if (!data.campaigns) data.campaigns = [];
@@ -3867,7 +3939,7 @@ app.put('/api/campaigns/:id', requireAuth, (req, res) => {
   const idx = (data.campaigns || []).findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '找不到活動' });
   const c = data.campaigns[idx];
-  if (c.owner !== username && !['admin','manager1','manager2'].includes(role))
+  if (c.owner !== username && !['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
   data.campaigns[idx] = { ...c, ...pickFields(req.body, CAMPAIGN_FIELDS), id: c.id, owner: c.owner };
   db.save(data);
@@ -3879,7 +3951,7 @@ app.delete('/api/campaigns/:id', requireAuth, (req, res) => {
   const data = db.load();
   const idx = (data.campaigns || []).findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '找不到活動' });
-  if (data.campaigns[idx].owner !== username && !['admin','manager1','manager2'].includes(role))
+  if (data.campaigns[idx].owner !== username && !['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
   data.campaigns.splice(idx, 1);
   db.save(data);
@@ -3896,7 +3968,7 @@ app.get('/api/leads', requireAuth, (req, res) => {
     list = list.filter(l => l.owner === username);
   } else if (role === 'user') {
     list = list.filter(l => l.assignedTo === username);
-  } else if (!['admin','manager1','manager2'].includes(role)) {
+  } else if (!['admin','manager1','manager2','executive'].includes(role)) {
     return res.json([]);
   }
   // manager2 只看自己可視範圍的業務分配
@@ -3911,7 +3983,7 @@ app.get('/api/leads', requireAuth, (req, res) => {
 
 app.post('/api/leads', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['marketing','admin','manager1','manager2'].includes(role))
+  if (!['marketing','admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
   const data = db.load();
   if (!data.leads) data.leads = [];
@@ -3935,7 +4007,7 @@ app.put('/api/leads/:id', requireAuth, (req, res) => {
   const idx = (data.leads || []).findIndex(l => l.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '找不到 Lead' });
   const l = data.leads[idx];
-  if (l.owner !== username && !['admin','manager1','manager2'].includes(role))
+  if (l.owner !== username && !['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
   data.leads[idx] = { ...l, ...pickFields(req.body, LEAD_FIELDS), id: l.id, owner: l.owner };
   db.save(data);
@@ -3945,7 +4017,7 @@ app.put('/api/leads/:id', requireAuth, (req, res) => {
 // 指派 Lead 給業務
 app.post('/api/leads/:id/assign', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['admin','manager1','manager2'].includes(role))
+  if (!['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '僅主管可指派 Lead' });
   const { assignedTo } = req.body;
   if (!assignedTo) return res.status(400).json({ error: '請選擇指派業務' });
@@ -3970,7 +4042,7 @@ app.post('/api/leads/:id/assign', requireAuth, (req, res) => {
 // 轉換 Lead → Contact + Opportunity
 app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['admin','manager1','manager2'].includes(role))
+  if (!['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '僅主管可轉換 Lead' });
   const data = db.load();
   const l = (data.leads || []).find(l => l.id === req.params.id);
@@ -4026,7 +4098,7 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
 // 標記不合格
 app.post('/api/leads/:id/disqualify', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['admin','manager1','manager2'].includes(role))
+  if (!['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '僅主管可標記不合格' });
   const data = db.load();
   const l = (data.leads || []).find(l => l.id === req.params.id);
@@ -4041,7 +4113,7 @@ app.post('/api/leads/:id/disqualify', requireAuth, (req, res) => {
 // ── 取得指定業務的客戶清單（供移轉功能使用）──────────────────
 app.get('/api/contacts-by-owner', requireAuth, (req, res) => {
   const { username, role } = req.session.user;
-  if (!['admin', 'manager1', 'manager2'].includes(role)) {
+  if (!['admin', 'manager1', 'manager2', 'executive'].includes(role)) {
     return res.status(403).json({ error: '無查詢權限' });
   }
   const { owner } = req.query;
@@ -4068,7 +4140,7 @@ app.get('/api/contacts-by-owner', requireAuth, (req, res) => {
 // ── 責任業務名單移轉 ──────────────────────────────────────────
 app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   const { username, role } = req.session.user;
-  if (!['admin', 'manager1', 'manager2'].includes(role)) {
+  if (!['admin', 'manager1', 'manager2', 'executive'].includes(role)) {
     return res.status(403).json({ error: '無移轉權限' });
   }
 
@@ -5046,7 +5118,7 @@ function getOwnerOptions(req) {
 app.get('/api/manager-home', requireAuth, (req, res) => {
   try {
     const role = req.session.user.role;
-    if (!['manager1','manager2','admin'].includes(role)) {
+    if (!['manager1','manager2','admin','executive'].includes(role)) {
       return res.status(403).json({ error: '權限不足' });
     }
     const yearNum = parseInt(req.query.year) || new Date().getFullYear();

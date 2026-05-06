@@ -3351,3 +3351,21 @@ body {
 .mb-gm-divider td { border-top: 2px solid #e5e7eb; padding: 0; height: 2px; font-size: 0; }
 .mb-gm-label { padding: 7px 8px; font-size: 11px; font-weight: 700; color: #7c3aed; white-space: nowrap; vertical-align: middle; }
 .mb-td-purple { color: #7c3aed !important; }
+
+/* ── BU 業績總覽（executive 專屬）─────────────────── */
+.bu-breakdown-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 16px 18px; }
+.bu-breakdown-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.bu-breakdown-title { font-size: 14px; font-weight: 700; color: #1a3c7a; }
+.bu-breakdown-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.bu-card { background: #fff; border: 1px solid #e5e7eb; border-top: 3px solid #6b7280; border-radius: 12px; padding: 14px 14px 12px; transition: .2s; }
+.bu-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.bu-card-name { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+.bu-card-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 12px; }
+.bu-card-lbl { color: #6b7280; }
+.bu-card-val { color: #111827; font-weight: 600; }
+.bu-card-rate { font-size: 22px; font-weight: 800; text-align: right; margin: 6px 0 4px; }
+.bu-card-bar { background: #f3f4f6; border-radius: 4px; height: 5px; overflow: hidden; margin-top: 4px; }
+.bu-card-bar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+@media (max-width: 900px) {
+  .bu-breakdown-grid { grid-template-columns: repeat(2, 1fr); }
+}

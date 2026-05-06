@@ -430,6 +430,7 @@
                   <th>帳號</th>
                   <th>顯示名稱</th>
                   <th>角色</th>
+                  <th>BU</th>
                   <th>狀態</th>
                   <th>下載名單</th>
                   <th>設定業績目標</th>
@@ -1335,14 +1336,26 @@
         </div>
         <div class="form-group">
           <label>角色</label>
-          <select id="fieldRole">
+          <select id="fieldRole" onchange="onRoleChange()">
             <option value="user">一般業務</option>
             <option value="marketing">行銷人員</option>
             <option value="secretary">秘書</option>
             <option value="manager2">二級主管</option>
             <option value="manager1">一級主管</option>
-            <option value="admin">管理者</option>
+            <option value="executive">董事長/總經理</option>
+            <option value="admin">系統管理員</option>
           </select>
+        </div>
+        <div class="form-group" id="buFieldGroup">
+          <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*必填</span></label>
+          <select id="fieldBu">
+            <option value="">— 請選擇 BU —</option>
+            <option value="ERP">ERP</option>
+            <option value="ITS">ITS</option>
+            <option value="MDM">MDM</option>
+            <option value="CRM">CRM</option>
+          </select>
+          <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
         </div>
         <div class="form-group">
           <label>狀態</label>
@@ -1351,6 +1364,25 @@
             <option value="false">停用</option>
           </select>
         </div>
+        <script>
+          function onRoleChange() {
+            const role = document.getElementById('fieldRole').value;
+            const isCrossBu = role === 'admin' || role === 'executive';
+            const buSelect = document.getElementById('fieldBu');
+            const buGroup = document.getElementById('buFieldGroup');
+            const hint = document.getElementById('buRequiredHint');
+            const crossHint = document.getElementById('buCrossHint');
+            buSelect.disabled = isCrossBu;
+            if (isCrossBu) {
+              buSelect.value = '';
+              hint.style.display = 'none';
+              crossHint.style.display = '';
+            } else {
+              hint.style.display = '';
+              crossHint.style.display = 'none';
+            }
+          }
+        </script>
         <div style="background:#f8f9fa;border-radius:10px;padding:14px;margin-top:4px">
           <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">功能權限</div>
           <div class="perm-row">
@@ -1527,7 +1559,10 @@
         if (!r.ok) { showLoginScreen(); return false; }
         const u = await r.json();
         if (u.role !== 'admin') { showLoginScreen(); return false; }
-        $('adminUser').textContent = `👤 ${u.displayName || u.username}`;
+        const buLabel = u.bu ? u.bu : '全公司';
+        const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
+        const c = BU_COLOR[buLabel] || '#6b7280';
+        $('adminUser').innerHTML = `👤 ${u.displayName || u.username} <span style="background:${c}20;color:${c};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px">${buLabel}</span>`;
         return true;
       } catch {
         showLoginScreen();
@@ -1571,11 +1606,17 @@
     }
 
     function renderUserTable() {
-      $('userTableBody').innerHTML = allUsers.map(u => `
+      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員'};
+      const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+      $('userTableBody').innerHTML = allUsers.map(u => {
+        const buColor = u.bu ? (BU_BADGE[u.bu] || '#6b7280') : '#9ca3af';
+        const buLabel = u.bu ? u.bu : '— 全公司 —';
+        return `
         <tr>
           <td><strong>${u.username}</strong></td>
           <td>${u.displayName}</td>
-          <td><span class="badge badge-${u.role}">${{admin:'管理者',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務'}[u.role]||u.role}</span></td>
+          <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
+          <td><span style="background:${buColor}20;color:${buColor};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">${buLabel}</span></td>
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
           <td style="text-align:center">
             <label class="toggle" title="下載客戶名單">
@@ -1596,7 +1637,8 @@
               <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${u.username}">刪除</button>
             </div>
           </td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     }
 
     // ── 事件委派（取代所有 onclick/onchange，不依賴 CSP inline handler）──
@@ -1644,9 +1686,11 @@
       $('passwordGroup').style.display = '';
       $('fieldDisplayName').value = '';
       $('fieldRole').value = 'user';
+      $('fieldBu').value = '';
       $('fieldActive').value = 'true';
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
+      onRoleChange();
       $('userModal').classList.add('open');
     });
 
@@ -1660,9 +1704,11 @@
       $('passwordGroup').style.display = 'none';
       $('fieldDisplayName').value = u.displayName;
       $('fieldRole').value = u.role || 'user';
+      $('fieldBu').value = u.bu || '';
       $('fieldActive').value = u.active ? 'true' : 'false';
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
+      onRoleChange();
       $('userModal').classList.add('open');
     }
 
@@ -1673,9 +1719,14 @@
     $('userModalSave').addEventListener('click', async () => {
       const editUn = $('editUsername').value;
       const isEdit = !!editUn;
+      const role = $('fieldRole').value;
+      const isCrossBu = role === 'admin' || role === 'executive';
+      const bu = isCrossBu ? null : $('fieldBu').value;
+      if (!isCrossBu && !bu) { showToast('請選擇此角色所屬 BU'); return; }
       const payload = {
         displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
-        role: $('fieldRole').value,
+        role,
+        bu,
         active: $('fieldActive').value === 'true',
         canDownloadContacts: $('fieldCanDownload').checked,
         canSetTargets: $('fieldCanTargets').checked

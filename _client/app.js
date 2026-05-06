@@ -655,7 +655,7 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget(), loadUserBu()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
     renderMonthBudgetCard();
@@ -2232,14 +2232,23 @@ async function initUser() {
     const user = await res.json();
     window._myRole = user.role || 'user';
     window._myUsername = user.username || '';
+    window._myBu = user.bu || null;
     $('sidebarUser').textContent = user.displayName;
-    const ROLE_LABEL = { admin:'管理者', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'' };
+    const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'', marketing:'行銷人員' };
     const roleLabel = ROLE_LABEL[user.role] || '';
-    if (roleLabel) {
-      const roleEl = document.createElement('div');
-      roleEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.55);margin-top:2px;';
-      roleEl.textContent = roleLabel;
-      $('sidebarUser').parentNode.appendChild(roleEl);
+    const buLabel = user.bu ? user.bu : (user.role === 'admin' || user.role === 'executive' ? '全公司' : '');
+    if (roleLabel || buLabel) {
+      const metaEl = document.createElement('div');
+      metaEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;display:flex;gap:6px;align-items:center';
+      const parts = [];
+      if (roleLabel) parts.push(`<span>${roleLabel}</span>`);
+      if (buLabel) {
+        const BU_COLOR = {ERP:'#60a5fa',ITS:'#34d399',MDM:'#fb923c',CRM:'#a78bfa','全公司':'#fbbf24'};
+        const c = BU_COLOR[buLabel] || '#9ca3af';
+        parts.push(`<span style="background:${c}33;color:${c};padding:1px 6px;border-radius:6px;font-weight:600">${buLabel}</span>`);
+      }
+      metaEl.innerHTML = parts.join('');
+      $('sidebarUser').parentNode.appendChild(metaEl);
     }
     const h = new Date().getHours();
     const greet = h < 12 ? '早安' : h < 18 ? '午安' : '晚安';
@@ -2250,8 +2259,8 @@ async function initUser() {
     if (isFirstLoad) {
       sessionStorage.removeItem('justLoggedIn');
       const role = user.role || 'user';
-      if (role === 'manager1' || role === 'manager2') {
-        // 一級 / 二級主管 → 主管首頁
+      if (role === 'manager1' || role === 'manager2' || role === 'executive') {
+        // 一級 / 二級主管 / 董總 → 主管首頁
         showSection('managerHome');
       } else {
         // 其他角色（業務、秘書、行銷、admin 等）→ 一般首頁
@@ -3427,6 +3436,7 @@ let allQuarterRatios = {}; // { "2026": [20,30,30,20] }  — 全域預設配比
 let allUserQuarterRatios = {}; // { username: { "2026": [20,30,30,20] } } — 個人配比
 let allOprRange = { min: 1.1, max: 1.2 };
 let allMonthlyBudgets  = []; // [{ owner, year, months:[12] }]
+let _userBuCache       = {}; // { username: bu | null } - 給 admin/executive 做 BU 拆分用
 let visitsOwnerFilter  = ''; // 業務日報篩選
 let kanbanOwnerFilter  = ''; // 商機推進進度篩選
 let _ownerMapCache     = null; // { username: displayName }
@@ -3513,6 +3523,16 @@ async function loadMonthlyBudget() {
   } catch { allMonthlyBudgets = []; }
 }
 
+async function loadUserBu() {
+  // 僅 admin / executive / 主管 / 秘書 可呼叫
+  const role = window._myRole || '';
+  if (!['admin','executive','manager1','manager2','secretary'].includes(role)) return;
+  try {
+    const res = await fetch(`${API}/users-bu`);
+    _userBuCache = res.ok ? await res.json() : {};
+  } catch { _userBuCache = {}; }
+}
+
 // 取得某業務某年某月的實際成交金額（從 Won 商機的 achievedDate）
 function getMonthActual(year, month, ownerFilter = '') {
   return allOpportunities
@@ -3523,6 +3543,64 @@ function getMonthActual(year, month, ownerFilter = '') {
       return d.getFullYear() === year && d.getMonth() + 1 === month;
     })
     .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+}
+
+// 渲染 BU 業績拆分卡（僅 executive / admin 看得到）
+function renderBuBreakdown() {
+  const wrap = $('buBreakdownWrap');
+  if (!wrap) return;
+  const role = window._myRole || '';
+  if (role !== 'executive' && role !== 'admin') {
+    wrap.style.display = 'none';
+    return;
+  }
+  const year = new Date().getFullYear();
+  const BUS = ['ERP','ITS','MDM','CRM'];
+  const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+
+  const cards = BUS.map(bu => {
+    const usersInBu = Object.entries(_userBuCache).filter(([_, b]) => b === bu).map(([u]) => u);
+    if (!usersInBu.length) {
+      return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]};opacity:.45">
+        <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:8px">無人員</div>
+      </div>`;
+    }
+    let target = 0, achieved = 0;
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && usersInBu.includes(b.owner));
+    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
+    budgetRecs.forEach(b => {
+      target += b.months.reduce((s, v) => s + (v || 0), 0);
+      for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
+    });
+    achieved += allOpportunities
+      .filter(o => o.stage === 'Won' && usersInBu.includes(o.owner) && !budgetOwners.has(o.owner))
+      .filter(o => {
+        const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
+        return y === year;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const rate = target > 0 ? Math.min(100, Math.round(achieved / target * 100)) : 0;
+    const color = rate >= 90 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444';
+    return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]}">
+      <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
+      <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 萬</span></div>
+      <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 萬</span></div>
+      <div class="bu-card-rate" style="color:${color}">${target > 0 ? rate + '%' : '—'}</div>
+      <div class="bu-card-bar"><div class="bu-card-bar-fill" style="width:${rate}%;background:${color}"></div></div>
+    </div>`;
+  }).join('');
+
+  wrap.style.display = '';
+  wrap.innerHTML = `
+    <div class="bu-breakdown-card">
+      <div class="bu-breakdown-header">
+        <span class="bu-breakdown-title">📊 各 BU 業績總覽 — ${year} 年</span>
+        <span style="font-size:11px;color:#9ca3af">點擊 BU 卡片可篩選下方資料（待擴充）</span>
+      </div>
+      <div class="bu-breakdown-grid">${cards}</div>
+    </div>
+  `;
 }
 
 // 渲染月度業績計畫卡
@@ -3939,15 +4017,17 @@ function updateTargetCard() {
   // 年度達成：逐月加總（手動認列優先），12 個月加總
   const myUsername = window._myUsername || '';
   const isM1 = window._myRole === 'manager1';
+  const isExec = window._myRole === 'executive';
+  const isAggregator = isM1 || isExec;
   let achieved = 0;
-  if (isM1) {
-    // 一級主管：排除自身的預算記錄，避免雙重計算
+  if (isAggregator) {
+    // 一級主管 / 董事長/總經理：彙總所有可見部屬（已透過 API 回傳的範圍過濾）
     const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
     const budgetOwners = new Set(budgetRecs.map(b => b.owner));
     budgetRecs.forEach(b => {
       for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
     });
-    // 沒有月度預算記錄的部屬：直接從 Won 商機加總（也排除 manager1 自己）
+    // 沒有月度預算記錄的部屬：直接從 Won 商機加總（排除自己）
     achieved += allOpportunities
       .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner) && o.owner !== myUsername)
       .filter(o => {
@@ -3960,8 +4040,8 @@ function updateTargetCard() {
   }
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
 
-  if (window._myRole === 'manager1') {
-    // 一級主管：年度業績目標 = 所有部屬月度預算「收入金額」加總
+  if (window._myRole === 'manager1' || window._myRole === 'executive') {
+    // 一級主管 / 董事長/總經理：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
     const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
     const totalAmount = budgetRecs.reduce(function(sum, b) {
       return sum + b.months.reduce(function(s, v) { return s + (v || 0); }, 0);
@@ -3971,6 +4051,7 @@ function updateTargetCard() {
       $('targetRateDisplay').textContent = '--';
       $('targetProgressFill').style.width = '0%';
       updateQuarterCards(null, year, true);
+      renderBuBreakdown();
       return;
     }
     const rate = Math.min(100, Math.round(achieved / totalAmount * 100));
@@ -3978,6 +4059,7 @@ function updateTargetCard() {
     $('targetRateDisplay').textContent = rate + '%';
     $('targetProgressFill').style.width = rate + '%';
     updateQuarterCards(totalAmount, year, true);
+    renderBuBreakdown();
     return;
   }
 
