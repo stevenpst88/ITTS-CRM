@@ -2278,6 +2278,23 @@ async function initUser() {
     const myBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     window._myBus = myBus;
     $('sidebarUser').textContent = user.displayName;
+
+    // 頂部工具列也顯示角色 + BU 徽章（方便快速核對權限狀態）
+    const topbarBadge = document.getElementById('topbarUserBadge');
+    if (topbarBadge) {
+      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'業務', marketing:'行銷' };
+      const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
+      const isCross = user.role === 'admin' || user.role === 'executive';
+      const buHtml = isCross
+        ? `<span style="background:${BU_C['全公司']}20;color:${BU_C['全公司']};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">全公司</span>`
+        : myBus.map(b => {
+            const c = BU_C[b] || '#6b7280';
+            return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">${b}</span>`;
+          }).join(' ') || `<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">⚠️ 未設定 BU</span>`;
+      topbarBadge.innerHTML = `
+        <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL[user.role] || user.role}</span>
+        ${buHtml}`;
+    }
     const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'', marketing:'行銷人員' };
     const roleLabel = ROLE_LABEL[user.role] || '';
     const isCrossBu = user.role === 'admin' || user.role === 'executive';
