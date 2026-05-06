@@ -3699,9 +3699,9 @@ function openMbActualModal(owner, year) {
   grid.innerHTML = monthLabels.map((m, i) => {
     const val = existActuals[i] !== null && existActuals[i] !== undefined ? existActuals[i] : '';
     return `<div>
-      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;text-align:center">${m}</div>
+      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;text-align:center;background:#f3f4f6;border-radius:6px;padding:3px 0">${m}</div>
       <input type="number" min="0" step="any" value="${val}" placeholder="自動"
-        style="width:100%;padding:7px 4px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center"
+        style="width:100%;padding:8px 4px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center;background:#fff"
         oninput="updateMbActualTotal()">
     </div>`;
   }).join('');

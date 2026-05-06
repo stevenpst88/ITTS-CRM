@@ -2468,17 +2468,17 @@
 
   <!-- 月度認列手動輸入 Modal -->
   <div id="mbActualOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeMbActualModal()">
-    <div class="modal-box" style="max-width:660px;width:95%">
-      <div class="modal-header">
-        <span id="mbActualTitle">✏️ 編輯月度認列金額</span>
-        <button class="modal-close-btn" onclick="closeMbActualModal()">✕</button>
+    <div class="modal" style="width:680px;max-width:96vw">
+      <div class="modal-header" style="padding:18px 24px 12px;border-bottom:1px solid #f3f4f6">
+        <h2 style="font-size:15px;font-weight:700;color:#111" id="mbActualTitle">✏️ 編輯月度認列金額</h2>
+        <button class="modal-close" onclick="closeMbActualModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div style="font-size:12px;color:#6b7280;margin-bottom:14px">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:16px">
           輸入後將以手動認列值作為實際業績（空白 = 系統自動從成交商機計算）
         </div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px" id="mbActualGrid"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f3f4f6;padding-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f3f4f6;padding-top:14px">
           <span style="font-size:13px;color:#6b7280">合計認列：<strong id="mbActualTotalLabel" style="color:#1a3c7a">0</strong> 萬</span>
           <div style="display:flex;gap:8px">
             <button class="btn btn-outline" onclick="closeMbActualModal()">取消</button>
