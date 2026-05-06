@@ -655,7 +655,7 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
   });
@@ -2230,6 +2230,7 @@ async function initUser() {
     if (res.status === 401) { window.location.href = '/login.html'; return; }
     const user = await res.json();
     window._myRole = user.role || 'user';
+    window._myUsername = user.username || '';
     $('sidebarUser').textContent = user.displayName;
     const ROLE_LABEL = { admin:'管理者', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'' };
     const roleLabel = ROLE_LABEL[user.role] || '';
@@ -3421,7 +3422,8 @@ let allTargets = [];
 let allLostOppsForTargets = [];
 let allZombieOpps = [];
 
-let allQuarterRatios = {}; // { "2026": [20,30,30,20] }
+let allQuarterRatios = {}; // { "2026": [20,30,30,20] }  — 全域預設配比
+let allUserQuarterRatios = {}; // { username: { "2026": [20,30,30,20] } } — 個人配比
 let allOprRange = { min: 1.1, max: 1.2 };
 let visitsOwnerFilter  = ''; // 業務日報篩選
 let kanbanOwnerFilter  = ''; // 商機推進進度篩選
@@ -3476,6 +3478,23 @@ async function loadQuarterRatios() {
     const res = await fetch(`${API}/settings/quarter-ratios`);
     allQuarterRatios = res.ok ? await res.json() : {};
   } catch { allQuarterRatios = {}; }
+}
+
+async function loadUserQuarterRatios() {
+  try {
+    const res = await fetch(`${API}/settings/user-quarter-ratios`);
+    allUserQuarterRatios = res.ok ? await res.json() : {};
+  } catch { allUserQuarterRatios = {}; }
+}
+
+// 取得某業務在某年度的季度配比（個人配比 → 全域配比 → 預設等分）
+function getUserRatios(username, year) {
+  const yStr = String(year);
+  if (allUserQuarterRatios[username]) {
+    const r = allUserQuarterRatios[username][year] || allUserQuarterRatios[username][yStr];
+    if (r) return r;
+  }
+  return allQuarterRatios[year] || allQuarterRatios[yStr] || null;
 }
 
 async function loadOprRange() {
@@ -3534,10 +3553,34 @@ function getAchievedAmount(year) {
 
 function updateTargetCard() {
   const year = new Date().getFullYear();
-  const target = allTargets.find(t => t.year === year);
   $('targetAchYear').textContent = `${year} 年度業績目標`;
   const achieved = getAchievedAmount(year);
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
+
+  if (window._myRole === 'manager1') {
+    // 一級主管：業績總額 = 所有部屬（含 manager2 + user）年度目標加總
+    const totalAmount = allTargets
+      .filter(t => t.year === year)
+      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    if (!totalAmount) {
+      $('targetAmountDisplay').textContent = '部屬尚未設定目標';
+      $('targetRateDisplay').textContent = '--';
+      $('targetProgressFill').style.width = '0%';
+      updateQuarterCards(null, year, true);
+      return;
+    }
+    const rate = Math.min(100, Math.round(achieved / totalAmount * 100));
+    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' 萬';
+    $('targetRateDisplay').textContent = rate + '%';
+    $('targetProgressFill').style.width = rate + '%';
+    updateQuarterCards(totalAmount, year, true);
+    return;
+  }
+
+  // 一般業務 / manager2：顯示自己的年度目標
+  const myUsername = window._myUsername || '';
+  const target = allTargets.find(t => t.year === year && t.owner === myUsername)
+               || allTargets.find(t => t.year === year); // fallback（未設 _myUsername 時）
   if (!target || !target.amount) {
     $('targetAmountDisplay').textContent = '尚未設定';
     $('targetRateDisplay').textContent = '--';
@@ -3552,12 +3595,37 @@ function updateTargetCard() {
   updateQuarterCards(target.amount, year);
 }
 
-function updateQuarterCards(annualAmount, year) {
+function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
   const wrap = $('quarterCardsWrap');
   if (!wrap) return;
 
-  const ratios = allQuarterRatios[year] || allQuarterRatios[String(year)];
-  if (!ratios || !annualAmount) { wrap.style.display = 'none'; return; }
+  // ── 計算每季目標金額 ─────────────────────────────────────
+  let qTargets; // [q1, q2, q3, q4] 各季目標金額
+  let qRatioDisplay; // [q1%, q2%, q3%, q4%] 用於顯示的配比數字
+
+  if (isManager1Mode) {
+    // 一級主管：各季目標 = 彙整所有部屬（各自年度目標 × 個人季度配比）
+    qTargets = [0, 0, 0, 0];
+    allTargets.filter(t => t.year === year && (parseFloat(t.amount) || 0) > 0).forEach(st => {
+      const r = getUserRatios(st.owner, year);
+      if (r) {
+        for (let i = 0; i < 4; i++) {
+          qTargets[i] += Math.round(st.amount * (r[i] || 0) / 100);
+        }
+      }
+    });
+    // 顯示各季佔總目標的百分比
+    const totalQ = qTargets.reduce((s, v) => s + v, 0);
+    qRatioDisplay = qTargets.map(v => totalQ > 0 ? Math.round(v / totalQ * 100) : 0);
+    if (!totalQ) { wrap.style.display = 'none'; return; }
+  } else {
+    // 一般業務 / manager2：使用個人配比（若無則用全域預設）
+    const myUsername = window._myUsername || '';
+    const ratios = getUserRatios(myUsername, year);
+    if (!ratios || !annualAmount) { wrap.style.display = 'none'; return; }
+    qTargets = ratios.map(r => Math.round(annualAmount * (r || 0) / 100));
+    qRatioDisplay = ratios.map(r => r || 0);
+  }
 
   wrap.style.display = '';
   const now = new Date();
@@ -3571,8 +3639,8 @@ function updateQuarterCards(annualAmount, year) {
 
   labels.forEach((label, i) => {
     const q = i + 1;
-    const ratio   = ratios[i] || 0;
-    const qTarget = Math.round(annualAmount * ratio / 100);
+    const ratio   = qRatioDisplay[i] || 0;
+    const qTarget = qTargets[i] || 0;
     const qAch    = getQuarterAchieved(year, q);
     const gap     = qAch - qTarget;
     const isFuture = q > curQ;
@@ -3655,8 +3723,7 @@ function updateQuarterCards(annualAmount, year) {
 }
 
 async function loadTargetsView() {
-  await loadTargets();
-  await loadOpportunities();
+  await Promise.all([loadTargets(), loadOpportunities(), loadUserQuarterRatios()]);
   try {
     const res = await fetch(`${API}/lost-opportunities`);
     allLostOppsForTargets = res.ok ? await res.json() : [];
@@ -3667,24 +3734,51 @@ async function loadTargetsView() {
   } catch { allZombieOpps = []; }
   renderZombieSection();
 
-  // 年度選單
-  const yearSel = $('targetYearSel');
-  const curYear = new Date().getFullYear();
-  yearSel.innerHTML = '';
-  for (let y = curYear + 1; y >= curYear - 3; y--) {
-    const o = document.createElement('option');
-    o.value = y; o.textContent = y + ' 年';
-    if (y === curYear) o.selected = true;
-    yearSel.appendChild(o);
+  // ── 一級主管：隱藏手動輸入，顯示彙整說明 ────────────────
+  const targetSetCard = document.querySelector('.target-set-card');
+  if (targetSetCard) {
+    if (window._myRole === 'manager1') {
+      targetSetCard.style.display = 'none';
+      // 若還沒插入說明框，就插入
+      if (!$('manager1TargetNote')) {
+        const note = document.createElement('div');
+        note.id = 'manager1TargetNote';
+        note.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.6';
+        note.innerHTML = `<strong>📋 一級主管的年度業績目標</strong>由所有部屬（二級主管 + 業務）的年度目標<strong>自動加總</strong>，無需手動設定。<br>請至後台「📅 季度業績配比設定」為各業務員設定個別的季度配比。`;
+        targetSetCard.parentNode.insertBefore(note, targetSetCard);
+      }
+    } else {
+      targetSetCard.style.display = '';
+    }
   }
-  // 帶入目前年度目標
-  const cur = allTargets.find(t => t.year === curYear);
-  if (cur) $('targetAmountInput').value = cur.amount;
 
-  yearSel.addEventListener('change', function () {
-    const t = allTargets.find(x => x.year === parseInt(this.value));
-    $('targetAmountInput').value = t ? t.amount : '';
-  });
+  const curYear = new Date().getFullYear();
+
+  if (window._myRole !== 'manager1') {
+    // 年度選單
+    const yearSel = $('targetYearSel');
+    yearSel.innerHTML = '';
+    for (let y = curYear + 1; y >= curYear - 3; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y + ' 年';
+      if (y === curYear) o.selected = true;
+      yearSel.appendChild(o);
+    }
+    // 帶入目前年度目標
+    const myUsername = window._myUsername || '';
+    const cur = allTargets.find(t => t.year === curYear && t.owner === myUsername)
+              || allTargets.find(t => t.year === curYear);
+    if (cur) $('targetAmountInput').value = cur.amount;
+
+    if (!yearSel._listenerBound) {
+      yearSel._listenerBound = true;
+      yearSel.addEventListener('change', function () {
+        const t = allTargets.find(x => x.year === parseInt(this.value) && x.owner === (window._myUsername || ''))
+                || allTargets.find(x => x.year === parseInt(this.value));
+        $('targetAmountInput').value = t ? t.amount : '';
+      });
+    }
+  }
 
   // 歷史目標
   renderTargetHistory();

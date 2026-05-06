@@ -1621,6 +1621,56 @@ app.put('/api/settings/quarter-ratios', requireAdmin, (req, res) => {
   res.json({ success: true, year: y, ratios: data.settings.quarterRatios[y] });
 });
 
+// ── 個人季度配比 ─────────────────────────────────────────
+// GET /api/settings/user-quarter-ratios
+// PUT /api/settings/user-quarter-ratios  body { username, year, ratios:[4] }
+app.get('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
+  const data = db.load();
+  const role = req.session.user.role;
+  const username = req.session.user.username;
+  const all = (data.settings && data.settings.userQuarterRatios) || {};
+  if (role === 'admin' || role === 'manager1') return res.json(all);
+  return res.json(all[username] ? { [username]: all[username] } : {});
+});
+
+app.put('/api/settings/user-quarter-ratios', requireAdmin, (req, res) => {
+  const { username, year, ratios, clearPersonal } = req.body;
+  const y = parseInt(year);
+  if (!username || !y) {
+    return res.status(400).json({ error: '格式錯誤：需提供 username, year' });
+  }
+  const data = db.load();
+  if (!data.settings) data.settings = {};
+  if (!data.settings.userQuarterRatios) data.settings.userQuarterRatios = {};
+
+  // 清除個人配比（回到全域預設）
+  if (clearPersonal) {
+    if (data.settings.userQuarterRatios[username]) {
+      delete data.settings.userQuarterRatios[username][y];
+      if (Object.keys(data.settings.userQuarterRatios[username]).length === 0) {
+        delete data.settings.userQuarterRatios[username];
+      }
+    }
+    db.save(data);
+    writeLog('CLEAR_USER_QR', req.session.user.username, username, `清除 ${y}年個人配比`, req);
+    return res.json({ success: true, cleared: true });
+  }
+
+  if (!Array.isArray(ratios) || ratios.length !== 4) {
+    return res.status(400).json({ error: '格式錯誤：需提供 ratios[4]' });
+  }
+  const sum = ratios.reduce((a, v) => a + (parseFloat(v) || 0), 0);
+  if (Math.round(sum) !== 100) {
+    return res.status(400).json({ error: `配比合計需為 100，目前為 ${sum.toFixed(1)}` });
+  }
+  if (!data.settings.userQuarterRatios[username]) data.settings.userQuarterRatios[username] = {};
+  data.settings.userQuarterRatios[username][y] = ratios.map(v => parseFloat(v) || 0);
+  db.save(data);
+  writeLog('SET_USER_QR', req.session.user.username, username,
+    `${y}年個人配比: ${ratios.join('/')}`, req);
+  res.json({ success: true });
+});
+
 // GET  /api/settings/opr-range → { min:1.1, max:1.2 }
 // PUT  /api/settings/opr-range → body { min, max }
 app.get('/api/settings/opr-range', requireAuth, (req, res) => {

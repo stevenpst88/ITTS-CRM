@@ -866,53 +866,66 @@
       <!-- ── 季度業績配比設定 ── -->
       <div class="admin-section" id="sec-quarter-ratios">
         <div class="section-title">📅 季度業績配比設定</div>
-        <div class="section-sub">設定各年度 Q1~Q4 的業績目標分配比例，合計須等於 100%。設定後業務首頁的「季度業績進度」將即時套用。</div>
+        <div class="section-sub">為每位業務員設定個別的 Q1~Q4 業績目標分配比例。每位業務員的配比合計須等於 100%。一級主管的季度目標將自動由部屬目標加總計算。</div>
 
+        <!-- 年度選擇 -->
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
           <label style="font-size:13px;font-weight:600;color:#555">設定年度</label>
-          <select id="qrYearSel" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
-          </select>
+          <select id="qrYearSel" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px"></select>
+          <button class="btn btn-sm btn-outline" id="qrRefreshBtn">🔄 載入</button>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px" id="qrGrid">
-          <div>
-            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
-            <div style="display:flex;align-items:center;gap:4px">
-              <input type="number" id="qrQ1" min="0" max="100" step="1" placeholder="25"
-                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-              <span style="color:#6b7280;flex-shrink:0">%</span>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
-            <div style="display:flex;align-items:center;gap:4px">
-              <input type="number" id="qrQ2" min="0" max="100" step="1" placeholder="25"
-                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-              <span style="color:#6b7280;flex-shrink:0">%</span>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
-            <div style="display:flex;align-items:center;gap:4px">
-              <input type="number" id="qrQ3" min="0" max="100" step="1" placeholder="25"
-                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-              <span style="color:#6b7280;flex-shrink:0">%</span>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
-            <div style="display:flex;align-items:center;gap:4px">
-              <input type="number" id="qrQ4" min="0" max="100" step="1" placeholder="25"
-                style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-              <span style="color:#6b7280;flex-shrink:0">%</span>
-            </div>
-          </div>
+        <!-- 個人配比表格 -->
+        <div id="qrUserTableWrap" style="margin-bottom:24px">
+          <div style="color:#9ca3af;padding:16px 0;text-align:center">點擊「載入」顯示配比設定</div>
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
-          <button id="qrSaveBtn" class="btn btn-primary" disabled>儲存設定</button>
-        </div>
+        <!-- 全域預設配比（折疊） -->
+        <details style="margin-bottom:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px">
+          <summary style="font-size:13px;font-weight:700;color:#6b7280;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
+            ⚙️ 全域預設配比（業務員未設定個人配比時使用）
+          </summary>
+          <div style="margin-top:14px">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:14px" id="qrGrid">
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <input type="number" id="qrQ1" min="0" max="100" step="1" placeholder="25"
+                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <input type="number" id="qrQ2" min="0" max="100" step="1" placeholder="25"
+                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <input type="number" id="qrQ3" min="0" max="100" step="1" placeholder="25"
+                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <input type="number" id="qrQ4" min="0" max="100" step="1" placeholder="25"
+                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
+              <button id="qrSaveBtn" class="btn btn-primary" disabled>儲存預設配比</button>
+            </div>
+          </div>
+        </details>
 
         <!-- OPR 目標區間設定 -->
         <div style="margin-top:28px;padding-top:24px;border-top:1px solid #e5e7eb">
@@ -3244,6 +3257,7 @@
 
   // ── 季度業績配比設定 ──────────────────────────────────────
   let qrAllRatios = {};
+  let qrUserRatios = {}; // { username: { year: [q1,q2,q3,q4] } }
 
   function calcQrSum() {
     const vals = ['qrQ1','qrQ2','qrQ3','qrQ4'].map(id => parseFloat(document.getElementById(id).value) || 0);
@@ -3260,9 +3274,13 @@
 
   async function loadQrRatios() {
     try {
-      const r = await fetch('/api/settings/quarter-ratios');
-      qrAllRatios = r.ok ? await r.json() : {};
-    } catch { qrAllRatios = {}; }
+      const [r1, r2] = await Promise.all([
+        fetch('/api/settings/quarter-ratios'),
+        fetch('/api/settings/user-quarter-ratios'),
+      ]);
+      qrAllRatios   = r1.ok ? await r1.json() : {};
+      qrUserRatios  = r2.ok ? await r2.json() : {};
+    } catch { qrAllRatios = {}; qrUserRatios = {}; }
     populateQrYear();
   }
 
@@ -3270,15 +3288,19 @@
     const sel = document.getElementById('qrYearSel');
     if (!sel) return;
     const cur = new Date().getFullYear();
-    sel.innerHTML = '';
-    for (let y = cur + 1; y >= cur - 2; y--) {
-      const o = document.createElement('option');
-      o.value = y; o.textContent = y + ' 年';
-      if (y === cur) o.selected = true;
-      sel.appendChild(o);
+    if (!sel._built) {
+      sel._built = true;
+      sel.innerHTML = '';
+      for (let y = cur + 1; y >= cur - 2; y--) {
+        const o = document.createElement('option');
+        o.value = y; o.textContent = y + ' 年';
+        if (y === cur) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.addEventListener('change', () => { fillQrInputs(); renderQrUserTable(); });
     }
-    sel.addEventListener('change', fillQrInputs);
     fillQrInputs();
+    renderQrUserTable();
   }
 
   function fillQrInputs() {
@@ -3289,6 +3311,146 @@
     });
     calcQrSum();
   }
+
+  // ── 個人配比表格渲染 ─────────────────────────────────────
+  function renderQrUserTable() {
+    const wrap = document.getElementById('qrUserTableWrap');
+    if (!wrap) return;
+    const year = parseInt(document.getElementById('qrYearSel').value);
+    const yStr = String(year);
+
+    // 取得非 admin 帳號列表（從 allUsers 或重新 fetch）
+    const users = (typeof allUsers !== 'undefined' ? allUsers : [])
+      .filter(u => !['admin'].includes(u.role) && u.active !== false);
+
+    if (!users.length) {
+      wrap.innerHTML = '<div style="color:#9ca3af;font-size:13px">請先切換至「帳號管理」以載入帳號清單，再返回此頁面。</div>';
+      return;
+    }
+
+    const roleLabel = { manager1:'一級主管', manager2:'二級主管', user:'業務', secretary:'秘書' };
+    const getDefaultRatio = () => qrAllRatios[year] || qrAllRatios[yStr] || [25, 25, 25, 25];
+
+    wrap.innerHTML = `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:#f3f4f6;color:#6b7280">
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb;white-space:nowrap">業務員</th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計</th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">操作</th>
+            </tr>
+          </thead>
+          <tbody id="qrUserTbody">
+          </tbody>
+        </table>
+      </div>`;
+
+    const tbody = document.getElementById('qrUserTbody');
+    users.forEach(u => {
+      const saved = (qrUserRatios[u.username] &&
+        (qrUserRatios[u.username][year] || qrUserRatios[u.username][yStr]));
+      const ratios = saved || getDefaultRatio();
+      const hasPersonal = !!saved;
+      const rl = roleLabel[u.role] || u.role;
+
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #f3f4f6';
+      tr.dataset.username = u.username;
+      tr.innerHTML = `
+        <td style="padding:10px 12px;white-space:nowrap">
+          <div style="font-weight:600;color:#1a2d52">${u.displayName || u.username}</div>
+          <div style="font-size:11px;color:#9ca3af">${rl}${hasPersonal ? '' : ' · 使用預設'}</div>
+        </td>
+        ${[0,1,2,3].map(i => `
+          <td style="padding:6px 4px;text-align:center">
+            <div style="display:flex;align-items:center;justify-content:center;gap:2px">
+              <input type="number" class="qr-user-input" data-idx="${i}" min="0" max="100" step="1"
+                value="${ratios[i] ?? 25}"
+                style="width:58px;padding:6px 4px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:700;text-align:center">
+              <span style="font-size:11px;color:#9ca3af">%</span>
+            </div>
+          </td>`).join('')}
+        <td style="padding:6px 8px;text-align:center">
+          <span class="qr-user-sum" style="font-weight:700;font-size:13px">${ratios.reduce((a,v)=>a+v,0)}%</span>
+        </td>
+        <td style="padding:6px 8px;text-align:center">
+          <button class="btn btn-sm qr-user-save-btn" style="min-width:52px">儲存</button>
+          ${hasPersonal ? `<br><button class="btn btn-sm qr-user-clear-btn" style="font-size:11px;color:#9ca3af;background:none;border:none;cursor:pointer;margin-top:2px;padding:0">清除個人</button>` : ''}
+        </td>`;
+      tbody.appendChild(tr);
+
+      // 更新合計顯示
+      tr.querySelectorAll('.qr-user-input').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const vals = [...tr.querySelectorAll('.qr-user-input')].map(i => parseFloat(i.value) || 0);
+          const s = vals.reduce((a, v) => a + v, 0);
+          const sumEl = tr.querySelector('.qr-user-sum');
+          const saveBtn = tr.querySelector('.qr-user-save-btn');
+          const ok = Math.round(s) === 100;
+          sumEl.textContent = s + '%';
+          sumEl.style.color = ok ? '#10b981' : '#ef4444';
+          saveBtn.disabled = !ok;
+        });
+      });
+
+      // 儲存按鈕
+      const saveBtn = tr.querySelector('.qr-user-save-btn');
+      const isOk = ratios.reduce((a,v)=>a+v,0) === 100;
+      saveBtn.disabled = !isOk;
+      saveBtn.addEventListener('click', async () => {
+        const vals = [...tr.querySelectorAll('.qr-user-input')].map(i => parseFloat(i.value) || 0);
+        saveBtn.disabled = true; saveBtn.textContent = '…';
+        try {
+          const r = await fetch('/api/settings/user-quarter-ratios', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: u.username, year, ratios: vals })
+          });
+          const d = await r.json();
+          if (d.success) {
+            if (!qrUserRatios[u.username]) qrUserRatios[u.username] = {};
+            qrUserRatios[u.username][year] = vals;
+            saveBtn.textContent = '✅';
+            setTimeout(() => { saveBtn.textContent = '儲存'; saveBtn.disabled = false; renderQrUserTable(); }, 1500);
+          } else {
+            alert('儲存失敗：' + (d.error || '未知錯誤'));
+            saveBtn.textContent = '儲存'; saveBtn.disabled = false;
+          }
+        } catch(e) {
+          alert('網路錯誤：' + e.message);
+          saveBtn.textContent = '儲存'; saveBtn.disabled = false;
+        }
+      });
+
+      // 清除個人配比按鈕（若存在）
+      const clearBtn = tr.querySelector('.qr-user-clear-btn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', async () => {
+          if (!confirm(`確定清除 ${u.displayName || u.username} 的個人配比？清除後將回到全域預設。`)) return;
+          clearBtn.textContent = '清除中…';
+          // 清除方式：送全域預設值（或實作 DELETE 端點）
+          // 這裡用 PUT 送空值，server 端改為刪除該 key
+          try {
+            const defR = getDefaultRatio();
+            await fetch('/api/settings/user-quarter-ratios', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: u.username, year, ratios: defR, clearPersonal: true })
+            });
+            if (qrUserRatios[u.username]) delete qrUserRatios[u.username][year];
+            renderQrUserTable();
+          } catch(e) { alert('清除失敗：' + e.message); }
+        });
+      }
+    });
+  }
+
+  document.getElementById('qrRefreshBtn').addEventListener('click', () => loadQrRatios());
 
   document.getElementById('qrSaveBtn').addEventListener('click', async () => {
     const year = parseInt(document.getElementById('qrYearSel').value);
@@ -3305,14 +3467,14 @@
       if (data.success) {
         qrAllRatios[year] = ratios;
         btn.textContent = '✅ 已儲存';
-        setTimeout(() => { btn.textContent = '儲存設定'; btn.disabled = false; }, 1800);
+        setTimeout(() => { btn.textContent = '儲存預設配比'; btn.disabled = false; }, 1800);
       } else {
         alert('儲存失敗：' + (data.error || '未知錯誤'));
-        btn.textContent = '儲存設定'; btn.disabled = false;
+        btn.textContent = '儲存預設配比'; btn.disabled = false;
       }
     } catch(e) {
       alert('網路錯誤：' + e.message);
-      btn.textContent = '儲存設定'; btn.disabled = false;
+      btn.textContent = '儲存預設配比'; btn.disabled = false;
     }
   });
 
