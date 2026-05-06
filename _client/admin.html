@@ -281,6 +281,24 @@
     .stat-card { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
     .stat-label { font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
     .stat-value { font-size: 32px; font-weight: 800; color: #1a2d52; margin-top: 4px; }
+
+    /* ── 資料普及率 ── */
+    .completeness-owner-row { border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background .15s; }
+    .completeness-owner-row:hover { background: #f9fafb; }
+    .co-main { display: flex; align-items: center; gap: 10px; padding: 10px 4px; }
+    .co-name { width: 90px; font-size: 13px; font-weight: 600; color: #374151; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .co-bar-wrap { flex: 1; height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+    .co-bar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+    .co-pct { width: 40px; font-size: 13px; font-weight: 700; text-align: right; flex-shrink: 0; }
+    .co-count { font-size: 11px; color: #9ca3af; flex-shrink: 0; white-space: nowrap; }
+    .co-chevron { font-size: 10px; color: #9ca3af; transition: transform .2s; flex-shrink: 0; }
+    .co-detail { padding: 4px 4px 12px 104px; }
+    .co-detail.collapsed { display: none; }
+    .co-field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+    .co-field-label { width: 60px; color: #6b7280; flex-shrink: 0; }
+    .co-field-bar-wrap { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
+    .co-field-pct { width: 36px; font-weight: 600; text-align: right; flex-shrink: 0; }
+    .co-field-count { color: #9ca3af; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -371,6 +389,9 @@
       </div>
       <div class="admin-nav-item" data-sec="storage">
         <span class="admin-nav-icon">💾</span> 容量空間監控
+      </div>
+      <div class="admin-nav-item" data-sec="data-completeness">
+        <span class="admin-nav-icon">📊</span> 資料普及率
       </div>
       <div class="admin-nav-item" data-sec="api-stats">
         <span class="admin-nav-icon">📡</span> API 使用監控
@@ -1075,6 +1096,32 @@
         </div>
       </div>
 
+      <!-- ── 名片資料普及率 ── -->
+      <div class="admin-section" id="sec-data-completeness">
+        <div class="section-title">📊 名片資料普及率</div>
+        <div class="section-sub">各業務員名片核心欄位填寫比率監控（公司・職稱・電話・Email・產業・統編・地址・網站・系統廠商）</div>
+
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">整體欄位普及率</span>
+            <span id="completenessTotal" style="font-size:12px;color:#6b7280;margin-left:8px"></span>
+            <div style="flex:1"></div>
+            <button class="btn btn-sm btn-outline" onclick="loadCompleteness()">🔄 重新整理</button>
+          </div>
+          <div class="admin-card-body" id="completenessFieldsWrap">
+            <div style="color:#9ca3af;padding:20px 0;text-align:center">點擊「重新整理」載入資料</div>
+          </div>
+        </div>
+
+        <div class="admin-card" style="margin-top:16px">
+          <div class="admin-card-header">
+            <span class="admin-card-title">各業務員普及率</span>
+            <span style="font-size:12px;color:#6b7280;margin-left:8px">分數低者排前・點擊展開欄位明細</span>
+          </div>
+          <div class="admin-card-body" id="completenessOwnerWrap"></div>
+        </div>
+      </div>
+
       <!-- ── API 使用量監控 ── -->
       <div class="admin-section" id="sec-api-stats">
         <div class="section-title">📡 API 使用量監控</div>
@@ -1343,6 +1390,7 @@
         if (this.dataset.sec === 'contact-audit') initContactAudit();
         if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
         if (this.dataset.sec === 'storage') loadStorageInfo();
+        if (this.dataset.sec === 'data-completeness') loadCompleteness();
         if (this.dataset.sec === 'api-stats') loadApiStats();
         if (this.dataset.sec === 'infra-stats') loadInfraStats();
         if (this.dataset.sec === 'version') loadVersionInfo();
@@ -3330,6 +3378,71 @@
       btn.disabled = false;
     }
   });
+
+
+    // ── 名片資料普及率 ────────────────────────────────────────
+    async function loadCompleteness() {
+      const fw = document.getElementById('completenessFieldsWrap');
+      const ow = document.getElementById('completenessOwnerWrap');
+      if (fw) fw.innerHTML = '<div style="color:#9ca3af;padding:20px 0;text-align:center">載入中...</div>';
+      if (ow) ow.innerHTML = '';
+      try {
+        const r = await adminFetch('/api/admin/contact-completeness');
+        if (!r.ok) { if (fw) fw.innerHTML = '<div style="color:#ef4444;padding:20px 0">載入失敗</div>'; return; }
+        const { fields, byOwner, total } = await r.json();
+
+        const totalEl = document.getElementById('completenessTotal');
+        if (totalEl) totalEl.textContent = `共 ${total} 筆名片`;
+
+        const color = p => p >= 80 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444';
+
+        if (fw) fw.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">` +
+          fields.map(f => `
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+                <span style="color:#374151;font-weight:500">${f.label}</span>
+                <span style="font-weight:700;color:${color(f.pct)}">${f.pct}%</span>
+              </div>
+              <div style="background:#f3f4f6;border-radius:6px;height:8px;overflow:hidden">
+                <div style="height:100%;width:${f.pct}%;background:${color(f.pct)};border-radius:6px;transition:width .6s"></div>
+              </div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:3px">${f.filled} / ${f.total} 筆已填寫</div>
+            </div>`).join('') + `</div>`;
+
+        if (ow) ow.innerHTML = byOwner.length === 0
+          ? '<div style="color:#9ca3af;padding:16px 0;text-align:center">尚無資料</div>'
+          : byOwner.map(o => `
+            <div class="completeness-owner-row" onclick="toggleOwnerDetail(this)">
+              <div class="co-main">
+                <span class="co-name" title="${o.username}">${o.displayName}</span>
+                <div class="co-bar-wrap"><div class="co-bar-fill" style="width:${o.pct}%;background:${color(o.pct)}"></div></div>
+                <span class="co-pct" style="color:${color(o.pct)}">${o.pct}%</span>
+                <span class="co-count">${o.total} 筆</span>
+                <span class="co-chevron">▼</span>
+              </div>
+              <div class="co-detail collapsed">
+                ${o.fields.map(f => `
+                  <div class="co-field-row">
+                    <span class="co-field-label">${f.label}</span>
+                    <div class="co-field-bar-wrap"><div style="height:100%;width:${f.pct}%;background:${color(f.pct)};border-radius:3px"></div></div>
+                    <span class="co-field-pct" style="color:${color(f.pct)}">${f.pct}%</span>
+                    <span class="co-field-count">${f.filled}/${f.total}</span>
+                  </div>`).join('')}
+              </div>
+            </div>`).join('');
+      } catch(e) {
+        if (fw) fw.innerHTML = '<div style="color:#ef4444;padding:20px 0">發生錯誤，請稍後再試</div>';
+        console.error(e);
+      }
+    }
+
+    function toggleOwnerDetail(row) {
+      const detail = row.querySelector('.co-detail');
+      const chevron = row.querySelector('.co-chevron');
+      const isOpen = !detail.classList.contains('collapsed');
+      detail.classList.toggle('collapsed', isOpen);
+      chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    }
 
   </script>
 </body>

@@ -994,6 +994,60 @@ app.get('/api/admin/logs', requireAdmin, (req, res) => {
   } catch { res.json([]); }
 });
 
+// ── Admin: 名片資料普及率 ──────────────────────────────────
+app.get('/api/admin/contact-completeness', requireAdmin, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const contacts = (data.contacts || []).filter(c => !c.deleted);
+
+  const CORE_FIELDS = [
+    { key: 'company',      label: '公司',     check: c => !!c.company },
+    { key: 'title',        label: '職稱',     check: c => !!c.title },
+    { key: 'phone',        label: '電話',     check: c => !!(c.phone || c.mobile) },
+    { key: 'email',        label: 'Email',    check: c => !!c.email },
+    { key: 'industry',     label: '產業別',   check: c => !!c.industry },
+    { key: 'taxId',        label: '統一編號', check: c => !!c.taxId },
+    { key: 'address',      label: '地址',     check: c => !!c.address },
+    { key: 'website',      label: '網站',     check: c => !!c.website },
+    { key: 'systemVendor', label: '系統廠商', check: c => !!c.systemVendor },
+  ];
+
+  const total = contacts.length;
+  const fields = CORE_FIELDS.map(f => {
+    const filled = contacts.filter(c => f.check(c)).length;
+    return { key: f.key, label: f.label, filled, total,
+             pct: total > 0 ? Math.round(filled / total * 100) : 0 };
+  });
+
+  const byOwnerMap = {};
+  contacts.forEach(c => {
+    const o = c.owner || 'unknown';
+    if (!byOwnerMap[o]) byOwnerMap[o] = [];
+    byOwnerMap[o].push(c);
+  });
+
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+
+  const byOwner = Object.entries(byOwnerMap).map(([username, cs]) => {
+    const ownerFields = CORE_FIELDS.map(f => {
+      const filled = cs.filter(c => f.check(c)).length;
+      return { key: f.key, label: f.label, filled, total: cs.length,
+               pct: cs.length > 0 ? Math.round(filled / cs.length * 100) : 0 };
+    });
+    const totalFilled   = ownerFields.reduce((s, f) => s + f.filled, 0);
+    const totalPossible = CORE_FIELDS.length * cs.length;
+    return {
+      username, displayName: userMap[username] || username,
+      total: cs.length,
+      pct: totalPossible > 0 ? Math.round(totalFilled / totalPossible * 100) : 0,
+      fields: ownerFields
+    };
+  }).sort((a, b) => a.pct - b.pct);
+
+  res.json({ fields, byOwner, total, updatedAt: new Date().toISOString() });
+});
+
 // ── Admin: check current user permissions ────────────────
 app.get('/api/me/permissions', requireAuth, (req, res) => {
   const auth = loadAuth();
