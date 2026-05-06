@@ -3959,9 +3959,9 @@ function updateTargetCard() {
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
 
   if (window._myRole === 'manager1') {
-    // 一級主管：業績總額 = 所有部屬（含 manager2 + user）年度目標加總
+    // 一級主管：業績總額 = 所有部屬年度目標加總（排除 manager1 自身的目標記錄）
     const totalAmount = allTargets
-      .filter(t => t.year === year)
+      .filter(t => t.year === year && t.owner !== myUsername)
       .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     if (!totalAmount) {
       $('targetAmountDisplay').textContent = '部屬尚未設定目標';

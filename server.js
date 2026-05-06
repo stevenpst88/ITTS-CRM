@@ -1493,14 +1493,23 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     }
     const myOpps = (data.opportunities || []).filter(o => rowOwners.includes(o.owner));
 
-    // 成交：以 achievedDate 為準，無則 createdAt
-    const achieved = myOpps
-      .filter(o => o.stage === 'Won')
-      .filter(o => {
-        const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
-        return d >= yearStart && d <= yearEnd;
-      })
-      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    // 成交：逐月計算（手動認列優先，否則從 Won 商機加總）
+    let achieved = 0;
+    const monthlyBudgetsData = data.monthlyBudgets || [];
+    rowOwners.forEach(owner => {
+      const budRec = monthlyBudgetsData.find(b => b.owner === owner && b.year === year);
+      for (let m = 1; m <= 12; m++) {
+        if (budRec && budRec.actuals) {
+          const v = budRec.actuals[m - 1];
+          if (v !== null && v !== undefined) { achieved += v; continue; }
+        }
+        const ownerOpps = myOpps.filter(o => o.owner === owner && o.stage === 'Won');
+        achieved += ownerOpps.filter(o => {
+          const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+          return d >= yearStart && d <= yearEnd && d.getMonth() + 1 === m;
+        }).reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+      }
+    });
 
     // 在手商機（排除 Won、D 停止中）
     const pipeline = myOpps
@@ -5056,13 +5065,29 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
 
     // ── 1. 業績達成度 ──
     const totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-    const achieved = opps
-      .filter(o => o.stage === 'Won')
-      .filter(o => {
-        const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
-        return d.getFullYear() === yearNum;
-      })
-      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+    // 已達成：逐月計算（手動認列優先，否則從 Won 商機加總）
+    const monthlyBudgets = data.monthlyBudgets || [];
+    let achieved = 0;
+    owners.forEach(owner => {
+      const budRec = monthlyBudgets.find(b => b.owner === owner && b.year === yearNum);
+      for (let m = 1; m <= 12; m++) {
+        if (budRec && budRec.actuals) {
+          const v = budRec.actuals[m - 1];
+          if (v !== null && v !== undefined) { achieved += v; continue; }
+        }
+        // 無手動認列 → 從 Won 商機抓該月
+        const monthActual = opps
+          .filter(o => o.owner === owner && o.stage === 'Won')
+          .filter(o => {
+            const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+            return d.getFullYear() === yearNum && d.getMonth() + 1 === m;
+          })
+          .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+        achieved += monthActual;
+      }
+    });
+
     const achievementPct = totalTarget > 0 ? Math.round((achieved / totalTarget) * 100) : null;
 
     // ── 2. 本月可望成交（expectedDate 落在當月、stage 非 Won/D）──
