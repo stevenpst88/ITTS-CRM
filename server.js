@@ -1466,12 +1466,22 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
 
   const rows = salesUsers.map(u => {
-    const target = (data.targets || []).find(t => t.owner === u.username && t.year === year);
+    // manager1 的目標 = 部屬（非 manager1）年度目標加總；避免手動殘留值
+    let targetAmount;
+    if (u.role === 'manager1') {
+      targetAmount = (data.targets || [])
+        .filter(t => t.year === year && viewableUsernames.includes(t.owner) && t.owner !== u.username)
+        .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
+    } else {
+      const t = (data.targets || []).find(t2 => t2.owner === u.username && t2.year === year);
+      targetAmount = t ? parseFloat(t.amount) || 0 : null;
+    }
+    const target = targetAmount !== null ? { amount: targetAmount } : null;
 
     // 主管彙總轄下所有人的商機；一般業務只看自己
     let rowOwners;
     if (u.role === 'manager1') {
-      // 一級主管：彙總所有可見成員（含 manager2 + user + 自己）
+      // 一級主管：彙總所有可見成員（含 manager2 + user）
       rowOwners = viewableUsernames;
     } else if (u.role === 'manager2') {
       // 二級主管：彙總 user 角色 + 自己（不含其他 manager2）
