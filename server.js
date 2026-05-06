@@ -427,32 +427,6 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
 });
 
-// ── 除錯：當前可見範圍（協助診斷 BU 隔離）──────────────
-app.get('/api/_debug/visibility', requireAuth, (req, res) => {
-  const auth = loadAuth();
-  const me = auth.users.find(u => u.username === req.session.user.username);
-  const sessionUser = req.session.user;
-  const owners = getViewableOwners(req, 'opportunities');
-  const data = db.load();
-  const budgets = (data.monthlyBudgets || []).filter(b => owners.includes(b.owner));
-  res.json({
-    session: {
-      username: sessionUser.username,
-      role:     sessionUser.role,
-      buInSession: sessionUser.bu,
-    },
-    authJson: {
-      username: me?.username,
-      role:     me?.role,
-      buInAuth: me?.bu,
-      buNormalized: normalizeBu(me?.bu),
-    },
-    allUsersBu: auth.users.map(u => ({ username: u.username, role: u.role, bu: u.bu })),
-    viewableOwners: owners,
-    visibleMonthlyBudgetOwners: budgets.map(b => b.owner),
-  });
-});
-
 // ── 自助更改密碼（登入者本人）────────────────────────────
 app.put('/api/user/password', requireAuth, async (req, res) => {
   try {
