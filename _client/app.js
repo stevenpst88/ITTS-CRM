@@ -2522,17 +2522,72 @@ $('calTodayBtn').addEventListener('click', () => {
   renderCalendar();
 });
 
-// 填充客戶公司下拉選單
+// 填充客戶公司搜尋輸入框（編輯時帶入預選值）
 function populateCompanySelect(selectedCompany = '') {
-  const sel = $v('visitCompany');
-  sel.innerHTML = '<option value="">-- 請選擇客戶 --</option>';
-  const companies = [...new Set(allContacts.map(c => c.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-TW'));
-  companies.forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    if (name === selectedCompany) opt.selected = true;
-    sel.appendChild(opt);
+  const inp = $v('visitCompanyInput');
+  const hidden = $v('visitCompany');
+  inp.value = selectedCompany;
+  hidden.value = selectedCompany;
+  $v('visitCompanyDropdown').classList.remove('open');
+  if (selectedCompany) populateContactSelect(selectedCompany);
+}
+
+// 初始化公司關鍵字搜尋（只需執行一次）
+function setupCompanySearch() {
+  const inp      = $v('visitCompanyInput');
+  const hidden   = $v('visitCompany');
+  const dropdown = $v('visitCompanyDropdown');
+
+  function getCompanies() {
+    return [...new Set(allContacts.map(c => c.company).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  }
+
+  function showDropdown(list) {
+    if (list.length === 0) { dropdown.innerHTML = ''; dropdown.classList.remove('open'); return; }
+    dropdown.innerHTML = list.map(c =>
+      `<div class="csd-item" data-val="${escapeHtml(c)}">${escapeHtml(c)}</div>`
+    ).join('');
+    dropdown.classList.add('open');
+  }
+
+  function selectCompany(val) {
+    inp.value = val;
+    hidden.value = val;
+    dropdown.classList.remove('open');
+    populateContactSelect(val);
+  }
+
+  inp.addEventListener('input', () => {
+    const q = inp.value.trim().toLowerCase();
+    hidden.value = '';        // 清空已選，等使用者從清單點選
+    populateContactSelect('');
+    const matches = q ? getCompanies().filter(c => c.toLowerCase().includes(q)) : getCompanies();
+    showDropdown(matches);
+  });
+
+  inp.addEventListener('focus', () => {
+    // 聚焦時若為空或尚未從清單選取，顯示全部清單
+    if (!hidden.value) {
+      const q = inp.value.trim().toLowerCase();
+      const matches = q ? getCompanies().filter(c => c.toLowerCase().includes(q)) : getCompanies();
+      showDropdown(matches);
+    }
+  });
+
+  dropdown.addEventListener('mousedown', e => {
+    // mousedown 在 blur 之前，避免 blur 先把 dropdown 關掉
+    e.preventDefault();
+    const item = e.target.closest('.csd-item');
+    if (item) selectCompany(item.dataset.val);
+  });
+
+  inp.addEventListener('blur', () => {
+    // 若輸入的文字不在清單內，清空（避免半輸入狀態）
+    setTimeout(() => {
+      dropdown.classList.remove('open');
+      if (!hidden.value) { inp.value = ''; populateContactSelect(''); }
+    }, 150);
   });
 }
 
@@ -2558,10 +2613,8 @@ function populateContactSelect(company = '', selectedContactId = '') {
   if (contacts.length === 1) sel.value = contacts[0].id;
 }
 
-// 公司選單變動時聯動聯絡人選單
-$v('visitCompany').addEventListener('change', function () {
-  populateContactSelect(this.value);
-});
+// 初始化搜尋（首次載入時執行）
+setupCompanySearch();
 
 // ── 商機類別 → 商品選單 ──────────────────────────────────
 const OPP_PRODUCTS = {

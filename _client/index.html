@@ -1764,9 +1764,11 @@
         <div class="form-grid">
           <div class="form-group full-width required">
             <label>客戶名稱</label>
-            <select id="visitCompany">
-              <option value="">-- 請選擇客戶 --</option>
-            </select>
+            <div class="company-search-wrap">
+              <input type="text" id="visitCompanyInput" class="company-search-input" placeholder="輸入公司名稱關鍵字搜尋..." autocomplete="off">
+              <input type="hidden" id="visitCompany">
+              <div class="company-search-dropdown" id="visitCompanyDropdown"></div>
+            </div>
           </div>
           <div class="form-group full-width required">
             <label>聯絡人</label>

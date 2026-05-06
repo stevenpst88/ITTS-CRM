@@ -3202,3 +3202,49 @@ body {
   accent-color: #1a3c7a;
   cursor: pointer;
 }
+
+/* ── 公司名稱關鍵字搜尋（拜訪記錄 Modal） ── */
+.company-search-wrap {
+  position: relative;
+}
+.company-search-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.company-search-input:focus {
+  border-color: #1a3c7a;
+  box-shadow: 0 0 0 3px rgba(26,60,122,.1);
+}
+.company-search-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.12);
+  z-index: 300;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.company-search-dropdown.open { display: block; }
+.csd-item {
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: background .12s;
+}
+.csd-item:hover {
+  background: #eff6ff;
+  color: #1a3c7a;
+  font-weight: 500;
+}
