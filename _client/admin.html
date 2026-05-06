@@ -333,6 +333,7 @@
     <div class="admin-topbar-right">
       <span class="admin-user" id="adminUser"></span>
       <a href="/" class="btn-back">← 返回系統</a>
+      <button class="btn-back" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5" onclick="adminLogout()">登出</button>
     </div>
   </div>
 
@@ -1459,7 +1460,11 @@
       });
     });
 
-    // ── 管理者登入 ──
+    // ── 管理者登入 / 登出 ──
+    async function adminLogout() {
+      try { await fetch(`${API}/logout`, { method: 'POST' }); } catch {}
+      window.location.href = '/';
+    }
     function showLoginScreen() {
       $('adminLoginScreen').classList.add('show');
     }
