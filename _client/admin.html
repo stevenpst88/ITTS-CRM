@@ -3321,7 +3321,7 @@
 
     // 取得非 admin 帳號列表（從 allUsers 或重新 fetch）
     const users = (typeof allUsers !== 'undefined' ? allUsers : [])
-      .filter(u => !['admin'].includes(u.role) && u.active !== false);
+      .filter(u => !['admin', 'manager1'].includes(u.role) && u.active !== false);
 
     if (!users.length) {
       wrap.innerHTML = '<div style="color:#9ca3af;font-size:13px">請先切換至「帳號管理」以載入帳號清單，再返回此頁面。</div>';

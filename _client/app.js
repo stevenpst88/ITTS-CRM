@@ -3268,7 +3268,8 @@ async function loadManagerAchievement(year) {
   try {
     const res = await fetch(`/api/manager/achievement?year=${year}`);
     if (!res.ok) return;
-    const { rows } = await res.json();
+    const { rows: rawRows } = await res.json();
+    const rows = rawRows.filter(r => r.role !== 'manager1'); // 一級主管不顯示個人達成率卡
     const container = $('managerAchTable');
 
     if (!rows.length) { container.innerHTML = '<div style="color:#aaa;text-align:center;padding:20px">暫無資料</div>'; return; }
