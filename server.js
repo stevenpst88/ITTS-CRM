@@ -5064,7 +5064,18 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const targets = (data.targets || []).filter(t => targetOwners.includes(t.owner) && t.year === yearNum);
 
     // ── 1. 業績達成度 ──
-    const totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    // manager1：目標來自月度預算收入金額加總（排除自身）；其他角色用傳統年度目標
+    let totalTarget;
+    if (role === 'manager1') {
+      const mgr1Self = req.session.user.username;
+      totalTarget = (data.monthlyBudgets || [])
+        .filter(b => b.year === yearNum && owners.includes(b.owner) && b.owner !== mgr1Self)
+        .reduce((sum, b) => sum + b.months.reduce((s, v) => s + (v || 0), 0), 0);
+      // 若無月度預算資料，fallback 到傳統目標
+      if (!totalTarget) totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    } else {
+      totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    }
 
     // 已達成：逐月計算（手動認列優先，否則從 Won 商機加總）
     const monthlyBudgets = data.monthlyBudgets || [];

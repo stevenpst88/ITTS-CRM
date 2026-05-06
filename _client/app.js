@@ -3959,10 +3959,11 @@ function updateTargetCard() {
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
 
   if (window._myRole === 'manager1') {
-    // 一級主管：業績總額 = 所有部屬年度目標加總（排除 manager1 自身的目標記錄）
-    const totalAmount = allTargets
-      .filter(t => t.year === year && t.owner !== myUsername)
-      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    // 一級主管：年度業績目標 = 所有部屬月度預算「收入金額」加總
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
+    const totalAmount = budgetRecs.reduce(function(sum, b) {
+      return sum + b.months.reduce(function(s, v) { return s + (v || 0); }, 0);
+    }, 0);
     if (!totalAmount) {
       $('targetAmountDisplay').textContent = '部屬尚未設定目標';
       $('targetRateDisplay').textContent = '--';
@@ -4004,13 +4005,13 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
   let qRatioDisplay; // [q1%, q2%, q3%, q4%] 用於顯示的配比數字
 
   if (isManager1Mode) {
-    // 一級主管：各季目標 = 彙整所有部屬（各自年度目標 × 個人季度配比）
+    // 一級主管：各季目標 = 直接從月度預算各月加總（Q1=1-3月, Q2=4-6月, etc.）
+    const myU = window._myUsername || '';
     qTargets = [0, 0, 0, 0];
-    allTargets.filter(t => t.year === year && (parseFloat(t.amount) || 0) > 0).forEach(st => {
-      const r = getUserRatios(st.owner, year);
-      if (r) {
-        for (let i = 0; i < 4; i++) {
-          qTargets[i] += Math.round(st.amount * (r[i] || 0) / 100);
+    allMonthlyBudgets.filter(b => b.year === year && b.owner !== myU).forEach(b => {
+      for (let q = 0; q < 4; q++) {
+        for (let m = 0; m < 3; m++) {
+          qTargets[q] += b.months[q * 3 + m] || 0;
         }
       }
     });
