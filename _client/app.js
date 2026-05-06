@@ -2726,6 +2726,7 @@ function renderKanban() {
         renderDashboardCharts();
         if (newStage === 'Won') {
           celebrateWon(opp);
+          setTimeout(() => promptConvertToCustomer(opp), 3600);
         } else {
           const stageLabel = KANBAN_STAGES.find(s => s.key === newStage)?.label.split('｜')[1] || newStage;
           showToast(`✅ 已移至 ${newStage}｜${stageLabel}`);
@@ -2814,6 +2815,53 @@ function celebrateWon(opp) {
     card.className = 'won-celeb-out';
     setTimeout(() => { overlay.style.display = 'none'; card.className = ''; overlay.style.pointerEvents = 'none'; overlay.onclick = null; }, 400);
   };
+}
+
+// ── 成交後自動提示轉換為我的客戶 ─────────────────────────
+async function promptConvertToCustomer(opp) {
+  if (!opp || !opp.company) return;
+
+  // 確保 allContacts 已載入
+  if (allContacts.length === 0) {
+    try {
+      const r = await fetch(`${API}/contacts`);
+      if (r.ok) allContacts = await r.json();
+    } catch { return; }
+  }
+
+  // 確認此公司是否仍有「潛在客戶」身份的名片
+  const companyContacts = allContacts.filter(c => c.company === opp.company);
+  const hasProspects = companyContacts.some(c => c.customerType !== 'customer');
+  if (!hasProspects) return; // 已全部是我的客戶，略過
+
+  // 找到關聯名片（優先用 contactId，次選同公司第一筆）
+  const linkedContact = allContacts.find(c => c.id === opp.contactId) || companyContacts[0];
+  if (!linkedContact) return;
+
+  // 顯示 ERP / ITS 選擇對話框
+  document.querySelectorAll('.product-line-overlay').forEach(el => el.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'product-line-overlay';
+  overlay.innerHTML = `
+    <div class="product-line-modal">
+      <div class="product-line-title">🎉 轉換為我的客戶</div>
+      <div class="product-line-sub">「${escapeHtml(opp.company)}」已成交！<br>請選擇客戶類別，系統將自動更新該公司所有名片狀態。</div>
+      <div class="product-line-options">
+        <button class="pl-btn pl-erp" data-pl="ERP">ERP 客戶</button>
+        <button class="pl-btn pl-its" data-pl="ITS">ITS 客戶</button>
+      </div>
+      <button class="pl-cancel">稍後再設定</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('.pl-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const pl = btn.dataset.pl;
+      overlay.remove();
+      await setCustomerType(linkedContact.id, 'customer', pl);
+    });
+  });
+  overlay.querySelector('.pl-cancel').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 function buildKanbanCard(o) {
@@ -3005,6 +3053,13 @@ $('oppEditSave').addEventListener('click', async () => {
     if (currentSection === 'prospects' || currentSection === 'contacts') loadContacts();
     closeOppEdit();
     showToast('商機已更新');
+    if (newStage === 'Won') {
+      const wonOpp = allOpportunities.find(x => x.id === id);
+      if (wonOpp) {
+        celebrateWon(wonOpp);
+        setTimeout(() => promptConvertToCustomer(wonOpp), 3600);
+      }
+    }
   } catch { showToast('儲存失敗，請重試'); }
 });
 
@@ -3669,7 +3724,10 @@ async function updateOppStage(id, stage, confirmWon = false) {
     if (currentSection === 'prospects' || currentSection === 'contacts') loadContacts();
     if (stage === 'Won') {
       const opp = allOpportunities.find(x => x.id === id);
-      if (opp) celebrateWon(opp);
+      if (opp) {
+        celebrateWon(opp);
+        setTimeout(() => promptConvertToCustomer(opp), 3600);
+      }
     } else {
       showToast(isWon ? `✅ 已標記成交，計入年度業績` : '商機狀態已更新');
     }
