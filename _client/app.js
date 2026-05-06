@@ -3764,10 +3764,51 @@ function getQuarterPipeline(year, q) {
     .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
 }
 
-// 取得某年某季的成交金額（q=1~4）
-function getQuarterAchieved(year, q) {
-  const qStart = (q - 1) * 3 + 1; // 月份 1~12
+// 取得某業務員某月最終實際值（手動認列優先，否則從 Won 商機自動計算）
+function getMonthActualFinal(year, month, owner) {
+  const rec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
+  if (rec && rec.actuals) {
+    const v = rec.actuals[month - 1];
+    if (v !== null && v !== undefined) return v;
+  }
+  return getMonthActual(year, month, owner);
+}
+
+// 取得某年某季的成交金額，考慮手動認列覆蓋
+function getQuarterAchieved(year, q, isManager1Mode, ownerForUser) {
+  const qStart = (q - 1) * 3 + 1;
   const qEnd   = q * 3;
+
+  if (!isManager1Mode && ownerForUser) {
+    // 一般業務 / manager2：逐月加總（手動認列優先）
+    let sum = 0;
+    for (let m = qStart; m <= qEnd; m++) {
+      sum += getMonthActualFinal(year, m, ownerForUser);
+    }
+    return sum;
+  }
+
+  if (isManager1Mode) {
+    // 一級主管：有預算記錄的業務員用認列值，其他用 Won 商機
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year);
+    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
+    let sum = 0;
+    budgetRecs.forEach(b => {
+      for (let m = qStart; m <= qEnd; m++) sum += getMonthActualFinal(year, m, b.owner);
+    });
+    // 補上沒有預算記錄的業務員的 Won 商機
+    sum += allOpportunities
+      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner))
+      .filter(o => {
+        const d = o.achievedDate ? new Date(o.achievedDate) : new Date(o.createdAt);
+        const m = d.getMonth() + 1;
+        return d.getFullYear() === year && m >= qStart && m <= qEnd;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    return sum;
+  }
+
+  // Fallback：直接用 Won 商機
   return allOpportunities
     .filter(o => o.stage === 'Won')
     .filter(o => {
@@ -3792,7 +3833,26 @@ function getAchievedAmount(year) {
 function updateTargetCard() {
   const year = new Date().getFullYear();
   $('targetAchYear').textContent = `${year} 年度業績目標`;
-  const achieved = getAchievedAmount(year);
+  // 年度達成：逐月加總（手動認列優先），12 個月加總
+  const myUsername = window._myUsername || '';
+  const isM1 = window._myRole === 'manager1';
+  let achieved = 0;
+  if (isM1) {
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year);
+    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
+    budgetRecs.forEach(b => {
+      for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
+    });
+    achieved += allOpportunities
+      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner))
+      .filter(o => {
+        const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
+        return y === year;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+  } else {
+    for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, myUsername);
+  }
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
 
   if (window._myRole === 'manager1') {
@@ -3816,7 +3876,6 @@ function updateTargetCard() {
   }
 
   // 一般業務 / manager2：顯示自己的年度目標
-  const myUsername = window._myUsername || '';
   const target = allTargets.find(t => t.year === year && t.owner === myUsername)
                || allTargets.find(t => t.year === year); // fallback（未設 _myUsername 時）
   if (!target || !target.amount) {
@@ -3879,7 +3938,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     const q = i + 1;
     const ratio   = qRatioDisplay[i] || 0;
     const qTarget = qTargets[i] || 0;
-    const qAch    = getQuarterAchieved(year, q);
+    const qAch    = getQuarterAchieved(year, q, isManager1Mode, isManager1Mode ? null : (window._myUsername || ''));
     const gap     = qAch - qTarget;
     const isFuture = q > curQ;
     const isCurrent = q === curQ;
