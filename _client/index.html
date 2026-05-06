@@ -179,6 +179,7 @@
             <input type="text" id="prospectSearchInput" placeholder="搜尋潛在客戶...">
             <button class="clear-search" id="prospectClearSearch">&#10005;</button>
           </div>
+          <button class="btn btn-outline" id="manageGroupsBtnP">&#127968; 集團管理</button>
           <button class="btn btn-primary" id="addProspectBtn">&#43; 新增潛在客戶</button>
         </div>
         <div class="topbar-actions" id="contactsToolbar" style="display:none">
@@ -187,6 +188,7 @@
             <input type="text" id="searchInput" placeholder="搜尋姓名、公司、電話、Email...">
             <button class="clear-search" id="clearSearch" title="清除搜尋">&#10005;</button>
           </div>
+          <button class="btn btn-outline" id="manageGroupsBtn">&#127968; 集團管理</button>
           <button class="btn btn-export" id="exportBtn">&#128196; 匯出 Excel</button>
           <button class="btn btn-primary" id="addBtn">&#43; 新增名片</button>
         </div>
@@ -2388,6 +2390,73 @@
           <button class="btn" id="changePwCancel" style="background:#f0f2f5;color:#333">取消</button>
           <button class="btn btn-primary" id="changePwSubmit">確認更改</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 集團清單 Modal -->
+  <div class="modal-overlay" id="groupListModalOverlay">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header">
+        <h2>&#127968; 集團管理</h2>
+        <button class="modal-close" id="groupListModalClose">&#10005;</button>
+      </div>
+      <div class="modal-body" id="groupListModalBody" style="min-height:80px;max-height:420px;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="groupListAddBtn">&#43; 新增集團</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 集團編輯 Modal -->
+  <div class="modal-overlay" id="groupModalOverlay">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <h2 id="groupModalTitle">新增集團</h2>
+        <button class="modal-close" id="groupModalClose">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="groupModalId">
+        <div class="form-row">
+          <label class="form-label">集團名稱 <span style="color:#ef4444">*</span></label>
+          <input type="text" class="form-input" id="groupModalName" placeholder="例：保瑞集團">
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label class="form-label">統一編號</label>
+            <input type="text" class="form-input" id="groupModalTaxId" placeholder="集團總部統編">
+          </div>
+          <div>
+            <label class="form-label">產業別</label>
+            <select class="form-input" id="groupModalIndustry">
+              <option value="">-- 請選擇 --</option>
+              <option>生技醫療</option><option>製造業</option><option>科技業</option>
+              <option>金融服務</option><option>零售流通</option><option>建設營造</option>
+              <option>餐飲食品</option><option>教育培訓</option><option>政府/非營利</option><option>其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">官方網站</label>
+          <input type="text" class="form-input" id="groupModalWebsite" placeholder="https://...">
+        </div>
+        <div class="form-row">
+          <label class="form-label">地址</label>
+          <input type="text" class="form-input" id="groupModalAddress" placeholder="集團總部地址">
+        </div>
+        <div class="form-row">
+          <label class="form-label">備註</label>
+          <textarea class="form-input" id="groupModalNote" rows="2" style="resize:vertical"></textarea>
+        </div>
+        <div class="form-row">
+          <label class="form-label">子公司（勾選加入集團）</label>
+          <div id="groupModalCompanyList" class="group-company-checklist"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="groupModalDeleteBtn" style="display:none">&#128465; 刪除集團</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" id="groupModalSaveBtn">&#10003; 儲存</button>
       </div>
     </div>
   </div>

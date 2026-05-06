@@ -3064,3 +3064,141 @@ body {
 .opr-pipeline {
   font-size:10px; color:#9ca3af; margin-top:4px; text-align:right;
 }
+
+/* ═══════════════════════════════════════════════════════
+   集團卡（group-card）
+   ═══════════════════════════════════════════════════════ */
+.group-card {
+  background: #fff;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(26,60,122,.12);
+  border: 1px solid rgba(26,60,122,.15);
+  overflow: hidden;
+}
+.group-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #1a2e5a 0%, #1a3c7a 60%, #1e4d9b 100%);
+  cursor: pointer;
+  user-select: none;
+}
+.group-card-avatar {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.group-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.group-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.group-card-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.gc-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.gc-taxid {
+  background: rgba(255,255,255,.15);
+  color: #e0e7ff;
+  border: 1px solid rgba(255,255,255,.25);
+}
+.gc-industry {
+  background: rgba(99,179,237,.25);
+  color: #bfdbfe;
+  border: 1px solid rgba(99,179,237,.35);
+}
+.group-card-stats {
+  font-size: 11px;
+  color: rgba(255,255,255,.65);
+}
+.group-edit-btn {
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.25);
+  color: #e0e7ff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .2s;
+}
+.group-edit-btn:hover {
+  background: rgba(255,255,255,.25);
+}
+.group-card-chevron {
+  color: rgba(255,255,255,.6);
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: transform .25s;
+}
+.group-card.expanded .group-card-chevron {
+  transform: rotate(180deg);
+}
+.group-card-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.group-card-body.collapsed {
+  display: none;
+}
+/* 子公司在集團體內稍微縮排 */
+.group-card-body .company-group {
+  border-left: 3px solid rgba(26,60,122,.25);
+  border-radius: 10px;
+}
+
+/* 集團清單 Modal 每行 */
+.glist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.glist-row:last-child { border-bottom: none; }
+.glist-info { flex: 1; }
+.glist-name { font-size: 14px; font-weight: 700; color: #1a3c7a; }
+.glist-sub  { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+
+/* 集團編輯 Modal — 子公司 checklist */
+.group-company-checklist {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.group-co-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+.group-co-check input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a3c7a;
+  cursor: pointer;
+}

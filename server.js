@@ -1214,6 +1214,63 @@ app.delete('/api/contacts/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ── 集團 CRUD ──────────────────────────────────────────────
+app.get('/api/groups', requireAuth, (req, res) => {
+  const owner = req.session.user.username;
+  const data = db.load();
+  if (!data.groups) data.groups = [];
+  res.json(data.groups.filter(g => g.owner === owner));
+});
+
+app.post('/api/groups', requireAuth, (req, res) => {
+  const owner = req.session.user.username;
+  const { name, taxId, industry, website, address, note, memberCompanies } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: '集團名稱為必填' });
+  const data = db.load();
+  if (!data.groups) data.groups = [];
+  const group = {
+    id: uuidv4(), owner, name: name.trim(), taxId: taxId || '', industry: industry || '',
+    website: website || '', address: address || '', note: note || '',
+    memberCompanies: Array.isArray(memberCompanies) ? memberCompanies : [],
+    createdAt: new Date().toISOString()
+  };
+  data.groups.push(group);
+  db.save(data);
+  writeLog('CREATE_GROUP', owner, group.name, `集團：${group.name}`, req);
+  res.json(group);
+});
+
+app.put('/api/groups/:id', requireAuth, (req, res) => {
+  const owner = req.session.user.username;
+  const data = db.load();
+  if (!data.groups) data.groups = [];
+  const idx = data.groups.findIndex(g => g.id === req.params.id && g.owner === owner);
+  if (idx === -1) return res.status(404).json({ error: '找不到此集團' });
+  const { name, taxId, industry, website, address, note, memberCompanies } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: '集團名稱為必填' });
+  data.groups[idx] = {
+    ...data.groups[idx], name: name.trim(), taxId: taxId || '',
+    industry: industry || '', website: website || '', address: address || '', note: note || '',
+    memberCompanies: Array.isArray(memberCompanies) ? memberCompanies : [],
+    updatedAt: new Date().toISOString()
+  };
+  db.save(data);
+  writeLog('UPDATE_GROUP', owner, name, `集團：${name}`, req);
+  res.json(data.groups[idx]);
+});
+
+app.delete('/api/groups/:id', requireAuth, (req, res) => {
+  const owner = req.session.user.username;
+  const data = db.load();
+  if (!data.groups) data.groups = [];
+  const idx = data.groups.findIndex(g => g.id === req.params.id && g.owner === owner);
+  if (idx === -1) return res.status(404).json({ error: '找不到此集團' });
+  const [deleted] = data.groups.splice(idx, 1);
+  db.save(data);
+  writeLog('DELETE_GROUP', owner, deleted.name, `集團：${deleted.name}`, req);
+  res.json({ success: true });
+});
+
 // ── 上傳名片圖片 ────────────────────────────────────────
 app.post('/api/upload', requireAuth, upload.single('card'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '未收到圖片' });

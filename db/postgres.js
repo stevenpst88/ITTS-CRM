@@ -53,7 +53,7 @@ async function loadAsync() {
   const { rows } = await pool.query(`SELECT content FROM app_data WHERE id = 'main'`);
   if (rows.length === 0) {
     // 第一次：建立空資料結構
-    const empty = { contacts: [] };
+    const empty = { contacts: [], groups: [] };
     await pool.query(
       `INSERT INTO app_data (id, content) VALUES ('main', $1)`,
       [JSON.stringify(empty)]

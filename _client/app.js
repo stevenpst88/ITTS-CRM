@@ -689,8 +689,8 @@ function showSection(section) {
   $('contactsToolbar').style.display  = section === 'contacts'  ? 'flex' : 'none';
   $('visitsToolbar').style.display    = section === 'visits'    ? 'flex' : 'none';
   setActiveNav(section);
-  if (section === 'prospects')   loadContacts();
-  if (section === 'contacts')    loadContacts();
+  if (section === 'prospects')   { loadContacts(); loadGroups(); }
+  if (section === 'contacts')    { loadContacts(); loadGroups(); }
   if (section === 'visits')      { loadVisits(); if (allContacts.length === 0) loadContacts(); }
   if (section === 'targets')     loadTargetsView();
   if (section === 'pipeline')    loadPipelineView();
@@ -934,7 +934,7 @@ function renderContacts(contacts) {
     list.className = 'contact-list';
     contacts.forEach(c => list.appendChild(buildContactCard(c)));
   } else {
-    // 預設模式：依公司分組堆疊
+    // 預設模式：集團卡 → 子公司卡 → 聯絡人卡 三層分組
     list.className = 'contact-list grouped';
     const withCompany = new Map();
     const noCompany = [];
@@ -947,96 +947,26 @@ function renderContacts(contacts) {
       }
     });
 
-    // 依公司名排序
+    // 建立 公司名 → 集團 的映射
+    const companyToGroup = new Map();
+    allGroups.forEach(g => g.memberCompanies.forEach(co => companyToGroup.set(co, g)));
+    const groupedCompanyNames = new Set(companyToGroup.keys());
+    const renderedGroupIds = new Set();
+
+    // 先渲染集團卡（只渲染有聯絡人的集團）
+    allGroups.forEach(group => {
+      const hasContacts = group.memberCompanies.some(co => withCompany.has(co));
+      if (!hasContacts || renderedGroupIds.has(group.id)) return;
+      renderedGroupIds.add(group.id);
+      list.appendChild(buildGroupCard(group, withCompany));
+    });
+
+    // 再渲染無集團的公司
     [...withCompany.entries()]
+      .filter(([company]) => !groupedCompanyNames.has(company))
       .sort(([a], [b]) => a.localeCompare(b, 'zh-TW'))
       .forEach(([company, members]) => {
-        const primary = members.find(c => c.isPrimary) || members[0];
-        const opp = members.find(c => c.opportunityStage)?.opportunityStage;
-        const industry = members.find(c => c.industry)?.industry;
-        const [c1, c2] = avatarColor(company);
-        const oppBadge = opp
-          ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[opp]?.cls || ''}">${opp}｜${OPPORTUNITY_LABELS[opp]?.label.split('｜')[1] || ''}</span>` : '';
-        const industryBadge = industry ? `<span class="industry-badge">${industry}</span>` : '';
-
-        // 最近拜訪記錄
-        const memberIds = new Set(members.map(c => c.id));
-        const recentVisit = [...allVisits]
-          .filter(v => memberIds.has(v.contactId))
-          .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
-          [0];
-
-        // 最近商機
-        const recentOpp = [...allOpportunities]
-          .filter(o => (o.company || '') === company && o.stage !== 'Won')
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-          [0];
-
-        const recentVisitHtml = recentVisit
-          ? `<div class="cg-recent-row">
-               <span class="cg-recent-icon">&#128203;</span>
-               <span class="cg-recent-date">${recentVisit.visitDate || ''}</span>
-               <span class="cg-recent-text">${recentVisit.topic || ''}</span>
-             </div>`
-          : `<div class="cg-recent-row cg-recent-empty">尚無拜訪記錄</div>`;
-
-        const recentOppHtml = recentOpp
-          ? `<div class="cg-recent-row">
-               <span class="cg-recent-icon">&#128161;</span>
-               <span class="cg-opp-stage opp-${(recentOpp.stage||'').toLowerCase()}">${recentOpp.stage}</span>
-               <span class="cg-recent-text">${recentOpp.product || recentOpp.category || ''}</span>
-               ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} 萬</span>` : ''}
-             </div>`
-          : '';
-
-        const group = document.createElement('div');
-        group.className = 'company-group';
-        group.innerHTML = `
-          <div class="company-group-header">
-            <div class="company-avatar" style="background:linear-gradient(135deg,${c1},${c2})">${company.charAt(0)}</div>
-            <div class="company-group-info">
-              <div class="company-group-name">${escapeHtml(company)}</div>
-              <div class="company-group-primary">&#11088; ${escapeHtml(primary.name)}${primary.title ? '・' + escapeHtml(primary.title) : ''}</div>
-              <div class="company-group-recent">
-                ${recentVisitHtml}
-                ${recentOppHtml}
-              </div>
-            </div>
-            <div class="company-group-badges">${industryBadge}${oppBadge}</div>
-            <div class="company-group-count">${members.length} 人</div>
-            <button class="cg-add-contact-btn" title="新增此公司聯絡人">&#43; 新增聯絡人</button>
-            <div class="company-group-chevron">&#9660;</div>
-          </div>
-          <div class="company-group-members collapsed"></div>`;
-
-        const membersDiv = group.querySelector('.company-group-members');
-        members.forEach(c => membersDiv.appendChild(buildContactCard(c, 'contact-card-sub')));
-
-        // 「新增聯絡人」按鈕：帶入同公司資訊
-        group.querySelector('.cg-add-contact-btn').addEventListener('click', e => {
-          e.stopPropagation(); // 不觸發展開/收合
-          // 從同公司找出共用資訊（電話、分機、地址、網站、統編、產業、系統廠商）
-          const ref = primary;
-          openModalAddContact({
-            company:      company,
-            phone:        ref.phone        || '',
-            ext:          '',
-            address:      ref.address      || '',
-            website:      ref.website      || '',
-            taxId:        ref.taxId        || '',
-            industry:     ref.industry     || (members.find(c => c.industry)?.industry || ''),
-            systemVendor: ref.systemVendor || (members.find(c => c.systemVendor)?.systemVendor || ''),
-            systemProduct:ref.systemProduct|| '',
-          });
-        });
-
-        group.querySelector('.company-group-header').addEventListener('click', () => {
-          const isOpen = !membersDiv.classList.contains('collapsed');
-          membersDiv.classList.toggle('collapsed', isOpen);
-          group.classList.toggle('expanded', !isOpen);
-        });
-
-        list.appendChild(group);
+        list.appendChild(buildCompanyGroupEl(company, members));
       });
 
     // 無公司的聯絡人放最後
@@ -1049,6 +979,219 @@ function renderContacts(contacts) {
       list.appendChild(section);
     }
   }
+}
+
+// ── 子公司卡（可獨立使用於集團展開區，或直接放在頂層） ──────────
+function buildCompanyGroupEl(company, members) {
+  const primary = members.find(c => c.isPrimary) || members[0];
+  const opp = members.find(c => c.opportunityStage)?.opportunityStage;
+  const industry = members.find(c => c.industry)?.industry;
+  const [c1, c2] = avatarColor(company);
+  const oppBadge = opp
+    ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[opp]?.cls || ''}">${opp}｜${OPPORTUNITY_LABELS[opp]?.label.split('｜')[1] || ''}</span>` : '';
+  const industryBadge = industry ? `<span class="industry-badge">${industry}</span>` : '';
+
+  const memberIds = new Set(members.map(c => c.id));
+  const recentVisit = [...allVisits]
+    .filter(v => memberIds.has(v.contactId))
+    .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
+    [0];
+  const recentOpp = [...allOpportunities]
+    .filter(o => (o.company || '') === company && o.stage !== 'Won')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    [0];
+
+  const recentVisitHtml = recentVisit
+    ? `<div class="cg-recent-row">
+         <span class="cg-recent-icon">&#128203;</span>
+         <span class="cg-recent-date">${recentVisit.visitDate || ''}</span>
+         <span class="cg-recent-text">${recentVisit.topic || ''}</span>
+       </div>`
+    : `<div class="cg-recent-row cg-recent-empty">尚無拜訪記錄</div>`;
+  const recentOppHtml = recentOpp
+    ? `<div class="cg-recent-row">
+         <span class="cg-recent-icon">&#128161;</span>
+         <span class="cg-opp-stage opp-${(recentOpp.stage||'').toLowerCase()}">${recentOpp.stage}</span>
+         <span class="cg-recent-text">${recentOpp.product || recentOpp.category || ''}</span>
+         ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} 萬</span>` : ''}
+       </div>`
+    : '';
+
+  const group = document.createElement('div');
+  group.className = 'company-group';
+  group.innerHTML = `
+    <div class="company-group-header">
+      <div class="company-avatar" style="background:linear-gradient(135deg,${c1},${c2})">${company.charAt(0)}</div>
+      <div class="company-group-info">
+        <div class="company-group-name">${escapeHtml(company)}</div>
+        <div class="company-group-primary">&#11088; ${escapeHtml(primary.name)}${primary.title ? '・' + escapeHtml(primary.title) : ''}</div>
+        <div class="company-group-recent">${recentVisitHtml}${recentOppHtml}</div>
+      </div>
+      <div class="company-group-badges">${industryBadge}${oppBadge}</div>
+      <div class="company-group-count">${members.length} 人</div>
+      <button class="cg-add-contact-btn" title="新增此公司聯絡人">&#43; 新增聯絡人</button>
+      <div class="company-group-chevron">&#9660;</div>
+    </div>
+    <div class="company-group-members collapsed"></div>`;
+
+  const membersDiv = group.querySelector('.company-group-members');
+  members.forEach(c => membersDiv.appendChild(buildContactCard(c, 'contact-card-sub')));
+
+  group.querySelector('.cg-add-contact-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const ref = primary;
+    openModalAddContact({
+      company, phone: ref.phone || '', ext: '', address: ref.address || '',
+      website: ref.website || '', taxId: ref.taxId || '',
+      industry: ref.industry || (members.find(c => c.industry)?.industry || ''),
+      systemVendor: ref.systemVendor || (members.find(c => c.systemVendor)?.systemVendor || ''),
+      systemProduct: ref.systemProduct || '',
+    });
+  });
+  group.querySelector('.company-group-header').addEventListener('click', () => {
+    const isOpen = !membersDiv.classList.contains('collapsed');
+    membersDiv.classList.toggle('collapsed', isOpen);
+    group.classList.toggle('expanded', !isOpen);
+  });
+  return group;
+}
+
+// ── 集團卡（三層：集團 → 子公司 → 聯絡人） ──────────────────────
+function buildGroupCard(group, withCompany) {
+  const memberCompanies = group.memberCompanies.filter(co => withCompany.has(co));
+  const totalContacts = memberCompanies.reduce((s, co) => s + (withCompany.get(co)?.length || 0), 0);
+
+  const taxBadge = group.taxId ? `<span class="gc-badge gc-taxid">統編 ${escapeHtml(group.taxId)}</span>` : '';
+  const indBadge = group.industry ? `<span class="gc-badge gc-industry">${escapeHtml(group.industry)}</span>` : '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'group-card';
+  wrap.innerHTML = `
+    <div class="group-card-header">
+      <div class="group-card-avatar">&#127968;</div>
+      <div class="group-card-info">
+        <div class="group-card-name">${escapeHtml(group.name)}</div>
+        <div class="group-card-badges">${taxBadge}${indBadge}</div>
+        <div class="group-card-stats">${memberCompanies.length} 家公司・${totalContacts} 位聯絡人</div>
+      </div>
+      <button class="group-edit-btn" title="編輯集團">&#9998; 編輯</button>
+      <div class="group-card-chevron">&#9660;</div>
+    </div>
+    <div class="group-card-body collapsed"></div>`;
+
+  const body = wrap.querySelector('.group-card-body');
+  memberCompanies
+    .sort((a, b) => a.localeCompare(b, 'zh-TW'))
+    .forEach(co => body.appendChild(buildCompanyGroupEl(co, withCompany.get(co))));
+
+  wrap.querySelector('.group-edit-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    openGroupModal(group);
+  });
+  wrap.querySelector('.group-card-header').addEventListener('click', () => {
+    const isOpen = !body.classList.contains('collapsed');
+    body.classList.toggle('collapsed', isOpen);
+    wrap.classList.toggle('expanded', !isOpen);
+  });
+  return wrap;
+}
+
+// ── 集團管理 Modal ────────────────────────────────────────────────
+function openGroupModal(group = null) {
+  const isEdit = !!group;
+  $('groupModalTitle').textContent = isEdit ? '編輯集團' : '新增集團';
+  $('groupModalId').value = isEdit ? group.id : '';
+  $('groupModalName').value = isEdit ? group.name : '';
+  $('groupModalTaxId').value = isEdit ? (group.taxId || '') : '';
+  $('groupModalIndustry').value = isEdit ? (group.industry || '') : '';
+  $('groupModalWebsite').value = isEdit ? (group.website || '') : '';
+  $('groupModalAddress').value = isEdit ? (group.address || '') : '';
+  $('groupModalNote').value = isEdit ? (group.note || '') : '';
+  $('groupModalDeleteBtn').style.display = isEdit ? '' : 'none';
+
+  // 子公司 checkbox 清單
+  const checklist = $('groupModalCompanyList');
+  checklist.innerHTML = '';
+  const selected = new Set(isEdit ? group.memberCompanies : []);
+  // 從目前已載入聯絡人中取得公司名稱清單
+  const companies = [...new Set(allContacts.map(c => c.company).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  if (companies.length === 0) {
+    checklist.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:8px 0">尚無公司聯絡人</div>';
+  } else {
+    companies.forEach(co => {
+      const label = document.createElement('label');
+      label.className = 'group-co-check';
+      label.innerHTML = `<input type="checkbox" value="${escapeHtml(co)}"${selected.has(co) ? ' checked' : ''}> ${escapeHtml(co)}`;
+      checklist.appendChild(label);
+    });
+  }
+
+  $('groupModalOverlay').classList.add('open');
+  $('groupModalName').focus();
+}
+
+async function saveGroup() {
+  const id = $('groupModalId').value;
+  const name = $('groupModalName').value.trim();
+  if (!name) { alert('集團名稱為必填'); return; }
+  const memberCompanies = [...$('groupModalCompanyList').querySelectorAll('input[type=checkbox]:checked')]
+    .map(cb => cb.value);
+  const payload = {
+    name,
+    taxId:    $('groupModalTaxId').value.trim(),
+    industry: $('groupModalIndustry').value,
+    website:  $('groupModalWebsite').value.trim(),
+    address:  $('groupModalAddress').value.trim(),
+    note:     $('groupModalNote').value.trim(),
+    memberCompanies
+  };
+  const url = id ? `${API}/groups/${id}` : `${API}/groups`;
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) { const e = await r.json(); alert(e.error || '儲存失敗'); return; }
+    $('groupModalOverlay').classList.remove('open');
+    await loadGroups();
+    loadContacts();
+  } catch { alert('網路錯誤，請稍後再試'); }
+}
+
+async function deleteGroup(id) {
+  if (!confirm('確定要刪除此集團？子公司聯絡人將回到未分組。')) return;
+  try {
+    const r = await fetch(`${API}/groups/${id}`, { method: 'DELETE' });
+    if (!r.ok) { const e = await r.json(); alert(e.error || '刪除失敗'); return; }
+    $('groupModalOverlay').classList.remove('open');
+    await loadGroups();
+    loadContacts();
+  } catch { alert('網路錯誤，請稍後再試'); }
+}
+
+// 集團管理清單 Modal（manageGroupsBtn）
+function openGroupListModal() {
+  const overlay = $('groupListModalOverlay');
+  const body = $('groupListModalBody');
+  body.innerHTML = '';
+  if (allGroups.length === 0) {
+    body.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:24px">尚無集團，請點擊「新增集團」建立</div>';
+  } else {
+    allGroups.forEach(g => {
+      const row = document.createElement('div');
+      row.className = 'glist-row';
+      row.innerHTML = `
+        <div class="glist-info">
+          <div class="glist-name">&#127968; ${escapeHtml(g.name)}</div>
+          <div class="glist-sub">${g.memberCompanies.length} 家子公司${g.industry ? '・' + escapeHtml(g.industry) : ''}</div>
+        </div>
+        <button class="btn btn-sm btn-outline glist-edit-btn">&#9998; 編輯</button>`;
+      row.querySelector('.glist-edit-btn').addEventListener('click', () => {
+        overlay.classList.remove('open');
+        openGroupModal(g);
+      });
+      body.appendChild(row);
+    });
+  }
+  overlay.classList.add('open');
 }
 
 // ── 頁簽切換 ─────────────────────────────────────────────
@@ -1542,6 +1685,21 @@ $('clearSearch').addEventListener('click', () => {
   $('clearSearch').classList.remove('visible');
   loadContacts();
 });
+
+// ── 集團管理按鈕 ──────────────────────────────────────────────────
+['manageGroupsBtn', 'manageGroupsBtnP'].forEach(btnId => {
+  const btn = $(btnId);
+  if (btn) btn.addEventListener('click', openGroupListModal);
+});
+// 集團清單 modal 關閉
+$('groupListModalClose').addEventListener('click', () => $('groupListModalOverlay').classList.remove('open'));
+$('groupListModalOverlay').addEventListener('click', e => { if (e.target === $('groupListModalOverlay')) $('groupListModalOverlay').classList.remove('open'); });
+$('groupListAddBtn').addEventListener('click', () => { $('groupListModalOverlay').classList.remove('open'); openGroupModal(); });
+// 集團編輯 modal 按鈕
+$('groupModalClose').addEventListener('click', () => $('groupModalOverlay').classList.remove('open'));
+$('groupModalOverlay').addEventListener('click', e => { if (e.target === $('groupModalOverlay')) $('groupModalOverlay').classList.remove('open'); });
+$('groupModalSaveBtn').addEventListener('click', saveGroup);
+$('groupModalDeleteBtn').addEventListener('click', () => { const id = $('groupModalId').value; if (id) deleteGroup(id); });
 
 // ── 職能分類選擇器渲染 ────────────────────────────────────
 function renderJfSelector(selectedKey) {
@@ -3231,6 +3389,7 @@ let allOprRange = { min: 1.1, max: 1.2 };
 let visitsOwnerFilter  = ''; // 業務日報篩選
 let kanbanOwnerFilter  = ''; // 商機推進進度篩選
 let _ownerMapCache     = null; // { username: displayName }
+let allGroups          = []; // 集團清單
 
 async function loadOwnerMap() {
   if (_ownerMapCache) return _ownerMapCache;
@@ -3287,6 +3446,13 @@ async function loadOprRange() {
     const res = await fetch(`${API}/settings/opr-range`);
     allOprRange = res.ok ? await res.json() : { min: 1.1, max: 1.2 };
   } catch { allOprRange = { min: 1.1, max: 1.2 }; }
+}
+
+async function loadGroups() {
+  try {
+    const res = await fetch(`${API}/groups`);
+    allGroups = res.ok ? await res.json() : [];
+  } catch { allGroups = []; }
 }
 
 // 取得某年某季的 Pipeline 金額（A+B+C stage，預計成交日落在該季）
