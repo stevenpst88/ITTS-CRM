@@ -3571,13 +3571,19 @@ function renderMonthBudgetCard() {
 
   wrap.style.display = '';
 
-  // 月份標題列
+  const canEditActuals = ['admin', 'secretary'].includes(role);
   const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
   // 為每個業務（或合計）產生一個表格
   const tables = budgetRows.map(b => {
-    // 計算各月實際與達成率
-    const actuals = monthLabels.map((_, i) => getMonthActual(year, i + 1, b.owner));
+    // 實際值：manual actuals 優先，否則從 Won 商機自動計算
+    const actuals = monthLabels.map((_, i) => {
+      const manual = b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined
+        ? b.actuals[i] : null;
+      return manual !== null ? manual : getMonthActual(year, i + 1, b.owner);
+    });
+    const hasManual = b.actuals && b.actuals.some(v => v !== null && v !== undefined);
+
     const totalBudget = b.months.reduce((s, v) => s + v, 0);
     const totalActual = actuals.reduce((s, v) => s + v, 0);
     const totalPct = totalBudget > 0 ? Math.round(totalActual / totalBudget * 100) : 0;
@@ -3595,10 +3601,12 @@ function renderMonthBudgetCard() {
     const actualCells = actuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       const budget = b.months[i];
+      const isManual = b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined;
       let cls = 'mb-td-muted';
       if (v > 0 && budget > 0) cls = v >= budget ? 'mb-td-green' : 'mb-td-orange';
       else if (v > 0) cls = 'mb-td-orange';
-      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
+      const manualDot = isManual ? '<span class="mb-manual-dot" title="手動認列">●</span>' : '';
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}${manualDot}</td>`;
     }).join('');
 
     const pctCells = actuals.map((v, i) => {
@@ -3613,10 +3621,21 @@ function renderMonthBudgetCard() {
     const totalActualCls = totalActual > 0 ? (totalActual >= totalBudget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
     const totalPctCls = totalPct > 0 ? (totalPct >= 100 ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
 
+    // 取得業務員 displayName（透過 ownerMap 或 username）
+    const ownerLabel = (_ownerMapCache && _ownerMapCache[b.owner]) ? _ownerMapCache[b.owner] : b.owner;
+    const editBtn = canEditActuals
+      ? `<button class="btn btn-sm btn-outline mb-edit-actual-btn" onclick="openMbActualModal('${b.owner}',${year})">✏️ 編輯認列</button>`
+      : '';
+    const manualTag = hasManual
+      ? `<span class="mb-manual-tag">含手動認列</span>` : '';
+
     return `
       <div class="mb-section">
         <div class="mb-section-header">
           <span class="mb-year-badge">${year} 年</span>
+          ${budgetRows.length > 1 ? `<span style="font-size:13px;font-weight:600;color:#374151">${ownerLabel}</span>` : ''}
+          ${manualTag}
+          ${editBtn}
         </div>
         <div class="mb-table-wrap">
           <table class="mb-table">
@@ -3656,6 +3675,72 @@ function renderMonthBudgetCard() {
       </div>
       ${tables.join('')}
     </div>`;
+}
+
+// ── 月度認列 Modal ────────────────────────────────────────
+let _mbActualOwner = '';
+let _mbActualYear  = 0;
+
+function openMbActualModal(owner, year) {
+  _mbActualOwner = owner;
+  _mbActualYear  = year;
+  const overlay = $('mbActualOverlay');
+  const grid    = $('mbActualGrid');
+  if (!overlay || !grid) return;
+
+  const ownerLabel = (_ownerMapCache && _ownerMapCache[owner]) ? _ownerMapCache[owner] : owner;
+  const titleEl = $('mbActualTitle');
+  if (titleEl) titleEl.textContent = `✏️ 編輯認列金額 — ${ownerLabel} ${year} 年`;
+
+  const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const rec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
+  const existActuals = rec && rec.actuals ? rec.actuals : Array(12).fill(null);
+
+  grid.innerHTML = monthLabels.map((m, i) => {
+    const val = existActuals[i] !== null && existActuals[i] !== undefined ? existActuals[i] : '';
+    return `<div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:4px;text-align:center">${m}</div>
+      <input type="number" min="0" step="any" value="${val}" placeholder="自動"
+        style="width:100%;padding:7px 4px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center"
+        oninput="updateMbActualTotal()">
+    </div>`;
+  }).join('');
+
+  updateMbActualTotal();
+  overlay.style.display = 'flex';
+}
+
+function closeMbActualModal() {
+  const overlay = $('mbActualOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function updateMbActualTotal() {
+  const inputs = document.querySelectorAll('#mbActualGrid input');
+  const total = Array.from(inputs).reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0);
+  const lbl = $('mbActualTotalLabel');
+  if (lbl) lbl.textContent = total.toLocaleString();
+}
+
+async function saveMbActuals() {
+  const inputs = document.querySelectorAll('#mbActualGrid input');
+  const actuals = Array.from(inputs).map(inp =>
+    inp.value === '' ? null : parseFloat(inp.value)
+  );
+  try {
+    const res = await fetch(`${API}/monthly-budget/actuals`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: _mbActualOwner, year: _mbActualYear, actuals })
+    });
+    if (!res.ok) { const e = await res.json(); showToast(e.error || '儲存失敗', 'error'); return; }
+    showToast('✅ 認列金額已儲存');
+    closeMbActualModal();
+    // 重新載入並渲染
+    await loadMonthlyBudget();
+    renderMonthBudgetCard();
+  } catch(e) { showToast('儲存失敗：' + e.message, 'error'); }
+}
 }
 
 async function loadGroups() {

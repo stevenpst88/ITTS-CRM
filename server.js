@@ -1746,6 +1746,36 @@ app.put('/api/monthly-budget', requireAuth, (req, res) => {
   res.json({ success: true, record });
 });
 
+// PUT /api/monthly-budget/actuals — admin/secretary 手動輸入每月認列實際值
+app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (!['admin', 'secretary'].includes(role)) {
+    return res.status(403).json({ error: '僅 admin / 秘書 可設定認列值' });
+  }
+  const { username, year, actuals } = req.body;
+  if (!username || !year || !Array.isArray(actuals) || actuals.length !== 12) {
+    return res.status(400).json({ error: '參數錯誤：需提供 username, year, actuals[12]' });
+  }
+  const data = db.load();
+  if (!data.monthlyBudgets) data.monthlyBudgets = [];
+  const y = parseInt(year);
+  let idx = data.monthlyBudgets.findIndex(b => b.owner === username && b.year === y);
+  if (idx < 0) {
+    // 尚無預算記錄時自動建立空預算
+    const now = new Date().toISOString();
+    data.monthlyBudgets.push({ id: uuidv4(), owner: username, year: y,
+      months: Array(12).fill(0), createdAt: now, updatedAt: now, setBy: req.session.user.username });
+    idx = data.monthlyBudgets.length - 1;
+  }
+  data.monthlyBudgets[idx].actuals = actuals.map(v =>
+    (v === null || v === '' || v === undefined) ? null : parseFloat(v)
+  );
+  data.monthlyBudgets[idx].updatedAt = new Date().toISOString();
+  db.save(data);
+  writeLog('SET_MONTHLY_ACTUALS', req.session.user.username, username, `月度認列 ${y}年`, req);
+  res.json({ success: true });
+});
+
 // ── 商機 CRUD ────────────────────────────────────────────
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();

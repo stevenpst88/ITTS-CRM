@@ -3345,3 +3345,6 @@ body {
 .mb-td-green  { color: #10b981 !important; }
 .mb-td-orange { color: #f59e0b !important; }
 .mb-td-muted  { color: #d1d5db !important; }
+.mb-edit-actual-btn { margin-left: auto; font-size: 11px; padding: 3px 10px; }
+.mb-manual-dot { font-size: 7px; color: #6366f1; margin-left: 2px; vertical-align: super; }
+.mb-manual-tag { font-size: 11px; background: #ede9fe; color: #6d28d9; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
