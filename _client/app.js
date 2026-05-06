@@ -3741,7 +3741,6 @@ async function saveMbActuals() {
     renderMonthBudgetCard();
   } catch(e) { showToast('儲存失敗：' + e.message, 'error'); }
 }
-}
 
 async function loadGroups() {
   try {
