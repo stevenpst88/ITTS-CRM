@@ -3550,7 +3550,22 @@ function renderMonthBudgetCard() {
   }
 
   if (!budgetRows.length) {
-    wrap.style.display = 'none';
+    // 主管以上不顯示（他們有更多視角）；一般業務顯示「尚未設定」提示
+    if (['admin','manager1','manager2','secretary'].includes(role)) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = '';
+    wrap.innerHTML = `
+      <div class="mb-card">
+        <div class="mb-card-header">
+          <span class="mb-card-title">📅 月度業績計畫</span>
+          <span style="font-size:12px;color:#9ca3af">${year} 年</span>
+        </div>
+        <div style="padding:24px 18px;text-align:center;color:#9ca3af;font-size:13px">
+          尚未設定月度預算，請聯繫主管於後台設定。
+        </div>
+      </div>`;
     return;
   }
 
