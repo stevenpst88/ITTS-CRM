@@ -2038,7 +2038,6 @@ $('title').addEventListener('input', function () {
   }, 400);
 });
 $('cancelBtn').addEventListener('click', closeModal);
-$('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModal(); });
 
 // 名片圖片上傳
 $('cardImagePreview').addEventListener('click', () => $('cardImageInput').click());
@@ -2165,7 +2164,6 @@ function openView(id) {
 }
 
 $('viewClose').addEventListener('click', () => $('viewOverlay').classList.remove('open'));
-$('viewOverlay').addEventListener('click', e => { if (e.target === $('viewOverlay')) $('viewOverlay').classList.remove('open'); });
 
 $('viewEditBtn').addEventListener('click', () => {
   $('viewOverlay').classList.remove('open');
