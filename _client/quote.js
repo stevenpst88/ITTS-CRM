@@ -377,9 +377,6 @@ async function openQuoteModal(idOrNull) {
       // 關閉事件
       $('quoteModalClose').addEventListener('click', closeQuoteModal);
       $('quoteModalCancel').addEventListener('click', closeQuoteModal);
-      overlay.addEventListener('click', function(e) {
-        if (e.target === overlay) closeQuoteModal();
-      });
     }
 
     // 儲存按鈕 — 每次重設 onclick 避免舊 context 殘留

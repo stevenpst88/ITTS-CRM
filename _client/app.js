@@ -879,7 +879,6 @@ function openProductLineModal(c) {
     });
   });
   overlay.querySelector('.pl-cancel').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 async function setCustomerType(contactId, customerType, productLine) {
@@ -1693,11 +1692,9 @@ $('clearSearch').addEventListener('click', () => {
 });
 // 集團清單 modal 關閉
 $('groupListModalClose').addEventListener('click', () => $('groupListModalOverlay').classList.remove('open'));
-$('groupListModalOverlay').addEventListener('click', e => { if (e.target === $('groupListModalOverlay')) $('groupListModalOverlay').classList.remove('open'); });
 $('groupListAddBtn').addEventListener('click', () => { $('groupListModalOverlay').classList.remove('open'); openGroupModal(); });
 // 集團編輯 modal 按鈕
 $('groupModalClose').addEventListener('click', () => $('groupModalOverlay').classList.remove('open'));
-$('groupModalOverlay').addEventListener('click', e => { if (e.target === $('groupModalOverlay')) $('groupModalOverlay').classList.remove('open'); });
 $('groupModalSaveBtn').addEventListener('click', saveGroup);
 $('groupModalDeleteBtn').addEventListener('click', () => { const id = $('groupModalId').value; if (id) deleteGroup(id); });
 
@@ -2181,7 +2178,6 @@ $('viewDeleteBtn').addEventListener('click', () => {
 });
 
 $('confirmCancel').addEventListener('click', () => $('confirmOverlay').classList.remove('open'));
-$('confirmOverlay').addEventListener('click', e => { if (e.target === $('confirmOverlay')) $('confirmOverlay').classList.remove('open'); });
 
 $('confirmDelete').addEventListener('click', async () => {
   try {
@@ -2290,7 +2286,6 @@ function closeChangePw() {
 $('changePwBtn').addEventListener('click', openChangePw);
 $('changePwClose').addEventListener('click', closeChangePw);
 $('changePwCancel').addEventListener('click', closeChangePw);
-$('changePwOverlay').addEventListener('click', e => { if (e.target === $('changePwOverlay')) closeChangePw(); });
 
 // Enter 鍵送出
 ['changePwOld','changePwNew','changePwConfirm'].forEach(id => {
@@ -2499,7 +2494,6 @@ function openAllVisitsOfDay(dateStr, visits) {
   </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#dayListClose').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   overlay.querySelectorAll('.day-visit-row').forEach(row => {
     row.style.cursor = 'pointer';
     row.style.padding = '8px 10px';
@@ -2753,7 +2747,6 @@ $v('addVisitBtn').addEventListener('click', () => {
 });
 $v('visitModalClose').addEventListener('click', closeVisitModal);
 $v('visitCancelBtn').addEventListener('click', closeVisitModal);
-$v('visitModalOverlay').addEventListener('click', e => { if (e.target === $v('visitModalOverlay')) closeVisitModal(); });
 
 // 檢視拜訪記錄
 function openVisitView(id) {
@@ -2778,7 +2771,6 @@ function openVisitView(id) {
 }
 
 $v('visitViewClose').addEventListener('click', () => $v('visitViewOverlay').classList.remove('open'));
-$v('visitViewOverlay').addEventListener('click', e => { if (e.target === $v('visitViewOverlay')) $v('visitViewOverlay').classList.remove('open'); });
 $v('visitViewEditBtn').addEventListener('click', () => {
   $v('visitViewOverlay').classList.remove('open');
   const v = allVisits.find(x => x.id === currentVisitId);
@@ -2789,7 +2781,6 @@ $v('visitViewDeleteBtn').addEventListener('click', () => {
   $v('visitConfirmOverlay').classList.add('open');
 });
 $v('visitConfirmCancel').addEventListener('click', () => $v('visitConfirmOverlay').classList.remove('open'));
-$v('visitConfirmOverlay').addEventListener('click', e => { if (e.target === $v('visitConfirmOverlay')) $v('visitConfirmOverlay').classList.remove('open'); });
 $v('visitConfirmDelete').addEventListener('click', async () => {
   try {
     await fetch(`${API}/visits/${currentVisitId}`, { method: 'DELETE' });
@@ -3017,7 +3008,6 @@ async function promptConvertToCustomer(opp) {
     });
   });
   overlay.querySelector('.pl-cancel').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 function buildKanbanCard(o) {
@@ -3135,7 +3125,6 @@ $('oppEditCategory').addEventListener('change', function () {
 function closeOppEdit() { $('oppEditOverlay').classList.remove('open'); }
 $('oppEditClose').addEventListener('click', closeOppEdit);
 $('oppEditCancel').addEventListener('click', closeOppEdit);
-$('oppEditOverlay').addEventListener('click', e => { if (e.target === $('oppEditOverlay')) closeOppEdit(); });
 
 // 刪除案件 → 開啟填寫原因 Modal
 $('oppEditDelete').addEventListener('click', () => {
@@ -3154,9 +3143,6 @@ function closeOppDeleteModal() {
 }
 $('oppDeleteClose').addEventListener('click', closeOppDeleteModal);
 $('oppDeleteCancel').addEventListener('click', closeOppDeleteModal);
-$('oppDeleteModal').addEventListener('click', e => {
-  if (e.target === $('oppDeleteModal')) closeOppDeleteModal();
-});
 
 $('oppDeleteConfirm').addEventListener('click', async () => {
   const reasonSel  = $('oppDeleteReasonSel').value.trim();
@@ -4995,7 +4981,6 @@ function closeContractModal() { $('contractModal').classList.remove('open'); }
 
 $('contractModalClose').addEventListener('click', closeContractModal);
 $('contractCancelBtn').addEventListener('click',  closeContractModal);
-$('contractModal').addEventListener('click', e => { if (e.target === $('contractModal')) closeContractModal(); });
 
 $('contractSaveBtn').addEventListener('click', async () => {
   try {
@@ -5092,7 +5077,6 @@ function confirmDeleteContract(id) {
 }
 $('contractDeleteClose').addEventListener('click',  () => $('contractDeleteModal').classList.remove('open'));
 $('contractDeleteCancel').addEventListener('click', () => $('contractDeleteModal').classList.remove('open'));
-$('contractDeleteModal').addEventListener('click', e => { if (e.target === $('contractDeleteModal')) $('contractDeleteModal').classList.remove('open'); });
 $('contractDeleteConfirm').addEventListener('click', async () => {
   if (!contractDeleteId) return;
   try {
