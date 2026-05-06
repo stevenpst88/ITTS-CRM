@@ -4953,7 +4953,11 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
 
     const opps = (data.opportunities || []).filter(o => owners.includes(o.owner));
-    const targets = (data.targets || []).filter(t => owners.includes(t.owner) && t.year === yearNum);
+    // manager1 的目標由部屬加總（排除自身），避免手動設定的殘留值影響計算
+    const targetOwners = role === 'manager1'
+      ? owners.filter(u => u !== req.session.user.username)
+      : owners;
+    const targets = (data.targets || []).filter(t => targetOwners.includes(t.owner) && t.year === yearNum);
 
     // ── 1. 業績達成度 ──
     const totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
