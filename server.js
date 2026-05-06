@@ -353,14 +353,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     }
 
     if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
+    const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     req.session.user = {
       username: user.username,
       displayName: user.displayName,
       role: user.role || 'user',
-      bu: user.bu || null
+      bu: userBus
     };
     writeLog('LOGIN', username, username, `登入成功`, req);
-    res.json({ success: true, displayName: user.displayName, role: user.role || 'user', bu: user.bu || null });
+    res.json({ success: true, displayName: user.displayName, role: user.role || 'user', bu: userBus });
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ success: false, message: '登入服務暫時無法使用，請稍後再試' });
@@ -423,7 +424,7 @@ app.get('/api/me', requireAuth, (req, res) => {
   // 補上 bu 資訊（session 內可能沒有，從 auth.json 即時讀取最新）
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === req.session.user.username);
-  res.json({ ...req.session.user, bu: me?.bu || null });
+  res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
 });
 
 // ── 自助更改密碼（登入者本人）────────────────────────────
@@ -937,13 +938,24 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     username: u.username,
     displayName: u.displayName,
     role: u.role || 'user',
-    bu: u.bu || null,
+    bu: normalizeBu(u.bu),
     canDownloadContacts: u.canDownloadContacts || false,
     canSetTargets: u.canSetTargets || false,
     active: u.active !== false
   }));
   res.json(users);
 });
+
+// 校驗並回傳 finalBu（陣列）；錯誤時回傳 { error }
+function validateBuInput(role, buInput) {
+  if (CROSS_BU_ROLES.includes(role)) return { bu: null }; // 跨 BU 角色一律 null
+  const arr = Array.isArray(buInput) ? buInput : (buInput ? [buInput] : []);
+  const cleaned = [...new Set(arr.filter(b => VALID_BUS.includes(b)))];
+  if (cleaned.length === 0) {
+    return { error: '此角色必須至少指定一個 BU（ERP / ITS / MDM / CRM）' };
+  }
+  return { bu: cleaned };
+}
 
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
@@ -953,16 +965,9 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const auth = loadAuth();
   if (auth.users.find(u => u.username === username)) return res.status(400).json({ error: '帳號已存在' });
 
-  // BU 規則校驗
   const finalRole = role || 'user';
-  let finalBu = bu || null;
-  if (CROSS_BU_ROLES.includes(finalRole)) {
-    finalBu = null; // admin / executive 一律 null
-  } else {
-    if (!finalBu || !VALID_BUS.includes(finalBu)) {
-      return res.status(400).json({ error: '此角色必須指定有效的 BU（ERP / ITS / MDM / CRM）' });
-    }
-  }
+  const buCheck = validateBuInput(finalRole, bu);
+  if (buCheck.error) return res.status(400).json({ error: buCheck.error });
 
   const hashedPassword = await bcrypt.hash(password, 12);
   const newUser = {
@@ -970,7 +975,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     password: hashedPassword,
     displayName: displayName || username,
     role: finalRole,
-    bu: finalBu,
+    bu: buCheck.bu,
     canDownloadContacts: !!canDownloadContacts,
     canSetTargets: !!canSetTargets,
     active: true,
@@ -978,7 +983,8 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   };
   auth.users.push(newUser);
   saveAuth(auth);
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${finalBu || '全公司'}`, req);
+  const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${buLabel}`, req);
   res.json({ success: true });
 });
 
@@ -990,23 +996,18 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const { displayName, role, bu, canDownloadContacts, canSetTargets, active } = req.body;
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
   if (role !== undefined)               auth.users[idx].role = role;
-  // BU 處理：若角色為跨 BU，自動清為 null；否則必須是合法 BU
   const effectiveRole = auth.users[idx].role;
   if (bu !== undefined || role !== undefined) {
-    if (CROSS_BU_ROLES.includes(effectiveRole)) {
-      auth.users[idx].bu = null;
-    } else if (bu !== undefined) {
-      if (!VALID_BUS.includes(bu)) {
-        return res.status(400).json({ error: '無效的 BU（必須是 ERP / ITS / MDM / CRM）' });
-      }
-      auth.users[idx].bu = bu;
-    }
+    const buCheck = validateBuInput(effectiveRole, bu !== undefined ? bu : auth.users[idx].bu);
+    if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+    auth.users[idx].bu = buCheck.bu;
   }
   if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
   if (active !== undefined)             auth.users[idx].active = !!active;
   saveAuth(auth);
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${auth.users[idx].bu || '全公司'}）`, req);
+  const buLabel = auth.users[idx].bu ? auth.users[idx].bu.join('+') : '全公司';
+  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）`, req);
   res.json({ success: true });
 });
 
@@ -1112,7 +1113,7 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
   if (!user) return res.status(404).json({ error: '找不到帳號' });
   res.json({
     role: user.role || 'user',
-    bu: user.bu || null,
+    bu: normalizeBu(user.bu),
     canDownloadContacts: user.canDownloadContacts || false,
     canSetTargets: user.canSetTargets || false,
     active: user.active !== false
@@ -1137,19 +1138,30 @@ const upload = multer({
 });
 
 // ── 角色可視範圍：取得此用戶可見的 owner 清單 ──────────────
+// 將 bu 欄位正規化為陣列（向下相容舊的 string 格式）
+function normalizeBu(bu) {
+  if (Array.isArray(bu)) return bu.filter(Boolean);
+  if (typeof bu === 'string' && bu.trim()) return [bu.trim()];
+  return [];
+}
+
 function getViewableOwners(req, dataType) {
   const { username, role } = req.session.user;
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === username);
-  const myBu = me?.bu || null;
+  const myBus = normalizeBu(me?.bu);
 
   // 跨 BU 全看（系統管理員、董事長/總經理）
   if (role === 'admin' || role === 'executive') {
     return auth.users.map(u => u.username);
   }
 
-  // 判斷是否為同一個 BU（若 viewer 沒設 BU 則無人同 BU）
-  const sameBu = u => myBu && u.bu === myBu;
+  // 同 BU 判斷：viewer 的任一 BU 與目標的任一 BU 有交集
+  const sameBu = u => {
+    if (!myBus.length) return false;
+    const userBus = normalizeBu(u.bu);
+    return userBus.some(b => myBus.includes(b));
+  };
 
   if (role === 'manager1') {
     return auth.users
@@ -1179,11 +1191,11 @@ function getViewableOwners(req, dataType) {
   return [username]; // 一般業務只看自己
 }
 
-// 取得使用者所屬 BU（給其他需用 BU 過濾邏輯的 API 使用）
-function getMyBu(req) {
+// 取得使用者所屬 BU（陣列形式，向下相容舊資料）
+function getMyBus(req) {
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === req.session.user.username);
-  return me?.bu || null;
+  return normalizeBu(me?.bu);
 }
 
 // ── 生日提醒（N 天內）──────────────────────────────────
@@ -3522,7 +3534,7 @@ app.get('/api/users-bu', requireAuth, (req, res) => {
   }
   const auth = loadAuth();
   const map = {};
-  auth.users.forEach(u => { map[u.username] = u.bu || null; });
+  auth.users.forEach(u => { map[u.username] = normalizeBu(u.bu); });
   res.json(map);
 });
 

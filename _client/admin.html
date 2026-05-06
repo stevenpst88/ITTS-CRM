@@ -1347,15 +1347,15 @@
           </select>
         </div>
         <div class="form-group" id="buFieldGroup">
-          <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*必填</span></label>
-          <select id="fieldBu">
-            <option value="">— 請選擇 BU —</option>
-            <option value="ERP">ERP</option>
-            <option value="ITS">ITS</option>
-            <option value="MDM">MDM</option>
-            <option value="CRM">CRM</option>
-          </select>
+          <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*至少選一個（可複選）</span></label>
+          <div id="buCheckboxWrap" style="display:flex;flex-wrap:wrap;gap:14px;padding:8px 4px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ERP" style="width:16px;height:16px"> ERP</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ITS" style="width:16px;height:16px"> ITS</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="MDM" style="width:16px;height:16px"> MDM</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="CRM" style="width:16px;height:16px"> CRM</label>
+          </div>
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
         </div>
         <div class="form-group">
           <label>狀態</label>
@@ -1368,16 +1368,18 @@
           function onRoleChange() {
             const role = document.getElementById('fieldRole').value;
             const isCrossBu = role === 'admin' || role === 'executive';
-            const buSelect = document.getElementById('fieldBu');
-            const buGroup = document.getElementById('buFieldGroup');
+            const cbs = document.querySelectorAll('#buCheckboxWrap .bu-cb');
             const hint = document.getElementById('buRequiredHint');
             const crossHint = document.getElementById('buCrossHint');
-            buSelect.disabled = isCrossBu;
+            const wrap = document.getElementById('buCheckboxWrap');
             if (isCrossBu) {
-              buSelect.value = '';
+              cbs.forEach(cb => { cb.checked = false; cb.disabled = true; });
+              wrap.style.opacity = '.4';
               hint.style.display = 'none';
               crossHint.style.display = '';
             } else {
+              cbs.forEach(cb => { cb.disabled = false; });
+              wrap.style.opacity = '1';
               hint.style.display = '';
               crossHint.style.display = 'none';
             }
@@ -1559,10 +1561,15 @@
         if (!r.ok) { showLoginScreen(); return false; }
         const u = await r.json();
         if (u.role !== 'admin') { showLoginScreen(); return false; }
-        const buLabel = u.bu ? u.bu : '全公司';
+        const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
         const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
-        const c = BU_COLOR[buLabel] || '#6b7280';
-        $('adminUser').innerHTML = `👤 ${u.displayName || u.username} <span style="background:${c}20;color:${c};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px">${buLabel}</span>`;
+        const badges = buArr.length === 0
+          ? `<span style="background:${BU_COLOR['全公司']}20;color:${BU_COLOR['全公司']};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px">全公司</span>`
+          : buArr.map(b => {
+              const c = BU_COLOR[b] || '#6b7280';
+              return `<span style="background:${c}20;color:${c};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:4px">${b}</span>`;
+            }).join('');
+        $('adminUser').innerHTML = `👤 ${u.displayName || u.username} ${badges}`;
         return true;
       } catch {
         showLoginScreen();
@@ -1609,14 +1616,19 @@
       const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員'};
       const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
       $('userTableBody').innerHTML = allUsers.map(u => {
-        const buColor = u.bu ? (BU_BADGE[u.bu] || '#6b7280') : '#9ca3af';
-        const buLabel = u.bu ? u.bu : '— 全公司 —';
+        const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
+        const buCell = buArr.length === 0
+          ? `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`
+          : buArr.map(b => {
+              const c = BU_BADGE[b] || '#6b7280';
+              return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${b}</span>`;
+            }).join('');
         return `
         <tr>
           <td><strong>${u.username}</strong></td>
           <td>${u.displayName}</td>
           <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
-          <td><span style="background:${buColor}20;color:${buColor};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">${buLabel}</span></td>
+          <td>${buCell}</td>
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
           <td style="text-align:center">
             <label class="toggle" title="下載客戶名單">
@@ -1676,6 +1688,16 @@
       } catch (e) { if (e.message !== 'Session expired') { showToast('操作失敗，請重試'); loadUsers(); } }
     }
 
+    function setBuCheckboxes(arr) {
+      const set = new Set(Array.isArray(arr) ? arr : (arr ? [arr] : []));
+      document.querySelectorAll('#buCheckboxWrap .bu-cb').forEach(cb => {
+        cb.checked = set.has(cb.value);
+      });
+    }
+    function getBuCheckboxes() {
+      return Array.from(document.querySelectorAll('#buCheckboxWrap .bu-cb:checked')).map(cb => cb.value);
+    }
+
     // ── 新增帳號 ──
     $('addUserBtn').addEventListener('click', () => {
       $('userModalTitle').textContent = '新增帳號';
@@ -1686,7 +1708,7 @@
       $('passwordGroup').style.display = '';
       $('fieldDisplayName').value = '';
       $('fieldRole').value = 'user';
-      $('fieldBu').value = '';
+      setBuCheckboxes([]);
       $('fieldActive').value = 'true';
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
@@ -1704,7 +1726,7 @@
       $('passwordGroup').style.display = 'none';
       $('fieldDisplayName').value = u.displayName;
       $('fieldRole').value = u.role || 'user';
-      $('fieldBu').value = u.bu || '';
+      setBuCheckboxes(u.bu || []);
       $('fieldActive').value = u.active ? 'true' : 'false';
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
@@ -1721,12 +1743,15 @@
       const isEdit = !!editUn;
       const role = $('fieldRole').value;
       const isCrossBu = role === 'admin' || role === 'executive';
-      const bu = isCrossBu ? null : $('fieldBu').value;
-      if (!isCrossBu && !bu) { showToast('請選擇此角色所屬 BU'); return; }
+      const buArr = isCrossBu ? null : getBuCheckboxes();
+      if (!isCrossBu && (!buArr || buArr.length === 0)) {
+        showToast('請至少勾選一個 BU');
+        return;
+      }
       const payload = {
         displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
         role,
-        bu,
+        bu: buArr,
         active: $('fieldActive').value === 'true',
         canDownloadContacts: $('fieldCanDownload').checked,
         canSetTargets: $('fieldCanTargets').checked

@@ -2232,20 +2232,25 @@ async function initUser() {
     const user = await res.json();
     window._myRole = user.role || 'user';
     window._myUsername = user.username || '';
-    window._myBu = user.bu || null;
+    const myBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
+    window._myBus = myBus;
     $('sidebarUser').textContent = user.displayName;
     const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'', marketing:'行銷人員' };
     const roleLabel = ROLE_LABEL[user.role] || '';
-    const buLabel = user.bu ? user.bu : (user.role === 'admin' || user.role === 'executive' ? '全公司' : '');
-    if (roleLabel || buLabel) {
+    const isCrossBu = user.role === 'admin' || user.role === 'executive';
+    if (roleLabel || myBus.length || isCrossBu) {
       const metaEl = document.createElement('div');
-      metaEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;display:flex;gap:6px;align-items:center';
+      metaEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;display:flex;gap:4px;align-items:center;flex-wrap:wrap';
       const parts = [];
       if (roleLabel) parts.push(`<span>${roleLabel}</span>`);
-      if (buLabel) {
-        const BU_COLOR = {ERP:'#60a5fa',ITS:'#34d399',MDM:'#fb923c',CRM:'#a78bfa','全公司':'#fbbf24'};
-        const c = BU_COLOR[buLabel] || '#9ca3af';
-        parts.push(`<span style="background:${c}33;color:${c};padding:1px 6px;border-radius:6px;font-weight:600">${buLabel}</span>`);
+      const BU_COLOR = {ERP:'#60a5fa',ITS:'#34d399',MDM:'#fb923c',CRM:'#a78bfa','全公司':'#fbbf24'};
+      if (isCrossBu && myBus.length === 0) {
+        parts.push(`<span style="background:${BU_COLOR['全公司']}33;color:${BU_COLOR['全公司']};padding:1px 6px;border-radius:6px;font-weight:600">全公司</span>`);
+      } else {
+        myBus.forEach(b => {
+          const c = BU_COLOR[b] || '#9ca3af';
+          parts.push(`<span style="background:${c}33;color:${c};padding:1px 6px;border-radius:6px;font-weight:600">${b}</span>`);
+        });
       }
       metaEl.innerHTML = parts.join('');
       $('sidebarUser').parentNode.appendChild(metaEl);
@@ -3545,7 +3550,15 @@ function getMonthActual(year, month, ownerFilter = '') {
     .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 }
 
+// 取得用戶的 BU 陣列（向下相容）
+function _userBus(username) {
+  const v = _userBuCache[username];
+  if (Array.isArray(v)) return v;
+  return v ? [v] : [];
+}
+
 // 渲染 BU 業績拆分卡（僅 executive / admin 看得到）
+// 多 BU 用戶的預算/實際會「平均拆分」到所屬各 BU，避免重複計算
 function renderBuBreakdown() {
   const wrap = $('buBreakdownWrap');
   if (!wrap) return;
@@ -3558,32 +3571,49 @@ function renderBuBreakdown() {
   const BUS = ['ERP','ITS','MDM','CRM'];
   const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
 
+  // 預先計算每位 owner 的 target/achieved 與其 BU 數量
+  const ownerStats = {}; // username -> { target, achieved, buCount }
+  allMonthlyBudgets.filter(b => b.year === year).forEach(b => {
+    const bus = _userBus(b.owner);
+    const buCount = Math.max(bus.length, 1);
+    let target = b.months.reduce((s, v) => s + (v || 0), 0);
+    let achieved = 0;
+    for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
+    ownerStats[b.owner] = { target, achieved, buCount, bus };
+  });
+  // 沒月度預算記錄但有 Won 商機的人
+  const budgetOwners = new Set(Object.keys(ownerStats));
+  allOpportunities.filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner)).forEach(o => {
+    const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
+    if (y !== year) return;
+    if (!ownerStats[o.owner]) {
+      const bus = _userBus(o.owner);
+      ownerStats[o.owner] = { target: 0, achieved: 0, buCount: Math.max(bus.length, 1), bus };
+    }
+    ownerStats[o.owner].achieved += parseFloat(o.amount) || 0;
+  });
+
   const cards = BUS.map(bu => {
-    const usersInBu = Object.entries(_userBuCache).filter(([_, b]) => b === bu).map(([u]) => u);
-    if (!usersInBu.length) {
+    let target = 0, achieved = 0, headcount = 0;
+    Object.entries(ownerStats).forEach(([username, s]) => {
+      if (!s.bus.includes(bu)) return;
+      // 拆分：多 BU 用戶的目標/達成均分到所屬各 BU
+      target   += s.target   / s.buCount;
+      achieved += s.achieved / s.buCount;
+      headcount++;
+    });
+    target = Math.round(target);
+    achieved = Math.round(achieved);
+    if (headcount === 0) {
       return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]};opacity:.45">
         <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
         <div style="font-size:11px;color:#9ca3af;margin-top:8px">無人員</div>
       </div>`;
     }
-    let target = 0, achieved = 0;
-    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && usersInBu.includes(b.owner));
-    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
-    budgetRecs.forEach(b => {
-      target += b.months.reduce((s, v) => s + (v || 0), 0);
-      for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
-    });
-    achieved += allOpportunities
-      .filter(o => o.stage === 'Won' && usersInBu.includes(o.owner) && !budgetOwners.has(o.owner))
-      .filter(o => {
-        const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
-        return y === year;
-      })
-      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
     const rate = target > 0 ? Math.min(100, Math.round(achieved / target * 100)) : 0;
     const color = rate >= 90 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444';
     return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]}">
-      <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
+      <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu} <span style="font-size:10px;color:#9ca3af;font-weight:500">${headcount}人</span></div>
       <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 萬</span></div>
       <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 萬</span></div>
       <div class="bu-card-rate" style="color:${color}">${target > 0 ? rate + '%' : '—'}</div>
@@ -3596,7 +3626,7 @@ function renderBuBreakdown() {
     <div class="bu-breakdown-card">
       <div class="bu-breakdown-header">
         <span class="bu-breakdown-title">📊 各 BU 業績總覽 — ${year} 年</span>
-        <span style="font-size:11px;color:#9ca3af">點擊 BU 卡片可篩選下方資料（待擴充）</span>
+        <span style="font-size:11px;color:#9ca3af">多 BU 業務目標／實際依所屬 BU 數均分</span>
       </div>
       <div class="bu-breakdown-grid">${cards}</div>
     </div>
