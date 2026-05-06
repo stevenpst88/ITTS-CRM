@@ -85,8 +85,19 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,  // 避免影響現有圖片/資源載入
   xFrameOptions:      { action: 'DENY' },          // 雙重防止 Clickjacking
   xContentTypeOptions: true,                        // 防止 MIME sniffing
-  referrerPolicy:     { policy: 'strict-origin-when-cross-origin' }
+  referrerPolicy:     { policy: 'strict-origin-when-cross-origin' },
+  // HSTS：強制 HTTPS（僅在 production 啟用，避免本地開發 HTTP 卡關）
+  strictTransportSecurity: process.env.NODE_ENV === 'production'
+    ? { maxAge: 31536000, includeSubDomains: true, preload: false }
+    : false
 }));
+
+// Permissions-Policy：禁用不需要的瀏覽器 API（攝影機、麥克風、地理位置等）
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
+  next();
+});
 
 // ── CORS：限制只允許本機與同網域 ────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')

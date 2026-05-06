@@ -20,6 +20,14 @@ const SECRET      = process.env.JWT_SECRET || process.env.SESSION_SECRET;
 if (!SECRET) {
   throw new Error('[jwtSession] 缺少 JWT_SECRET 或 SESSION_SECRET 環境變數');
 }
+// 安全強度檢查：production 必須 ≥32 字元；development 給警告即可
+if (SECRET.length < 32) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('[jwtSession] production 環境的 JWT_SECRET 必須至少 32 字元（目前長度 ' + SECRET.length + '），可用 `openssl rand -base64 48` 產生');
+  } else {
+    console.warn('[jwtSession] ⚠️  JWT_SECRET 過短（' + SECRET.length + ' 字元），production 部署前請改長到 32+ 字元');
+  }
+}
 
 // ── 手動解析 cookie（不依賴 cookie-parser）──
 function parseCookies(cookieHeader) {
