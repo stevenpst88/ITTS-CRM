@@ -5611,6 +5611,20 @@ function renderPrMoves(data) {
 
   const fmtMove = o => {
     const fi = STAGE_COLOR[o.from]||'#90a4ae', ti = STAGE_COLOR[o.to]||'#90a4ae';
+    // 金額顯示：若有 before/after 快照且兩值不同，顯示「前 → 後」；否則顯示單一金額
+    const aFrom = o.amountFrom, aTo = o.amountTo;
+    let amtHtml;
+    if (aFrom != null && aTo != null && aFrom !== aTo) {
+      const diff = aTo - aFrom;
+      const diffColor = diff > 0 ? '#0a8a4a' : '#c62828';
+      const diffSign  = diff > 0 ? '+' : '';
+      amtHtml = `<span class="pr-deal-amt" style="color:#888;text-decoration:line-through;font-weight:500">${aFrom.toLocaleString()}</span>
+        <span style="color:#888;font-size:11px">→</span>
+        <span class="pr-deal-amt">${aTo.toLocaleString()}仟</span>
+        <span style="color:${diffColor};font-size:11px;font-weight:600">(${diffSign}${diff.toLocaleString()})</span>`;
+    } else {
+      amtHtml = `<span class="pr-deal-amt">${(o.amount||0).toLocaleString()}仟</span>`;
+    }
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
         <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
@@ -5620,7 +5634,7 @@ function renderPrMoves(data) {
         <span class="pr-stage-tag" style="background:${fi}20;color:${fi};border:1px solid ${fi}40">${STAGE_LBL[o.from]||o.from}</span>
         <span style="color:#888;font-size:11px">→</span>
         <span class="pr-stage-tag" style="background:${ti}20;color:${ti};border:1px solid ${ti}40">${STAGE_LBL[o.to]||o.to}</span>
-        <span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>
+        ${amtHtml}
       </div>
     </div>`;
   };

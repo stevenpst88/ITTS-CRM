@@ -2236,6 +2236,7 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到此商機' });
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
+  const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
   const oldExpectedDate = data.opportunities[idx].expectedDate || null;
   // BU 更新驗證
   if (req.body.bu !== undefined) {
@@ -2255,11 +2256,13 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
       changedAt: new Date().toISOString(), owner
     });
   }
-  // 記錄階段變動歷史
+  // 記錄階段變動歷史（含金額快照）
+  const newAmount = parseFloat(data.opportunities[idx].amount) || 0;
   if (oldStage && newStage && oldStage !== newStage) {
     if (!data.opportunities[idx].stageHistory) data.opportunities[idx].stageHistory = [];
     data.opportunities[idx].stageHistory.push({
       from: oldStage, to: newStage,
+      amountFrom: oldAmount, amountTo: newAmount,
       date: new Date().toISOString(),
       changedBy: owner
     });
@@ -2374,9 +2377,15 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       const fi = STAGE_ORDER.indexOf(netFrom);
       const ti = STAGE_ORDER.indexOf(netTo);
       if (fi === -1 || ti === -1) return;
+      // 金額快照：第一筆的 amountFrom（變動前）→ 最後一筆的 amountTo（變動後）
+      // 舊資料無 amountFrom/amountTo 時，前端會 fallback 用 amount
+      const amountFrom = entries[0].amountFrom;
+      const amountTo   = entries[entries.length-1].amountTo;
       const item = {
         id:      o.id, company: o.company, product: o.product,
         amount:  parseFloat(o.amount)||0,
+        amountFrom: amountFrom != null ? amountFrom : null,
+        amountTo:   amountTo   != null ? amountTo   : null,
         from:    netFrom, to: netTo,
         date:    entries[entries.length-1].date,   // 使用當天最後操作時間
         owner:   o.owner
