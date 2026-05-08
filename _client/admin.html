@@ -1535,6 +1535,33 @@
     </div>
   </div>
 
+  <!-- ── 強制變更密碼 Modal（admin 自身亦適用 90 天政策）── -->
+  <div class="modal-overlay" id="forcePwdOverlay" style="z-index:10000">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-body" style="padding:32px 28px">
+        <h3 style="margin:0 0 8px;font-size:18px;color:#1a2d52;text-align:center">🔐 請更換密碼</h3>
+        <p id="forcePwdReason" style="color:#666;font-size:13px;text-align:center;margin:0 0 18px;line-height:1.6"></p>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdCurrent" placeholder="目前密碼"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdNew" placeholder="新密碼（至少 12 字元，含大小寫/數字/符號 3 種）"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdConfirm" placeholder="確認新密碼"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div id="forcePwdError" style="color:#c62828;font-size:12px;min-height:18px;margin-bottom:8px"></div>
+        <button class="btn btn-primary" id="forcePwdSubmit" style="width:100%;padding:10px;font-size:14px">完成更換</button>
+        <div style="text-align:center;margin-top:14px">
+          <a href="#" id="forcePwdLogout" style="font-size:12px;color:#888">改用其他帳號登入</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 刪除確認 Modal ── -->
   <div class="modal-overlay" id="delModal">
     <div class="modal" style="width:360px">
@@ -1674,12 +1701,76 @@
               return `<span style="background:${c}20;color:${c};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:4px">${b}</span>`;
             }).join('');
         $('adminUser').innerHTML = `👤 ${u.displayName || u.username} ${badges}`;
+        if (u.mustChangePassword === true) {
+          openForcePasswordModal(u.passwordChangeReason);
+          return false;
+        }
         return true;
       } catch {
         showLoginScreen();
         return false;
       }
     }
+
+    // ── 強制變更密碼處理 ──
+    const FORCE_PWD_REASON_TXT = {
+      never_changed: '您尚未變更過初始密碼，基於資安政策請立即設定新密碼。',
+      expired:       '您的密碼已超過 90 天未更換，請設定新密碼。',
+      must_change:   '管理員已重設您的密碼，請立即設定新密碼。'
+    };
+    function openForcePasswordModal(reason) {
+      const ov = $('forcePwdOverlay');
+      if (!ov) return;
+      const reasonEl = $('forcePwdReason');
+      if (reasonEl) reasonEl.textContent = FORCE_PWD_REASON_TXT[reason] || FORCE_PWD_REASON_TXT.must_change;
+      $('forcePwdCurrent').value = '';
+      $('forcePwdNew').value = '';
+      $('forcePwdConfirm').value = '';
+      $('forcePwdError').textContent = '';
+      ov.classList.add('open');
+      setTimeout(() => $('forcePwdCurrent').focus(), 100);
+    }
+    async function submitForcePassword() {
+      const cur  = $('forcePwdCurrent').value;
+      const np   = $('forcePwdNew').value;
+      const conf = $('forcePwdConfirm').value;
+      const errEl = $('forcePwdError');
+      const btn   = $('forcePwdSubmit');
+      errEl.textContent = '';
+      if (!cur || !np || !conf) { errEl.textContent = '請填寫所有欄位'; return; }
+      if (np.length < 12)        { errEl.textContent = '新密碼至少需 12 字元'; return; }
+      if (np !== conf)           { errEl.textContent = '新密碼與確認不一致'; return; }
+      if (np === cur)            { errEl.textContent = '新密碼不得與目前密碼相同'; return; }
+      btn.disabled = true; btn.textContent = '更換中…';
+      try {
+        const r = await fetch('/api/user/password', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword: cur, newPassword: np })
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          errEl.textContent = d.error || '更換失敗，請稍後再試';
+          btn.disabled = false; btn.textContent = '完成更換';
+          return;
+        }
+        $('forcePwdOverlay').classList.remove('open');
+        location.reload();
+      } catch (e) {
+        errEl.textContent = '網路錯誤：' + e.message;
+        btn.disabled = false; btn.textContent = '完成更換';
+      }
+    }
+    if ($('forcePwdSubmit')) $('forcePwdSubmit').addEventListener('click', submitForcePassword);
+    if ($('forcePwdLogout')) $('forcePwdLogout').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login.html';
+    });
+    ['forcePwdCurrent','forcePwdNew','forcePwdConfirm'].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitForcePassword(); });
+    });
 
     // ── API Helper（自動處理 session 過期）──
     async function adminFetch(url, options = {}) {
@@ -1896,7 +1987,7 @@
         const r = await adminFetch(`${API}/admin/users/${un}/password`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pw }) });
         const data = await r.json();
         if (!r.ok) { showToast(data.error || '重設失敗'); return; }
-        showToast('✅ 密碼已重設');
+        showToast('✅ 密碼已重設，使用者下次登入需立即更換密碼');
         closePwModal();
       } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗'); }
     });

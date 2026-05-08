@@ -2419,7 +2419,7 @@
         </div>
         <div class="form-group" style="margin-bottom:16px">
           <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">新密碼</label>
-          <input type="password" id="changePwNew" class="form-control" placeholder="至少 6 個字元" autocomplete="new-password">
+          <input type="password" id="changePwNew" class="form-control" placeholder="至少 12 個字元，含大小寫/數字/符號 3 種" autocomplete="new-password">
         </div>
         <div class="form-group" style="margin-bottom:24px">
           <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">確認新密碼</label>
@@ -2567,6 +2567,33 @@
         <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #f3f4f6;padding-top:14px">
           <button class="btn btn-outline" onclick="closeMbBudgetModal()">取消</button>
           <button class="btn btn-primary" onclick="saveMbBudget()">💾 儲存預算</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 強制變更密碼 Modal（從未變更/到期/Admin 重設）-->
+  <div class="modal-overlay" id="forcePwdOverlay" style="display:none;z-index:10000">
+    <div class="modal" style="max-width:440px">
+      <div class="modal-body" style="padding:32px 28px">
+        <h3 style="margin:0 0 8px;font-size:18px;color:#1a2d52;text-align:center">🔐 請更換密碼</h3>
+        <p id="forcePwdReason" style="color:#666;font-size:13px;text-align:center;margin:0 0 18px;line-height:1.6"></p>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdCurrent" placeholder="目前密碼"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdNew" placeholder="新密碼（至少 12 字元，含大小寫/數字/符號 3 種）"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:10px">
+          <input type="password" id="forcePwdConfirm" placeholder="確認新密碼"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div id="forcePwdError" style="color:#c62828;font-size:12px;min-height:18px;margin-bottom:8px"></div>
+        <button class="btn btn-primary" id="forcePwdSubmit" style="width:100%;padding:10px;font-size:14px">完成更換</button>
+        <div style="text-align:center;margin-top:14px">
+          <a href="#" id="forcePwdLogout" style="font-size:12px;color:#888">改用其他帳號登入</a>
         </div>
       </div>
     </div>

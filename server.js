@@ -375,6 +375,20 @@ app.use('/product-plan.html', express.static(path.join(__dirname, '_client', 'pr
 app.use('/product-spec.html', express.static(path.join(__dirname, '_client', 'product-spec.html'), STATIC_NO_CACHE));
 // admin.html 已移至受保護路由（需登入 + admin 角色）
 
+// ── 強制變更密碼 middleware：使用者 mustChangePassword=true 時，僅放行少數端點 ──
+const PWCHG_ALLOWED_PATHS = new Set(['/api/me', '/api/logout', '/api/user/password', '/api/login']);
+app.use((req, res, next) => {
+  // 非 API 請求（靜態檔）一律放行；登入相關端點放行
+  if (!req.path.startsWith('/api/')) return next();
+  if (!req.session?.user?.mustChangePassword) return next();
+  if (PWCHG_ALLOWED_PATHS.has(req.path)) return next();
+  return res.status(403).json({
+    error: '請先完成密碼更換',
+    code: 'MUST_CHANGE_PASSWORD',
+    reason: req.session.user.passwordChangeReason || 'must_change'
+  });
+});
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -393,14 +407,24 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
+    const pwReason = getPasswordChangeRequired(user);
     req.session.user = {
       username: user.username,
       displayName: user.displayName,
       role: user.role || 'user',
-      bu: userBus
+      bu: userBus,
+      mustChangePassword: !!pwReason,
+      passwordChangeReason: pwReason
     };
-    writeLog('LOGIN', username, username, `登入成功`, req);
-    res.json({ success: true, displayName: user.displayName, role: user.role || 'user', bu: userBus });
+    writeLog('LOGIN', username, username, `登入成功${pwReason ? `（需更換密碼:${pwReason}）` : ''}`, req);
+    res.json({
+      success: true,
+      displayName: user.displayName,
+      role: user.role || 'user',
+      bu: userBus,
+      mustChangePassword: !!pwReason,
+      passwordChangeReason: pwReason
+    });
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ success: false, message: '登入服務暫時無法使用，請稍後再試' });
@@ -466,6 +490,18 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
 });
 
+// ── 密碼到期 / 強制更換策略 ────────────────────────────────
+const PASSWORD_MAX_AGE_DAYS = 90;
+
+// 回傳 'must_change' / 'never_changed' / 'expired' / null
+function getPasswordChangeRequired(user) {
+  if (user.mustChangePassword === true) return 'must_change';
+  if (!user.passwordChangedAt) return 'never_changed';
+  const ageMs = Date.now() - new Date(user.passwordChangedAt).getTime();
+  if (ageMs > PASSWORD_MAX_AGE_DAYS * 86400000) return 'expired';
+  return null;
+}
+
 // ── 密碼強度檢查（12+ 字元 + 至少 3 種字元類型）────────────
 // 字元類型：小寫、大寫、數字、特殊符號
 function validatePasswordStrength(pw) {
@@ -505,8 +541,19 @@ app.put('/api/user/password', requireAuth, async (req, res) => {
     const valid = await bcrypt.compare(currentPassword, user.password);
     if (!valid) return res.status(401).json({ error: '舊密碼不正確' });
 
+    // 拒絕新密碼等於目前密碼
+    const sameAsOld = await bcrypt.compare(newPassword, user.password);
+    if (sameAsOld) return res.status(400).json({ error: '新密碼不得與目前密碼相同' });
+
     user.password = await bcrypt.hash(newPassword, 12);
+    user.passwordChangedAt = new Date().toISOString();
+    user.mustChangePassword = false;
     saveAuth(auth);
+    // 同步 session（解除強制變更狀態）
+    if (req.session.user) {
+      req.session.user.mustChangePassword = false;
+      req.session.user.passwordChangeReason = null;
+    }
     writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
     res.json({ success: true });
   } catch (e) {
@@ -1049,7 +1096,8 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     canDownloadContacts: !!canDownloadContacts,
     canSetTargets: !!canSetTargets,
     active: true,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    mustChangePassword: true   // 第一次登入必須更換密碼
   };
   auth.users.push(newUser);
   saveAuth(auth);
@@ -1091,8 +1139,10 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
   const user = auth.users.find(u => u.username === req.params.username);
   if (!user) return res.status(404).json({ error: '找不到此帳號' });
   user.password = await bcrypt.hash(password, 12);
+  user.passwordChangedAt = new Date().toISOString();
+  user.mustChangePassword = true;
   saveAuth(auth);
-  writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼`, req);
+  writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼（強制使用者下次登入更換）`, req);
   res.json({ success: true });
 });
 

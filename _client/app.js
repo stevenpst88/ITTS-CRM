@@ -2306,6 +2306,12 @@ async function initUser() {
     const user = await res.json();
     window._myRole = user.role || 'user';
     window._myUsername = user.username || '';
+    // 強制變更密碼：彈出 modal 並中斷後續初始化（API 已被 middleware 阻擋）
+    if (user.mustChangePassword === true) {
+      window._displayName = user.displayName || '';
+      openForcePasswordModal(user.passwordChangeReason);
+      return;
+    }
     const myBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     window._myBus = myBus;
     $('sidebarUser').textContent = user.displayName;
@@ -2411,7 +2417,7 @@ $('changePwSubmit').addEventListener('click', async () => {
 
   if (!oldPw)           return showErr('請輸入舊密碼');
   if (!newPw)           return showErr('請輸入新密碼');
-  if (newPw.length < 6) return showErr('新密碼至少需要 6 個字元');
+  if (newPw.length < 12) return showErr('新密碼至少需要 12 個字元');
   if (newPw !== confPw) return showErr('兩次輸入的新密碼不一致');
 
   btn.disabled = true;
@@ -8550,4 +8556,93 @@ function renderExecProduct(data) {
   });
 
   resetIdle(); // 啟動
+})();
+
+// ── 強制變更密碼 Modal ───────────────────────────────────
+const FORCE_PWD_REASON_TXT = {
+  never_changed: '您尚未變更過初始密碼，基於資安政策請立即設定新密碼。',
+  expired:       '您的密碼已超過 90 天未更換，請設定新密碼。',
+  must_change:   '管理員已重設您的密碼，請立即設定新密碼。'
+};
+
+function openForcePasswordModal(reason) {
+  const overlay = document.getElementById('forcePwdOverlay');
+  if (!overlay) return;
+  const reasonEl = document.getElementById('forcePwdReason');
+  if (reasonEl) reasonEl.textContent = FORCE_PWD_REASON_TXT[reason] || FORCE_PWD_REASON_TXT.must_change;
+  document.getElementById('forcePwdCurrent').value = '';
+  document.getElementById('forcePwdNew').value = '';
+  document.getElementById('forcePwdConfirm').value = '';
+  document.getElementById('forcePwdError').textContent = '';
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('forcePwdCurrent').focus(), 100);
+}
+
+async function submitForcePassword() {
+  const cur  = document.getElementById('forcePwdCurrent').value;
+  const np   = document.getElementById('forcePwdNew').value;
+  const conf = document.getElementById('forcePwdConfirm').value;
+  const errEl = document.getElementById('forcePwdError');
+  const btn   = document.getElementById('forcePwdSubmit');
+  errEl.textContent = '';
+  if (!cur || !np || !conf) { errEl.textContent = '請填寫所有欄位'; return; }
+  if (np.length < 12)        { errEl.textContent = '新密碼至少需 12 字元'; return; }
+  if (np !== conf)           { errEl.textContent = '新密碼與確認不一致'; return; }
+  if (np === cur)            { errEl.textContent = '新密碼不得與目前密碼相同'; return; }
+  btn.disabled = true; btn.textContent = '更換中…';
+  try {
+    const r = await fetch('/api/user/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: cur, newPassword: np })
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      errEl.textContent = d.error || '更換失敗，請稍後再試';
+      btn.disabled = false; btn.textContent = '完成更換';
+      return;
+    }
+    // 成功 → 關閉 overlay 並 reload 進入主頁
+    document.getElementById('forcePwdOverlay').style.display = 'none';
+    location.reload();
+  } catch (e) {
+    errEl.textContent = '網路錯誤：' + e.message;
+    btn.disabled = false; btn.textContent = '完成更換';
+  }
+}
+
+(function bindForcePwd() {
+  const submitBtn = document.getElementById('forcePwdSubmit');
+  const logoutLink = document.getElementById('forcePwdLogout');
+  if (submitBtn) submitBtn.addEventListener('click', submitForcePassword);
+  if (logoutLink) logoutLink.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/login.html';
+  });
+  // Enter 鍵送出
+  ['forcePwdCurrent','forcePwdNew','forcePwdConfirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitForcePassword(); });
+  });
+})();
+
+// 全域 fetch 攔截：若任何 API 回 403 MUST_CHANGE_PASSWORD，立即彈出強制變更 modal
+(function installPwdInterceptor() {
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await origFetch.apply(this, args);
+    try {
+      // 只看 API 回應；clone 避免消費掉 body
+      const url = (args[0] && args[0].url) || args[0] || '';
+      if (typeof url === 'string' && url.includes('/api/') && res.status === 403) {
+        const cloned = res.clone();
+        const data = await cloned.json().catch(() => null);
+        if (data && data.code === 'MUST_CHANGE_PASSWORD') {
+          openForcePasswordModal(data.reason || 'must_change');
+        }
+      }
+    } catch { /* 忽略攔截器錯誤 */ }
+    return res;
+  };
 })();
