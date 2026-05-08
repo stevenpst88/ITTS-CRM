@@ -16,6 +16,8 @@ const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
 const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
+const createPlanGuard = require('./middleware/planGuard');
+const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -170,8 +172,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── AI 功能速率限制（每人每分鐘 5 次）─────────────────────
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.session?.user?.username || req.ip,
+  handler: (req, res) => {
+    apiMonitor.recordRateLimit('ai');
+    const user = req.session?.user?.username || req.ip;
+    console.warn(`[aiLimiter] 429 triggered by ${user} on ${req.path}`);
+    res.status(429).json({ error: 'AI 功能使用過於頻繁，請 1 分鐘後再試（每分鐘上限 5 次）' });
+  }
+});
+
 // ── API 全域速率限制套用 ──────────────────────────────────
 app.use('/api/', apiLimiter);
+
+// ── 訂閱方案存取管控（需在 apiLimiter 後）────────────────
+const planGuard = createPlanGuard(loadAuth);
+app.use('/api/', planGuard);
+
+// ── AI Credits 扣點中介（每功能獨立呼叫）──────────────────
+const aiCreditsGuard = createAiCreditsMiddleware(loadAuth, saveAuth);
 
 // ── 輸入清理工具函式 ──────────────────────────────────────
 /**
@@ -346,6 +370,9 @@ const STATIC_NO_CACHE   = { maxAge: 0, etag: false, lastModified: false };
 app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_NO_CACHE));
 app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png'), STATIC_CACHE));
 app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg'), STATIC_CACHE));
+// 公開簡報頁面（不需登入）
+app.use('/product-plan.html', express.static(path.join(__dirname, '_client', 'product-plan.html'), STATIC_NO_CACHE));
+app.use('/product-spec.html', express.static(path.join(__dirname, '_client', 'product-spec.html'), STATIC_NO_CACHE));
 // admin.html 已移至受保護路由（需登入 + admin 角色）
 
 app.post('/api/login', loginLimiter, async (req, res) => {
@@ -508,7 +535,7 @@ const uploadOcr = multer({
   }
 });
 
-app.post('/api/admin/ai-ocr-card', requireAdmin, requireAi,
+app.post('/api/admin/ai-ocr-card', requireAdmin, aiCreditsGuard('admin-ocr-card'), requireAi,
   (req, res, next) => uploadOcr.single('card')(req, res, next),
   async (req, res) => {
     try {
@@ -552,7 +579,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 
 // ── 業務名片拍照辨識（業務可用，單張填入）────────────────
 const uploadOcrUser = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-app.post('/api/ai/ocr-card', requireAuth, requireAi,
+app.post('/api/ai/ocr-card', requireAuth, aiLimiter, aiCreditsGuard('ocr-card'), requireAi,
   (req, res, next) => uploadOcrUser.single('card')(req, res, next),
   async (req, res) => {
     try {
@@ -593,7 +620,7 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 );
 
 // ── Feature 2：拜訪記錄 AI 建議 ──────────────────────────
-app.post('/api/ai/visit-suggest', requireAuth, requireAi, async (req, res) => {
+app.post('/api/ai/visit-suggest', requireAuth, aiLimiter, aiCreditsGuard('visit-suggest'), requireAi, async (req, res) => {
   try {
     const { topic, content, visitType, contactName, company } = req.body;
     if (!content || content.trim().length < 10)
@@ -632,7 +659,7 @@ app.post('/api/ai/visit-suggest', requireAuth, requireAi, async (req, res) => {
 });
 
 // ── Feature 3：商機贏率預測 ──────────────────────────────
-app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
+app.post('/api/ai/opp-win-rate', requireAuth, aiLimiter, aiCreditsGuard('opp-win-rate'), requireAi, async (req, res) => {
   try {
     const { oppId } = req.body;
     if (!oppId) return res.status(400).json({ error: '缺少 oppId' });
@@ -668,7 +695,7 @@ app.post('/api/ai/opp-win-rate', requireAuth, requireAi, async (req, res) => {
 
 商機：${opp.company} / ${opp.product || opp.description || '未填'}
 現在階段：${STAGE_LABEL_AI[opp.stage] || opp.stage}
-金額：${opp.amount || '未填'} 萬元
+金額：${opp.amount || '未填'} 仟元
 距預計成交：${daysToClose !== null ? daysToClose + ' 天' : '未設定'}
 最近 30 天拜訪：${visits30} 次，60 天：${visits60} 次
 歷史晉升：${promotions} 次，退後：${demotions} 次
@@ -702,7 +729,7 @@ winRate 是 0–100 整數，factors 各項加總約等於 winRate。`
 });
 
 // ── Feature 4：客戶輪廓 AI 摘要 ──────────────────────────
-app.post('/api/ai/contact-summary', requireAuth, requireAi, async (req, res) => {
+app.post('/api/ai/contact-summary', requireAuth, aiLimiter, aiCreditsGuard('contact-summary'), requireAi, async (req, res) => {
   try {
     const { contactId } = req.body;
     if (!contactId) return res.status(400).json({ error: '缺少 contactId' });
@@ -735,7 +762,7 @@ app.post('/api/ai/contact-summary', requireAuth, requireAi, async (req, res) => 
       o.contactId === contactId && o.stage !== 'D' && o.stage !== 'Won'
     );
     const oppSummary = opps.length
-      ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}萬`).join('；')
+      ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}仟`).join('；')
       : '（無進行中商機）';
 
     const model = gemini.getModel();
@@ -781,7 +808,7 @@ ${visitSummary}
 });
 
 // ── Feature 5：個人化跟進信件草稿 ──────────────────────
-app.post('/api/ai/follow-up-email', requireAuth, requireAi, async (req, res) => {
+app.post('/api/ai/follow-up-email', requireAuth, aiLimiter, aiCreditsGuard('follow-up-email'), requireAi, async (req, res) => {
   try {
     const { contactName, company, title, visitType, topic, content, nextAction } = req.body;
     if (!content && !topic)
@@ -819,7 +846,7 @@ app.post('/api/ai/follow-up-email', requireAuth, requireAi, async (req, res) => 
 });
 
 // ── Feature 6：AI 公司背景分析（網頁 fetch + Gemini）───
-app.post('/api/ai/company-insight', requireAuth, requireAi, async (req, res) => {
+app.post('/api/ai/company-insight', requireAuth, aiLimiter, aiCreditsGuard('company-insight'), requireAi, async (req, res) => {
   try {
     const { url } = req.body;
     if (!url || !/^https?:\/\//i.test(url))
@@ -1081,6 +1108,62 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 訂閱方案 API ──────────────────────────────────────────
+
+// GET /api/plan — 回傳當前訂閱狀態（任何登入使用者可查詢）
+app.get('/api/plan', requireAuth, (req, res) => {
+  const auth = loadAuth();
+  const sub = auth._subscription || null;
+  if (!sub) return res.json({ plan: 'enterprise', managed: false });
+  const now = new Date();
+  res.json({
+    plan:          sub.plan || 'enterprise',
+    planExpiry:    sub.planExpiry || null,
+    aiCredits:     sub.aiCredits != null ? sub.aiCredits : null,
+    trialUntil:    sub.trialUntil || null,
+    addons:        sub.addons || [],
+    isTrialActive: sub.trialUntil ? new Date(sub.trialUntil) >= now : false,
+    isExpired:     sub.planExpiry ? new Date(sub.planExpiry) < now : false,
+    managed:       true,
+  });
+});
+
+// POST /api/admin/plan — 管理員設定訂閱方案
+app.post('/api/admin/plan', requireAdmin, (req, res) => {
+  const { plan, planExpiry, aiCredits, addons, trialUntil, addCredits } = req.body;
+  const VALID_PLANS = ['starter', 'growth', 'pro', 'enterprise'];
+  if (plan !== undefined && !VALID_PLANS.includes(plan))
+    return res.status(400).json({ error: '無效的方案名稱' });
+
+  const auth = loadAuth();
+  if (!auth._subscription) auth._subscription = {};
+  const sub = auth._subscription;
+
+  if (plan       !== undefined) sub.plan       = plan;
+  if (planExpiry !== undefined) sub.planExpiry = planExpiry;
+  if (trialUntil !== undefined) sub.trialUntil = trialUntil;
+  if (addons     !== undefined) sub.addons     = Array.isArray(addons) ? addons : [];
+  if (aiCredits  !== undefined) sub.aiCredits  = Number(aiCredits);
+  if (addCredits !== undefined) sub.aiCredits  = (sub.aiCredits || 0) + Number(addCredits);
+
+  saveAuth(auth);
+  writeLog('UPDATE_PLAN', req.session.user.username, 'system',
+    `訂閱方案更新: ${sub.plan}, 到期: ${sub.planExpiry || '無'}, Credits: ${sub.aiCredits ?? '不限'}`, req);
+  res.json({ success: true, subscription: sub });
+});
+
+// GET /api/admin/usage — AI Credits 使用明細
+app.get('/api/admin/usage', requireAdmin, (req, res) => {
+  const auth = loadAuth();
+  const sub = auth._subscription || {};
+  const log = Array.isArray(sub._creditLog) ? sub._creditLog : [];
+  res.json({
+    plan:      sub.plan || 'enterprise',
+    aiCredits: sub.aiCredits != null ? sub.aiCredits : null,
+    creditLog: log.slice(0, 200),
+  });
 });
 
 // ── Admin: get audit logs ────────────────────────────────
@@ -1374,6 +1457,68 @@ app.get('/api/contacts', requireAuth, (req, res) => {
       (c.note || '').toLowerCase().includes(kw)
     );
   }
+  // ── 客戶健康分數（rule-based）──
+  const now = Date.now();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yearNum  = new Date().getFullYear();
+  const visits90 = (data.visits || []).filter(v => !v.deleted);
+  const opps     = data.opportunities || [];
+  const recvs    = data.receivables   || [];
+  const contracts= data.contracts     || [];
+
+  contacts = contacts.map(c => {
+    let score = 100;
+    const co = (c.company || '').trim();
+    const cId = c.id;
+
+    // 最後拜訪
+    const cVisits = visits90.filter(v =>
+      v.contactId === cId || (co && (v.company || '').trim() === co)
+    );
+    const lastVisitDays = cVisits.length
+      ? Math.floor((now - new Date(cVisits.map(v => v.visitDate).sort().reverse()[0]).getTime()) / 86400000)
+      : Infinity;
+    if (lastVisitDays > 60)      score -= 40;
+    else if (lastVisitDays > 30) score -= 20;
+
+    // 逾期帳款
+    const hasOverdueRecv = recvs.some(r =>
+      r.owner === c.owner &&
+      ((co && (r.company || '').trim() === co) || r.contactName === c.name) &&
+      r.status !== 'paid' && r.dueDate && r.dueDate < todayStr
+    );
+    if (hasOverdueRecv) score -= 30;
+
+    // 合約即將到期（7天內，無 renewDate）
+    const in7 = new Date(); in7.setDate(in7.getDate() + 7);
+    const hasExpiringContract = contracts.some(ct =>
+      ct.owner === c.owner && !ct.deleted && !ct.renewDate &&
+      ct.endDate && ct.endDate >= todayStr && ct.endDate <= in7.toISOString().slice(0, 10) &&
+      ((co && (ct.company || '').trim() === co))
+    );
+    if (hasExpiringContract) score -= 20;
+
+    // 近 90 天有新商機
+    const d90 = new Date(now - 90 * 86400000).toISOString();
+    const hasNewOpp = opps.some(o =>
+      o.owner === c.owner && !o.deleted && o.createdAt >= d90 &&
+      (o.contactId === cId || (co && (o.company || '').trim() === co))
+    );
+    if (hasNewOpp) score += 10;
+
+    // 本年有成交商機
+    const hasWonThis = opps.some(o =>
+      o.owner === c.owner && o.stage === 'Won' &&
+      new Date(o.achievedDate || o.updatedAt || o.createdAt).getFullYear() === yearNum &&
+      (o.contactId === cId || (co && (o.company || '').trim() === co))
+    );
+    if (hasWonThis) score += 20;
+
+    score = Math.max(0, Math.min(120, score));
+    const health = score >= 70 ? '🟢' : score >= 40 ? '🟡' : '🔴';
+    return { ...c, healthScore: score, healthIcon: health };
+  });
+
   contacts.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(contacts);
 });
@@ -1582,7 +1727,7 @@ app.get('/api/visits', requireAuth, (req, res) => {
   const role = req.session.user.role;
   if (role === 'secretary') return res.json([]);
   const owners = getViewableOwners(req, 'visits');
-  const items = (data.visits || []).filter(v => owners.includes(v.owner));
+  const items = (data.visits || []).filter(v => owners.includes(v.owner) && !v.deleted);
   res.json(filterByBu(req, items));
 });
 
@@ -1635,9 +1780,12 @@ app.delete('/api/visits/:id', requireAuth, (req, res) => {
   const data = db.load();
   if (!data.visits) return res.json({ success: true });
   const v = data.visits.find(v => v.id === req.params.id && v.owner === owner);
-  data.visits = data.visits.filter(v => !(v.id === req.params.id && v.owner === owner));
+  if (!v) return res.json({ success: true });
+  v.deleted   = true;
+  v.deletedAt = new Date().toISOString();
+  v.deletedBy = owner;
   db.save(data);
-  if (v) writeLog('DELETE_VISIT', owner, v.contactName || req.params.id,
+  writeLog('DELETE_VISIT', owner, v.contactName || req.params.id,
     `${v.visitType} ${v.visitDate}`, req);
   res.json({ success: true });
 });
@@ -1645,7 +1793,7 @@ app.delete('/api/visits/:id', requireAuth, (req, res) => {
 // ── 主管業績達成率總覽 ───────────────────────────────────
 app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const { role, username } = req.session.user;
-  if (!['manager1', 'manager2', 'admin', 'executive'].includes(role)) {
+  if (!['manager1', 'manager2', 'admin', 'executive', 'secretary'].includes(role)) {
     return res.status(403).json({ error: '權限不足' });
   }
   const year = parseInt(req.query.year) || new Date().getFullYear();
@@ -1660,11 +1808,21 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
 
   const rows = salesUsers.map(u => {
-    // manager1 的目標 = 部屬（非 manager1）年度目標加總；避免手動殘留值
+    // 計算此列 manager1 自身的 BU 及轄下成員（不依賴呼叫者的可見範圍）
+    const uBus = normalizeBu(u.bu);
+    const uSubordinates = u.role === 'manager1'
+      ? auth.users.filter(x =>
+          x.username !== u.username &&
+          (x.role === 'user' || x.role === 'manager2' || x.role === 'secretary') &&
+          normalizeBu(x.bu).some(b => uBus.includes(b))
+        ).map(x => x.username)
+      : [];
+
+    // manager1 的目標 = 自己 BU 內部屬的年度目標加總
     let targetAmount;
     if (u.role === 'manager1') {
       targetAmount = (data.targets || [])
-        .filter(t => t.year === year && viewableUsernames.includes(t.owner) && t.owner !== u.username)
+        .filter(t => t.year === year && uSubordinates.includes(t.owner))
         .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
     } else {
       const t = (data.targets || []).find(t2 => t2.owner === u.username && t2.year === year);
@@ -1675,30 +1833,34 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     // 主管彙總轄下所有人的商機；一般業務只看自己
     let rowOwners;
     if (u.role === 'manager1') {
-      // 一級主管：彙總所有可見成員（含 manager2 + user）
-      rowOwners = viewableUsernames;
+      // 一級主管：自己 + 同 BU 的部屬（不跨 BU）
+      rowOwners = [u.username, ...uSubordinates];
     } else if (u.role === 'manager2') {
       // 二級主管：彙總 user 角色 + 自己（不含其他 manager2）
       rowOwners = auth.users
-        .filter(x => x.role === 'user' || x.username === u.username)
+        .filter(x => (x.role === 'user' && normalizeBu(x.bu).some(b => uBus.includes(b))) || x.username === u.username)
         .map(x => x.username);
     } else {
       rowOwners = [u.username];
     }
-    const myOpps = filterByBu(req, (data.opportunities || []).filter(o => rowOwners.includes(o.owner)));
+    // 商機過濾：依此列使用者的 BU 過濾（而非呼叫者 BU）
+    const myOpps = (data.opportunities || []).filter(o => {
+      if (!rowOwners.includes(o.owner)) return false;
+      if (!uBus.length) return true;
+      const itemBu = inferItemBu(o, auth);
+      return !itemBu || uBus.includes(itemBu);
+    });
 
     // 成交：逐月計算
     //   ① 手動認列：只算進 owner 主 BU；非主 BU 的 viewer 不算
     //   ② Won 商機：myOpps 已 BU 過濾，直接加總
     let achieved = 0;
     const monthlyBudgetsData = data.monthlyBudgets || [];
-    const myBus = getMyBus(req);
-    const isCrossBuViewer = role === 'admin' || role === 'executive';
     rowOwners.forEach(owner => {
       const ownerBus = normalizeBu(auth.users.find(uu => uu.username === owner)?.bu);
       const ownerPrimaryBu = ownerBus[0] || null;
-      const countsManual = isCrossBuViewer ||
-        (ownerPrimaryBu && myBus.includes(ownerPrimaryBu));
+      // 以「此列使用者」的 BU 判斷手動認列是否計入
+      const countsManual = !uBus.length || (ownerPrimaryBu && uBus.includes(ownerPrimaryBu));
       const budRec = monthlyBudgetsData.find(b => b.owner === owner && b.year === year);
       for (let m = 1; m <= 12; m++) {
         if (budRec && budRec.actuals) {
@@ -1755,7 +1917,7 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
 // ── 主管幫特定業務設定年度目標 ──────────────────────────
 app.put('/api/manager/target/:username', requireAuth, (req, res) => {
   const { role } = req.session.user;
-  if (!['manager1', 'manager2', 'admin', 'executive'].includes(role)) {
+  if (!['manager1', 'manager2', 'admin', 'executive', 'secretary'].includes(role)) {
     return res.status(403).json({ error: '權限不足' });
   }
   const targetUsername = req.params.username;
@@ -1831,17 +1993,13 @@ app.put('/api/settings/quarter-ratios', requireAdmin, (req, res) => {
   if (!y || !Array.isArray(ratios) || ratios.length !== 4) {
     return res.status(400).json({ error: '格式錯誤：需提供 year 與 ratios[4]' });
   }
-  const sum = ratios.reduce((a, v) => a + (parseFloat(v) || 0), 0);
-  if (Math.round(sum) !== 100) {
-    return res.status(400).json({ error: `配比合計需為 100，目前為 ${sum}` });
-  }
   const data = db.load();
   if (!data.settings) data.settings = {};
   if (!data.settings.quarterRatios) data.settings.quarterRatios = {};
   data.settings.quarterRatios[y] = ratios.map(v => parseFloat(v) || 0);
   db.save(data);
   writeLog('SET_QUARTER_RATIO', req.session.user.username, String(y),
-    `Q1~Q4配比: ${ratios.join('/')}`, req);
+    `Q1~Q4目標金額: ${ratios.join('/')}`, req);
   res.json({ success: true, year: y, ratios: data.settings.quarterRatios[y] });
 });
 
@@ -1853,9 +2011,9 @@ app.get('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
   const role = req.session.user.role;
   const username = req.session.user.username;
   const all = (data.settings && data.settings.userQuarterRatios) || {};
-  // admin/executive：全部；manager1：只給同 BU 的；其他：只給自己
+  // admin/executive：全部；manager1/secretary：只給同 BU 的；其他：只給自己
   if (role === 'admin' || role === 'executive') return res.json(all);
-  if (role === 'manager1') {
+  if (role === 'manager1' || role === 'secretary') {
     const owners = new Set(getViewableOwners(req, 'opportunities'));
     const filtered = {};
     Object.entries(all).forEach(([u, v]) => { if (owners.has(u)) filtered[u] = v; });
@@ -1864,11 +2022,21 @@ app.get('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
   return res.json(all[username] ? { [username]: all[username] } : {});
 });
 
-app.put('/api/settings/user-quarter-ratios', requireAdmin, (req, res) => {
+app.put('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (!['admin', 'secretary'].includes(role)) {
+    return res.status(403).json({ error: '無設定權限' });
+  }
   const { username, year, ratios, clearPersonal } = req.body;
   const y = parseInt(year);
   if (!username || !y) {
     return res.status(400).json({ error: '格式錯誤：需提供 username, year' });
+  }
+  if (role === 'secretary') {
+    const viewable = getViewableOwners(req, 'opportunities');
+    if (!viewable.includes(username)) {
+      return res.status(403).json({ error: '無權限設定此業務的季度目標（不在你的 BU 管轄範圍）' });
+    }
   }
   const data = db.load();
   if (!data.settings) data.settings = {};
@@ -1890,15 +2058,11 @@ app.put('/api/settings/user-quarter-ratios', requireAdmin, (req, res) => {
   if (!Array.isArray(ratios) || ratios.length !== 4) {
     return res.status(400).json({ error: '格式錯誤：需提供 ratios[4]' });
   }
-  const sum = ratios.reduce((a, v) => a + (parseFloat(v) || 0), 0);
-  if (Math.round(sum) !== 100) {
-    return res.status(400).json({ error: `配比合計需為 100，目前為 ${sum.toFixed(1)}` });
-  }
   if (!data.settings.userQuarterRatios[username]) data.settings.userQuarterRatios[username] = {};
   data.settings.userQuarterRatios[username][y] = ratios.map(v => parseFloat(v) || 0);
   db.save(data);
   writeLog('SET_USER_QR', req.session.user.username, username,
-    `${y}年個人配比: ${ratios.join('/')}`, req);
+    `${y}年個人季度目標: ${ratios.join('/')}`, req);
   res.json({ success: true });
 });
 
@@ -1935,7 +2099,7 @@ app.get('/api/monthly-budget', requireAuth, (req, res) => {
 // PUT /api/monthly-budget — manager/admin 設定某業務某年的 12 月預算
 app.put('/api/monthly-budget', requireAuth, (req, res) => {
   const role = req.session.user.role;
-  if (!['admin', 'manager1', 'manager2', 'executive'].includes(role)) {
+  if (!['admin', 'manager1', 'manager2', 'executive', 'secretary'].includes(role)) {
     return res.status(403).json({ error: '無設定權限' });
   }
   const { username, year, months, grossMargin } = req.body;
@@ -2115,7 +2279,8 @@ app.get('/api/pipeline-date-changes', requireAuth, (req, res) => {
   }
   const year = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
-  const changes = data.opportunityDateChanges || [];
+  const viewable = new Set(getViewableOwners(req, 'opportunities'));
+  const changes = (data.opportunityDateChanges || []).filter(c => viewable.has(c.owner));
 
   const months = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1;
@@ -2265,17 +2430,10 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
 
 // ── 取得流失商機（主管 / 管理員）─────────────────────────────
 app.get('/api/lost-opportunities', requireAuth, (req, res) => {
-  const { role, username } = req.session.user;
   const data = db.load();
-  let list = data.lostOpportunities || [];
-  if (role === 'user') {
-    list = list.filter(o => o.owner === username);
-  } else if (role === 'manager2') {
-    const auth = loadAuth();
-    const subs = auth.users.filter(u => u.role === 'user').map(u => u.username);
-    list = list.filter(o => subs.includes(o.owner) || o.owner === username);
-  }
-  // 依刪除時間排序（最新在前）
+  const owners = new Set(getViewableOwners(req, 'opportunities'));
+  let list = (data.lostOpportunities || []).filter(o => owners.has(o.owner));
+  list = filterByBu(req, list);
   list = list.sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   res.json(list);
 });
@@ -2362,7 +2520,17 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
         }
       }
 
+      // 預期成交日逾期也算殭屍（獨立條件）
+      const todayStr2 = new Date().toISOString().slice(0, 10);
+      if (!isZombie && o.expectedDate && o.expectedDate < todayStr2) {
+        isZombie = true;
+        reasons.push(`預期成交日（${o.expectedDate}）已逾期`);
+        severity = 'danger';
+      }
+
       if (!isZombie) return;
+
+      const overdueExpectedDate = !!(o.expectedDate && o.expectedDate < todayStr2);
 
       const u = auth.users.find(u => u.username === o.owner);
       zombies.push({
@@ -2383,7 +2551,8 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
         daysSinceFace:  dFace  === Infinity ? null : dFace,
         daysSincePhone: dPhone === Infinity ? null : dPhone,
         reasons,
-        severity
+        severity,
+        overdueExpectedDate
       });
     });
 
@@ -2406,8 +2575,9 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到此流失商機' });
 
   const opp = data.lostOpportunities[idx];
-  // 權限：user 只能還原自己的，manager 可還原轄下
-  if (role === 'user' && opp.owner !== username) {
+  // 權限：依可視範圍（已含 BU 隔離）
+  const restoreOwners = new Set(getViewableOwners(req, 'opportunities'));
+  if (!restoreOwners.has(opp.owner)) {
     return res.status(403).json({ error: '無權限還原此商機' });
   }
 
@@ -2531,7 +2701,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const headers = [
     '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
-    '合約金額(萬元)', '預估毛利率(%)', '備註(description)',
+    '合約金額(仟元)', '預估毛利率(%)', '備註(description)',
     '建立時間', '商機ID'
   ];
 
@@ -2952,7 +3122,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
 
   const headers = [
     '合約編號', '客戶名稱', '聯絡人', '產品/服務', '合約開始日', '合約結束日',
-    '合約金額(萬元)', '業務人員', '類型', '備註',
+    '合約金額(仟元)', '業務人員', '類型', '備註',
     '業務帳號(owner)', '業務姓名', '建立時間', '合約ID'
   ];
 
@@ -3079,7 +3249,7 @@ app.get('/api/contracts', requireAuth, (req, res) => {
   const role = req.session.user.role;
   if (role === 'secretary') return res.json([]);
   const owners = getViewableOwners(req, 'contracts');
-  res.json((data.contracts || []).filter(c => owners.includes(c.owner)));
+  res.json((data.contracts || []).filter(c => owners.includes(c.owner) && !c.deleted));
 });
 
 app.post('/api/contracts', requireAuth, (req, res) => {
@@ -3109,13 +3279,13 @@ app.post('/api/contracts', requireAuth, (req, res) => {
 });
 
 app.put('/api/contracts/:id', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
+  const { username } = req.session.user;
   const data = db.load();
   if (!data.contracts) data.contracts = [];
-  // admin / manager1 可編輯任何人的合約；一般業務只能編自己的
-  const canEditAll = ['admin', 'manager1', 'manager2', 'executive'].includes(role);
+  // 依可視範圍查找（已含 BU 隔離）；user 只能改自己的
+  const contractOwners = new Set(getViewableOwners(req, 'contracts'));
   const idx = data.contracts.findIndex(c =>
-    c.id === req.params.id && (canEditAll || c.owner === username)
+    c.id === req.params.id && contractOwners.has(c.owner)
   );
   if (idx === -1) return res.status(404).json({ error: '找不到此合約' });
   const owner = data.contracts[idx].owner; // 保留原 owner，不讓前端改
@@ -3131,9 +3301,12 @@ app.delete('/api/contracts/:id', requireAuth, (req, res) => {
   const data = db.load();
   if (!data.contracts) return res.json({ success: true });
   const c = data.contracts.find(c => c.id === req.params.id && c.owner === owner);
-  data.contracts = data.contracts.filter(c => !(c.id === req.params.id && c.owner === owner));
+  if (!c) return res.json({ success: true });
+  c.deleted   = true;
+  c.deletedAt = new Date().toISOString();
+  c.deletedBy = owner;
   db.save(data);
-  if (c) writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
+  writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
   res.json({ success: true });
 });
 
@@ -3910,13 +4083,16 @@ app.get('/api/callins', requireAuth, (req, res) => {
   if (changed) db.save(data);
 
   let list;
-  if (role === 'secretary' || role === 'manager1' || role === 'admin') {
-    list = data.callins; // 全部
-  } else if (role === 'manager2') {
-    // 看全部 user 及 manager2 的
-    const auth = loadAuth();
-    const visibleOwners = auth.users.filter(u => u.role === 'user' || u.role === 'manager2').map(u => u.username);
-    list = data.callins.filter(c => visibleOwners.includes(c.createdBy) || visibleOwners.includes(c.assignedTo) || c.createdBy === username);
+  if (role === 'secretary' || role === 'admin') {
+    list = data.callins; // 秘書/admin 全部可見
+  } else if (role === 'manager1' || role === 'manager2') {
+    // 主管：pending（待指派）+ 自己 BU 範圍內的
+    const callinViewable = new Set(getViewableOwners(req, 'opportunities'));
+    list = data.callins.filter(c =>
+      c.status === 'pending' ||
+      callinViewable.has(c.assignedTo) ||
+      c.createdBy === username
+    );
   } else {
     // user：只看指派給自己的
     list = data.callins.filter(c => c.assignedTo === username || c.createdBy === username);
@@ -3947,6 +4123,7 @@ app.post('/api/callins', requireAuth, (req, res) => {
   };
   data.callins.push(item);
   db.save(data);
+  writeLog('CREATE_CALLIN', username, item.company || item.contactName, `來源：${item.source || ''}`, req);
   // 通知二級主管
   const auth = loadAuth();
   auth.users.filter(u => u.role === 'manager2' || u.role === 'manager1').forEach(u => {
@@ -3964,6 +4141,11 @@ app.put('/api/callins/:id/assign', requireAuth, (req, res) => {
   }
   const { assignedTo } = req.body;
   if (!assignedTo) return res.status(400).json({ error: '請指定業務人員' });
+  // 確認被指派的業務在自己 BU 可視範圍內
+  const assignViewable = getViewableOwners(req, 'opportunities');
+  if (!assignViewable.includes(assignedTo)) {
+    return res.status(403).json({ error: '無法指派給此 BU 範圍外的業務' });
+  }
   const data = db.load();
   const item = (data.callins || []).find(c => c.id === req.params.id);
   if (!item) return res.status(404).json({ error: '找不到此 Call-in' });
@@ -3976,6 +4158,7 @@ app.put('/api/callins/:id/assign', requireAuth, (req, res) => {
   item.deadline   = deadline;
   item.status     = 'assigned';
   db.save(data);
+  writeLog('ASSIGN_CALLIN', username, item.company || item.contactName, `指派給 ${assignedTo}`, req);
 
   // 通知被指派的業務
   pushNotification(assignedTo, 'callin_assigned', '📞 您有新的 Call-in 指派',
@@ -4038,6 +4221,7 @@ app.put('/api/callins/:id/respond', requireAuth, (req, res) => {
     item.status = 'contacted';
   }
   db.save(data);
+  writeLog('RESPOND_CALLIN', username, item.company || item.contactName, `狀態：${item.status}`, req);
 
   // 通知指派主管
   if (item.assignedBy) {
@@ -4087,6 +4271,7 @@ app.post('/api/campaigns', requireAuth, (req, res) => {
   c.status = c.status || 'planned';
   data.campaigns.push(c);
   db.save(data);
+  writeLog('CREATE_CAMPAIGN', username, c.name, `類型：${c.type || ''}`, req);
   res.status(201).json(c);
 });
 
@@ -4100,6 +4285,7 @@ app.put('/api/campaigns/:id', requireAuth, (req, res) => {
     return res.status(403).json({ error: '無權限' });
   data.campaigns[idx] = { ...c, ...pickFields(req.body, CAMPAIGN_FIELDS), id: c.id, owner: c.owner };
   db.save(data);
+  writeLog('UPDATE_CAMPAIGN', username, c.name, `ID：${c.id}`, req);
   res.json(data.campaigns[idx]);
 });
 
@@ -4110,8 +4296,10 @@ app.delete('/api/campaigns/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到活動' });
   if (data.campaigns[idx].owner !== username && !['admin','manager1','manager2','executive'].includes(role))
     return res.status(403).json({ error: '無權限' });
+  const deletedCampaign = data.campaigns[idx];
   data.campaigns.splice(idx, 1);
   db.save(data);
+  writeLog('DELETE_CAMPAIGN', username, deletedCampaign.name, `ID：${deletedCampaign.id}`, req);
   res.json({ success: true });
 });
 
@@ -4128,12 +4316,12 @@ app.get('/api/leads', requireAuth, (req, res) => {
   } else if (!['admin','manager1','manager2','executive'].includes(role)) {
     return res.json([]);
   }
-  // manager2 只看自己可視範圍的業務分配
-  if (role === 'manager2') {
+  // manager1/manager2 依 BU 可視範圍過濾指派對象
+  if (role === 'manager1' || role === 'manager2') {
+    const leadsViewable = new Set(getViewableOwners(req, 'opportunities'));
     const auth = loadAuth();
-    const visUsers = auth.users.filter(u => u.role === 'user' || u.username === username).map(u => u.username);
     const allMarketing = auth.users.filter(u => u.role === 'marketing').map(u => u.username);
-    list = list.filter(l => allMarketing.includes(l.owner) || visUsers.includes(l.assignedTo) || l.assignedTo === username);
+    list = list.filter(l => allMarketing.includes(l.owner) || leadsViewable.has(l.assignedTo) || l.assignedTo === username);
   }
   res.json(list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
 });
@@ -4155,6 +4343,7 @@ app.post('/api/leads', requireAuth, (req, res) => {
   if (!l.company && !l.contactName) return res.status(400).json({ error: '請填入公司或聯絡人' });
   data.leads.push(l);
   db.save(data);
+  writeLog('CREATE_LEAD', username, l.company || l.contactName, `活動：${l.campaignName || ''}`, req);
   res.status(201).json(l);
 });
 
@@ -4168,6 +4357,7 @@ app.put('/api/leads/:id', requireAuth, (req, res) => {
     return res.status(403).json({ error: '無權限' });
   data.leads[idx] = { ...l, ...pickFields(req.body, LEAD_FIELDS), id: l.id, owner: l.owner };
   db.save(data);
+  writeLog('UPDATE_LEAD', username, l.company || l.contactName, `ID：${l.id}`, req);
   res.json(data.leads[idx]);
 });
 
@@ -4178,6 +4368,11 @@ app.post('/api/leads/:id/assign', requireAuth, (req, res) => {
     return res.status(403).json({ error: '僅主管可指派 Lead' });
   const { assignedTo } = req.body;
   if (!assignedTo) return res.status(400).json({ error: '請選擇指派業務' });
+  // 確認指派對象在自己 BU 可視範圍內
+  const leadAssignViewable = getViewableOwners(req, 'opportunities');
+  if (!leadAssignViewable.includes(assignedTo)) {
+    return res.status(403).json({ error: '無法指派給此 BU 範圍外的業務' });
+  }
   const data = db.load();
   const auth = loadAuth();
   const targetUser = auth.users.find(u => u.username === assignedTo && u.role === 'user');
@@ -4190,6 +4385,7 @@ app.post('/api/leads/:id/assign', requireAuth, (req, res) => {
   l.assignedAt  = new Date().toISOString();
   l.status      = 'assigned';
   db.save(data);
+  writeLog('ASSIGN_LEAD', username, l.company || l.contactName, `指派給 ${assignedTo}`, req);
   // 通知業務
   pushNotification(assignedTo, 'lead_assigned', '🎯 新 Lead 指派',
     `${l.company || l.contactName} 已指派給您`, l.id);
@@ -4208,10 +4404,20 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
 
   const salesPerson = req.body.salesPerson || l.assignedTo;
   if (!salesPerson) return res.status(400).json({ error: '請指定負責業務' });
+  // 確認指派業務在自己 BU 可視範圍內
+  const convertViewable = getViewableOwners(req, 'opportunities');
+  if (!convertViewable.includes(salesPerson)) {
+    return res.status(403).json({ error: '無法轉換給此 BU 範圍外的業務' });
+  }
   const { product, category, stage, oppName } = req.body;
 
   if (!data.contacts) data.contacts = [];
   if (!data.opportunities) data.opportunities = [];
+
+  // 取得業務的 BU，讓新建資料正確標記
+  const convertAuth = loadAuth();
+  const salesUser = convertAuth.users.find(u => u.username === salesPerson);
+  const salesBu = normalizeBu(salesUser?.bu)[0] || null;
 
   // 建立聯絡人（不重複）
   const exists = data.contacts.find(c =>
@@ -4221,7 +4427,7 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
   let contactId = exists ? exists.id : null;
   if (!exists) {
     const newContact = {
-      id: uuidv4(), owner: salesPerson,
+      id: uuidv4(), owner: salesPerson, bu: salesBu,
       name: l.contactName || '', company: l.company || '',
       title: l.title || '', phone: l.phone || '', email: l.email || '',
       note: `[Lead] ${l.campaignName || ''} - ${l.interest || ''}`,
@@ -4233,7 +4439,7 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
 
   // 建立商機
   const opp = {
-    id: uuidv4(), owner: salesPerson,
+    id: uuidv4(), owner: salesPerson, bu: salesBu,
     contactId: contactId || '',
     contactName: l.contactName || '', company: l.company || '',
     product: oppName || product || l.interest || '',
@@ -4248,6 +4454,7 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
   l.opportunityId = opp.id;
   l.convertedAt = new Date().toISOString();
   db.save(data);
+  writeLog('CONVERT_LEAD', username, l.company || l.contactName, `轉換業務：${salesPerson}`, req);
 
   res.json({ lead: l, opportunity: opp, contactId });
 });
@@ -4264,6 +4471,7 @@ app.post('/api/leads/:id/disqualify', requireAuth, (req, res) => {
   l.disqualifyReason = req.body.reason || '';
   l.disqualifiedAt = new Date().toISOString();
   db.save(data);
+  writeLog('DISQUALIFY_LEAD', username, l.company || l.contactName, `原因：${l.disqualifyReason}`, req);
   res.json(l);
 });
 
@@ -4276,18 +4484,9 @@ app.get('/api/contacts-by-owner', requireAuth, (req, res) => {
   const { owner } = req.query;
   if (!owner) return res.status(400).json({ error: '請指定 owner' });
 
-  // 確認查詢對象在可視範圍內
-  const auth = loadAuth();
-  const targetUser = auth.users.find(u => u.username === owner);
-  if (!targetUser) return res.status(404).json({ error: '找不到此使用者' });
-
-  if (role === 'manager2') {
-    if (targetUser.role !== 'user' && targetUser.username !== username)
-      return res.status(403).json({ error: '超出可視範圍' });
-  } else if (role === 'manager1') {
-    if (!['user','manager2'].includes(targetUser.role) && targetUser.username !== username)
-      return res.status(403).json({ error: '超出可視範圍' });
-  }
+  // 確認查詢對象在自己 BU 可視範圍內
+  const cboViewable = new Set(getViewableOwners(req, 'contacts'));
+  if (!cboViewable.has(owner)) return res.status(403).json({ error: '超出 BU 可視範圍' });
 
   const data = db.load();
   const contacts = (data.contacts || []).filter(c => c.owner === owner && !c.deleted);
@@ -4309,6 +4508,11 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   const fromUser = auth.users.find(u => u.username === fromOwner);
   const toUser   = auth.users.find(u => u.username === toOwner);
   if (!fromUser || !toUser) return res.status(400).json({ error: '指定的使用者不存在' });
+
+  // 確認來源與目標都在自己 BU 可視範圍內
+  const transferViewable = new Set(getViewableOwners(req, 'contacts'));
+  if (!transferViewable.has(fromOwner)) return res.status(403).json({ error: '來源業務超出 BU 可視範圍' });
+  if (!transferViewable.has(toOwner)) return res.status(403).json({ error: '目標業務超出 BU 可視範圍' });
 
   // 權限：manager2 只能移轉 user，manager1 可移轉 user/manager2
   const transferableRoles = role === 'admin'    ? ['user','manager1','manager2','secretary']
@@ -5174,12 +5378,13 @@ app.post('/api/quotations', requireAuth, (req, res) => {
 });
 
 app.put('/api/quotations/:id', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
+  const { username } = req.session.user;
   const data = db.load();
   const idx  = (data.quotations || []).findIndex(q => q.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '找不到此報價單' });
   const q = data.quotations[idx];
-  if (role === 'user' && q.owner !== username) return res.status(403).json({ error: '無權限' });
+  const quoteOwners = new Set(getViewableOwners(req, 'quotations'));
+  if (!quoteOwners.has(q.owner)) return res.status(403).json({ error: '無權限' });
 
   const items = Array.isArray(req.body.items)
     ? req.body.items.slice(0, 50).map(it => ({
@@ -5213,11 +5418,11 @@ app.put('/api/quotations/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/quotations/:id', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
   const data = db.load();
   const q    = (data.quotations || []).find(q => q.id === req.params.id);
   if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  if (role === 'user' && q.owner !== username) return res.status(403).json({ error: '無權限' });
+  const delQuoteOwners = new Set(getViewableOwners(req, 'quotations'));
+  if (!delQuoteOwners.has(q.owner)) return res.status(403).json({ error: '無權限' });
   data.quotations = data.quotations.filter(q => q.id !== req.params.id);
   db.save(data);
   res.json({ success: true });
@@ -5407,6 +5612,22 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
       .filter(u => allOwners.includes(u.username))
       .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
 
+    // ── Gap 分析（年底預測達成 vs 目標）──
+    const dayOfYear = (d) => {
+      const start = new Date(d.getFullYear(), 0, 0);
+      return Math.floor((d - start) / 86400000);
+    };
+    const today2 = new Date();
+    const yearLen = (yearNum % 4 === 0 && (yearNum % 100 !== 0 || yearNum % 400 === 0)) ? 366 : 365;
+    let gapAnalysis = null;
+    if (yearNum === today2.getFullYear() && totalTarget > 0) {
+      const dayProgress = dayOfYear(today2) / yearLen; // 0~1
+      const yearEndForecast = dayProgress > 0 ? Math.round(achieved / dayProgress) : 0;
+      const gap = totalTarget - yearEndForecast;
+      const forecastPct = Math.round((yearEndForecast / totalTarget) * 100);
+      gapAnalysis = { yearEndForecast, gap, forecastPct, dayProgress: Math.round(dayProgress * 100) };
+    }
+
     res.json({
       year: yearNum,
       achievement: { target: totalTarget, achieved, pct: achievementPct },
@@ -5418,6 +5639,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
       aging: { stages, buckets, data: aging, items: agingItems, stalledCount },
       topCustomers,
       ownerOptions,
+      gapAnalysis,
     });
   } catch (e) {
     console.error('[manager-home]', e);
@@ -5583,6 +5805,134 @@ app.get('/api/exec/product-analysis', requireAuth, (req, res) => {
   res.json(result);
 });
 
+// ── BU 間績效對比（Exec Dash）────────────────────────────
+app.get('/api/exec/bu-comparison', requireAuth, (req, res) => {
+  const { role } = req.session.user;
+  if (!['admin', 'executive'].includes(role)) {
+    return res.status(403).json({ error: '僅 exec/admin 可查看 BU 對比' });
+  }
+  const yearNum = parseInt(req.query.year) || new Date().getFullYear();
+  const data = db.load();
+  const auth = loadAuth();
+  const BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+
+  const result = BUS.map(bu => {
+    // 屬於此 BU 的業務人員
+    const buUsers = auth.users
+      .filter(u => normalizeBu(u.bu).includes(bu) && ['user','manager1','manager2'].includes(u.role))
+      .map(u => u.username);
+
+    const opps = (data.opportunities || []).filter(o => buUsers.includes(o.owner));
+    const wonOpps = opps.filter(o => o.stage === 'Won' &&
+      new Date(o.achievedDate || o.updatedAt || o.createdAt).getFullYear() === yearNum);
+    const activeOpps = opps.filter(o => ['A','B','C'].includes(o.stage));
+
+    // 年度目標（月度預算優先，fallback 傳統目標）
+    let target = (data.monthlyBudgets || [])
+      .filter(b => b.year === yearNum && buUsers.includes(b.owner))
+      .reduce((s, b) => s + b.months.reduce((ms, v) => ms + (v || 0), 0), 0);
+    if (!target) {
+      target = (data.targets || [])
+        .filter(t => t.year === yearNum && buUsers.includes(t.owner))
+        .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    }
+
+    // 已達成（手動認列優先）
+    let achieved = 0;
+    buUsers.forEach(owner => {
+      const budRec = (data.monthlyBudgets || []).find(b => b.owner === owner && b.year === yearNum);
+      for (let m = 1; m <= 12; m++) {
+        if (budRec?.actuals) {
+          const v = budRec.actuals[m - 1];
+          if (v !== null && v !== undefined) { achieved += v; continue; }
+        }
+        achieved += wonOpps
+          .filter(o => o.owner === owner)
+          .filter(o => {
+            const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+            return d.getFullYear() === yearNum && d.getMonth() + 1 === m;
+          })
+          .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+      }
+    });
+
+    const pct = target > 0 ? Math.round((achieved / target) * 100) : null;
+    return {
+      bu, target, achieved, pct,
+      oppCount: activeOpps.length,
+      wonCount: wonOpps.length,
+      pipeline: activeOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0),
+    };
+  });
+
+  res.json({ year: yearNum, bus: result });
+});
+
+// ════════════════════════════════════════════════════════════
+//  逾期自動推播：合約即將到期 + 帳款逾期未付
+//  每次 cold start 執行一次；以「當天日期」作為去重 key，
+//  同一合約/帳款當天只推一次。
+// ════════════════════════════════════════════════════════════
+async function checkOverdueReminders() {
+  try {
+    await db.ready();
+    const data   = db.load();
+    const auth   = loadAuth();
+    const today  = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const in7days  = new Date(today); in7days.setDate(in7days.getDate() + 7);
+    let changed = false;
+
+    // helper：找 manager1（同 BU）
+    function findManager1(ownerUsername) {
+      const u = auth.users.find(x => x.username === ownerUsername);
+      if (!u) return null;
+      const ownerBu = normalizeBu(u.bu);
+      return auth.users.find(x =>
+        x.role === 'manager1' &&
+        normalizeBu(x.bu).some(b => ownerBu.includes(b))
+      )?.username || null;
+    }
+
+    // ── 合約：endDate 在 7 天內且未設 renewDate ─────────
+    for (const c of (data.contracts || [])) {
+      if (!c.endDate || c.renewDate || c.deleted) continue;
+      const end = new Date(c.endDate); end.setHours(0, 0, 0, 0);
+      if (end < today || end > in7days) continue;          // 只抓 0~7 天
+      if (c._contractReminderDate === todayStr) continue;   // 今天已推過
+
+      const daysLeft = Math.round((end - today) / 86400000);
+      const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請確認是否續約`;
+      pushNotification(c.owner, 'contract_expiring', '⚠️ 合約即將到期', msg, c.id);
+      const mgr = findManager1(c.owner);
+      if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring', '⚠️ 合約即將到期', msg, c.id);
+      c._contractReminderDate = todayStr;
+      changed = true;
+    }
+
+    // ── 帳款：dueDate 已過且未付清 ─────────────────────
+    for (const r of (data.receivables || [])) {
+      if (!r.dueDate || r.status === 'paid') continue;
+      const due = new Date(r.dueDate); due.setHours(0, 0, 0, 0);
+      if (due >= today) continue;                           // 未到期
+      if (r._receivableReminderDate === todayStr) continue; // 今天已推過
+
+      const daysOverdue = Math.round((today - due) / 86400000);
+      const msg = `${r.company} 發票 ${r.invoiceNo || ''} 已逾期 ${daysOverdue} 天（到期：${r.dueDate}），請催收`;
+      pushNotification(r.owner, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
+      const mgr = findManager1(r.owner);
+      if (mgr && mgr !== r.owner) pushNotification(mgr, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
+      r._receivableReminderDate = todayStr;
+      changed = true;
+    }
+
+    if (changed) db.save(data);
+    console.log('[checkOverdueReminders] 執行完成');
+  } catch (e) {
+    console.error('[checkOverdueReminders] 失敗:', e.message);
+  }
+}
+
 // ── 404 fallback ─────────────────────────────────────────
 app.use((req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: '找不到此 API 端點' });
@@ -5600,6 +5950,7 @@ if (require.main === module) {
     app.listen(PORT, () => {
       migrateOwner();
       migrateStage成交ToWon();
+      checkOverdueReminders();
       console.log(`\n✅ 業務名片管理系統已啟動`);
       console.log(`👉 請開啟瀏覽器，前往 http://localhost:${PORT}\n`);
     });
@@ -5613,6 +5964,7 @@ if (require.main === module) {
       .then(() => {
         migrateOwner();
         migrateStage成交ToWon();
+        checkOverdueReminders();
       })
       .catch((e) => console.error('[db] preload failed:', e));
     apiMonitor.ready().catch((e) => console.error('[apiMonitor] preload failed:', e));

@@ -59,8 +59,8 @@ function applyPermissions() {
   // 角色導覽限制
   const role = userPermissions.role;
   if (role === 'secretary') {
-    // 秘書可看首頁看板、銷售預測、帳務管理、Call-in Pass，隱藏其他功能
-    ['navProspects','navContacts','navVisits','navTargets','navPipeline','navContractGroup'].forEach(id => {
+    // 秘書可看首頁看板、業績目標、銷售預測、帳務管理、Call-in Pass，隱藏其他功能
+    ['navProspects','navContacts','navVisits','navPipeline','navContractGroup'].forEach(id => {
       const el = $(id); if (el) el.style.display = 'none';
     });
     // navHome、navAccountingGroup、navForecast、navCallin 保留
@@ -601,7 +601,7 @@ function renderDashboardCharts() {
         <div class="dash-pipeline-col-name">${name}</div>
         <div class="dash-pipeline-col-count">${stageOpps.length}</div>
         <div class="dash-pipeline-col-label">筆商機</div>
-        <div class="dash-pipeline-col-amt">$ ${total.toLocaleString()} 萬</div>`;
+        <div class="dash-pipeline-col-amt">$ ${total.toLocaleString()} 仟</div>`;
       col.addEventListener('click', () => showSection('pipeline'));
       pipelineCols.appendChild(col);
     });
@@ -806,6 +806,10 @@ function buildContactCard(c, extraClass = '') {
   const isCustomer = c.customerType === 'customer';
   const relLabel = isCustomer ? `我的客戶${c.productLine ? '｜' + c.productLine : ''}` : '潛在客戶';
   const relClass = isCustomer ? 'rel-customer' : 'rel-prospect';
+  const healthIcon = c.healthIcon || '';
+  const healthTitle = c.healthScore !== undefined
+    ? `健康分數 ${c.healthScore}（${c.healthScore >= 70 ? '良好' : c.healthScore >= 40 ? '待關注' : '風險'}）`
+    : '';
   card.innerHTML = `
     <div class="card-top" style="position:relative">
       <div class="avatar" style="background:linear-gradient(135deg,${c1},${c2})">${getInitial(c.name)}</div>
@@ -814,6 +818,7 @@ function buildContactCard(c, extraClass = '') {
         <div class="card-title-company">${escapeHtml(titleOnly) || '&nbsp;'}</div>
       </div>
       ${resignedBadge}
+      ${healthIcon ? `<span class="contact-health-icon" title="${escapeHtml(healthTitle)}">${healthIcon}</span>` : ''}
       ${imageThumb}
     </div>
     <div class="card-info">
@@ -1013,7 +1018,7 @@ function buildCompanyGroupEl(company, members) {
          <span class="cg-recent-icon">&#128161;</span>
          <span class="cg-opp-stage opp-${(recentOpp.stage||'').toLowerCase()}">${recentOpp.stage}</span>
          <span class="cg-recent-text">${recentOpp.product || recentOpp.category || ''}</span>
-         ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} 萬</span>` : ''}
+         ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} 仟</span>` : ''}
        </div>`
     : '';
 
@@ -1224,33 +1229,55 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ── 商品「其他」自訂欄位 ─────────────────────────────────
-function handleProductOther(selectId, customId) {
-  const sel = $(selectId), inp = $(customId);
-  if (!sel || !inp) return;
+function setupProductSelect(selectId, customId, subId) {
+  const sel = $(selectId), inp = $(customId), sub = subId ? $(subId) : null;
+  if (!sel) return;
   sel.addEventListener('change', () => {
-    const isOther = sel.value === '其他';
-    inp.style.display = isOther ? '' : 'none';
-    if (isOther) { inp.value = ''; inp.focus(); }
-    else inp.value = '';
+    const val = sel.value;
+    if (inp) {
+      const isOther = val === '其他';
+      inp.style.display = isOther ? '' : 'none';
+      if (isOther) { inp.value = ''; inp.focus(); }
+      else inp.value = '';
+    }
+    if (sub) {
+      const subOpts = PRODUCT_SUBSELS[val];
+      sub.innerHTML = '<option value="">-- 請選擇類型 --</option>';
+      if (subOpts) {
+        subOpts.forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          sub.appendChild(o);
+        });
+        sub.style.display = '';
+      } else {
+        sub.style.display = 'none';
+      }
+    }
   });
 }
 
-// 取得最終商品值（若選「其他」則回傳自訂輸入）
-function getProductValue(selectId, customId) {
-  const sel = $(selectId), inp = $(customId);
+// 取得最終商品值（若選「其他」則回傳自訂輸入；若有子選單則組合值）
+function getProductValue(selectId, customId, subId) {
+  const sel = $(selectId), inp = $(customId), sub = subId ? $(subId) : null;
   if (sel && sel.value === '其他' && inp) return inp.value.trim() || '其他';
+  if (sel && sub && PRODUCT_SUBSELS[sel.value] && sub.value) {
+    return `${sel.value} ${sub.value}`;
+  }
   return sel ? sel.value : '';
 }
 
-handleProductOther('oppProduct',     'oppProductCustom');
-handleProductOther('cOppProduct',    'cOppProductCustom');
-handleProductOther('oppEditProduct', 'oppEditProductCustom');
+setupProductSelect('oppProduct',     'oppProductCustom',     'oppProductSub');
+setupProductSelect('cOppProduct',    'cOppProductCustom',    'cOppProductSub');
+setupProductSelect('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub');
 
 // ── 聯絡人 Modal 商機 TAB ─────────────────────────────────
 $('cOppCategory').addEventListener('change', function () {
   const ps = $('cOppProduct');
   const pg = $('cOppProductGroup');
   ps.innerHTML = '<option value="">-- 請選擇 --</option>';
+  const subSel = $('cOppProductSub');
+  if (subSel) { subSel.style.display = 'none'; subSel.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   const catData = OPP_PRODUCTS[this.value];
   const groups  = catData && typeof catData === 'object' && !Array.isArray(catData) ? catData : null;
   const hasItems = groups && Object.values(groups).some(arr => arr.length > 0);
@@ -1284,7 +1311,7 @@ $('cOppSaveBtn').addEventListener('click', async () => {
     contactName:    contact ? contact.name    : $('name').value.trim(),
     company:        contact ? contact.company : $('company').value.trim(),
     category,
-    product:        getProductValue('cOppProduct', 'cOppProductCustom'),
+    product:        getProductValue('cOppProduct', 'cOppProductCustom', 'cOppProductSub'),
     stage:          $('cOppStage').value || 'C',
     amount:         $('cOppAmount').value,
     grossMarginRate:$('cOppGrossMargin').value,
@@ -1304,6 +1331,7 @@ $('cOppSaveBtn').addEventListener('click', async () => {
     $('cOppCategory').value    = '';
     $('cOppProduct').innerHTML = '<option value="">-- 請選擇 --</option>';
     $('cOppProductGroup').style.display = 'none';
+    const _sub1 = $('cOppProductSub'); if (_sub1) { _sub1.style.display = 'none'; _sub1.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
     $('cOppStage').value       = 'C';
     $('cOppAmount').value      = '';
     $('cOppGrossMargin').value = '';
@@ -1318,6 +1346,7 @@ function resetContactOppTab() {
   $('cOppCategory').value    = '';
   $('cOppProduct').innerHTML = '<option value="">-- 請選擇 --</option>';
   $('cOppProductGroup').style.display = 'none';
+  const _sub2 = $('cOppProductSub'); if (_sub2) { _sub2.style.display = 'none'; _sub2.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   $('cOppStage').value       = 'C';
   $('cOppAmount').value      = '';
   $('cOppGrossMargin').value = '';
@@ -1676,11 +1705,13 @@ function updateCompanyDatalist(contacts) {
   dl.innerHTML = recent.map(name => `<option value="${name}">`).join('');
 }
 
-// ── 搜尋 ─────────────────────────────────────────────────
+// ── 搜尋（200ms debounce：避免每鍵都打 API）──────────────────
+let _searchDebounceTimer = null;
 $('searchInput').addEventListener('input', function () {
   const val = this.value.trim();
   $('clearSearch').classList.toggle('visible', val.length > 0);
-  loadContacts(val);
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(() => loadContacts(val), 200);
 });
 $('clearSearch').addEventListener('click', () => {
   $('searchInput').value = '';
@@ -2700,6 +2731,7 @@ const OPP_PRODUCTS = {
       'SAP Private Cloud License',
       'ERP 顧問導入專案 PE',
       'ERP 顧問導入專案 PCE',
+      'SAP CCFLEX',
       '其他',
     ],
     '─── License MA ───': [
@@ -2729,11 +2761,17 @@ const OPP_PRODUCTS = {
   }
 };
 
+const PRODUCT_SUBSELS = {
+  'SAP CCFLEX': ['C&S', 'A&O'],
+};
+
 $v('oppCategory').addEventListener('change', function () {
   const cat = this.value;
   const pg = $v('oppProductGroup');
   const ps = $v('oppProduct');
   ps.innerHTML = '<option value="">-- 請選擇 --</option>';
+  const subSel = $v('oppProductSub');
+  if (subSel) { subSel.style.display = 'none'; subSel.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   const catData = OPP_PRODUCTS[cat];
   const groups = catData && typeof catData === 'object' && !Array.isArray(catData) ? catData : null;
   const hasItems = groups && Object.values(groups).some(arr => arr.length > 0);
@@ -2777,6 +2815,7 @@ function resetVisitModalTabs() {
   $v('oppCategory').value = '';
   $v('oppProduct').innerHTML = '<option value="">-- 請選擇 --</option>';
   $v('oppProductGroup').style.display = 'none';
+  const _sub3 = $v('oppProductSub'); if (_sub3) { _sub3.style.display = 'none'; _sub3.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   $v('oppAmount').value = '';
   $v('oppExpectedDate').value = '';
   $v('oppDescription').value = '';
@@ -2853,7 +2892,7 @@ $v('visitSaveBtn').addEventListener('click', async () => {
         contactName: contact ? contact.name : '',
         company: contact ? (contact.company || '') : '',
         category: oppCat,
-        product: getProductValue('oppProduct', 'oppProductCustom'),
+        product: getProductValue('oppProduct', 'oppProductCustom', 'oppProductSub'),
         amount: $v('oppAmount').value,
         expectedDate: $v('oppExpectedDate').value,
         description: $v('oppDescription').value.trim(),
@@ -2954,7 +2993,7 @@ function renderKanban() {
 
     $('kanbanBadge' + key).textContent = stageOpps.length;
     $('kanbanTotal' + key).innerHTML =
-      '$' + total.toLocaleString() + '<span class="kanban-col-total-label">萬</span>';
+      '$' + total.toLocaleString() + '<span class="kanban-col-total-label">仟</span>';
 
     const container = $('kanbanCards' + key);
     container.innerHTML = '';
@@ -3027,7 +3066,7 @@ function celebrateWon(opp) {
 
   // 填入商機資訊
   document.getElementById('wonCelebCompany').textContent = opp.company || '';
-  const amt = opp.amount ? `合約金額：$${Number(opp.amount).toLocaleString()} 萬` : '';
+  const amt = opp.amount ? `合約金額：$${Number(opp.amount).toLocaleString()} 仟` : '';
   document.getElementById('wonCelebAmount').textContent = amt;
 
   // 顯示 overlay
@@ -3160,13 +3199,20 @@ function buildKanbanCard(o) {
     ? (o.achievedDate ? `🏆 ${o.achievedDate}` : '🏆 已成交')
     : (o.expectedDate || '');
 
+  // 預期成交日逾期警示
+  const isOverdueExpected = !isWon && o.expectedDate &&
+    new Date(o.expectedDate) < new Date(new Date().toDateString());
+  const overdueTag = isOverdueExpected
+    ? `<div class="kanban-card-overdue">⚠️ 已逾預期成交日</div>`
+    : '';
+
   card.innerHTML = `
     <div class="kanban-card-company">${escapeHtml(o.company) || '（未填公司）'}</div>
     <div class="kanban-card-contact">${escapeHtml(o.contactName) || ''}</div>
-    ${cat}${prod}
+    ${cat}${prod}${overdueTag}
     <div class="kanban-card-footer">
-      <span class="kanban-card-amount" style="${amtStyle}">${escapeHtml(amt)} 萬</span>
-      <span class="kanban-card-date">${escapeHtml(dateLabel)}</span>
+      <span class="kanban-card-amount" style="${amtStyle}">${escapeHtml(amt)} 仟</span>
+      <span class="kanban-card-date" style="${isOverdueExpected ? 'color:#e74c3c;font-weight:600' : ''}">${escapeHtml(dateLabel)}</span>
     </div>
     <div class="kanban-card-edit-hint">點擊編輯</div>`;
 
@@ -3239,11 +3285,36 @@ function populateOppEditProduct(category, selected = '') {
     // 若 selected 不在清單中（自訂商機名稱）→ 選「其他」並填入自訂欄
     const allValues = groups ? Object.values(groups).flat() : [];
     const customInp = $('oppEditProductCustom');
-    if (selected && selected !== '其他' && !allValues.includes(selected)) {
-      ps.value = '其他';
-      if (customInp) { customInp.style.display = ''; customInp.value = selected; }
-    } else {
-      if (customInp) { customInp.style.display = ps.value === '其他' ? '' : 'none'; customInp.value = ''; }
+    const subEl = $('oppEditProductSub');
+
+    // 子選單產品（如 "SAP CCFLEX C&S"）
+    let foundSub = false;
+    if (selected && subEl) {
+      for (const [prod, subOpts] of Object.entries(PRODUCT_SUBSELS)) {
+        if (selected === prod || selected.startsWith(prod + ' ')) {
+          const subVal = selected.startsWith(prod + ' ') ? selected.slice(prod.length + 1) : '';
+          ps.value = prod;
+          subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>';
+          subOpts.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt; o.textContent = opt;
+            if (opt === subVal) o.selected = true;
+            subEl.appendChild(o);
+          });
+          subEl.style.display = '';
+          foundSub = true;
+          break;
+        }
+      }
+    }
+    if (!foundSub) {
+      if (subEl) { subEl.style.display = 'none'; subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
+      if (selected && selected !== '其他' && !allValues.includes(selected)) {
+        ps.value = '其他';
+        if (customInp) { customInp.style.display = ''; customInp.value = selected; }
+      } else {
+        if (customInp) { customInp.style.display = ps.value === '其他' ? '' : 'none'; customInp.value = ''; }
+      }
     }
   } else {
     pg.style.display = 'none';
@@ -3253,6 +3324,8 @@ function populateOppEditProduct(category, selected = '') {
 $('oppEditCategory').addEventListener('change', function () {
   $('oppEditProductCustom').style.display = 'none';
   $('oppEditProductCustom').value = '';
+  const subEl = $('oppEditProductSub');
+  if (subEl) { subEl.style.display = 'none'; subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   populateOppEditProduct(this.value);
 });
 
@@ -3263,7 +3336,7 @@ $('oppEditCancel').addEventListener('click', closeOppEdit);
 // 刪除案件 → 開啟填寫原因 Modal
 $('oppEditDelete').addEventListener('click', () => {
   const company = $('oppEditCompany').value || '';
-  const product = getProductValue('oppEditProduct', 'oppEditProductCustom') ||
+  const product = getProductValue('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub') ||
                   $('oppEditProduct').value || '';
   $('oppDeleteCompany').value = company;
   $('oppDeleteProduct').value = product;
@@ -3304,7 +3377,7 @@ $('oppEditSave').addEventListener('click', async () => {
   const gmRaw = $('oppEditGrossMargin').value;
   const payload = {
     category:        $('oppEditCategory').value,
-    product:         getProductValue('oppEditProduct', 'oppEditProductCustom'),
+    product:         getProductValue('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub'),
     stage:           newStage,
     amount:          $('oppEditAmount').value,
     grossMarginRate: gmRaw !== '' ? parseFloat(gmRaw) : '',
@@ -3399,11 +3472,39 @@ async function loadManagerAchievement(year) {
     }
 
     // ── 卡片格 ──────────────────────────────────────────────
+    const canManage = ['admin', 'secretary'].includes(window._myRole);
     container.innerHTML = `
       <div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px 0">
         ${rows.map(r => {
           const color = rateColor(r.rate);
           const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
+          const ratios = getUserRatios(r.username, year);
+          const qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
+          const manageBlock = canManage ? `
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
+              <!-- 季度目標 -->
+              <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）</span>
+                  <button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>
+                </div>
+                <div class="qr-display" style="display:flex;gap:3px">
+                  ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
+                </div>
+                <div class="qr-edit-area" style="display:none;margin-top:6px">
+                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
+                    ${['Q1','Q2','Q3','Q4'].map((q,i) => `<div><div style="text-align:center;font-size:10px;color:#888;margin-bottom:2px">${q}</div><input type="number" class="qr-input" min="0" placeholder="0" value="${qVals[i]}" style="width:100%;font-size:12px;padding:3px 2px;border:1.5px solid #1a73e8;border-radius:4px;text-align:center;box-sizing:border-box"></div>`).join('')}
+                  </div>
+                  <div style="display:flex;gap:4px;justify-content:flex-end">
+                    <button class="qr-cancel-btn" style="padding:2px 8px;font-size:11px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">取消</button>
+                    <button class="qr-save-btn" style="padding:2px 8px;font-size:11px;background:#1a3c7a;color:#fff;border:none;border-radius:4px;cursor:pointer">儲存</button>
+                  </div>
+                </div>
+              </div>
+              <!-- 設定預算 -->
+              <button onclick="openMbBudgetModal('${r.username}',${year})"
+                style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>
+            </div>` : '';
           return `
           <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:16px 18px;min-width:210px;flex:1 1 210px;max-width:280px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
             <!-- 姓名 -->
@@ -3418,7 +3519,7 @@ async function loadManagerAchievement(year) {
               <span style="font-size:11px;color:#888">目標</span>
               <span class="mgr-target-display" title="點擊編輯目標"
                 style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
-                ${r.target ? r.target.toLocaleString() + ' 萬' : '未設定'}
+                ${r.target ? r.target.toLocaleString() + ' 仟' : '未設定'}
               </span>
               <span style="font-size:11px;color:#aaa">✎</span>
             </div>
@@ -3426,12 +3527,12 @@ async function loadManagerAchievement(year) {
             <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
               <div>
                 <div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div>
-                <div style="color:#aaa;margin-top:2px">已成交（萬）</div>
+                <div style="color:#aaa;margin-top:2px">已成交（仟）</div>
               </div>
               <div style="width:1px;background:#f0f0f0"></div>
               <div>
                 <div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div>
-                <div style="color:#aaa;margin-top:2px">在手商機（萬）</div>
+                <div style="color:#aaa;margin-top:2px">在手商機（仟）</div>
               </div>
               <div style="width:1px;background:#f0f0f0"></div>
               <div>
@@ -3439,6 +3540,7 @@ async function loadManagerAchievement(year) {
                 <div style="color:#aaa;margin-top:2px">成交件數</div>
               </div>
             </div>
+            ${manageBlock}
           </div>`;
         }).join('')}
       </div>`;
@@ -3492,6 +3594,48 @@ async function loadManagerAchievement(year) {
         });
       });
     });
+
+    // ── Inline 編輯：季度目標（秘書 / Admin）──
+    if (canManage) {
+      container.querySelectorAll('.qr-row').forEach(row => {
+        const username = row.dataset.user;
+        const yr = parseInt(row.dataset.year);
+        const display = row.querySelector('.qr-display');
+        const editArea = row.querySelector('.qr-edit-area');
+        const editBtn = row.querySelector('.qr-edit-btn');
+        const saveBtn = row.querySelector('.qr-save-btn');
+        const cancelBtn = row.querySelector('.qr-cancel-btn');
+
+        editBtn.addEventListener('click', () => {
+          display.style.display = 'none';
+          editArea.style.display = '';
+          editBtn.style.display = 'none';
+        });
+
+        cancelBtn.addEventListener('click', () => {
+          display.style.display = '';
+          editArea.style.display = 'none';
+          editBtn.style.display = '';
+        });
+
+        saveBtn.addEventListener('click', async () => {
+          const inputs = editArea.querySelectorAll('.qr-input');
+          const ratiosNew = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
+          saveBtn.disabled = true; saveBtn.textContent = '…';
+          try {
+            const res = await fetch(`${API}/settings/user-quarter-ratios`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, year: yr, ratios: ratiosNew }),
+            });
+            if (!res.ok) { const e = await res.json(); showToast(e.error || '儲存失敗'); saveBtn.disabled = false; saveBtn.textContent = '儲存'; return; }
+            showToast('✅ 季度目標已更新');
+            await loadUserQuarterRatios();
+            loadManagerAchievement(yr);
+          } catch { showToast('儲存失敗，請重試'); saveBtn.disabled = false; saveBtn.textContent = '儲存'; }
+        });
+      });
+    }
 
   } catch (e) {
     console.error('loadManagerAchievement error', e);
@@ -3696,8 +3840,8 @@ function renderBuBreakdown() {
     const color = rate >= 90 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444';
     return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]}">
       <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu} <span style="font-size:10px;color:#9ca3af;font-weight:500">${usersInBu.length}人</span></div>
-      <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 萬</span></div>
-      <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 萬</span></div>
+      <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 仟</span></div>
+      <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 仟</span></div>
       <div class="bu-card-rate" style="color:${color}">${target > 0 ? rate + '%' : '—'}</div>
       <div class="bu-card-bar"><div class="bu-card-bar-fill" style="width:${rate}%;background:${color}"></div></div>
     </div>`;
@@ -4009,6 +4153,87 @@ async function saveMbActuals() {
   } catch(e) { showToast('儲存失敗：' + e.message, 'error'); }
 }
 
+// ── 月度預算設定 Modal（秘書 / Admin 用）────────────────────
+let _mbBudgetOwner = '';
+let _mbBudgetYear  = 0;
+
+function openMbBudgetModal(owner, year) {
+  _mbBudgetOwner = owner;
+  _mbBudgetYear  = year;
+  const overlay = $('mbBudgetOverlay');
+  const grid    = $('mbBudgetGrid');
+  const gmGrid  = $('mbBudgetGmGrid');
+  if (!overlay || !grid) return;
+
+  const ownerLabel = (_ownerMapCache && _ownerMapCache[owner]) ? _ownerMapCache[owner] : owner;
+  const titleEl = $('mbBudgetTitle');
+  if (titleEl) titleEl.textContent = `📆 設定月度預算 — ${ownerLabel} ${year} 年`;
+
+  const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const rec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
+  const existMonths = rec && rec.months ? rec.months : Array(12).fill(null);
+  const existGm     = rec && rec.grossMargin ? rec.grossMargin : Array(12).fill(null);
+
+  const buildBudgetInputs = (data, gridId, totalId) => {
+    const g = $(gridId);
+    if (!g) return;
+    g.innerHTML = monthLabels.map((m, i) => {
+      const val = data[i] !== null && data[i] !== undefined ? data[i] : '';
+      return `<div>
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;text-align:center;background:#f3f4f6;border-radius:6px;padding:3px 0">${m}</div>
+        <input type="number" min="0" step="any" value="${val}" placeholder="0"
+          style="width:100%;padding:8px 4px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center;background:#fff"
+          oninput="updateMbBudgetTotal()">
+      </div>`;
+    }).join('');
+  };
+
+  buildBudgetInputs(existMonths, 'mbBudgetGrid',   'mbBudgetTotalLabel');
+  buildBudgetInputs(existGm,     'mbBudgetGmGrid', 'mbBudgetGmTotalLabel');
+
+  updateMbBudgetTotal();
+  overlay.style.display = 'flex';
+}
+
+function closeMbBudgetModal() {
+  const overlay = $('mbBudgetOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function updateMbBudgetTotal() {
+  const revInputs = document.querySelectorAll('#mbBudgetGrid input');
+  const gmInputs  = document.querySelectorAll('#mbBudgetGmGrid input');
+  const revTotal  = Array.from(revInputs).reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0);
+  const gmTotal   = Array.from(gmInputs).reduce((s, inp)  => s + (parseFloat(inp.value) || 0), 0);
+  const lbl   = $('mbBudgetTotalLabel');
+  const gmLbl = $('mbBudgetGmTotalLabel');
+  if (lbl)   lbl.textContent   = revTotal.toLocaleString();
+  if (gmLbl) gmLbl.textContent = gmTotal.toLocaleString();
+}
+
+async function saveMbBudget() {
+  const revInputs = document.querySelectorAll('#mbBudgetGrid input');
+  const gmInputs  = document.querySelectorAll('#mbBudgetGmGrid input');
+  const months = Array.from(revInputs).map(inp =>
+    inp.value === '' ? 0 : parseFloat(inp.value) || 0
+  );
+  const grossMargin = Array.from(gmInputs).map(inp =>
+    inp.value === '' ? 0 : parseFloat(inp.value) || 0
+  );
+  try {
+    const res = await fetch(`${API}/monthly-budget`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: _mbBudgetOwner, year: _mbBudgetYear, months, grossMargin })
+    });
+    if (!res.ok) { const e = await res.json(); showToast(e.error || '儲存失敗', 'error'); return; }
+    showToast('✅ 月度預算已儲存');
+    closeMbBudgetModal();
+    await loadMonthlyBudget();
+    renderMonthBudgetCard();
+  } catch(e) { showToast('儲存失敗：' + e.message, 'error'); }
+}
+
 async function loadGroups() {
   try {
     const res = await fetch(`${API}/groups`);
@@ -4172,7 +4397,7 @@ function updateTargetCard() {
   } else {
     for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, myUsername);
   }
-  $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 萬';
+  $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 仟';
 
   if (window._myRole === 'manager1' || window._myRole === 'executive') {
     // 一級主管 / 董事長/總經理：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
@@ -4189,7 +4414,7 @@ function updateTargetCard() {
       return;
     }
     const rate = Math.min(100, Math.round(achieved / totalAmount * 100));
-    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' 萬';
+    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' 仟';
     $('targetRateDisplay').textContent = rate + '%';
     $('targetProgressFill').style.width = rate + '%';
     updateQuarterCards(totalAmount, year, true);
@@ -4208,7 +4433,7 @@ function updateTargetCard() {
     return;
   }
   const rate = Math.min(100, Math.round(achieved / target.amount * 100));
-  $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' 萬';
+  $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' 仟';
   $('targetRateDisplay').textContent = rate + '%';
   $('targetProgressFill').style.width = rate + '%';
   updateQuarterCards(target.amount, year);
@@ -4238,12 +4463,13 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     qRatioDisplay = qTargets.map(v => totalQ > 0 ? Math.round(v / totalQ * 100) : 0);
     if (!totalQ) { wrap.style.display = 'none'; return; }
   } else {
-    // 一般業務 / manager2：使用個人配比（若無則用全域預設）
+    // 一般業務 / manager2：使用個人季度目標金額（若無則用全域預設）
     const myUsername = window._myUsername || '';
     const ratios = getUserRatios(myUsername, year);
-    if (!ratios || !annualAmount) { wrap.style.display = 'none'; return; }
-    qTargets = ratios.map(r => Math.round(annualAmount * (r || 0) / 100));
-    qRatioDisplay = ratios.map(r => r || 0);
+    if (!ratios) { wrap.style.display = 'none'; return; }
+    qTargets = ratios.map(r => Math.round(r || 0));
+    const totalAmt = qTargets.reduce((s, v) => s + v, 0);
+    qRatioDisplay = qTargets.map(v => totalAmt > 0 ? Math.round(v / totalAmt * 100) : 0);
   }
 
   wrap.style.display = '';
@@ -4271,8 +4497,8 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
 
     const gapClass = isFuture ? 'q-muted' : (gap >= 0 ? 'q-gap-pos' : 'q-gap-neg');
     const gapText  = isFuture ? '—' : (gap >= 0
-      ? `▲ ${Math.abs(gap).toLocaleString()} 萬`
-      : `▼ ${Math.abs(gap).toLocaleString()} 萬`);
+      ? `▲ ${Math.abs(gap).toLocaleString()} 仟`
+      : `▼ ${Math.abs(gap).toLocaleString()} 仟`);
 
     // OPR 計算
     const pipeline = getQuarterPipeline(year, q);
@@ -4309,11 +4535,11 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="q-nums">
         <div class="q-row">
           <span class="q-row-label">季度目標</span>
-          <span class="q-row-val">${qTarget.toLocaleString()} 萬</span>
+          <span class="q-row-val">${qTarget.toLocaleString()} 仟</span>
         </div>
         <div class="q-row">
           <span class="q-row-label">已達成</span>
-          <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' 萬'}</span>
+          <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' 仟'}</span>
         </div>
         <div class="q-row">
           <span class="q-row-label">落差</span>
@@ -4336,7 +4562,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="zone-bar-labels">
         <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
       </div>
-      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} 萬</div>`;
+      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} 仟</div>`;
     grid.appendChild(card);
   });
 }
@@ -4358,12 +4584,20 @@ async function loadTargetsView() {
   if (targetSetCard) {
     if (window._myRole === 'manager1') {
       targetSetCard.style.display = 'none';
-      // 若還沒插入說明框，就插入
       if (!$('manager1TargetNote')) {
         const note = document.createElement('div');
         note.id = 'manager1TargetNote';
         note.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.6';
         note.innerHTML = `<strong>📋 一級主管的年度業績目標</strong>由所有部屬（二級主管 + 業務）的年度目標<strong>自動加總</strong>，無需手動設定。<br>請至後台「📅 季度業績配比設定」為各業務員設定個別的季度配比。`;
+        targetSetCard.parentNode.insertBefore(note, targetSetCard);
+      }
+    } else if (window._myRole === 'secretary') {
+      targetSetCard.style.display = 'none';
+      if (!$('secretaryTargetNote')) {
+        const note = document.createElement('div');
+        note.id = 'secretaryTargetNote';
+        note.style.cssText = 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#166534;line-height:1.6';
+        note.innerHTML = `<strong>📋 秘書職能</strong>：在下方查看各業務員的達成率，並可為各業務員設定<strong>季度目標金額</strong>與<strong>月度業績預算</strong>。`;
         targetSetCard.parentNode.insertBefore(note, targetSetCard);
       }
     } else {
@@ -4373,7 +4607,7 @@ async function loadTargetsView() {
 
   const curYear = new Date().getFullYear();
 
-  if (window._myRole !== 'manager1') {
+  if (window._myRole !== 'manager1' && window._myRole !== 'secretary') {
     // 年度選單
     const yearSel = $('targetYearSel');
     yearSel.innerHTML = '';
@@ -4402,8 +4636,8 @@ async function loadTargetsView() {
   // 歷史目標
   renderTargetHistory();
 
-  // ── 主管業績達成率總覽（manager1 / manager2 / admin 才顯示）──
-  if (['manager1', 'manager2', 'admin'].includes(window._myRole)) {
+  // ── 主管業績達成率總覽（manager1 / manager2 / admin / secretary 才顯示）──
+  if (['manager1', 'manager2', 'admin', 'secretary'].includes(window._myRole)) {
     const section = $('managerAchSection');
     if (section) {
       section.style.display = 'block';
@@ -4451,8 +4685,8 @@ function renderTargetHistory() {
       const rate = t.amount ? Math.round(ach / t.amount * 100) : 0;
       return `<div class="target-history-chip">
         <span class="target-history-year">${t.year} 年</span>
-        <span class="target-history-amt">目標 ${t.amount.toLocaleString()} 萬</span>
-        <span class="target-history-ach">已達成 ${ach.toLocaleString()} 萬（${rate}%）</span>
+        <span class="target-history-amt">目標 ${t.amount.toLocaleString()} 仟</span>
+        <span class="target-history-ach">已達成 ${ach.toLocaleString()} 仟（${rate}%）</span>
       </div>`;
     }).join('');
 }
@@ -4470,7 +4704,7 @@ $('saveTargetBtn').addEventListener('click', async () => {
     await loadTargets();
     renderTargetHistory();
     updateTargetCard();
-    showToast(`${year} 年度目標已儲存：${amount.toLocaleString()} 萬元`);
+    showToast(`${year} 年度目標已儲存：${amount.toLocaleString()} 仟元`);
   } catch { showToast('儲存失敗，請重試'); }
 });
 
@@ -4537,7 +4771,7 @@ function renderOppTable() {
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${escapeHtml(o.product||'-')}</td>
-      <td data-label="預估金額（萬）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
+      <td data-label="預估金額（仟）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${o.expectedDate || '-'}</td>
       <td data-label="狀態">
         <select class="opp-stage-sel" data-id="${o.id}" style="color:${OPP_STAGE_COLORS[o.stage]||'#333'}">${stageOpts}</select>
@@ -4566,7 +4800,7 @@ function renderOppTable() {
       <td data-label="聯絡人">${o.contactName || '-'}</td>
       <td data-label="商機類別">${o.category || '-'}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${o.product || '-'}</td>
-      <td data-label="預估金額（萬）" style="text-align:right">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
+      <td data-label="預估金額（仟）" style="text-align:right">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${o.expectedDate || '-'}</td>
       <td data-label="狀態">
         <span class="opp-lost-badge">💔 流失</span>
@@ -5075,7 +5309,7 @@ function renderLostOppTable() {
       <div style="font-size:22px;font-weight:700;color:#ea4335">${rows.length}</div>
     </div>
     <div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">流失金額(萬)</div>
+      <div style="font-size:11px;color:#888;margin-bottom:4px">流失金額(仟)</div>
       <div style="font-size:22px;font-weight:700;color:#f57c00">${totalAmt.toLocaleString()}</div>
     </div>
     ${topReason ? `<div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
@@ -5290,11 +5524,11 @@ async function loadPipelineReport() {
 
 function renderPrSummary(s) {
   const cards = [
-    { icon:'💼', label:'在手商機總額', value:`${(s.totalPipeline||0).toLocaleString()} 萬`, sub:`共 ${s.totalCount} 件`, color:'#1a73e8', bg:'#e8f0fe' },
-    { icon:'✨', label:'本期新增商機', value:`${(s.newAmount||0).toLocaleString()} 萬`, sub:`${s.newCount} 件`, color:'#34a853', bg:'#e6f4ea' },
-    { icon:'⬆️', label:'階段晉升', value:`${(s.promotedAmount||0).toLocaleString()} 萬`, sub:`${s.promotedCount} 次`, color:'#1e8e3e', bg:'#e6f4ea' },
-    { icon:'⬇️', label:'階段退後', value:`${(s.demotedAmount||0).toLocaleString()} 萬`, sub:`${s.demotedCount} 次`, color:'#f57c00', bg:'#fff3e0' },
-    { icon:'💔', label:'本期流失', value:`${(s.lostAmount||0).toLocaleString()} 萬`, sub:`${s.lostCount} 件`, color:'#c62828', bg:'#fce8e6' },
+    { icon:'💼', label:'在手商機總額', value:`${(s.totalPipeline||0).toLocaleString()} 仟`, sub:`共 ${s.totalCount} 件`, color:'#1a73e8', bg:'#e8f0fe' },
+    { icon:'✨', label:'本期新增商機', value:`${(s.newAmount||0).toLocaleString()} 仟`, sub:`${s.newCount} 件`, color:'#34a853', bg:'#e6f4ea' },
+    { icon:'⬆️', label:'階段晉升', value:`${(s.promotedAmount||0).toLocaleString()} 仟`, sub:`${s.promotedCount} 次`, color:'#1e8e3e', bg:'#e6f4ea' },
+    { icon:'⬇️', label:'階段退後', value:`${(s.demotedAmount||0).toLocaleString()} 仟`, sub:`${s.demotedCount} 次`, color:'#f57c00', bg:'#fff3e0' },
+    { icon:'💔', label:'本期流失', value:`${(s.lostAmount||0).toLocaleString()} 仟`, sub:`${s.lostCount} 件`, color:'#c62828', bg:'#fce8e6' },
   ];
   $('prSummaryCards').innerHTML = cards.map(c => `
     <div class="pr-summary-card" style="border-top:3px solid ${c.color}">
@@ -5320,7 +5554,7 @@ function renderPrFunnel(funnel) {
           <div class="pr-funnel-bar" style="width:${pct}%;background:${color}"></div>
         </div>
         <div class="pr-funnel-meta">
-          <span class="pr-funnel-amt">${f.amount ? f.amount.toLocaleString()+'萬' : '—'}</span>
+          <span class="pr-funnel-amt">${f.amount ? f.amount.toLocaleString()+'仟' : '—'}</span>
           <span class="pr-funnel-cnt">${f.count}件</span>
         </div>
       </div>`;
@@ -5353,7 +5587,7 @@ function renderPrFunnel(funnel) {
         legend: { position:'bottom', labels:{ font:{size:10}, padding:8, boxWidth:10 } },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.label}：${ctx.parsed.toLocaleString()} 萬`
+            label: ctx => ` ${ctx.label}：${ctx.parsed.toLocaleString()} 仟`
           }
         }
       },
@@ -5365,7 +5599,7 @@ function renderPrFunnel(funnel) {
 function renderPrMoves(data) {
   const fmt = o => {
     const stageTag = o.stage ? `<span class="pr-stage-tag" style="background:${STAGE_COLOR[o.stage]||'#90a4ae'}20;color:${STAGE_COLOR[o.stage]||'#90a4ae'};border:1px solid ${STAGE_COLOR[o.stage]||'#90a4ae'}40">${STAGE_LBL[o.stage]||o.stage}</span>` : '';
-    const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}萬</span>` : '';
+    const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>` : '';
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
         <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
@@ -5386,7 +5620,7 @@ function renderPrMoves(data) {
         <span class="pr-stage-tag" style="background:${fi}20;color:${fi};border:1px solid ${fi}40">${STAGE_LBL[o.from]||o.from}</span>
         <span style="color:#888;font-size:11px">→</span>
         <span class="pr-stage-tag" style="background:${ti}20;color:${ti};border:1px solid ${ti}40">${STAGE_LBL[o.to]||o.to}</span>
-        <span class="pr-deal-amt">${o.amount.toLocaleString()}萬</span>
+        <span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>
       </div>
     </div>`;
   };
@@ -5413,7 +5647,7 @@ function renderPrMoves(data) {
   $('prLostCount').textContent = data.lostDeals.length;
   $('prLostList').innerHTML = data.lostDeals.length
     ? data.lostDeals.map(o => {
-        const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}萬</span>` : '';
+        const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>` : '';
         return `<div class="pr-deal-row">
           <div class="pr-deal-info">
             <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
@@ -6276,10 +6510,15 @@ function receivableStatus(item) {
 
 function renderReceivables() {
   const today = new Date();
+  const search = ($('receivableSearch') ? $('receivableSearch').value : '').toLowerCase();
   const list = allReceivables.filter(r => {
     const st = receivableStatus(r);
-    if (currentRtab === 'all') return true;
-    return st === currentRtab;
+    if (currentRtab !== 'all' && st !== currentRtab) return false;
+    if (search) {
+      const hay = ((r.company || '') + ' ' + (r.invoiceNo || '') + ' ' + (r.contactName || '')).toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
   });
 
   // 摘要統計
@@ -6324,6 +6563,10 @@ document.querySelectorAll('[data-rtab]').forEach(btn => {
     renderReceivables();
   });
 });
+
+// 應收帳款搜尋
+const _receivableSearchEl = $('receivableSearch');
+if (_receivableSearchEl) _receivableSearchEl.addEventListener('input', renderReceivables);
 
 // 新增帳款
 $('addReceivableBtn').addEventListener('click', () => openReceivableModal());
@@ -6409,11 +6652,16 @@ function renderCallins() {
   const STATUS_LABEL = { pending:'待指派', assigned:'待聯繫', contacted:'已聯繫', qualified:'合格商機', unqualified:'非合格', overdue:'逾時' };
   const STATUS_CLS   = { pending:'ci-pending', assigned:'ci-assigned', contacted:'ci-contacted', qualified:'ci-qualified', unqualified:'ci-unqualified', overdue:'ci-overdue' };
   const role = userPermissions.role;
+  const search = ($('callinSearch') ? $('callinSearch').value : '').toLowerCase();
 
   const list = allCallins.filter(c => {
-    if (currentCtab === 'all') return true;
-    if (currentCtab === 'done') return ['contacted','qualified','unqualified'].includes(c.status);
-    return c.status === currentCtab;
+    if (currentCtab === 'done' && !['contacted','qualified','unqualified'].includes(c.status)) return false;
+    if (currentCtab !== 'all' && currentCtab !== 'done' && c.status !== currentCtab) return false;
+    if (search) {
+      const hay = ((c.company || '') + ' ' + (c.contactName || '') + ' ' + (c.phone || '')).toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
   });
 
   $('callinTbody').innerHTML = list.map(c => {
@@ -6446,6 +6694,10 @@ document.querySelectorAll('[data-ctab]').forEach(btn => {
     renderCallins();
   });
 });
+
+// Call-in 搜尋
+const _callinSearchEl = $('callinSearch');
+if (_callinSearchEl) _callinSearchEl.addEventListener('input', renderCallins);
 
 // 新增 Call-in
 $('addCallinBtn').addEventListener('click', () => {
@@ -7163,8 +7415,9 @@ async function loadExecDash() {
         document.querySelectorAll('.exec-tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         execCurrentTab = btn.dataset.tab;
-        ['conversion','trend','product'].forEach(t => {
-          const el = $('execTab' + t.charAt(0).toUpperCase() + t.slice(1));
+        ['conversion','trend','product','buComparison'].forEach(t => {
+          const key = t.charAt(0).toUpperCase() + t.slice(1);
+          const el = $('execTab' + key);
           if (el) el.style.display = t === execCurrentTab ? '' : 'none';
         });
         renderExecCurrentTab();
@@ -7176,12 +7429,13 @@ async function loadExecDash() {
   const qs = `year=${execYear}${execOwnerFilter ? '&owner=' + execOwnerFilter : ''}`;
   const trendQs = execOwnerFilter ? `?owner=${execOwnerFilter}` : '';
 
-  const [conv, trend, prod] = await Promise.all([
+  const [conv, trend, prod, buComp] = await Promise.all([
     fetch(`${API}/exec/conversion?${qs}`).then(r => r.json()).catch(() => null),
     fetch(`${API}/exec/trend${trendQs}`).then(r => r.json()).catch(() => []),
     fetch(`${API}/exec/product-analysis?${qs}`).then(r => r.json()).catch(() => []),
+    fetch(`${API}/exec/bu-comparison?${qs}`).then(r => r.json()).catch(() => null),
   ]);
-  execData = { conversion: conv, trend: trend || [], product: prod || [] };
+  execData = { conversion: conv, trend: trend || [], product: prod || [], buComparison: buComp };
 
   // 業務篩選器（主管才顯示）
   const ownerWrap = $('execOwnerWrap');
@@ -7208,9 +7462,63 @@ async function loadExecDash() {
 }
 
 function renderExecCurrentTab() {
-  if (execCurrentTab === 'conversion') renderExecConversion(execData.conversion);
-  else if (execCurrentTab === 'trend')  renderExecTrend(execData.trend);
+  if (execCurrentTab === 'conversion')   renderExecConversion(execData.conversion);
+  else if (execCurrentTab === 'trend')   renderExecTrend(execData.trend);
   else if (execCurrentTab === 'product') renderExecProduct(execData.product);
+  else if (execCurrentTab === 'buComparison') renderExecBuComparison(execData.buComparison);
+}
+
+// ── BU 績效對比 ──────────────────────────────────────────
+function renderExecBuComparison(d) {
+  const el = $('execTabBuComparison');
+  if (!el) return;
+  if (!d || !d.bus) { el.innerHTML = '<div class="exec-empty">載入中…</div>'; return; }
+  const fmt  = (n) => Number(Math.round(n) || 0).toLocaleString('zh-TW');
+  const maxAmt = Math.max(...d.bus.map(b => b.target || b.achieved || 1), 1);
+
+  const rows = d.bus.map(b => {
+    const pct = b.pct !== null ? b.pct : 0;
+    const barColor = pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
+    const barW = Math.min(100, Math.round((b.achieved / maxAmt) * 100));
+    const tgtW = Math.min(100, Math.round((b.target  / maxAmt) * 100));
+    return `
+      <tr>
+        <td style="font-weight:700;font-size:15px;width:60px">${escapeHtml(b.bu)}</td>
+        <td style="width:240px">
+          <div style="position:relative;height:18px;background:#eef0f3;border-radius:4px;overflow:hidden">
+            <div style="position:absolute;height:100%;width:${tgtW}%;background:#d0d5e0;border-radius:4px"></div>
+            <div style="position:absolute;height:100%;width:${barW}%;background:${barColor};border-radius:4px;opacity:.85"></div>
+          </div>
+        </td>
+        <td style="text-align:right">${fmt(b.achieved)} 仟</td>
+        <td style="text-align:right;color:#999">${b.target ? fmt(b.target) + ' 仟' : '—'}</td>
+        <td style="text-align:center">
+          <b style="color:${barColor}">${b.pct !== null ? b.pct + '%' : '—'}</b>
+        </td>
+        <td style="text-align:center">${b.wonCount}</td>
+        <td style="text-align:center">${b.oppCount}</td>
+        <td style="text-align:right;color:#1a73e8">${fmt(b.pipeline)} 仟</td>
+      </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="padding:8px 0 16px;font-size:13px;color:#666">
+      ${d.year} 年度各 BU 業績對比（藍色=實際達成，灰色=目標）
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>BU</th><th style="min-width:200px">達成進度</th>
+          <th style="text-align:right">已達成</th>
+          <th style="text-align:right">目標</th>
+          <th style="text-align:center">達成率</th>
+          <th style="text-align:center">成交件</th>
+          <th style="text-align:center">在手商機</th>
+          <th style="text-align:right">Pipeline</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ── 轉換率漏斗 ──────────────────────────────────────────
@@ -7334,7 +7642,7 @@ function renderExecTrend(data) {
     const fill = isThisYear ? '#1a73e8' : '#c5d9f5';
     bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}"
       rx="2" fill="${fill}" data-i="${i}" class="exec-bar">
-      <title>${d.month}：${d.amount.toLocaleString()} 萬（${d.count} 件）</title>
+      <title>${d.month}：${d.amount.toLocaleString()} 仟（${d.count} 件）</title>
     </rect>`;
     // X axis: show label every 3 months
     if (i % 3 === 0) {
@@ -7366,12 +7674,12 @@ function renderExecTrend(data) {
     <div class="exec-kpi-row" style="margin-bottom:16px">
       <div class="exec-kpi-card">
         <div class="exec-kpi-label">${cy} 年 YTD 成交</div>
-        <div class="exec-kpi-val">${totalAmt.toLocaleString()} 萬</div>
+        <div class="exec-kpi-val">${totalAmt.toLocaleString()} 仟</div>
         <div class="exec-kpi-sub">${totalCnt} 件 ${growthStr}</div>
       </div>
       <div class="exec-kpi-card">
         <div class="exec-kpi-label">${cy - 1} 年全年成交</div>
-        <div class="exec-kpi-val">${prevAmt.toLocaleString()} 萬</div>
+        <div class="exec-kpi-val">${prevAmt.toLocaleString()} 仟</div>
         <div class="exec-kpi-sub">${prevYearData.reduce((s,d)=>s+d.count,0)} 件</div>
       </div>
     </div>`;
@@ -7508,9 +7816,33 @@ async function loadManagerHome() {
   }
 
   renderMgrGauge(d.achievement);
+  renderMgrGap(d.gapAnalysis, d.achievement);
   renderMgrCommit(d.thisMonthCommit);
   renderMgrAging(d.aging);
   renderMgrTopCust(d.topCustomers);
+}
+
+// ── Gap 分析（年底預測）──────────────────────────────────
+function renderMgrGap(gap, achievement) {
+  const el = $('mgrGapBanner');
+  if (!el) return;
+  if (!gap || achievement.target <= 0) { el.style.display = 'none'; return; }
+  const fmt = (n) => Number(Math.round(n) || 0).toLocaleString('zh-TW');
+  const isAhead = gap.gap <= 0;
+  const gapAbs  = Math.abs(gap.gap);
+  const color   = gap.forecastPct >= 90 ? '#1e8e3e' : gap.forecastPct >= 60 ? '#e37400' : '#c5221f';
+  el.style.display = '';
+  el.style.background = isAhead ? '#e6f4ea' : '#fff3e0';
+  el.style.borderLeft = `4px solid ${color}`;
+  el.innerHTML = `
+    <span style="font-size:20px">${isAhead ? '🎯' : '📈'}</span>
+    <span style="flex:1">
+      <b>年底預測達成：${fmt(gap.yearEndForecast)} 仟</b>（目標達成率 ${gap.forecastPct}%）
+      ${isAhead
+        ? `<span style="color:#1e8e3e;margin-left:8px">超前目標 ${fmt(gapAbs)} 仟 ✅</span>`
+        : `<span style="color:#e37400;margin-left:8px">距目標尚差 ${fmt(gapAbs)} 仟</span>`}
+    </span>
+    <span style="font-size:12px;color:#999">目前進度 ${gap.dayProgress}%</span>`;
 }
 
 // ── 1. 達成儀表盤（doughnut） ─────────────────────────
@@ -7520,8 +7852,8 @@ function renderMgrGauge(a) {
   $('mgrGaugePct').textContent   = pct === null ? '—' : pct + '%';
   $('mgrGaugeLabel').textContent = a.target > 0 ? '本年達成度' : '尚未設定目標';
   $('mgrGaugeDetail').innerHTML = a.target > 0
-    ? `已達成 <b>${fmt(a.achieved)}</b> 萬 / 目標 <b>${fmt(a.target)}</b> 萬`
-    : `本年成交 <b>${fmt(a.achieved)}</b> 萬（無目標可比對）`;
+    ? `已達成 <b>${fmt(a.achieved)}</b> 仟 / 目標 <b>${fmt(a.target)}</b> 仟`
+    : `本年成交 <b>${fmt(a.achieved)}</b> 仟（無目標可比對）`;
 
   // 顏色：>=90 綠 / 60-89 橘 / <60 紅
   const color = pct === null ? '#bbb' : pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
@@ -7557,14 +7889,14 @@ function renderMgrCommit(c) {
         <span class="mgr-commit-stage" style="background:${color}">${o.stage}</span>
         <span class="mgr-commit-co">${escapeHtml(o.company || '—')}</span>
         <span class="mgr-commit-prod">${escapeHtml(o.product || '')}</span>
-        <span class="mgr-commit-amt">${fmt(o.amount)}萬</span>
+        <span class="mgr-commit-amt">${fmt(o.amount)}仟</span>
       </div>`).join('');
     const more = group.items.length > 4 ? `<div class="mgr-commit-more">…還有 ${group.items.length - 4} 案</div>` : '';
     return `
       <div class="mgr-commit-block" style="border-left-color:${color}">
         <div class="mgr-commit-head">
           <span class="mgr-commit-label">${label}</span>
-          <span class="mgr-commit-stat">${group.count} 案 · <b>${fmt(group.amount)}萬</b></span>
+          <span class="mgr-commit-stat">${group.count} 案 · <b>${fmt(group.amount)}仟</b></span>
         </div>
         <div class="mgr-commit-hint">${hint}</div>
         ${items || '<div class="mgr-commit-empty">本月無此類案件</div>'}
@@ -7653,14 +7985,14 @@ function renderMgrTopCust(list) {
       responsive: true, maintainAspectRatio: false,
       indexAxis: 'y',
       scales: {
-        x: { stacked: true, title: { display: true, text: '金額（萬）' } },
+        x: { stacked: true, title: { display: true, text: '金額（仟）' } },
         y: { stacked: true }
       },
       plugins: {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
-            label: (c) => `${c.dataset.label}：${Number(c.parsed.x).toLocaleString('zh-TW')} 萬`,
+            label: (c) => `${c.dataset.label}：${Number(c.parsed.x).toLocaleString('zh-TW')} 仟`,
             footer: (items) => {
               const idx = items[0].dataIndex;
               return `共 ${list[idx].count} 件商機`;
@@ -7739,7 +8071,7 @@ function renderCampaignCards() {
             <div class="campaign-stat-val">${c.leadCount > 0 ? convRate + '%' : '—'}</div>
             <div class="campaign-stat-lbl">轉換率</div>
           </div>
-          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}萬</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
+          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}仟</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
         </div>
         ${c.targetCount > 0 ? `
           <div style="margin-top:10px">
@@ -8112,8 +8444,8 @@ function renderExecProduct(data) {
           <tr style="background:#fafafa;border-bottom:2px solid #eee">
             <th ${thStyle('category')}>產品線 / BU${sortArrow('category')}</th>
             <th ${thStyle('count')}>商機數${sortArrow('count')}</th>
-            <th ${thStyle('pipelineAmount')}>在手金額(萬)${sortArrow('pipelineAmount')}</th>
-            <th ${thStyle('wonAmount')}>成交金額(萬)${sortArrow('wonAmount')}</th>
+            <th ${thStyle('pipelineAmount')}>在手金額(仟)${sortArrow('pipelineAmount')}</th>
+            <th ${thStyle('wonAmount')}>成交金額(仟)${sortArrow('wonAmount')}</th>
             <th ${thStyle('winRate')}>Win Rate${sortArrow('winRate')}</th>
             <th ${thStyle('avgGrossMargin')}>平均毛利率${sortArrow('avgGrossMargin')}</th>
           </tr>
@@ -8132,3 +8464,76 @@ function renderExecProduct(data) {
     });
   });
 }
+
+// ════════════════════════════════════════════════════════════
+//  閒置自動登出（Session Timeout）
+//  30 分鐘無互動 → 彈出警告；5 分鐘倒數歸零 → 自動登出
+// ════════════════════════════════════════════════════════════
+(function initIdleTimer() {
+  const IDLE_MS    = 30 * 60 * 1000;  // 30 分鐘無互動觸發警告
+  const WARNING_MS =  5 * 60 * 1000;  // 警告後 5 分鐘倒數
+
+  let idleTimer      = null;
+  let countdownTimer = null;
+  let warningActive  = false;
+
+  const overlay      = document.getElementById('idleTimeoutOverlay');
+  const countdownEl  = document.getElementById('idleCountdown');
+  const stayBtn      = document.getElementById('idleStayBtn');
+  const logoutBtn    = document.getElementById('idleLogoutBtn');
+
+  if (!overlay) return; // 非 CRM 主頁（如 login.html）跳過
+
+  function fmt(ms) {
+    const total = Math.ceil(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  async function doLogout() {
+    clearTimeout(idleTimer);
+    clearInterval(countdownTimer);
+    overlay.style.display = 'none';
+    try { await fetch('/api/logout', { method: 'POST' }); } catch {}
+    window.location.href = '/login.html';
+  }
+
+  function showWarning() {
+    warningActive = true;
+    overlay.style.display = 'flex';
+    let remaining = WARNING_MS;
+    countdownEl.textContent = fmt(remaining);
+    countdownTimer = setInterval(() => {
+      remaining -= 1000;
+      countdownEl.textContent = fmt(remaining);
+      if (remaining <= 0) {
+        clearInterval(countdownTimer);
+        doLogout();
+      }
+    }, 1000);
+  }
+
+  function resetIdle() {
+    if (warningActive) return; // 警告顯示中，不重置
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(showWarning, IDLE_MS);
+  }
+
+  function dismissWarning() {
+    warningActive = false;
+    overlay.style.display = 'none';
+    clearInterval(countdownTimer);
+    resetIdle();
+  }
+
+  stayBtn.addEventListener('click', dismissWarning);
+  logoutBtn.addEventListener('click', doLogout);
+
+  // 任何互動都重置計時器
+  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
+    document.addEventListener(evt, resetIdle, { passive: true });
+  });
+
+  resetIdle(); // 啟動
+})();

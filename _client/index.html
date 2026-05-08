@@ -248,7 +248,7 @@
                 <div class="target-ach-sep">／</div>
                 <div class="target-ach-item">
                   <span class="target-ach-label">已達成</span>
-                  <span class="target-ach-value achieved" id="targetAchievedDisplay">0 萬</span>
+                  <span class="target-ach-value achieved" id="targetAchievedDisplay">0 仟</span>
                 </div>
                 <div class="target-ach-sep">／</div>
                 <div class="target-ach-item">
@@ -386,7 +386,7 @@
                   <span class="kanban-col-name">D｜靜止中</span>
                   <span class="kanban-col-badge" id="kanbanBadgeD">0</span>
                 </div>
-                <div class="kanban-col-total" id="kanbanTotalD">$0<span class="kanban-col-total-label">萬</span></div>
+                <div class="kanban-col-total" id="kanbanTotalD">$0<span class="kanban-col-total-label">仟</span></div>
               </div>
               <div class="kanban-cards" id="kanbanCardsD" data-stage="D"></div>
             </div>
@@ -398,7 +398,7 @@
                   <span class="kanban-col-name">C｜Pipeline</span>
                   <span class="kanban-col-badge" id="kanbanBadgeC">0</span>
                 </div>
-                <div class="kanban-col-total" id="kanbanTotalC">$0<span class="kanban-col-total-label">萬</span></div>
+                <div class="kanban-col-total" id="kanbanTotalC">$0<span class="kanban-col-total-label">仟</span></div>
               </div>
               <div class="kanban-cards" id="kanbanCardsC" data-stage="C"></div>
             </div>
@@ -410,7 +410,7 @@
                   <span class="kanban-col-name">B｜Upside</span>
                   <span class="kanban-col-badge" id="kanbanBadgeB">0</span>
                 </div>
-                <div class="kanban-col-total" id="kanbanTotalB">$0<span class="kanban-col-total-label">萬</span></div>
+                <div class="kanban-col-total" id="kanbanTotalB">$0<span class="kanban-col-total-label">仟</span></div>
               </div>
               <div class="kanban-cards" id="kanbanCardsB" data-stage="B"></div>
             </div>
@@ -422,7 +422,7 @@
                   <span class="kanban-col-name">A｜Commit</span>
                   <span class="kanban-col-badge" id="kanbanBadgeA">0</span>
                 </div>
-                <div class="kanban-col-total" id="kanbanTotalA">$0<span class="kanban-col-total-label">萬</span></div>
+                <div class="kanban-col-total" id="kanbanTotalA">$0<span class="kanban-col-total-label">仟</span></div>
               </div>
               <div class="kanban-cards" id="kanbanCardsA" data-stage="A"></div>
             </div>
@@ -434,7 +434,7 @@
                   <span class="kanban-col-name">🏆 Won</span>
                   <span class="kanban-col-badge kanban-badge-won" id="kanbanBadgeWon">0</span>
                 </div>
-                <div class="kanban-col-total" id="kanbanTotalWon">$0<span class="kanban-col-total-label">萬</span></div>
+                <div class="kanban-col-total" id="kanbanTotalWon">$0<span class="kanban-col-total-label">仟</span></div>
               </div>
               <div class="kanban-cards" id="kanbanCardsWon" data-stage="Won"></div>
             </div>
@@ -534,7 +534,7 @@
                   <th style="padding:10px 14px;text-align:left;font-weight:600">客戶名稱</th>
                   <th style="padding:10px 14px;text-align:left;font-weight:600">銷售案名</th>
                   <th style="padding:10px 14px;text-align:left;font-weight:600">階段</th>
-                  <th style="padding:10px 14px;text-align:right;font-weight:600">金額(萬)</th>
+                  <th style="padding:10px 14px;text-align:right;font-weight:600">金額(仟)</th>
                   <th style="padding:10px 14px;text-align:left;font-weight:600">刪除原因</th>
                   <th style="padding:10px 14px;text-align:left;font-weight:600">業務</th>
                 </tr>
@@ -834,7 +834,7 @@
                   <input type="number" id="campaignModalTarget" class="form-control" placeholder="0" min="0">
                 </div>
                 <div class="form-group">
-                  <label>預算（萬）</label>
+                  <label>預算（仟）</label>
                   <input type="number" id="campaignModalBudget" class="form-control" placeholder="0" min="0" step="0.1">
                 </div>
               </div>
@@ -917,12 +917,14 @@
               <button class="exec-tab-btn active" data-tab="conversion">🔀 轉換率漏斗</button>
               <button class="exec-tab-btn" data-tab="trend">📈 業績趨勢</button>
               <button class="exec-tab-btn" data-tab="product">📦 產品分析</button>
+              <button class="exec-tab-btn" data-tab="buComparison">🏢 BU 績效對比</button>
             </div>
           </div>
           <!-- Tab 內容 -->
-          <div id="execTabConversion" class="exec-tab-pane"></div>
-          <div id="execTabTrend"      class="exec-tab-pane" style="display:none"></div>
-          <div id="execTabProduct"    class="exec-tab-pane" style="display:none"></div>
+          <div id="execTabConversion"   class="exec-tab-pane"></div>
+          <div id="execTabTrend"        class="exec-tab-pane" style="display:none"></div>
+          <div id="execTabProduct"      class="exec-tab-pane" style="display:none"></div>
+          <div id="execTabBuComparison" class="exec-tab-pane" style="display:none"></div>
         </div>
 
         <!-- ── 主管首頁 ── -->
@@ -937,6 +939,9 @@
             </div>
             <button class="btn btn-primary" id="mgrRefreshBtn" style="font-size:13px;padding:6px 14px">🔄 重新整理</button>
           </div>
+
+          <!-- Gap 分析橫幅 -->
+          <div id="mgrGapBanner" style="display:none;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:14px"></div>
 
           <!-- 第一列：達成儀表盤 + 本月可成交 -->
           <div class="mgr-row-2">
@@ -1099,7 +1104,7 @@
                 <select id="targetYearSel"></select>
               </div>
               <div class="form-group" style="flex:1">
-                <label>目標金額（萬元）</label>
+                <label>目標金額（仟元）</label>
                 <input type="number" id="targetAmountInput" placeholder="例：5000" min="0">
               </div>
               <button class="btn btn-primary" id="saveTargetBtn" style="align-self:flex-end">儲存目標</button>
@@ -1130,7 +1135,7 @@
                         <th>客戶公司</th>
                         <th>聯絡人</th>
                         <th>商品項目</th>
-                        <th>金額（萬）</th>
+                        <th>金額（仟）</th>
                         <th>階段</th>
                         <th>最後聯繫</th>
                         <th>警示原因</th>
@@ -1172,7 +1177,7 @@
                     <th>聯絡人</th>
                     <th>商機類別</th>
                     <th>商品項目</th>
-                    <th>預估金額（萬）</th>
+                    <th>預估金額（仟）</th>
                     <th>預計成交日</th>
                     <th>狀態</th>
                     <th>操作</th>
@@ -1214,6 +1219,7 @@
               <button class="view-tab" data-rtab="pending">待收款</button>
               <button class="view-tab" data-rtab="paid">已收款</button>
             </div>
+            <input type="search" id="receivableSearch" class="form-control" placeholder="搜尋公司 / 發票號碼…" style="width:200px;margin:0 8px">
             <button class="btn btn-primary" id="addReceivableBtn">&#43; 新增帳款</button>
           </div>
           <div class="receivables-summary" id="receivablesSummary"></div>
@@ -1239,6 +1245,7 @@
               <button class="view-tab" data-ctab="overdue">逾時</button>
               <button class="view-tab" data-ctab="done">已完成</button>
             </div>
+            <input type="search" id="callinSearch" class="form-control" placeholder="搜尋公司 / 聯絡人…" style="width:200px;margin:0 8px">
             <button class="btn btn-primary" id="addCallinBtn" style="display:none">&#43; 新增 Call-in</button>
           </div>
           <div class="table-wrap">
@@ -1630,6 +1637,9 @@
                   <option value="">-- 請選擇 --</option>
                 </select>
                 <input type="text" id="cOppProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+                <select id="cOppProductSub" class="product-custom-input" style="display:none;margin-top:6px">
+                  <option value="">-- 請選擇類型 --</option>
+                </select>
               </div>
               <div class="form-group">
                 <label>商機階段</label>
@@ -1641,7 +1651,7 @@
                 </select>
               </div>
               <div class="form-group">
-                <label>預估金額（萬元）</label>
+                <label>預估金額（仟元）</label>
                 <input type="number" id="cOppAmount" placeholder="例：500" min="0">
               </div>
               <div class="form-group">
@@ -1886,9 +1896,12 @@
                 <option value="">-- 請選擇 --</option>
               </select>
               <input type="text" id="oppProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+              <select id="oppProductSub" class="product-custom-input" style="display:none;margin-top:6px">
+                <option value="">-- 請選擇類型 --</option>
+              </select>
             </div>
             <div class="form-group">
-              <label>預估金額（萬元）</label>
+              <label>預估金額（仟元）</label>
               <input type="number" id="oppAmount" placeholder="例：500" min="0">
             </div>
             <div class="form-group">
@@ -1989,9 +2002,12 @@
               <option value="">-- 請選擇 --</option>
             </select>
             <input type="text" id="oppEditProductCustom" class="product-custom-input" style="display:none" placeholder="請輸入商機名稱">
+            <select id="oppEditProductSub" class="product-custom-input" style="display:none;margin-top:6px">
+              <option value="">-- 請選擇類型 --</option>
+            </select>
           </div>
           <div class="form-group">
-            <label>合約金額（萬元）</label>
+            <label>合約金額（仟元）</label>
             <input type="number" id="oppEditAmount" placeholder="例：500" min="0">
           </div>
           <div class="form-group">
@@ -2501,14 +2517,14 @@
         <div style="font-size:12px;font-weight:700;color:#1a3c7a;margin-bottom:8px;padding:4px 8px;background:#eff6ff;border-radius:6px">📈 收入認列</div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px" id="mbActualGrid"></div>
         <div style="font-size:12px;color:#6b7280;margin-bottom:18px;text-align:right">
-          合計：<strong id="mbActualTotalLabel" style="color:#1a3c7a">0</strong> 萬
+          合計：<strong id="mbActualTotalLabel" style="color:#1a3c7a">0</strong> 仟
         </div>
 
         <!-- 毛利認列 -->
         <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;padding:4px 8px;background:#f5f3ff;border-radius:6px">💎 毛利認列</div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px" id="mbGmActualGrid"></div>
         <div style="font-size:12px;color:#6b7280;margin-bottom:18px;text-align:right">
-          合計：<strong id="mbGmActualTotalLabel" style="color:#7c3aed">0</strong> 萬
+          合計：<strong id="mbGmActualTotalLabel" style="color:#7c3aed">0</strong> 仟
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f3f4f6;padding-top:14px">
@@ -2517,6 +2533,57 @@
             <button class="btn btn-outline" onclick="closeMbActualModal()">取消</button>
             <button class="btn btn-primary" onclick="saveMbActuals()">💾 儲存認列</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 月度預算設定 Modal（秘書 / Admin 用）-->
+  <div id="mbBudgetOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeMbBudgetModal()">
+    <div class="modal" style="width:720px;max-width:96vw">
+      <div class="modal-header" style="padding:18px 24px 12px;border-bottom:1px solid #f3f4f6">
+        <h2 style="font-size:15px;font-weight:700;color:#111" id="mbBudgetTitle">📆 設定月度預算</h2>
+        <button class="modal-close" onclick="closeMbBudgetModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:14px">
+          輸入各月份業績預算金額（仟元）。空白視為 0。
+        </div>
+
+        <!-- 收入預算 -->
+        <div style="font-size:12px;font-weight:700;color:#1a3c7a;margin-bottom:8px;padding:4px 8px;background:#eff6ff;border-radius:6px">📈 收入預算</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px" id="mbBudgetGrid"></div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:18px;text-align:right">
+          合計：<strong id="mbBudgetTotalLabel" style="color:#1a3c7a">0</strong> 仟
+        </div>
+
+        <!-- 毛利預算 -->
+        <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;padding:4px 8px;background:#f5f3ff;border-radius:6px">💎 毛利預算</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px" id="mbBudgetGmGrid"></div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:18px;text-align:right">
+          合計：<strong id="mbBudgetGmTotalLabel" style="color:#7c3aed">0</strong> 仟
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #f3f4f6;padding-top:14px">
+          <button class="btn btn-outline" onclick="closeMbBudgetModal()">取消</button>
+          <button class="btn btn-primary" onclick="saveMbBudget()">💾 儲存預算</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 閒置自動登出警告 Modal -->
+  <div class="modal-overlay" id="idleTimeoutOverlay" style="display:none;z-index:9999">
+    <div class="modal" style="max-width:400px;text-align:center">
+      <div class="modal-body" style="padding:32px 24px">
+        <div style="font-size:48px;margin-bottom:16px">⏱️</div>
+        <h3 style="margin:0 0 12px;font-size:18px;color:#333">閒置逾時警告</h3>
+        <p style="color:#666;margin:0 0 8px;font-size:14px">您已閒置一段時間，將在</p>
+        <div id="idleCountdown" style="font-size:36px;font-weight:700;color:#e74c3c;margin:12px 0">5:00</div>
+        <p style="color:#666;margin:0 0 24px;font-size:14px">後自動登出</p>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <button class="btn btn-primary" id="idleStayBtn" style="min-width:120px">繼續使用</button>
+          <button class="btn" id="idleLogoutBtn" style="background:#f0f2f5;color:#333;min-width:120px">立即登出</button>
         </div>
       </div>
     </div>

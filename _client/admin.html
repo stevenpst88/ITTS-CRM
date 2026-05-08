@@ -405,6 +405,9 @@
       <div class="admin-nav-item" data-sec="infra-stats">
         <span class="admin-nav-icon">☁️</span> 雲端基礎設施
       </div>
+      <div class="admin-nav-item" data-sec="subscription">
+        <span class="admin-nav-icon">💳</span> 訂閱管理
+      </div>
       <div class="admin-nav-item" data-sec="version">
         <span class="admin-nav-icon">🏷️</span> 版本資訊
       </div>
@@ -748,7 +751,7 @@
             上傳 Excel 檔案批次新增合約。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號</strong>
           </div>
           <div style="font-size:12px;color:#aaa;margin-bottom:16px">
-            合約金額單位：萬元
+            合約金額單位：仟元
           </div>
 
           <div class="import-drop-zone" id="contractImportDropZone">
@@ -873,7 +876,7 @@
       <!-- ── 季度業績配比設定 ── -->
       <div class="admin-section" id="sec-quarter-ratios">
         <div class="section-title">📅 季度業績配比設定</div>
-        <div class="section-sub">為每位業務員設定個別的 Q1~Q4 業績目標分配比例。每位業務員的配比合計須等於 100%。一級主管的季度目標將自動由部屬目標加總計算。</div>
+        <div class="section-sub">為每位業務員設定個別的 Q1~Q4 季度業績目標金額（仟元）。一級主管的季度目標將自動由部屬目標加總計算。</div>
 
         <!-- 年度選擇 -->
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
@@ -890,46 +893,46 @@
         <!-- 全域預設配比（折疊） -->
         <details style="margin-bottom:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px">
           <summary style="font-size:13px;font-weight:700;color:#6b7280;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
-            ⚙️ 全域預設配比（業務員未設定個人配比時使用）
+            ⚙️ 全域預設金額（業務員未設定個人目標時使用）
           </summary>
           <div style="margin-top:14px">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:14px" id="qrGrid">
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
                 <div style="display:flex;align-items:center;gap:4px">
-                  <input type="number" id="qrQ1" min="0" max="100" step="1" placeholder="25"
+                  <input type="number" id="qrQ1" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                  <span style="color:#6b7280;flex-shrink:0">仟</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
                 <div style="display:flex;align-items:center;gap:4px">
-                  <input type="number" id="qrQ2" min="0" max="100" step="1" placeholder="25"
+                  <input type="number" id="qrQ2" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                  <span style="color:#6b7280;flex-shrink:0">仟</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
                 <div style="display:flex;align-items:center;gap:4px">
-                  <input type="number" id="qrQ3" min="0" max="100" step="1" placeholder="25"
+                  <input type="number" id="qrQ3" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                  <span style="color:#6b7280;flex-shrink:0">仟</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
                 <div style="display:flex;align-items:center;gap:4px">
-                  <input type="number" id="qrQ4" min="0" max="100" step="1" placeholder="25"
+                  <input type="number" id="qrQ4" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">%</span>
+                  <span style="color:#6b7280;flex-shrink:0">仟</span>
                 </div>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
-              <button id="qrSaveBtn" class="btn btn-primary" disabled>儲存預設配比</button>
+              <button id="qrSaveBtn" class="btn btn-primary">儲存預設目標</button>
             </div>
           </div>
         </details>
@@ -966,7 +969,7 @@
       <!-- ── 月度業績預算 ── -->
       <div class="admin-section" id="sec-monthly-budget">
         <div class="section-title">📆 月度業績預算</div>
-        <div class="section-sub">為每位業務員設定個別的 1~12 月業績預算金額（單位：萬）。業務員首頁將自動顯示預算 vs 實際成交對照表。</div>
+        <div class="section-sub">為每位業務員設定個別的 1~12 月業績預算金額（單位：仟）。業務員首頁將自動顯示預算 vs 實際成交對照表。</div>
 
         <div class="admin-card">
           <div class="admin-card-header">
@@ -994,12 +997,12 @@
               <!-- 收入金額 -->
               <div style="font-size:12px;font-weight:700;color:#1a3c7a;margin-bottom:8px;padding:4px 8px;background:#eff6ff;border-radius:6px">📈 收入金額（預算）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:6px" id="mbInputGrid"></div>
-              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbTotalLabel" style="color:#1a3c7a">0</strong> 萬</div>
+              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbTotalLabel" style="color:#1a3c7a">0</strong> 仟</div>
 
               <!-- 毛利金額 -->
               <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;padding:4px 8px;background:#f5f3ff;border-radius:6px">💎 毛利金額（預算）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:6px" id="mbGmInputGrid"></div>
-              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbGmTotalLabel" style="color:#7c3aed">0</strong> 萬</div>
+              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbGmTotalLabel" style="color:#7c3aed">0</strong> 仟</div>
 
               <div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:1px solid #f3f4f6">
                 <button class="btn btn-primary" onclick="saveMbBudget()">💾 儲存</button>
@@ -1244,6 +1247,104 @@
       </div>
 
       <!-- ── 版本資訊 ── -->
+      <!-- ── 訂閱管理 ── -->
+      <div class="admin-section" id="sec-subscription">
+        <div class="section-title">💳 訂閱管理</div>
+        <div class="section-sub">管理系統訂閱方案、到期日與 AI Credits 點數</div>
+
+        <!-- 當前方案狀態卡 -->
+        <div id="subStatusCard" style="background:linear-gradient(135deg,#0f2744 0%,#1a73e8 100%);
+             border-radius:16px;padding:24px 28px;margin-bottom:20px;color:#fff;
+             display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+          <div>
+            <div style="font-size:11px;opacity:.6;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">目前訂閱方案</div>
+            <div style="font-size:28px;font-weight:900;letter-spacing:-0.5px" id="subPlanBadge">—</div>
+            <div style="font-size:13px;opacity:.75;margin-top:4px" id="subExpiry">載入中…</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;opacity:.6;margin-bottom:4px">AI Credits 餘額</div>
+            <div style="font-size:36px;font-weight:900" id="subCreditsBalance">—</div>
+            <div style="font-size:11px;opacity:.5;margin-top:2px" id="subCreditsHint"></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+          <!-- 方案設定 -->
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">⚙️ 方案設定</span></div>
+            <div class="admin-card-body">
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">訂閱方案</label>
+                <select id="subPlanSelect" class="form-control">
+                  <option value="starter">Starter（入門）</option>
+                  <option value="growth">Growth（成長）</option>
+                  <option value="pro">Professional（專業）</option>
+                  <option value="enterprise">Enterprise（企業）</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">方案到期日</label>
+                <input type="date" id="subPlanExpiry" class="form-control">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">試用到期日（優先於方案到期）</label>
+                <input type="date" id="subTrialUntil" class="form-control">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">加購模組（逗號分隔，如 M5,M6）</label>
+                <input type="text" id="subAddons" class="form-control" placeholder="M5,M6,M7">
+              </div>
+              <button class="btn btn-primary" onclick="savePlanSettings()">儲存方案設定</button>
+            </div>
+          </div>
+
+          <!-- AI Credits 管理 -->
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">🤖 AI Credits 管理</span></div>
+            <div class="admin-card-body">
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">設定 Credits 餘額（直接覆蓋）</label>
+                <input type="number" id="subAiCredits" class="form-control" placeholder="500" min="0">
+              </div>
+              <button class="btn btn-primary" onclick="saveCreditsBalance()" style="margin-bottom:12px">設定餘額</button>
+              <hr style="border-color:rgba(255,255,255,.1);margin:12px 0">
+              <div class="form-group" style="margin-bottom:12px">
+                <label class="form-label">加值點數（累加）</label>
+                <select id="subCreditPkg" class="form-control">
+                  <option value="200">輕量包 200 點（NT$180）</option>
+                  <option value="500">標準包 500 點（NT$400）</option>
+                  <option value="1500">專業包 1,500 點（NT$1,050）</option>
+                  <option value="5000">企業包 5,000 點（NT$3,000）</option>
+                  <option value="20000">年度大包 20,000 點（NT$10,000）</option>
+                </select>
+              </div>
+              <button class="btn btn-success" onclick="addCreditPackage()">加值點數</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Credits 使用明細 -->
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">📊 AI Credits 使用明細</span>
+            <button class="btn btn-sm" onclick="loadSubUsage()" style="margin-left:auto">重新整理</button>
+          </div>
+          <div class="admin-card-body">
+            <div id="subUsageTable" style="overflow-x:auto">
+              <table class="admin-table" style="width:100%">
+                <thead><tr>
+                  <th>時間</th><th>功能</th><th>消耗點數</th><th>使用者</th><th>餘額</th>
+                </tr></thead>
+                <tbody id="subUsageTbody">
+                  <tr><td colspan="5" style="text-align:center;opacity:.5">點擊「重新整理」載入</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
         <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
@@ -1500,6 +1601,7 @@
         if (this.dataset.sec === 'api-stats') loadApiStats();
         if (this.dataset.sec === 'infra-stats') loadInfraStats();
         if (this.dataset.sec === 'version') loadVersionInfo();
+        if (this.dataset.sec === 'subscription') loadSubStatus();
       });
     });
 
@@ -3402,12 +3504,9 @@
     const vals = ['qrQ1','qrQ2','qrQ3','qrQ4'].map(id => parseFloat(document.getElementById(id).value) || 0);
     const s = vals.reduce((a, v) => a + v, 0);
     const lbl = document.getElementById('qrSumLabel');
-    const btn = document.getElementById('qrSaveBtn');
-    const ok = Math.round(s) === 100;
-    lbl.textContent = `合計：${s}%` + (ok ? '  ✅' : '  ❌ 需等於 100%');
-    lbl.style.color = ok ? '#10b981' : '#ef4444';
+    lbl.textContent = `合計：${s.toLocaleString()} 仟`;
+    lbl.style.color = '#1a3c7a';
     lbl.style.fontWeight = '700';
-    btn.disabled = !ok;
   }
   window.calcQrSum = calcQrSum;
 
@@ -3444,7 +3543,7 @@
 
   function fillQrInputs() {
     const year = parseInt(document.getElementById('qrYearSel').value);
-    const ratios = qrAllRatios[year] || qrAllRatios[String(year)] || [25, 25, 25, 25];
+    const ratios = qrAllRatios[year] || qrAllRatios[String(year)] || [0, 0, 0, 0];
     ['qrQ1','qrQ2','qrQ3','qrQ4'].forEach((id, i) => {
       document.getElementById(id).value = ratios[i] ?? '';
     });
@@ -3468,7 +3567,7 @@
     }
 
     const roleLabel = { manager1:'一級主管', manager2:'二級主管', user:'業務', secretary:'秘書' };
-    const getDefaultRatio = () => qrAllRatios[year] || qrAllRatios[yStr] || [25, 25, 25, 25];
+    const getDefaultRatio = () => qrAllRatios[year] || qrAllRatios[yStr] || [0, 0, 0, 0];
 
     wrap.innerHTML = `
       <div style="overflow-x:auto">
@@ -3476,11 +3575,11 @@
           <thead>
             <tr style="background:#f3f4f6;color:#6b7280">
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb;white-space:nowrap">業務員</th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計</th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月（仟）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月（仟）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月（仟）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月（仟）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計（仟）</th>
               <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">操作</th>
             </tr>
           </thead>
@@ -3508,14 +3607,13 @@
         ${[0,1,2,3].map(i => `
           <td style="padding:6px 4px;text-align:center">
             <div style="display:flex;align-items:center;justify-content:center;gap:2px">
-              <input type="number" class="qr-user-input" data-idx="${i}" min="0" max="100" step="1"
-                value="${ratios[i] ?? 25}"
-                style="width:58px;padding:6px 4px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:700;text-align:center">
-              <span style="font-size:11px;color:#9ca3af">%</span>
+              <input type="number" class="qr-user-input" data-idx="${i}" min="0" step="1"
+                value="${ratios[i] ?? 0}"
+                style="width:70px;padding:6px 4px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:700;text-align:center">
             </div>
           </td>`).join('')}
         <td style="padding:6px 8px;text-align:center">
-          <span class="qr-user-sum" style="font-weight:700;font-size:13px">${ratios.reduce((a,v)=>a+v,0)}%</span>
+          <span class="qr-user-sum" style="font-weight:700;font-size:13px;color:#1a3c7a">${ratios.reduce((a,v)=>a+v,0).toLocaleString()}</span>
         </td>
         <td style="padding:6px 8px;text-align:center">
           <button class="btn btn-sm qr-user-save-btn" style="min-width:52px">儲存</button>
@@ -3529,18 +3627,14 @@
           const vals = [...tr.querySelectorAll('.qr-user-input')].map(i => parseFloat(i.value) || 0);
           const s = vals.reduce((a, v) => a + v, 0);
           const sumEl = tr.querySelector('.qr-user-sum');
-          const saveBtn = tr.querySelector('.qr-user-save-btn');
-          const ok = Math.round(s) === 100;
-          sumEl.textContent = s + '%';
-          sumEl.style.color = ok ? '#10b981' : '#ef4444';
-          saveBtn.disabled = !ok;
+          sumEl.textContent = s.toLocaleString();
+          sumEl.style.color = '#1a3c7a';
         });
       });
 
       // 儲存按鈕
       const saveBtn = tr.querySelector('.qr-user-save-btn');
-      const isOk = ratios.reduce((a,v)=>a+v,0) === 100;
-      saveBtn.disabled = !isOk;
+      saveBtn.disabled = false;
       saveBtn.addEventListener('click', async () => {
         const vals = [...tr.querySelectorAll('.qr-user-input')].map(i => parseFloat(i.value) || 0);
         saveBtn.disabled = true; saveBtn.textContent = '…';
@@ -3606,14 +3700,14 @@
       if (data.success) {
         qrAllRatios[year] = ratios;
         btn.textContent = '✅ 已儲存';
-        setTimeout(() => { btn.textContent = '儲存預設配比'; btn.disabled = false; }, 1800);
+        setTimeout(() => { btn.textContent = '儲存預設目標'; btn.disabled = false; }, 1800);
       } else {
         alert('儲存失敗：' + (data.error || '未知錯誤'));
-        btn.textContent = '儲存預設配比'; btn.disabled = false;
+        btn.textContent = '儲存預設目標'; btn.disabled = false;
       }
     } catch(e) {
       alert('網路錯誤：' + e.message);
-      btn.textContent = '儲存預設配比'; btn.disabled = false;
+      btn.textContent = '儲存預設目標'; btn.disabled = false;
     }
   });
 
@@ -3804,7 +3898,7 @@
           const userLabel = _mbUsers.find(u => u.username === b.owner)?.displayName || b.owner;
           const gmRow = gmTotal > 0 ? `
             <div style="margin-top:8px;border-top:1px solid #f3f4f6;padding-top:8px">
-              <div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:4px">毛利金額（合計 ${gmTotal.toLocaleString()} 萬）</div>
+              <div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:4px">毛利金額（合計 ${gmTotal.toLocaleString()} 仟）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
                 ${(b.grossMargin||[]).map((v,i) => `<div style="text-align:center;font-size:11px;background:#faf5ff;border-radius:6px;padding:4px 2px">
                   <div style="color:#9ca3af;margin-bottom:1px">${monthLabels[i]}</div>
@@ -3815,7 +3909,7 @@
           return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <span style="font-size:13px;font-weight:700;color:#374151">${userLabel} — ${b.year} 年</span>
-              <span style="font-size:12px;color:#6b7280">收入合計 ${revTotal.toLocaleString()} 萬　by ${b.setBy || '—'}</span>
+              <span style="font-size:12px;color:#6b7280">收入合計 ${revTotal.toLocaleString()} 仟　by ${b.setBy || '—'}</span>
             </div>
             <div style="font-size:11px;font-weight:600;color:#1a3c7a;margin-bottom:4px">收入金額</div>
             <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
@@ -3890,6 +3984,150 @@
         alert('✅ 儲存成功！');
         await refreshMbExisting();
       } catch(e) { alert('儲存失敗：' + e.message); }
+    }
+
+    // ══════════════════════════════════════════════════════
+    //  訂閱管理
+    // ══════════════════════════════════════════════════════
+    const PLAN_LABELS = {
+      starter: 'Starter 入門版', growth: 'Growth 成長版',
+      pro: 'Professional 專業版', enterprise: 'Enterprise 企業版'
+    };
+    const PLAN_COLORS = {
+      starter: '#607d8b', growth: '#1a73e8', pro: '#7c4dff', enterprise: '#f57c00'
+    };
+    const FEATURE_LABELS = {
+      'ocr-card': '名片 OCR', 'visit-suggest': '拜訪 AI 建議', 'opp-win-rate': '商機勝率預測',
+      'contact-summary': '聯絡人摘要', 'follow-up-email': '跟進郵件草稿',
+      'company-insight': '公司策略洞察', 'admin-ocr-card': '名片 OCR（管理員）'
+    };
+
+    async function loadSubStatus() {
+      try {
+        const r = await fetch(`${API}/plan`);
+        const d = await r.json();
+        const label = PLAN_LABELS[d.plan] || d.plan;
+        const color = PLAN_COLORS[d.plan] || '#1a73e8';
+        document.getElementById('subPlanBadge').textContent = label;
+        document.getElementById('subPlanBadge').style.color = '#fff';
+
+        let expiryText = '';
+        if (d.isTrialActive) {
+          expiryText = `🎁 試用期至 ${d.trialUntil}`;
+        } else if (d.isExpired) {
+          expiryText = `⚠️ 訂閱已到期（${d.planExpiry}）`;
+        } else if (d.planExpiry) {
+          const daysLeft = Math.ceil((new Date(d.planExpiry) - new Date()) / 86400000);
+          expiryText = `到期日：${d.planExpiry}（剩餘 ${daysLeft} 天）`;
+        } else if (!d.managed) {
+          expiryText = '未設定到期日（永久授權）';
+        }
+        document.getElementById('subExpiry').textContent = expiryText;
+
+        const credEl = document.getElementById('subCreditsBalance');
+        const hintEl = document.getElementById('subCreditsHint');
+        if (d.aiCredits === null) {
+          credEl.textContent = '不限';
+          hintEl.textContent = '企業方案無上限';
+        } else {
+          credEl.textContent = d.aiCredits != null ? d.aiCredits.toLocaleString() : '0';
+          hintEl.textContent = `1 點 = NT$1（名片 OCR 5 點 / 公司洞察 15 點）`;
+        }
+
+        // 填入表單預設值
+        if (d.managed) {
+          const sel = document.getElementById('subPlanSelect');
+          if (sel) sel.value = d.plan || 'enterprise';
+          const exp = document.getElementById('subPlanExpiry');
+          if (exp && d.planExpiry) exp.value = d.planExpiry;
+          const trial = document.getElementById('subTrialUntil');
+          if (trial && d.trialUntil) trial.value = d.trialUntil;
+          const addons = document.getElementById('subAddons');
+          if (addons && d.addons) addons.value = d.addons.join(',');
+        }
+
+        // 修改 header 漸層顏色
+        document.getElementById('subStatusCard').style.background =
+          `linear-gradient(135deg,#0f2744 0%,${color} 100%)`;
+      } catch(e) {
+        console.error('loadSubStatus:', e);
+      }
+    }
+
+    async function savePlanSettings() {
+      const plan      = document.getElementById('subPlanSelect').value;
+      const planExpiry = document.getElementById('subPlanExpiry').value || null;
+      const trialUntil = document.getElementById('subTrialUntil').value || null;
+      const addonsRaw  = document.getElementById('subAddons').value.trim();
+      const addons = addonsRaw ? addonsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      try {
+        const r = await fetch(`${API}/admin/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan, planExpiry, trialUntil, addons })
+        });
+        const d = await r.json();
+        if (!r.ok) { alert('儲存失敗：' + (d.error || r.status)); return; }
+        alert('✅ 方案設定已儲存');
+        loadSubStatus();
+      } catch(e) { alert('儲存失敗：' + e.message); }
+    }
+
+    async function saveCreditsBalance() {
+      const val = parseInt(document.getElementById('subAiCredits').value, 10);
+      if (isNaN(val) || val < 0) { alert('請輸入有效的點數數量'); return; }
+      try {
+        const r = await fetch(`${API}/admin/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aiCredits: val })
+        });
+        const d = await r.json();
+        if (!r.ok) { alert('儲存失敗：' + (d.error || r.status)); return; }
+        alert(`✅ Credits 餘額已設為 ${val} 點`);
+        document.getElementById('subAiCredits').value = '';
+        loadSubStatus();
+      } catch(e) { alert('儲存失敗：' + e.message); }
+    }
+
+    async function addCreditPackage() {
+      const pkg = parseInt(document.getElementById('subCreditPkg').value, 10);
+      if (!confirm(`確定要加值 ${pkg.toLocaleString()} 點 AI Credits？`)) return;
+      try {
+        const r = await fetch(`${API}/admin/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addCredits: pkg })
+        });
+        const d = await r.json();
+        if (!r.ok) { alert('加值失敗：' + (d.error || r.status)); return; }
+        alert(`✅ 成功加值 ${pkg.toLocaleString()} 點，目前餘額：${d.subscription.aiCredits?.toLocaleString()} 點`);
+        loadSubStatus();
+      } catch(e) { alert('加值失敗：' + e.message); }
+    }
+
+    async function loadSubUsage() {
+      try {
+        const r = await fetch(`${API}/admin/usage`);
+        const d = await r.json();
+        const tbody = document.getElementById('subUsageTbody');
+        if (!d.creditLog || d.creditLog.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;opacity:.5">尚無使用記錄</td></tr>';
+          return;
+        }
+        tbody.innerHTML = d.creditLog.map(row => `
+          <tr>
+            <td style="font-size:12px">${row.ts ? row.ts.replace('T',' ').slice(0,19) : '—'}</td>
+            <td>${FEATURE_LABELS[row.feature] || row.feature}</td>
+            <td style="text-align:center;color:#e57373">−${row.cost}</td>
+            <td>${row.user}</td>
+            <td style="text-align:right;font-weight:600">${row.balance?.toLocaleString() ?? '—'}</td>
+          </tr>`).join('');
+      } catch(e) {
+        document.getElementById('subUsageTbody').innerHTML =
+          `<tr><td colspan="5" style="color:red">載入失敗：${e.message}</td></tr>`;
+      }
     }
 
   </script>
