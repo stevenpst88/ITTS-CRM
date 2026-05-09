@@ -3,8 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a3c7a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ITTS CRM">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <title>東捷資訊ERP 業務部 Account Profile</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+  (function(){
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/sw.js').then(function(reg){
+        reg.addEventListener('updatefound', function(){
+          var nw = reg.installing; if (!nw) return;
+          nw.addEventListener('statechange', function(){
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              window.__swUpdateReg = reg;
+              if (typeof window.showSwUpdateToast === 'function') { window.showSwUpdateToast(reg); return; }
+              var bar = document.createElement('div');
+              bar.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a3c7a;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:99999;font-size:14px;display:flex;gap:12px;align-items:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif';
+              bar.innerHTML = '<span>\u{1F504} 有新版本可用</span><button id="__swUpdateBtn" style="background:#fff;color:#1a3c7a;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer">立即更新</button>';
+              document.body.appendChild(bar);
+              bar.querySelector('#__swUpdateBtn').onclick = function(){ if (reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'}); };
+            }
+          });
+        });
+      }).catch(function(err){ console.warn('[SW] register failed:', err); });
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function(){
+        if (refreshing) return; refreshing = true; window.location.reload();
+      });
+    });
+  })();
+  </script>
 </head>
 <body>
   <!-- 手機側邊遮罩 -->
@@ -169,7 +204,10 @@
           <div class="notif-dropdown" id="notifDropdown" style="display:none">
             <div class="notif-header">
               <span>通知</span>
-              <button class="notif-read-all" id="notifReadAll">全部已讀</button>
+              <div style="display:flex;gap:6px;align-items:center">
+                <button class="notif-read-all" id="pushToggleBtn" title="啟用瀏覽器推播" style="font-size:14px">🔕</button>
+                <button class="notif-read-all" id="notifReadAll">全部已讀</button>
+              </div>
             </div>
             <div class="notif-list" id="notifList"><div class="notif-empty">暫無通知</div></div>
           </div>
@@ -2627,5 +2665,111 @@
           crossorigin="anonymous"></script>
   <script src="app.js"></script>
   <script src="quote.js"></script>
+  <script>
+  // ── Web Push 推播訂閱管理（與 sw.js 對應） ─────────────
+  (function(){
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+    const btn = document.getElementById('pushToggleBtn');
+    if (!btn) return;
+    let cachedSub = null;
+
+    function urlBase64ToUint8Array(s){
+      const pad = '='.repeat((4 - s.length % 4) % 4);
+      const b64 = (s + pad).replace(/-/g,'+').replace(/_/g,'/');
+      const raw = atob(b64);
+      const out = new Uint8Array(raw.length);
+      for (let i=0;i<raw.length;i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    async function refresh(){
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        cachedSub = await reg.pushManager.getSubscription();
+        if (Notification.permission === 'denied') {
+          btn.textContent = '🚫'; btn.title = '推播權限已被瀏覽器封鎖，請到網站設定中解除';
+        } else if (cachedSub) {
+          btn.textContent = '🔔'; btn.title = '已啟用推播 — 點擊測試或停用';
+        } else {
+          btn.textContent = '🔕'; btn.title = '啟用瀏覽器推播通知';
+        }
+      } catch (e) { console.warn('[push] refresh failed:', e); }
+    }
+
+    async function subscribe(){
+      if (Notification.permission === 'denied') {
+        alert('您已封鎖此網站的通知權限，請到瀏覽器設定中解除後再試');
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { alert('需要允許通知才能啟用推播'); return; }
+      const r = await fetch('/api/push/vapid-public-key');
+      const { key, enabled } = await r.json();
+      if (!enabled || !key) { alert('伺服器尚未設定推播金鑰，請聯繫管理員'); return; }
+      const reg = await navigator.serviceWorker.ready;
+      try {
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key)
+        });
+        const r2 = await fetch('/api/push/subscribe', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub.toJSON())
+        });
+        if (!r2.ok) throw new Error('伺服器無法儲存訂閱');
+        await refresh();
+        alert('✅ 推播已啟用！\n\n稍後重要事件會送到此裝置（合約到期、客戶生日等）');
+      } catch (e) {
+        alert('啟用推播失敗：' + e.message);
+      }
+    }
+
+    async function unsubscribe(){
+      if (!cachedSub) return refresh();
+      const ep = cachedSub.endpoint;
+      try { await cachedSub.unsubscribe(); } catch (_) {}
+      try {
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: ep })
+        });
+      } catch (_) {}
+      await refresh();
+    }
+
+    async function test(){
+      try {
+        const r = await fetch('/api/push/test', { method: 'POST', credentials: 'include' });
+        const d = await r.json();
+        if (!d.success) alert('推播測試失敗：' + (d.error || '可能尚未訂閱或瀏覽器已封鎖通知'));
+        // 成功時不彈 alert，使用者會看到推播本身
+      } catch (e) {
+        alert('推播測試失敗：' + e.message);
+      }
+    }
+
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (!cachedSub) {
+        await subscribe();
+      } else {
+        const choice = confirm('🔔 推播已啟用\n\n按「確定」→ 立即送一則測試推播給自己\n按「取消」→ 停用推播');
+        if (choice) await test();
+        else await unsubscribe();
+      }
+    });
+
+    // SW 從 notificationclick 發來的 NAVIGATE 訊息
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'NAVIGATE' && e.data.url) {
+        try { window.location.href = e.data.url; } catch (_) {}
+      }
+    });
+
+    refresh();
+  })();
+  </script>
 </body>
 </html>

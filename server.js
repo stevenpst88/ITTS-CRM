@@ -16,6 +16,7 @@ const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
 const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
+const pushNotify = require('./lib/pushNotify');
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
@@ -370,6 +371,24 @@ const STATIC_NO_CACHE   = { maxAge: 0, etag: false, lastModified: false };
 app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_NO_CACHE));
 app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png'), STATIC_CACHE));
 app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg'), STATIC_CACHE));
+
+// PWA：manifest、service worker、icons 必須公開（不可 auth-gated）
+app.use('/manifest.webmanifest', express.static(path.join(__dirname, '_client', 'manifest.webmanifest'), STATIC_NO_CACHE));
+app.get('/sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(__dirname, '_client', 'sw.js'));
+});
+app.use('/icon.svg', express.static(path.join(__dirname, '_client', 'icon.svg'), STATIC_CACHE));
+app.use('/icon-192.png', express.static(path.join(__dirname, '_client', 'icon-192.png'), STATIC_CACHE));
+app.use('/icon-512.png', express.static(path.join(__dirname, '_client', 'icon-512.png'), STATIC_CACHE));
+app.use('/apple-touch-icon.png', express.static(path.join(__dirname, '_client', 'apple-touch-icon.png'), STATIC_CACHE));
+
+// PWA：VAPID 公鑰需公開，瀏覽器在訂閱前就要拿到
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ key: pushNotify.getPublicKey(), enabled: pushNotify.isEnabled() });
+});
 // 公開簡報頁面（不需登入）
 app.use('/product-plan.html', express.static(path.join(__dirname, '_client', 'product-plan.html'), STATIC_NO_CACHE));
 app.use('/product-spec.html', express.static(path.join(__dirname, '_client', 'product-spec.html'), STATIC_NO_CACHE));
@@ -488,6 +507,58 @@ app.get('/api/me', requireAuth, (req, res) => {
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === req.session.user.username);
   res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
+});
+
+// ── Web Push 推播訂閱 ────────────────────────────────────
+// 訂閱：把瀏覽器產生的 PushSubscription 物件存到該 user 帳號
+app.post('/api/push/subscribe', requireAuth, (req, res) => {
+  const sub = req.body;
+  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return res.status(400).json({ success: false, message: '訂閱資料格式不正確' });
+  }
+  const auth = loadAuth();
+  const user = auth.users.find(u => u.username === req.session.user.username);
+  if (!user) return res.status(404).json({ success: false, message: '帳號不存在' });
+
+  if (!Array.isArray(user.pushSubscriptions)) user.pushSubscriptions = [];
+  // 同 endpoint 視為同一裝置 → 覆蓋（避免重複堆積）
+  user.pushSubscriptions = user.pushSubscriptions.filter(s => s.endpoint !== sub.endpoint);
+  user.pushSubscriptions.push({
+    endpoint: sub.endpoint,
+    keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    ua: req.get('user-agent') || '',
+    addedAt: new Date().toISOString()
+  });
+  saveAuth(auth);
+  writeLog('PUSH_SUBSCRIBE', user.username, user.username, `新增 ${user.pushSubscriptions.length} 個裝置訂閱`, req);
+  res.json({ success: true, count: user.pushSubscriptions.length });
+});
+
+// 取消訂閱：依 endpoint 移除
+app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
+  const { endpoint } = req.body || {};
+  if (!endpoint) return res.status(400).json({ success: false, message: '需要 endpoint' });
+  const auth = loadAuth();
+  const user = auth.users.find(u => u.username === req.session.user.username);
+  if (!user || !Array.isArray(user.pushSubscriptions)) return res.json({ success: true, removed: 0 });
+
+  const before = user.pushSubscriptions.length;
+  user.pushSubscriptions = user.pushSubscriptions.filter(s => s.endpoint !== endpoint);
+  saveAuth(auth);
+  writeLog('PUSH_UNSUBSCRIBE', user.username, user.username, `移除 ${before - user.pushSubscriptions.length} 個訂閱`, req);
+  res.json({ success: true, removed: before - user.pushSubscriptions.length });
+});
+
+// 自我測試：對自己送一則 hello world 推播（可放 admin only，但給每個 user 自己測訂閱有效性比較直覺）
+app.post('/api/push/test', requireAuth, async (req, res) => {
+  const username = req.session.user.username;
+  const result = await pushNotify.sendToUser(loadAuth, saveAuth, username, {
+    title: '🔔 ITTS CRM 測試推播',
+    body: '如果您看到這則通知，代表訂閱已生效！',
+    tag: 'test',
+    data: { type: 'test', url: '/' }
+  });
+  res.json({ success: result.sent > 0, ...result });
 });
 
 // ── 密碼到期 / 強制更換策略 ────────────────────────────────
@@ -3931,6 +4002,7 @@ app.get('/api/usermap', requireAuth, (req, res) => {
 });
 
 // ── 通知輔助 ─────────────────────────────────────────────
+// 站內通知（寫入 data.notifications）+ Web Push（瀏覽器/手機背景）雙軌
 function pushNotification(toUsername, type, title, body, refId) {
   const data = db.load();
   if (!data.notifications) data.notifications = [];
@@ -3940,6 +4012,32 @@ function pushNotification(toUsername, type, title, body, refId) {
   });
   if (data.notifications.length > 500) data.notifications = data.notifications.slice(0, 500);
   db.save(data);
+
+  // Web Push：fire-and-forget（不阻塞既有流程，失敗自動清除過期訂閱）
+  if (pushNotify.isEnabled()) {
+    pushNotify.sendToUser(loadAuth, saveAuth, toUsername, {
+      title,
+      body,
+      tag: `${type}:${refId || ''}`,        // 同 ref 的通知會合併不重疊
+      data: { type, refId, url: notificationUrlFor(type, refId) }
+    }).catch(e => console.warn('[pushNotify] sendToUser failed:', e.message));
+  }
+}
+
+// 點擊推播後要打開的頁面（SW 收到後 navigate 到這個 URL）
+function notificationUrlFor(type, refId) {
+  switch (type) {
+    case 'contract_expiring':
+    case 'contract_expiring_30':
+    case 'contract_expiring_7':
+      return refId ? `/index.html#contract:${refId}` : '/index.html#contracts';
+    case 'receivable_overdue':
+      return refId ? `/index.html#receivable:${refId}` : '/index.html#receivables';
+    case 'birthday':
+      return refId ? `/index.html#contact:${refId}` : '/index.html#birthdays';
+    default:
+      return '/';
+  }
 }
 
 // ── 合約到期提醒 API ────────────────────────────────────
@@ -5940,6 +6038,7 @@ async function checkOverdueReminders() {
     const today  = new Date(); today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
     const in7days  = new Date(today); in7days.setDate(in7days.getDate() + 7);
+    const in30days = new Date(today); in30days.setDate(in30days.getDate() + 30);
     let changed = false;
 
     // helper：找 manager1（同 BU）
@@ -5953,19 +6052,48 @@ async function checkOverdueReminders() {
       )?.username || null;
     }
 
-    // ── 合約：endDate 在 7 天內且未設 renewDate ─────────
+    // ── 合約：endDate 在 30 天內且未設 renewDate ───────
+    // D-30 預警（每份合約只送一次）+ D-7 急迫提醒（每天送，直到處理）
     for (const c of (data.contracts || [])) {
       if (!c.endDate || c.renewDate || c.deleted) continue;
       const end = new Date(c.endDate); end.setHours(0, 0, 0, 0);
-      if (end < today || end > in7days) continue;          // 只抓 0~7 天
-      if (c._contractReminderDate === todayStr) continue;   // 今天已推過
-
+      if (end < today || end > in30days) continue;
       const daysLeft = Math.round((end - today) / 86400000);
-      const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請確認是否續約`;
-      pushNotification(c.owner, 'contract_expiring', '⚠️ 合約即將到期', msg, c.id);
-      const mgr = findManager1(c.owner);
-      if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring', '⚠️ 合約即將到期', msg, c.id);
-      c._contractReminderDate = todayStr;
+
+      // D-7 區段：每天提醒一次
+      if (daysLeft <= 7) {
+        if (c._contractReminderDate === todayStr) continue;
+        const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請確認是否續約`;
+        pushNotification(c.owner, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
+        const mgr = findManager1(c.owner);
+        if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
+        c._contractReminderDate = todayStr;
+        changed = true;
+      } else if (daysLeft <= 30 && !c._contract30Reminded) {
+        // D-30 預警：整份合約只送一次（標記後不再重發）
+        const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請預作續約安排`;
+        pushNotification(c.owner, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
+        const mgr = findManager1(c.owner);
+        if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
+        c._contract30Reminded = todayStr;
+        changed = true;
+      }
+    }
+
+    // ── 生日：今天是聯絡人的生日 → 通知該名片擁有者 ─
+    for (const c of (data.contacts || [])) {
+      if (c.deleted || !c.personalBirthday) continue;
+      const parts = String(c.personalBirthday).split('/').map(Number);
+      if (parts.length < 2) continue;
+      const [mm, dd] = parts;
+      if (!mm || !dd) continue;
+      if (mm !== today.getMonth() + 1 || dd !== today.getDate()) continue;
+      if (c._birthdayReminderYear === today.getFullYear()) continue; // 今年已推過
+
+      const display = c.name + (c.title ? ` ${c.title}` : '') + (c.company ? `（${c.company}）` : '');
+      const msg = `今天是您的客戶 ${display} 的生日，記得送上祝福`;
+      pushNotification(c.owner, 'birthday', '🎂 客戶生日提醒', msg, c.id);
+      c._birthdayReminderYear = today.getFullYear();
       changed = true;
     }
 

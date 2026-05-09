@@ -3,6 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a3c7a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ITTS CRM Admin">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <title>管理者後台 - 業務名片管理系統</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
           integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
@@ -302,6 +310,33 @@
     .co-field-pct { width: 36px; font-weight: 600; text-align: right; flex-shrink: 0; }
     .co-field-count { color: #9ca3af; flex-shrink: 0; }
   </style>
+  <script>
+  (function(){
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/sw.js').then(function(reg){
+        reg.addEventListener('updatefound', function(){
+          var nw = reg.installing; if (!nw) return;
+          nw.addEventListener('statechange', function(){
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              window.__swUpdateReg = reg;
+              if (typeof window.showSwUpdateToast === 'function') { window.showSwUpdateToast(reg); return; }
+              var bar = document.createElement('div');
+              bar.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a3c7a;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:99999;font-size:14px;display:flex;gap:12px;align-items:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif';
+              bar.innerHTML = '<span>\u{1F504} 有新版本可用</span><button id="__swUpdateBtn" style="background:#fff;color:#1a3c7a;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer">立即更新</button>';
+              document.body.appendChild(bar);
+              bar.querySelector('#__swUpdateBtn').onclick = function(){ if (reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'}); };
+            }
+          });
+        });
+      }).catch(function(err){ console.warn('[SW] register failed:', err); });
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function(){
+        if (refreshing) return; refreshing = true; window.location.reload();
+      });
+    });
+  })();
+  </script>
 </head>
 <body>
 
