@@ -561,6 +561,55 @@ app.post('/api/push/test', requireAuth, async (req, res) => {
   res.json({ success: result.sent > 0, ...result });
 });
 
+// ── Admin: 模擬實際業務情境推播（QA 用）─────────────────
+// POST /api/admin/push/simulate
+//   body: { type?: 'all'|'contract_30'|'contract_7'|'birthday'|'receivable'|'test', target?: <username> }
+// 預設：對自己發送 4 種推播（讓您一次驗證所有情境的內容、icon、點擊跳轉）
+app.post('/api/admin/push/simulate', requireAdmin, (req, res) => {
+  const { type = 'all', target } = req.body || {};
+  const targetUser = target || req.session.user.username;
+
+  const scenarios = {
+    test: {
+      type: 'test', refId: null,
+      title: '🔔 ITTS CRM 測試推播',
+      body: 'admin 觸發的測試推播 — 如果看到代表訂閱+SW 都正常'
+    },
+    contract_30: {
+      type: 'contract_expiring_30', refId: 'demo-contract-30',
+      title: '📅 合約 30 天內到期預警',
+      body: '示範公司 合約（DEMO-2026-A）將於 28 天後（2026-06-06）到期，請預作續約安排'
+    },
+    contract_7: {
+      type: 'contract_expiring_7', refId: 'demo-contract-7',
+      title: '⚠️ 合約即將到期',
+      body: '示範公司 合約（DEMO-2026-B）將於 5 天後（2026-05-14）到期，請確認是否續約'
+    },
+    birthday: {
+      type: 'birthday', refId: 'demo-contact',
+      title: '🎂 客戶生日提醒',
+      body: '今天是您的客戶 王大明 經理（示範公司）的生日，記得送上祝福'
+    },
+    receivable: {
+      type: 'receivable_overdue', refId: 'demo-receivable',
+      title: '🔴 帳款逾期未收',
+      body: '示範公司 發票 INV-2026-DEMO 已逾期 5 天（到期：2026-05-04），請催收'
+    }
+  };
+
+  const types = type === 'all' ? ['test', 'contract_30', 'contract_7', 'birthday', 'receivable'] : [type];
+  const sent = [];
+  for (const t of types) {
+    const sc = scenarios[t];
+    if (!sc) continue;
+    // 間隔 800ms 送出，避免推播被 OS 合併（同一秒進來會疊在同一條 banner）
+    setTimeout(() => pushNotification(targetUser, sc.type, sc.title, sc.body, sc.refId), sent.length * 800);
+    sent.push(t);
+  }
+  if (sent.length === 0) return res.status(400).json({ error: 'unknown type', valid: Object.keys(scenarios).concat('all') });
+  res.json({ success: true, target: targetUser, sent, message: `已排程送出 ${sent.length} 則推播給 ${targetUser}（每則間隔 0.8 秒）` });
+});
+
 // ── 密碼到期 / 強制更換策略 ────────────────────────────────
 const PASSWORD_MAX_AGE_DAYS = 90;
 
