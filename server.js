@@ -4076,12 +4076,8 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
 
   // 3. 財務數據（僅上市/上櫃）
   if (result.stockCode) {
-    // 預設用「上一個會計年度」+ 再前一年，因為當年度年報要等隔年 3/31 才會公布
-    // 例：2026 年 5 月查詢，Yahoo 最新年報是 2025（已於 2026/3 前公布），不會有 2026 年報
-    // 若 TWSE/TPEX 季度 endpoint 已有更新年度資料（罕見），用它當主要年度
     const fins = await getFinancialLists();
-    const lastCompletedYear = new Date().getFullYear() - 1;
-    const currentYear = (fins.dataYear && fins.dataYear < lastCompletedYear + 1) ? fins.dataYear : lastCompletedYear;
+    const currentYear = fins.dataYear || (new Date().getFullYear() - 1);
     const prevYear = currentYear - 1;
     result.dataYear1 = currentYear;
     result.dataYear2 = prevYear;
