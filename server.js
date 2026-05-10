@@ -3842,7 +3842,32 @@ async function getYahooCrumb() {
   return yahooCache;
 }
 
-// ── 查詢財務數據：先 TWSE/TPEX 官方 API，缺資料則 fallback Yahoo Finance ──
+// Yahoo Finance API 帶 cookies 與 crumb 的請求（quoteSummary 等需要）
+function fetchYahooApi(host, path, cookies) {
+  return new Promise((resolve, reject) => {
+    const https = require('https');
+    let raw = '';
+    const req = https.get({
+      hostname: host, path,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130',
+        'Accept': 'application/json',
+        'Cookie': cookies
+      }
+    }, r => {
+      r.setEncoding('utf8');
+      r.on('data', c => raw += c);
+      r.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch (e) { reject(new Error('Yahoo JSON parse: ' + e.message + ' first200=' + raw.slice(0, 200))); }
+      });
+    });
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Yahoo timeout')); });
+    req.on('error', reject);
+  });
+}
+
+// ── 查詢財務數據：先 TWSE/TPEX 官方 API（含毛利率），缺資料則 fallback Yahoo（僅營收）──
 async function fetchFinancialData(stockCode, year, exchange) {
   const result = { revenue: '尚未公布', grossMargin: '尚未公布', eps: 'N/A' };
   try {
@@ -3858,20 +3883,27 @@ async function fetchFinancialData(stockCode, year, exchange) {
     }
 
     // Fallback：Yahoo Finance 年度損益表（incomeStatementHistory 含 4 年年報）
+    // 注意：Yahoo 對台股通常只有 totalRevenue，grossProfit 多為 0 → 毛利率仍可能「尚未公布」
     const suffix = exchange === 'OTC' ? '.TWO' : '.TW';
     const ticker = stockCode + suffix;
     const yahoo = await getYahooCrumb();
-    if (!yahoo.crumb) return result;
+    if (!yahoo.crumb || !yahoo.cookies) {
+      console.log(`[fetchFinancialData] ${stockCode} ${year}: Yahoo crumb/cookies 缺，跳過`);
+      return result;
+    }
 
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=incomeStatementHistory&crumb=${encodeURIComponent(yahoo.crumb)}`;
-    const data = await fetchJsonWithHttps(url, 10000).catch(() => null);
+    const path = `/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=incomeStatementHistory&crumb=${encodeURIComponent(yahoo.crumb)}`;
+    const data = await fetchYahooApi('query1.finance.yahoo.com', path, yahoo.cookies).catch(e => {
+      console.log(`[fetchFinancialData] ${stockCode} ${year}: Yahoo fetch 失敗`, e.message);
+      return null;
+    });
     const stmts = data?.quoteSummary?.result?.[0]?.incomeStatementHistory?.incomeStatementHistory;
     if (stmts && stmts.length > 0) {
       const match = stmts.find(s => s.endDate?.fmt?.startsWith(String(year)));
       if (match) {
         if (match.totalRevenue?.raw) result.revenue = formatCapital(match.totalRevenue.raw);
-        // 計算毛利率：grossProfit / totalRevenue
-        if (match.grossProfit?.raw && match.totalRevenue?.raw) {
+        // Yahoo 對台股大多 grossProfit=0；只有非零才算毛利率
+        if (match.grossProfit?.raw && match.totalRevenue?.raw && match.grossProfit.raw > 0) {
           const margin = (match.grossProfit.raw / match.totalRevenue.raw) * 100;
           result.grossMargin = margin.toFixed(1) + '%';
         }
