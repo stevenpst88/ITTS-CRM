@@ -443,6 +443,9 @@
       <div class="admin-nav-item" data-sec="subscription">
         <span class="admin-nav-icon">💳</span> 訂閱管理
       </div>
+      <div class="admin-nav-item" data-sec="push-test">
+        <span class="admin-nav-icon">🔔</span> 推播測試
+      </div>
       <div class="admin-nav-item" data-sec="version">
         <span class="admin-nav-icon">🏷️</span> 版本資訊
       </div>
@@ -1380,6 +1383,45 @@
         </div>
       </div>
 
+      <!-- ── 推播測試 ── -->
+      <div class="admin-section" id="sec-push-test">
+        <div class="section-title">🔔 推播測試</div>
+        <div class="section-sub">模擬實際業務情境送出 Web Push 推播，驗證訂閱、SW、點擊跳轉等是否正常。預設送給自己；可指定其他帳號（前提：對方已啟用推播）</div>
+
+        <div class="admin-card" style="padding:20px">
+          <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:18px">
+            <div style="flex:0 0 220px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">送給哪個帳號</label>
+              <select id="pushTestTarget" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <option value="">（自己）</option>
+              </select>
+            </div>
+            <div style="flex:0 0 200px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">情境</label>
+              <select id="pushTestType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <option value="all">5 種全部（預設）</option>
+                <option value="test">🔔 基本測試</option>
+                <option value="contract_30">📅 合約 D-30 預警</option>
+                <option value="contract_7">⚠️ 合約 D-7 急迫</option>
+                <option value="birthday">🎂 客戶生日</option>
+                <option value="receivable">🔴 帳款逾期</option>
+              </select>
+            </div>
+            <button id="pushTestSend" class="btn btn-primary" style="padding:10px 24px;font-weight:700">🚀 送出推播</button>
+          </div>
+
+          <div id="pushTestResult" style="display:none;padding:14px 16px;border-radius:8px;font-size:13px;font-family:Menlo,Monaco,Consolas,monospace;white-space:pre-wrap;word-break:break-all"></div>
+
+          <div style="margin-top:20px;padding:14px 16px;background:#f9fafb;border-left:3px solid #1a73e8;border-radius:4px;font-size:13px;color:#4b5563;line-height:1.7">
+            <strong style="color:#1a3c7a">💡 注意</strong><br>
+            • 對方必須**已先在自己的瀏覽器啟用推播**才會收到（通知鈴鐺裡的 🔕 → 允許）<br>
+            • 「5 種全部」會在 4 秒內陸續送達（每則間隔 0.8 秒，避免 OS 把多則合併成一條 banner）<br>
+            • 點通知會跳轉到對應頁面（合約/聯絡人/帳款），驗證 notificationclick 與 hash 路由是否正常<br>
+            • 此功能僅供測試與 demo，正式情境的推播由系統排程自動觸發（合約到期、生日、帳款逾期）
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
         <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
@@ -1664,8 +1706,70 @@
         if (this.dataset.sec === 'infra-stats') loadInfraStats();
         if (this.dataset.sec === 'version') loadVersionInfo();
         if (this.dataset.sec === 'subscription') loadSubStatus();
+        if (this.dataset.sec === 'push-test') initPushTest();
       });
     });
+
+    // ── 推播測試 ──────────────────────────────────────────
+    let _pushTestInited = false;
+    async function initPushTest() {
+      if (_pushTestInited) return;
+      _pushTestInited = true;
+      // 載入帳號清單填入 target select
+      try {
+        const r = await fetch('/api/admin/users', { credentials: 'include' });
+        if (r.ok) {
+          const users = await r.json();
+          const sel = $('pushTestTarget');
+          users.forEach(u => {
+            if (u.active === false) return;
+            const opt = document.createElement('option');
+            opt.value = u.username;
+            opt.textContent = `${u.username} (${u.displayName || u.username}, ${u.role})`;
+            sel.appendChild(opt);
+          });
+        }
+      } catch (e) { console.warn('[push-test] 帳號清單載入失敗', e); }
+
+      $('pushTestSend').addEventListener('click', async () => {
+        const btn = $('pushTestSend');
+        const target = $('pushTestTarget').value;
+        const type = $('pushTestType').value;
+        const out = $('pushTestResult');
+        btn.disabled = true; btn.textContent = '送出中…';
+        out.style.display = 'block';
+        out.style.background = '#f3f4f6';
+        out.style.color = '#374151';
+        out.textContent = '送出中…';
+        try {
+          const body = {};
+          if (type) body.type = type;
+          if (target) body.target = target;
+          const r = await fetch('/api/admin/push/simulate', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const d = await r.json();
+          if (r.ok && d.success) {
+            out.style.background = '#ecfdf5';
+            out.style.color = '#065f46';
+            out.textContent = '✅ 送出成功\n\n' + JSON.stringify(d, null, 2) + '\n\n' +
+              '👀 請於 ' + (d.sent.length * 0.8 + 1).toFixed(1) + ' 秒內留意 ' + (target || '您自己') + ' 的裝置是否收到推播';
+          } else {
+            out.style.background = '#fef2f2';
+            out.style.color = '#991b1b';
+            out.textContent = '❌ HTTP ' + r.status + '\n\n' + JSON.stringify(d, null, 2);
+          }
+        } catch (e) {
+          out.style.background = '#fef2f2';
+          out.style.color = '#991b1b';
+          out.textContent = '❌ 網路錯誤：' + e.message;
+        } finally {
+          btn.disabled = false; btn.textContent = '🚀 送出推播';
+        }
+      });
+    }
 
     // ── 管理者登入 / 登出 ──
     async function adminLogout() {
