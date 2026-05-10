@@ -8568,6 +8568,8 @@ const FORCE_PWD_REASON_TXT = {
 function openForcePasswordModal(reason) {
   const overlay = document.getElementById('forcePwdOverlay');
   if (!overlay) return;
+  // 若 modal 已開啟（背景 fetch 攔截器重複觸發），不重置輸入避免使用者打到一半被清空
+  if (overlay.style.display === 'flex' || overlay.style.display === 'block') return;
   const reasonEl = document.getElementById('forcePwdReason');
   if (reasonEl) reasonEl.textContent = FORCE_PWD_REASON_TXT[reason] || FORCE_PWD_REASON_TXT.must_change;
   document.getElementById('forcePwdCurrent').value = '';
