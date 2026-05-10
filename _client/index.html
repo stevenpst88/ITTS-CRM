@@ -2717,9 +2717,19 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sub.toJSON())
         });
-        if (!r2.ok) throw new Error('伺服器無法儲存訂閱');
+        if (!r2.ok) {
+          // 顯示實際錯誤資訊以便診斷
+          let detail = '';
+          try {
+            const errBody = await r2.json();
+            detail = errBody.error || errBody.message || errBody.code || JSON.stringify(errBody);
+          } catch (_) {
+            detail = await r2.text().catch(() => '(無法讀取回應)');
+          }
+          throw new Error(`HTTP ${r2.status} — ${detail}`);
+        }
         await refresh();
-        alert('✅ 推播已啟用！\n\n稍後重要事件會送到此裝置（合約到期、客戶生日等）');
+        alert('✅ 推播已啟用!\n\n稍後重要事件會送到此裝置（合約到期、客戶生日等）');
       } catch (e) {
         alert('啟用推播失敗：' + e.message);
       }
