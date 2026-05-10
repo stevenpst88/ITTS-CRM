@@ -3754,51 +3754,97 @@ async function getFinancialLists() {
   return finCache;
 }
 
-// ── 取得 Yahoo Finance crumb（用於查詢前一年營收）──────────────
+// ── 取得 Yahoo Finance crumb（用於查詢年度營收/毛利）──────────────
+// 處理：(1) Consent redirect (2) cookie 累積 (3) 多重嘗試 query1/query2
 async function getYahooCrumb() {
   const now = Date.now();
   if (yahooCache.crumb && (now - yahooCache.ts) < 3600000) return yahooCache;
 
-  return new Promise(resolve => {
-    const https = require('https');
-    let cookieStr = '';
-    const req1 = https.get({
-      hostname: 'finance.yahoo.com',
-      path: '/quote/2330.TW',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
-        'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9'
-      }
-    }, r1 => {
-      cookieStr = (r1.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
-      r1.resume(); // drain
-      r1.on('end', () => {
-        let raw2 = '';
-        const req2 = https.get({
-          hostname: 'query2.finance.yahoo.com', path: '/v1/test/getcrumb',
-          headers: { 'User-Agent': 'Mozilla/5.0', 'Cookie': cookieStr }
-        }, r2 => {
-          r2.on('data', c => raw2 += c);
-          r2.on('end', () => {
-            if (raw2 && raw2.length < 50) {
-              yahooCache = { cookies: cookieStr, crumb: raw2.trim(), ts: Date.now() };
-              console.log('[Yahoo] crumb 更新成功');
-            }
-            resolve(yahooCache);
-          });
+  const https = require('https');
+
+  // 跟隨 redirect、累積所有 set-cookie，最多跳 3 次
+  function fetchHtmlAccumCookies(url, cookieJar = {}, hops = 0) {
+    return new Promise(resolve => {
+      if (hops > 3) return resolve({ cookies: cookieJarToString(cookieJar), finalUrl: url });
+      const u = new URL(url);
+      const req = https.get({
+        hostname: u.hostname, path: u.pathname + u.search,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cookie': cookieJarToString(cookieJar) || ''
+        }
+      }, r => {
+        // 累積 cookies
+        (r.headers['set-cookie'] || []).forEach(c => {
+          const [pair] = c.split(';');
+          const eq = pair.indexOf('=');
+          if (eq > 0) cookieJar[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
         });
-        req2.setTimeout(8000, () => { req2.destroy(); resolve(yahooCache); });
-        req2.on('error', () => resolve(yahooCache));
+        r.resume();
+        r.on('end', () => {
+          if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
+            const next = r.headers.location.startsWith('http') ? r.headers.location : `https://${u.hostname}${r.headers.location}`;
+            resolve(fetchHtmlAccumCookies(next, cookieJar, hops + 1));
+          } else {
+            resolve({ cookies: cookieJarToString(cookieJar), finalUrl: url });
+          }
+        });
       });
+      req.setTimeout(10000, () => { req.destroy(); resolve({ cookies: cookieJarToString(cookieJar), finalUrl: url }); });
+      req.on('error', () => resolve({ cookies: cookieJarToString(cookieJar), finalUrl: url }));
     });
-    req1.setTimeout(10000, () => { req1.destroy(); resolve(yahooCache); });
-    req1.on('error', () => resolve(yahooCache));
-  });
+  }
+
+  function cookieJarToString(jar) {
+    return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+
+  function fetchCrumb(host, cookies) {
+    return new Promise(resolve => {
+      const req = https.get({
+        hostname: host, path: '/v1/test/getcrumb',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130',
+          'Accept': '*/*',
+          'Cookie': cookies
+        }
+      }, r => {
+        let raw = '';
+        r.on('data', c => raw += c);
+        r.on('end', () => resolve({ status: r.statusCode, body: raw.trim() }));
+      });
+      req.setTimeout(8000, () => { req.destroy(); resolve({ status: 0, body: '' }); });
+      req.on('error', () => resolve({ status: 0, body: '' }));
+    });
+  }
+
+  // Step 1: 取得 cookies（含 Consent redirect 處理）
+  const { cookies } = await fetchHtmlAccumCookies('https://finance.yahoo.com/quote/2330.TW');
+  if (!cookies) {
+    console.log('[Yahoo] 無法取得 cookies');
+    return yahooCache;
+  }
+
+  // Step 2: 嘗試 query1 / query2 兩個 host 取 crumb
+  for (const host of ['query2.finance.yahoo.com', 'query1.finance.yahoo.com']) {
+    const r = await fetchCrumb(host, cookies);
+    // crumb 是約 11 字元的隨機字串；錯誤回應通常是長 JSON
+    if (r.status === 200 && r.body && r.body.length > 0 && r.body.length < 50 && !r.body.startsWith('{')) {
+      yahooCache = { cookies, crumb: r.body, ts: Date.now() };
+      console.log(`[Yahoo] crumb 更新成功 (${host}, length=${r.body.length})`);
+      return yahooCache;
+    }
+  }
+
+  console.log('[Yahoo] 所有 host 都無法取得 crumb');
+  return yahooCache;
 }
 
-// ── 查詢財務數據：年度一用 TWSE/TPEX 官方 API，年度二用 Yahoo Finance ──
+// ── 查詢財務數據：先 TWSE/TPEX 官方 API，缺資料則 fallback Yahoo Finance ──
 async function fetchFinancialData(stockCode, year, exchange) {
-  const result = { revenue: '無法取得', grossMargin: '無法取得', eps: 'N/A' };
+  const result = { revenue: '尚未公布', grossMargin: '尚未公布', eps: 'N/A' };
   try {
     const fins = await getFinancialLists();
     const lookup = exchange === 'OTC' ? fins.tpex[stockCode] : fins.tse[stockCode];
@@ -3811,23 +3857,29 @@ async function fetchFinancialData(stockCode, year, exchange) {
       return result;
     }
 
-    // 前一年度：嘗試 Yahoo Finance（只有營收，無毛利率）
+    // Fallback：Yahoo Finance 年度損益表（incomeStatementHistory 含 4 年年報）
     const suffix = exchange === 'OTC' ? '.TWO' : '.TW';
     const ticker = stockCode + suffix;
     const yahoo = await getYahooCrumb();
     if (!yahoo.crumb) return result;
 
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=incomeStatementHistory&crumb=${encodeURIComponent(yahoo.crumb)}`;
-    const data = await fetchJsonWithHttps(url, 10000);
+    const data = await fetchJsonWithHttps(url, 10000).catch(() => null);
     const stmts = data?.quoteSummary?.result?.[0]?.incomeStatementHistory?.incomeStatementHistory;
-    if (stmts) {
+    if (stmts && stmts.length > 0) {
       const match = stmts.find(s => s.endDate?.fmt?.startsWith(String(year)));
-      if (match?.totalRevenue?.raw) {
-        result.revenue = formatCapital(match.totalRevenue.raw);
-        result.grossMargin = 'N/A';
+      if (match) {
+        if (match.totalRevenue?.raw) result.revenue = formatCapital(match.totalRevenue.raw);
+        // 計算毛利率：grossProfit / totalRevenue
+        if (match.grossProfit?.raw && match.totalRevenue?.raw) {
+          const margin = (match.grossProfit.raw / match.totalRevenue.raw) * 100;
+          result.grossMargin = margin.toFixed(1) + '%';
+        }
       }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    console.log(`[fetchFinancialData] ${stockCode} ${year} 失敗:`, e.message);
+  }
   return result;
 }
 
