@@ -3572,18 +3572,13 @@ async function loadManagerAchievement(year) {
     function renderCard(r) {
       const color = rateColor(r.rate);
       const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
-      const ratios = getUserRatios(r.username, year);
-      const qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
-      const manageBlock = canManage ? `
-        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
-          <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-              <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）</span>
-              <button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>
-            </div>
-            <div class="qr-display" style="display:flex;gap:3px">
-              ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
-            </div>
+      const qVals = r.qVals || [0, 0, 0, 0];
+      const isTeamView = r.viewMode === 'team';
+      const teamHint = isTeamView ? '<span style="font-size:9px;color:#1a3c7a;background:#dbe5f7;padding:1px 5px;border-radius:6px;margin-left:4px">部屬加總</span>' : '';
+      const editBtn = (canManage && !isTeamView)
+        ? `<button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>`
+        : '';
+      const editArea = (canManage && !isTeamView) ? `
             <div class="qr-edit-area" style="display:none;margin-top:6px">
               <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
                 ${['Q1','Q2','Q3','Q4'].map((q,i) => `<div><div style="text-align:center;font-size:10px;color:#888;margin-bottom:2px">${q}</div><input type="number" class="qr-input" min="0" placeholder="0" value="${qVals[i]}" style="width:100%;font-size:12px;padding:3px 2px;border:1.5px solid #1a73e8;border-radius:4px;text-align:center;box-sizing:border-box"></div>`).join('')}
@@ -3592,10 +3587,23 @@ async function loadManagerAchievement(year) {
                 <button class="qr-cancel-btn" style="padding:2px 8px;font-size:11px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">取消</button>
                 <button class="qr-save-btn" style="padding:2px 8px;font-size:11px;background:#1a3c7a;color:#fff;border:none;border-radius:4px;cursor:pointer">儲存</button>
               </div>
+            </div>` : '';
+      const budgetBtn = (canManage && !isTeamView)
+        ? `<button onclick="openMbBudgetModal('${r.username}',${year})" style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>`
+        : '';
+      const manageBlock = canManage ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
+          <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）${teamHint}</span>
+              ${editBtn}
             </div>
+            <div class="qr-display" style="display:flex;gap:3px">
+              ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
+            </div>
+            ${editArea}
           </div>
-          <button onclick="openMbBudgetModal('${r.username}',${year})"
-            style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>
+          ${budgetBtn}
         </div>` : '';
       return `
       <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:14px 16px;width:230px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
@@ -3637,6 +3645,24 @@ async function loadManagerAchievement(year) {
     });
     // 只保留有層級關係（有子節點）的根 — 過濾零散帳號（admin/secretary/marketing/tecopm 等獨立節點）
     const visibleRoots = roots.filter(r => r.children.length > 0);
+
+    // 後序遍歷計算每個節點的 qVals：team 節點 = 子節點加總；leaf 節點 = 個人 ratios
+    function computeQVals(node) {
+      if (node.viewMode === 'team' && node.children.length > 0) {
+        const qSum = [0, 0, 0, 0];
+        node.children.forEach(c => {
+          const cQ = computeQVals(c);
+          for (let i = 0; i < 4; i++) qSum[i] += cQ[i] || 0;
+        });
+        node.qVals = qSum.map(v => Math.round(v));
+      } else {
+        const ratios = getUserRatios(node.username, year);
+        node.qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
+      }
+      return node.qVals;
+    }
+    visibleRoots.forEach(computeQVals);
+
     function renderNode(node) {
       const childrenHtml = node.children.length
         ? `<ul class="org-children">${node.children.map(renderNode).join('')}</ul>`
