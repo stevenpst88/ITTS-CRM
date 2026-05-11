@@ -3526,7 +3526,7 @@ async function loadManagerAchievement(year) {
     const fmt = n => (n || 0).toLocaleString();
     const rateColor = r => r === null ? '#bbb' : r >= 100 ? '#0a8a4a' : r >= 70 ? '#1a73e8' : r >= 40 ? '#f59e0b' : '#e53e3e';
     const rateText  = r => r === null ? '–' : r + '%';
-    const ROLE_BADGE = { manager1:'一級主管', manager2:'二級主管' };
+    const ROLE_BADGE = { manager1:'一級主管', manager2:'二級主管', user:'業務' };
 
     // ── SVG 半圓油表產生器 ──────────────────────────────────
     // center(100,108) radius=80, 弧長=π*80≈251.3
@@ -3567,79 +3567,107 @@ async function loadManagerAchievement(year) {
       </svg>`;
     }
 
-    // ── 卡片格 ──────────────────────────────────────────────
+    // ── 卡片渲染函數 ─────────────────────────────────────────
     const canManage = ['admin', 'secretary'].includes(window._myRole);
-    container.innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px 0">
-        ${rows.map(r => {
-          const color = rateColor(r.rate);
-          const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
-          const ratios = getUserRatios(r.username, year);
-          const qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
-          const manageBlock = canManage ? `
-            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
-              <!-- 季度目標 -->
-              <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-                  <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）</span>
-                  <button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>
-                </div>
-                <div class="qr-display" style="display:flex;gap:3px">
-                  ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
-                </div>
-                <div class="qr-edit-area" style="display:none;margin-top:6px">
-                  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
-                    ${['Q1','Q2','Q3','Q4'].map((q,i) => `<div><div style="text-align:center;font-size:10px;color:#888;margin-bottom:2px">${q}</div><input type="number" class="qr-input" min="0" placeholder="0" value="${qVals[i]}" style="width:100%;font-size:12px;padding:3px 2px;border:1.5px solid #1a73e8;border-radius:4px;text-align:center;box-sizing:border-box"></div>`).join('')}
-                  </div>
-                  <div style="display:flex;gap:4px;justify-content:flex-end">
-                    <button class="qr-cancel-btn" style="padding:2px 8px;font-size:11px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">取消</button>
-                    <button class="qr-save-btn" style="padding:2px 8px;font-size:11px;background:#1a3c7a;color:#fff;border:none;border-radius:4px;cursor:pointer">儲存</button>
-                  </div>
-                </div>
-              </div>
-              <!-- 設定預算 -->
-              <button onclick="openMbBudgetModal('${r.username}',${year})"
-                style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>
-            </div>` : '';
-          return `
-          <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:16px 18px;min-width:210px;flex:1 1 210px;max-width:280px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-            <!-- 姓名 -->
-            <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-              ${r.displayName}${badge}
+    function renderCard(r) {
+      const color = rateColor(r.rate);
+      const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
+      const ratios = getUserRatios(r.username, year);
+      const qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
+      const manageBlock = canManage ? `
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
+          <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）</span>
+              <button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>
             </div>
-            <!-- 油表 -->
-            ${makeGaugeSvg(r.rate, color)}
-            <!-- 目標（可編輯）-->
-            <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}"
-                style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 4px">
-              <span style="font-size:11px;color:#888">目標</span>
-              <span class="mgr-target-display" title="點擊編輯目標"
-                style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
-                ${r.target ? r.target.toLocaleString() + ' 仟' : '未設定'}
-              </span>
-              <span style="font-size:11px;color:#aaa">✎</span>
+            <div class="qr-display" style="display:flex;gap:3px">
+              ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
             </div>
-            <!-- 數字列 -->
-            <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
-              <div>
-                <div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div>
-                <div style="color:#aaa;margin-top:2px">已成交（仟）</div>
+            <div class="qr-edit-area" style="display:none;margin-top:6px">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
+                ${['Q1','Q2','Q3','Q4'].map((q,i) => `<div><div style="text-align:center;font-size:10px;color:#888;margin-bottom:2px">${q}</div><input type="number" class="qr-input" min="0" placeholder="0" value="${qVals[i]}" style="width:100%;font-size:12px;padding:3px 2px;border:1.5px solid #1a73e8;border-radius:4px;text-align:center;box-sizing:border-box"></div>`).join('')}
               </div>
-              <div style="width:1px;background:#f0f0f0"></div>
-              <div>
-                <div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div>
-                <div style="color:#aaa;margin-top:2px">在手商機（仟）</div>
-              </div>
-              <div style="width:1px;background:#f0f0f0"></div>
-              <div>
-                <div style="font-weight:700;font-size:14px;color:#555">${r.wonCount}</div>
-                <div style="color:#aaa;margin-top:2px">成交件數</div>
+              <div style="display:flex;gap:4px;justify-content:flex-end">
+                <button class="qr-cancel-btn" style="padding:2px 8px;font-size:11px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">取消</button>
+                <button class="qr-save-btn" style="padding:2px 8px;font-size:11px;background:#1a3c7a;color:#fff;border:none;border-radius:4px;cursor:pointer">儲存</button>
               </div>
             </div>
-            ${manageBlock}
-          </div>`;
-        }).join('')}
+          </div>
+          <button onclick="openMbBudgetModal('${r.username}',${year})"
+            style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>
+        </div>` : '';
+      return `
+      <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:14px 16px;width:230px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+        <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${r.displayName}${badge}
+        </div>
+        ${makeGaugeSvg(r.rate, color)}
+        <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}"
+            style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 4px">
+          <span style="font-size:11px;color:#888">目標</span>
+          <span class="mgr-target-display" title="點擊編輯目標"
+            style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
+            ${r.target ? r.target.toLocaleString() + ' 仟' : '未設定'}
+          </span>
+          <span style="font-size:11px;color:#aaa">✎</span>
+        </div>
+        <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
+          <div><div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div><div style="color:#aaa;margin-top:2px">已成交（仟）</div></div>
+          <div style="width:1px;background:#f0f0f0"></div>
+          <div><div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div><div style="color:#aaa;margin-top:2px">在手商機（仟）</div></div>
+          <div style="width:1px;background:#f0f0f0"></div>
+          <div><div style="font-weight:700;font-size:14px;color:#555">${r.wonCount}</div><div style="color:#aaa;margin-top:2px">成交件數</div></div>
+        </div>
+        ${manageBlock}
       </div>`;
+    }
+
+    // ── 把 rows 組成樹狀結構 ─────────────────────────────────
+    const byKey = {};
+    rows.forEach(r => { byKey[r.rowKey] = Object.assign({}, r, { children: [] }); });
+    const roots = [];
+    rows.forEach(r => {
+      const node = byKey[r.rowKey];
+      if (r.parentRowKey && byKey[r.parentRowKey]) {
+        byKey[r.parentRowKey].children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    // 只保留有層級關係（有子節點）的根 — 過濾零散帳號（admin/secretary/marketing/tecopm 等獨立節點）
+    const visibleRoots = roots.filter(r => r.children.length > 0);
+    function renderNode(node) {
+      const childrenHtml = node.children.length
+        ? `<ul class="org-children">${node.children.map(renderNode).join('')}</ul>`
+        : '';
+      return `<li class="org-node">${renderCard(node)}${childrenHtml}</li>`;
+    }
+
+    // 注入樹狀圖 CSS（只注入一次）
+    if (!document.getElementById('orgChartStyle')) {
+      const style = document.createElement('style');
+      style.id = 'orgChartStyle';
+      style.textContent = `
+        .org-tree, .org-children { list-style:none; padding:0; margin:0; }
+        .org-tree { display:flex; justify-content:center; padding:8px 4px; overflow-x:auto; }
+        .org-children { position:relative; display:flex; justify-content:center; padding-top:28px; gap:18px; }
+        .org-children::before { content:''; position:absolute; top:0; left:50%; width:2px; height:14px; background:#f59e0b; }
+        .org-node { position:relative; display:flex; flex-direction:column; align-items:center; padding:0 4px; }
+        .org-children > .org-node::before { content:''; position:absolute; top:-14px; left:0; width:100%; height:2px; background:#f59e0b; }
+        .org-children > .org-node::after  { content:''; position:absolute; top:-14px; left:50%; width:2px; height:14px; background:#f59e0b; }
+        .org-children > .org-node:only-child::before { display:none; }
+        .org-children > .org-node:first-child:not(:only-child)::before { left:50%; width:50%; }
+        .org-children > .org-node:last-child:not(:only-child)::before  { width:50%; }
+        /* 根層不要連線 */
+        .org-tree > .org-node::before, .org-tree > .org-node::after { display:none; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    container.innerHTML = visibleRoots.length
+      ? `<ul class="org-tree">${visibleRoots.map(renderNode).join('')}</ul>`
+      : '<div style="color:#aaa;text-align:center;padding:20px">暫無團隊資料</div>';
 
     // ── Inline 編輯：點擊目標欄位 ──
     container.querySelectorAll('.mgr-target-cell').forEach(cell => {

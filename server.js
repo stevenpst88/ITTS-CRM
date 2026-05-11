@@ -2113,10 +2113,13 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const yearStart = new Date(year, 0, 1);
   const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
 
-  const rows = salesUsers.map(u => {
-    // 計算此列 manager1 自身的 BU 及轄下成員（不依賴呼叫者的可見範圍）
+  // 建構一筆 row：asSales=true 時把 manager2 當作普通業務處理（個人視角）
+  function buildRow(u, asSales = false) {
     const uBus = normalizeBu(u.bu);
-    const uSubordinates = u.role === 'manager1'
+    // asSales 模式下視同 'user'，不算 manager1 的部屬聚合
+    const effRole = asSales ? 'user' : u.role;
+
+    const uSubordinates = effRole === 'manager1'
       ? auth.users.filter(x =>
           x.username !== u.username &&
           (x.role === 'user' || x.role === 'manager2' || x.role === 'secretary') &&
@@ -2124,11 +2127,18 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
         ).map(x => x.username)
       : [];
 
-    // manager1 的目標 = 自己 BU 內部屬的年度目標加總
+    // 目標：依角色決定加總範圍
     let targetAmount;
-    if (u.role === 'manager1') {
+    if (effRole === 'manager1') {
       targetAmount = (data.targets || [])
         .filter(t => t.year === year && uSubordinates.includes(t.owner))
+        .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
+    } else if (effRole === 'manager2') {
+      const m2Members = auth.users
+        .filter(x => (x.role === 'user' && normalizeBu(x.bu).some(b => uBus.includes(b))) || x.username === u.username)
+        .map(x => x.username);
+      targetAmount = (data.targets || [])
+        .filter(t => t.year === year && m2Members.includes(t.owner))
         .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
     } else {
       const t = (data.targets || []).find(t2 => t2.owner === u.username && t2.year === year);
@@ -2136,20 +2146,18 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     }
     const target = targetAmount !== null ? { amount: targetAmount } : null;
 
-    // 主管彙總轄下所有人的商機；一般業務只看自己
+    // 此列要統計的 owner 範圍
     let rowOwners;
-    if (u.role === 'manager1') {
-      // 一級主管：自己 + 同 BU 的部屬（不跨 BU）
+    if (effRole === 'manager1') {
       rowOwners = [u.username, ...uSubordinates];
-    } else if (u.role === 'manager2') {
-      // 二級主管：彙總 user 角色 + 自己（不含其他 manager2）
+    } else if (effRole === 'manager2') {
       rowOwners = auth.users
         .filter(x => (x.role === 'user' && normalizeBu(x.bu).some(b => uBus.includes(b))) || x.username === u.username)
         .map(x => x.username);
     } else {
       rowOwners = [u.username];
     }
-    // 商機過濾：依此列使用者的 BU 過濾（而非呼叫者 BU）
+
     const myOpps = (data.opportunities || []).filter(o => {
       if (!rowOwners.includes(o.owner)) return false;
       if (!uBus.length) return true;
@@ -2157,15 +2165,11 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       return !itemBu || uBus.includes(itemBu);
     });
 
-    // 成交：逐月計算
-    //   ① 手動認列：只算進 owner 主 BU；非主 BU 的 viewer 不算
-    //   ② Won 商機：myOpps 已 BU 過濾，直接加總
     let achieved = 0;
     const monthlyBudgetsData = data.monthlyBudgets || [];
     rowOwners.forEach(owner => {
       const ownerBus = normalizeBu(auth.users.find(uu => uu.username === owner)?.bu);
       const ownerPrimaryBu = ownerBus[0] || null;
-      // 以「此列使用者」的 BU 判斷手動認列是否計入
       const countsManual = !uBus.length || (ownerPrimaryBu && uBus.includes(ownerPrimaryBu));
       const budRec = monthlyBudgetsData.find(b => b.owner === owner && b.year === year);
       for (let m = 1; m <= 12; m++) {
@@ -2184,7 +2188,6 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       }
     });
 
-    // 在手商機（排除 Won、D 停止中）
     const pipeline = myOpps
       .filter(o => !['Won','D'].includes(o.stage))
       .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
@@ -2197,16 +2200,58 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     const targetAmt = target ? (parseFloat(target.amount) || 0) : 0;
     const rate = targetAmt > 0 ? Math.round(achieved / targetAmt * 100) : null;
 
+    const viewMode = (effRole === 'manager1' || effRole === 'manager2') ? 'team' : 'individual';
     return {
       username:    u.username,
       displayName: u.displayName || u.username,
-      role:        u.role,
+      role:        effRole,       // asSales 時為 'user'，前端顯示「業務」badge
+      actualRole:  u.role,        // 原始角色（給前端參考；不影響顯示）
+      viewMode,                   // 'team' = 主管彙總，'individual' = 個人/業務
+      rowKey:      `${u.username}:${viewMode}`,
       target:      targetAmt,
       achieved,
       pipeline,
       wonCount,
-      rate,  // null = 未設目標
+      rate,
     };
+  }
+
+  // manager2 一拆二：一筆主管視角（team）+ 一筆業務視角（individual）
+  const rows = salesUsers.flatMap(u => {
+    const main = buildRow(u, false);
+    if (u.role === 'manager2') {
+      return [main, buildRow(u, true)];
+    }
+    return [main];
+  });
+
+  // ── 計算 parentRowKey（組織樹層級）─────────────────────────
+  // user → 同 BU 的 manager2 團隊 row；無 manager2 則找 manager1
+  // manager2(team) → 同 BU 的 manager1 團隊 row
+  // manager2(individual) → 自己的 manager2(team) row
+  // manager1 / 其他 → null（樹根）
+  const findMgrTeamKey = (uBus, role) => {
+    const m = auth.users.find(x =>
+      x.role === role &&
+      normalizeBu(x.bu).some(b => uBus.includes(b))
+    );
+    return m ? `${m.username}:team` : null;
+  };
+  rows.forEach(r => {
+    const u = auth.users.find(x => x.username === r.username);
+    if (!u) { r.parentRowKey = null; return; }
+    const uBus = normalizeBu(u.bu);
+    if (u.role === 'manager1') {
+      r.parentRowKey = null;
+    } else if (u.role === 'manager2' && r.viewMode === 'team') {
+      r.parentRowKey = findMgrTeamKey(uBus, 'manager1');
+    } else if (u.role === 'manager2' && r.viewMode === 'individual') {
+      r.parentRowKey = `${u.username}:team`;
+    } else if (u.role === 'user') {
+      r.parentRowKey = findMgrTeamKey(uBus, 'manager2') || findMgrTeamKey(uBus, 'manager1');
+    } else {
+      r.parentRowKey = null;
+    }
   });
 
   // 按達成率降冪，未設目標排最後
