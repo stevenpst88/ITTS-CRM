@@ -4497,14 +4497,17 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     const isFuture = q > curQ;
     const isCurrent = q === curQ;
     const pct     = qTarget > 0 ? Math.min(100, Math.round(qAch / qTarget * 100)) : 0;
+    // 真實達成率（不封頂，用於文字顯示；qTarget=0 時不顯示）
+    const achRate = qTarget > 0 ? Math.round(qAch / qTarget * 100) : null;
 
     const card = document.createElement('div');
     card.className = 'q-card' + (isCurrent ? ' q-current' : '');
 
     const gapClass = isFuture ? 'q-muted' : (gap >= 0 ? 'q-gap-pos' : 'q-gap-neg');
+    const achSuffix = (achRate === null) ? '' : ` (${achRate}%)`;
     const gapText  = isFuture ? '—' : (gap >= 0
-      ? `▲ ${Math.abs(gap).toLocaleString()} 仟`
-      : `▼ ${Math.abs(gap).toLocaleString()} 仟`);
+      ? `▲ ${Math.abs(gap).toLocaleString()} 仟${achSuffix}`
+      : `▼ ${Math.abs(gap).toLocaleString()} 仟${achSuffix}`);
 
     // OPR 計算
     const pipeline = getQuarterPipeline(year, q);
@@ -4536,7 +4539,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
           <div class="q-label">${label}</div>
           <div class="q-months">${months[i]}</div>
         </div>
-        <div class="q-ratio-badge">${ratio}%</div>
+        <div class="q-ratio-badge" title="該季目標佔年度總目標的配比">配比 ${ratio}%</div>
       </div>
       <div class="q-nums">
         <div class="q-row">
