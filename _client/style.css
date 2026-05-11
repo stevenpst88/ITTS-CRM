@@ -3332,6 +3332,17 @@ body {
   color: #374151;
   border-left: 2px solid #e5e7eb;
 }
+/* 季小計欄（Q1/Q2/Q3/Q4）— 比月份稍重，比合計輕 */
+.mb-q-col {
+  background: #dbe5f7;
+  font-weight: 700;
+  border-left: 1.5px solid #93b0e0;
+  border-right: 1.5px solid #93b0e0;
+}
+th.mb-q-col {
+  color: #ffffff;
+  background: #1a3c7a;
+}
 .mb-row-label {
   padding: 7px 8px;
   font-size: 11px;

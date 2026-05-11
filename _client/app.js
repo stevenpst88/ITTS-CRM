@@ -4055,19 +4055,46 @@ function renderMonthBudgetCard() {
     const totalGmActual = gmActuals.reduce((s, v) => s + v, 0);
     const totalGmPct = totalGmBudget > 0 ? Math.round(totalGmActual / totalGmBudget * 100) : 0;
 
-    const headerCells = monthLabels.map((m, i) => {
+    // 季度小計（每 3 個月）
+    const qBudget   = [0,0,0,0], qActual  = [0,0,0,0];
+    const qGmBudget = [0,0,0,0], qGmActual = [0,0,0,0];
+    for (let i = 0; i < 12; i++) {
+      const q = Math.floor(i / 3);
+      qBudget[q]    += b.months[i]   || 0;
+      qActual[q]    += actuals[i]    || 0;
+      qGmBudget[q]  += gmBudget[i]   || 0;
+      qGmActual[q]  += gmActuals[i]  || 0;
+    }
+
+    // 在每個月份 i=2,5,8,11 之後插入 Q 小計 cell
+    function withQuarters(monthsHtml, quartersHtml) {
+      let out = '';
+      for (let i = 0; i < 12; i++) {
+        out += monthsHtml[i];
+        if ((i + 1) % 3 === 0) out += quartersHtml[(i + 1) / 3 - 1];
+      }
+      return out;
+    }
+
+    // Header
+    const headerMonths = monthLabels.map((m, i) => {
       const isCur = (i + 1) === nowMonth;
       const label = isCur ? '▶' + m : m;
       return `<th class="mb-th${isCur ? ' mb-cur-month' : ''}">${label}</th>`;
-    }).join('');
+    });
+    const headerQuarters = ['Q1','Q2','Q3','Q4'].map(q => `<th class="mb-th mb-q-col">${q}</th>`);
+    const headerCells = withQuarters(headerMonths, headerQuarters);
 
-    // 收入金額 cells
-    const budgetCells = b.months.map((v, i) => {
+    // 收入金額
+    const budgetMonths = b.months.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       return `<td class="mb-td${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
-    }).join('');
+    });
+    const budgetQuarters = qBudget.map(v => `<td class="mb-td mb-q-col">${v > 0 ? v.toLocaleString() : '—'}</td>`);
+    const budgetCells = withQuarters(budgetMonths, budgetQuarters);
 
-    const actualCells = actuals.map((v, i) => {
+    // 收入實際
+    const actualMonths = actuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       const budget = b.months[i];
       const isManual = b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined;
@@ -4076,24 +4103,42 @@ function renderMonthBudgetCard() {
       else if (v > 0) cls = 'mb-td-orange';
       const manualDot = isManual ? '<span class="mb-manual-dot" title="手動認列">●</span>' : '';
       return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}${manualDot}</td>`;
-    }).join('');
+    });
+    const actualQuarters = qActual.map((v, q) => {
+      let cls = 'mb-td-muted';
+      if (v > 0 && qBudget[q] > 0) cls = v >= qBudget[q] ? 'mb-td-green' : 'mb-td-orange';
+      else if (v > 0) cls = 'mb-td-orange';
+      return `<td class="mb-td mb-q-col ${cls}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
+    });
+    const actualCells = withQuarters(actualMonths, actualQuarters);
 
-    const pctCells = actuals.map((v, i) => {
+    // 收入達成 %
+    const pctMonths = actuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       const budget = b.months[i];
       const p = budget > 0 && v > 0 ? Math.round(v / budget * 100) : null;
       let cls = 'mb-td-muted';
       if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
       return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${p !== null ? p + '%' : '—'}</td>`;
-    }).join('');
+    });
+    const pctQuarters = qActual.map((v, q) => {
+      const p = qBudget[q] > 0 && v > 0 ? Math.round(v / qBudget[q] * 100) : null;
+      let cls = 'mb-td-muted';
+      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
+      return `<td class="mb-td mb-q-col ${cls}">${p !== null ? p + '%' : '—'}</td>`;
+    });
+    const pctCells = withQuarters(pctMonths, pctQuarters);
 
-    // 毛利金額 cells
-    const gmBudgetCells = gmBudget.map((v, i) => {
+    // 毛利金額
+    const gmBudgetMonths = gmBudget.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       return `<td class="mb-td${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
-    }).join('');
+    });
+    const gmBudgetQuarters = qGmBudget.map(v => `<td class="mb-td mb-q-col">${v > 0 ? v.toLocaleString() : '—'}</td>`);
+    const gmBudgetCells = withQuarters(gmBudgetMonths, gmBudgetQuarters);
 
-    const gmActualCells = gmActuals.map((v, i) => {
+    // 毛利實際
+    const gmActualMonths = gmActuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       const budget = gmBudget[i];
       const isManual = b.grossMarginActuals && b.grossMarginActuals[i] !== null && b.grossMarginActuals[i] !== undefined;
@@ -4103,16 +4148,32 @@ function renderMonthBudgetCard() {
       const manualDot = isManual ? '<span class="mb-manual-dot" title="手動認列">●</span>' : '';
       const disp = v > 0 ? parseFloat(v.toFixed(1)).toLocaleString() : '—';
       return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${disp}${manualDot}</td>`;
-    }).join('');
+    });
+    const gmActualQuarters = qGmActual.map((v, q) => {
+      let cls = 'mb-td-muted';
+      if (v > 0 && qGmBudget[q] > 0) cls = v >= qGmBudget[q] ? 'mb-td-green' : 'mb-td-orange';
+      else if (v > 0) cls = 'mb-td-orange';
+      const disp = v > 0 ? parseFloat(v.toFixed(1)).toLocaleString() : '—';
+      return `<td class="mb-td mb-q-col ${cls}">${disp}</td>`;
+    });
+    const gmActualCells = withQuarters(gmActualMonths, gmActualQuarters);
 
-    const gmPctCells = gmActuals.map((v, i) => {
+    // 毛利達成 %
+    const gmPctMonths = gmActuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
       const budget = gmBudget[i];
       const p = budget > 0 && v > 0 ? Math.round(v / budget * 100) : null;
       let cls = 'mb-td-muted';
       if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
       return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${p !== null ? p + '%' : '—'}</td>`;
-    }).join('');
+    });
+    const gmPctQuarters = qGmActual.map((v, q) => {
+      const p = qGmBudget[q] > 0 && v > 0 ? Math.round(v / qGmBudget[q] * 100) : null;
+      let cls = 'mb-td-muted';
+      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
+      return `<td class="mb-td mb-q-col ${cls}">${p !== null ? p + '%' : '—'}</td>`;
+    });
+    const gmPctCells = withQuarters(gmPctMonths, gmPctQuarters);
 
     // 合計欄顏色
     const totalActualCls = totalActual > 0 ? (totalActual >= totalBudget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
@@ -4161,7 +4222,7 @@ function renderMonthBudgetCard() {
                 ${pctCells}
                 <td class="mb-td ${totalRevPctCls} mb-total-col">${totalRevPct > 0 ? totalRevPct + '%' : '—'}</td>
               </tr>
-              <tr class="mb-gm-divider"><td colspan="14"></td></tr>
+              <tr class="mb-gm-divider"><td colspan="18"></td></tr>
               <tr>
                 <td class="mb-gm-label">毛利金額</td>
                 ${gmBudgetCells}
