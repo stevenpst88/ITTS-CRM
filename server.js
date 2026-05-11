@@ -5962,21 +5962,26 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
 
     const opps = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
-    // manager1 的目標由部屬加總（排除自身），避免手動設定的殘留值影響計算
-    const targetOwners = role === 'manager1'
+
+    // manager1 的目標應由部屬加總，永遠排除任何 manager1 自身的個人目標記錄
+    // （包含 admin/executive 跨 BU 視角，避免 manager1 殘留目標被誤加）
+    const authForRoles = loadAuth();
+    const isManager1User = (u) => authForRoles.users.find(x => x.username === u)?.role === 'manager1';
+    const targetOwners = (role === 'manager1'
       ? owners.filter(u => u !== req.session.user.username)
-      : owners;
+      : owners
+    ).filter(u => !isManager1User(u));
     const targets = (data.targets || []).filter(t => targetOwners.includes(t.owner) && t.year === yearNum);
 
     // ── 1. 業績達成度 ──
-    // manager1：目標來自月度預算收入金額加總（排除自身）；其他角色用傳統年度目標
+    // manager1：目標來自月度預算收入金額加總（排除自身）；admin/executive 也排除任何 manager1
     let totalTarget;
     if (role === 'manager1') {
       const mgr1Self = req.session.user.username;
       totalTarget = (data.monthlyBudgets || [])
         .filter(b => b.year === yearNum && owners.includes(b.owner) && b.owner !== mgr1Self)
         .reduce((sum, b) => sum + b.months.reduce((s, v) => s + (v || 0), 0), 0);
-      // 若無月度預算資料，fallback 到傳統目標
+      // 若無月度預算資料，fallback 到 targets（已排除自身）
       if (!totalTarget) totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
     } else {
       totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
