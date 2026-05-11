@@ -4034,11 +4034,9 @@ function renderMonthBudgetCard() {
 
   // 為每個業務（或合計）產生一個表格
   const tables = budgetRows.map(b => {
-    // 收入實際：manual actuals 優先，否則從 Won 商機自動計算
+    // 收入實際：只算 Debbie 手動輸入（actuals），不 fallback Won
     const actuals = monthLabels.map((_, i) => {
-      const manual = b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined
-        ? b.actuals[i] : null;
-      return manual !== null ? manual : getMonthActual(year, i + 1, b.owner);
+      return (b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined) ? b.actuals[i] : 0;
     });
     const hasManual = (b.actuals && b.actuals.some(v => v !== null && v !== undefined)) ||
                       (b.grossMarginActuals && b.grossMarginActuals.some(v => v !== null && v !== undefined));
@@ -4049,10 +4047,9 @@ function renderMonthBudgetCard() {
 
     // ── 毛利 ──────────────────────────────────────────────────
     const gmBudget = b.grossMargin || Array(12).fill(0);
+    // 毛利實際：只算 Debbie 手動輸入（grossMarginActuals），不 fallback Won × 毛利率
     const gmActuals = monthLabels.map((_, i) => {
-      const manual = b.grossMarginActuals && b.grossMarginActuals[i] !== null && b.grossMarginActuals[i] !== undefined
-        ? b.grossMarginActuals[i] : null;
-      return manual !== null ? manual : getGmActual(year, i + 1, b.owner);
+      return (b.grossMarginActuals && b.grossMarginActuals[i] !== null && b.grossMarginActuals[i] !== undefined) ? b.grossMarginActuals[i] : 0;
     });
     const totalGmBudget = gmBudget.reduce((s, v) => s + v, 0);
     const totalGmActual = gmActuals.reduce((s, v) => s + v, 0);
@@ -4382,25 +4379,20 @@ function getQuarterPipeline(year, q) {
 
 // 取得某業務員某月最終實際值（手動認列優先，否則從 Won 商機自動計算）
 function getMonthActualFinal(year, month, owner) {
+  // 只算 Debbie 手動輸入；BU 規則：非主 BU 的 viewer 不算
   const rec = allMonthlyBudgets.find(b => b.owner === owner && b.year === year);
-  if (rec && rec.actuals) {
-    const v = rec.actuals[month - 1];
-    if (v !== null && v !== undefined) {
-      // BU 規則：手動認列只算進 owner「主 BU」
-      // 看自己的資料、admin/executive、或主 BU 在 viewer 範圍內 → 認列
-      // 否則回退用該月 BU 標籤的 Won 商機（已 BU 過濾）
-      const viewerRole = window._myRole;
-      const viewerBus = window._myBus || [];
-      const isSelf = owner === window._myUsername;
-      const isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
-      if (isSelf || isCrossViewer) return v;
-      const ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
-      const ownerPrimaryBu = ownerBus[0] || null;
-      if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
-      // 此 viewer 不能認 owner 的手動認列 → 走 Won 商機（allOpportunities 已 BU 過濾）
-    }
-  }
-  return getMonthActual(year, month, owner);
+  if (!rec || !rec.actuals) return 0;
+  const v = rec.actuals[month - 1];
+  if (v === null || v === undefined) return 0;
+  const viewerRole = window._myRole;
+  const viewerBus = window._myBus || [];
+  const isSelf = owner === window._myUsername;
+  const isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+  if (isSelf || isCrossViewer) return v;
+  const ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
+  const ownerPrimaryBu = ownerBus[0] || null;
+  if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
+  return 0;
 }
 
 // 取得某業務某月的毛利實際（從 Won 商機 amount × grossMarginRate 計算）
@@ -4421,21 +4413,20 @@ function getGmActual(year, month, ownerFilter) {
 
 // 毛利實際：手動認列優先，否則自動計算（同樣套用 BU 規則：手動認列只算 owner 主 BU）
 function getGmActualFinal(year, month, owner) {
+  // 只算 Debbie 手動輸入；BU 規則：非主 BU 的 viewer 不算
   var rec = allMonthlyBudgets.find(function(b) { return b.owner === owner && b.year === year; });
-  if (rec && rec.grossMarginActuals) {
-    var v = rec.grossMarginActuals[month - 1];
-    if (v !== null && v !== undefined) {
-      var viewerRole = window._myRole;
-      var viewerBus = window._myBus || [];
-      var isSelf = owner === window._myUsername;
-      var isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
-      if (isSelf || isCrossViewer) return v;
-      var ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
-      var ownerPrimaryBu = ownerBus[0] || null;
-      if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
-    }
-  }
-  return getGmActual(year, month, owner);
+  if (!rec || !rec.grossMarginActuals) return 0;
+  var v = rec.grossMarginActuals[month - 1];
+  if (v === null || v === undefined) return 0;
+  var viewerRole = window._myRole;
+  var viewerBus = window._myBus || [];
+  var isSelf = owner === window._myUsername;
+  var isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+  if (isSelf || isCrossViewer) return v;
+  var ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
+  var ownerPrimaryBu = ownerBus[0] || null;
+  if (!viewerBus.length || (ownerPrimaryBu && viewerBus.includes(ownerPrimaryBu))) return v;
+  return 0;
 }
 
 // 取得某年某季的成交金額，考慮手動認列覆蓋
@@ -4453,34 +4444,17 @@ function getQuarterAchieved(year, q, isManager1Mode, ownerForUser) {
   }
 
   if (isManager1Mode) {
-    // 一級主管：有預算記錄的業務員用認列值，其他用 Won 商機
+    // 一級主管：只算 Debbie 手動認列（不再 fallback Won）
     const budgetRecs = allMonthlyBudgets.filter(b => b.year === year);
-    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
     let sum = 0;
     budgetRecs.forEach(b => {
       for (let m = qStart; m <= qEnd; m++) sum += getMonthActualFinal(year, m, b.owner);
     });
-    // 補上沒有預算記錄的業務員的 Won 商機
-    sum += allOpportunities
-      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner))
-      .filter(o => {
-        const d = o.achievedDate ? new Date(o.achievedDate) : new Date(o.createdAt);
-        const m = d.getMonth() + 1;
-        return d.getFullYear() === year && m >= qStart && m <= qEnd;
-      })
-      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
     return sum;
   }
 
-  // Fallback：直接用 Won 商機
-  return allOpportunities
-    .filter(o => o.stage === 'Won')
-    .filter(o => {
-      const d = o.achievedDate ? new Date(o.achievedDate) : new Date(o.createdAt);
-      const m = d.getMonth() + 1;
-      return d.getFullYear() === year && m >= qStart && m <= qEnd;
-    })
-    .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
+  // 沒有任何預算記錄或非主管視角時：實際達成為 0（只認 Debbie 手動輸入）
+  return 0;
 }
 
 function getAchievedAmount(year) {
@@ -4504,20 +4478,11 @@ function updateTargetCard() {
   const isAggregator = isM1 || isExec;
   let achieved = 0;
   if (isAggregator) {
-    // 一級主管 / 董事長/總經理：彙總所有可見部屬（已透過 API 回傳的範圍過濾）
+    // 一級主管 / 董事長/總經理：只彙總有手動認列的部屬（不再 fallback Won）
     const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
-    const budgetOwners = new Set(budgetRecs.map(b => b.owner));
     budgetRecs.forEach(b => {
       for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
     });
-    // 沒有月度預算記錄的部屬：直接從 Won 商機加總（排除自己）
-    achieved += allOpportunities
-      .filter(o => o.stage === 'Won' && !budgetOwners.has(o.owner) && o.owner !== myUsername)
-      .filter(o => {
-        const y = o.achievedDate ? new Date(o.achievedDate).getFullYear() : new Date(o.createdAt).getFullYear();
-        return y === year;
-      })
-      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
   } else {
     for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, myUsername);
   }

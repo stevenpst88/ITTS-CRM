@@ -2165,26 +2165,20 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       return !itemBu || uBus.includes(itemBu);
     });
 
+    // 實際達成：只算 Debbie 手動輸入的金額（actuals），不再 fallback 自動加總 Won
     let achieved = 0;
     const monthlyBudgetsData = data.monthlyBudgets || [];
     rowOwners.forEach(owner => {
       const ownerBus = normalizeBu(auth.users.find(uu => uu.username === owner)?.bu);
       const ownerPrimaryBu = ownerBus[0] || null;
+      // 手動認列只計入 owner 主 BU；非主 BU 的 viewer 不算
       const countsManual = !uBus.length || (ownerPrimaryBu && uBus.includes(ownerPrimaryBu));
+      if (!countsManual) return;
       const budRec = monthlyBudgetsData.find(b => b.owner === owner && b.year === year);
+      if (!budRec || !budRec.actuals) return;
       for (let m = 1; m <= 12; m++) {
-        if (budRec && budRec.actuals) {
-          const v = budRec.actuals[m - 1];
-          if (v !== null && v !== undefined) {
-            if (countsManual) achieved += v;
-            continue;
-          }
-        }
-        const ownerOpps = myOpps.filter(o => o.owner === owner && o.stage === 'Won');
-        achieved += ownerOpps.filter(o => {
-          const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
-          return d >= yearStart && d <= yearEnd && d.getMonth() + 1 === m;
-        }).reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+        const v = budRec.actuals[m - 1];
+        if (v !== null && v !== undefined) achieved += v;
       }
     });
 
