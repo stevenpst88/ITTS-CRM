@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const helmet = require('helmet');
 const compression = require('compression');
 const db = require('./db');
@@ -179,7 +179,7 @@ const aiLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.session?.user?.username || req.ip,
+  keyGenerator: (req) => req.session?.user?.username || ipKeyGenerator(req),
   handler: (req, res) => {
     apiMonitor.recordRateLimit('ai');
     const user = req.session?.user?.username || req.ip;
@@ -670,9 +670,15 @@ app.put('/api/user/password', requireAuth, async (req, res) => {
     user.mustChangePassword = false;
     saveAuth(auth);
     // 同步 session（解除強制變更狀態）
+    // 注意：必須整個物件重新賦值才會觸發 jwtSession Proxy 的 set trap → 重簽 JWT cookie
+    // 若直接 req.session.user.mustChangePassword = false 只會改記憶體物件，
+    // 不會更新 cookie，導致下次請求讀到舊 JWT 仍是 mustChangePassword=true
     if (req.session.user) {
-      req.session.user.mustChangePassword = false;
-      req.session.user.passwordChangeReason = null;
+      req.session.user = {
+        ...req.session.user,
+        mustChangePassword: false,
+        passwordChangeReason: null
+      };
     }
     writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
     res.json({ success: true });
