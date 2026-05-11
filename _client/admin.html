@@ -790,7 +790,7 @@
             上傳 Excel 檔案批次新增合約。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號</strong>
           </div>
           <div style="font-size:12px;color:#aaa;margin-bottom:16px">
-            合約金額單位：仟元
+            合約金額單位：K
           </div>
 
           <div class="import-drop-zone" id="contractImportDropZone">
@@ -915,7 +915,7 @@
       <!-- ── 季度業績配比設定 ── -->
       <div class="admin-section" id="sec-quarter-ratios">
         <div class="section-title">📅 季度業績配比設定</div>
-        <div class="section-sub">為每位業務員設定個別的 Q1~Q4 季度業績目標金額（仟元）。一級主管的季度目標將自動由部屬目標加總計算。</div>
+        <div class="section-sub">為每位業務員設定個別的 Q1~Q4 季度業績目標金額（K）。一級主管的季度目標將自動由部屬目標加總計算。</div>
 
         <!-- 年度選擇 -->
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
@@ -941,7 +941,7 @@
                 <div style="display:flex;align-items:center;gap:4px">
                   <input type="number" id="qrQ1" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">仟</span>
+                  <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
@@ -949,7 +949,7 @@
                 <div style="display:flex;align-items:center;gap:4px">
                   <input type="number" id="qrQ2" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">仟</span>
+                  <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
@@ -957,7 +957,7 @@
                 <div style="display:flex;align-items:center;gap:4px">
                   <input type="number" id="qrQ3" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">仟</span>
+                  <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
@@ -965,7 +965,7 @@
                 <div style="display:flex;align-items:center;gap:4px">
                   <input type="number" id="qrQ4" min="0" step="1" placeholder="0"
                     style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
-                  <span style="color:#6b7280;flex-shrink:0">仟</span>
+                  <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
             </div>
@@ -1008,7 +1008,7 @@
       <!-- ── 月度業績預算 ── -->
       <div class="admin-section" id="sec-monthly-budget">
         <div class="section-title">📆 月度業績預算</div>
-        <div class="section-sub">為每位業務員設定個別的 1~12 月業績預算金額（單位：仟）。業務員首頁將自動顯示預算 vs 實際成交對照表。</div>
+        <div class="section-sub">為每位業務員設定個別的 1~12 月業績預算金額（單位：K）。業務員首頁將自動顯示預算 vs 實際成交對照表。</div>
 
         <div class="admin-card">
           <div class="admin-card-header">
@@ -1036,12 +1036,12 @@
               <!-- 收入金額 -->
               <div style="font-size:12px;font-weight:700;color:#1a3c7a;margin-bottom:8px;padding:4px 8px;background:#eff6ff;border-radius:6px">📈 收入金額（預算）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:6px" id="mbInputGrid"></div>
-              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbTotalLabel" style="color:#1a3c7a">0</strong> 仟</div>
+              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbTotalLabel" style="color:#1a3c7a">0</strong> K</div>
 
               <!-- 毛利金額 -->
               <div style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:8px;padding:4px 8px;background:#f5f3ff;border-radius:6px">💎 毛利金額（預算）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:6px" id="mbGmInputGrid"></div>
-              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbGmTotalLabel" style="color:#7c3aed">0</strong> 仟</div>
+              <div style="font-size:12px;color:#6b7280;text-align:right;margin-bottom:16px">合計：<strong id="mbGmTotalLabel" style="color:#7c3aed">0</strong> K</div>
 
               <div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:1px solid #f3f4f6">
                 <button class="btn btn-primary" onclick="saveMbBudget()">💾 儲存</button>
@@ -3809,7 +3809,7 @@
     const vals = ['qrQ1','qrQ2','qrQ3','qrQ4'].map(id => parseFloat(document.getElementById(id).value) || 0);
     const s = vals.reduce((a, v) => a + v, 0);
     const lbl = document.getElementById('qrSumLabel');
-    lbl.textContent = `合計：${s.toLocaleString()} 仟`;
+    lbl.textContent = `合計：${s.toLocaleString()} K`;
     lbl.style.color = '#1a3c7a';
     lbl.style.fontWeight = '700';
   }
@@ -3880,11 +3880,11 @@
           <thead>
             <tr style="background:#f3f4f6;color:#6b7280">
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb;white-space:nowrap">業務員</th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月（仟）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月（仟）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月（仟）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月（仟）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計（仟）</th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月（K）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月（K）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月（K）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月（K）</span></th>
+              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計（K）</th>
               <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">操作</th>
             </tr>
           </thead>
@@ -4203,7 +4203,7 @@
           const userLabel = _mbUsers.find(u => u.username === b.owner)?.displayName || b.owner;
           const gmRow = gmTotal > 0 ? `
             <div style="margin-top:8px;border-top:1px solid #f3f4f6;padding-top:8px">
-              <div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:4px">毛利金額（合計 ${gmTotal.toLocaleString()} 仟）</div>
+              <div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:4px">毛利金額（合計 ${gmTotal.toLocaleString()} K）</div>
               <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
                 ${(b.grossMargin||[]).map((v,i) => `<div style="text-align:center;font-size:11px;background:#faf5ff;border-radius:6px;padding:4px 2px">
                   <div style="color:#9ca3af;margin-bottom:1px">${monthLabels[i]}</div>
@@ -4214,7 +4214,7 @@
           return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <span style="font-size:13px;font-weight:700;color:#374151">${userLabel} — ${b.year} 年</span>
-              <span style="font-size:12px;color:#6b7280">收入合計 ${revTotal.toLocaleString()} 仟　by ${b.setBy || '—'}</span>
+              <span style="font-size:12px;color:#6b7280">收入合計 ${revTotal.toLocaleString()} K　by ${b.setBy || '—'}</span>
             </div>
             <div style="font-size:11px;font-weight:600;color:#1a3c7a;margin-bottom:4px">收入金額</div>
             <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">

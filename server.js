@@ -902,7 +902,7 @@ app.post('/api/ai/opp-win-rate', requireAuth, aiLimiter, aiCreditsGuard('opp-win
 
 商機：${opp.company} / ${opp.product || opp.description || '未填'}
 現在階段：${STAGE_LABEL_AI[opp.stage] || opp.stage}
-金額：${opp.amount || '未填'} 仟元
+金額：${opp.amount || '未填'} K
 距預計成交：${daysToClose !== null ? daysToClose + ' 天' : '未設定'}
 最近 30 天拜訪：${visits30} 次，60 天：${visits60} 次
 歷史晉升：${promotions} 次，退後：${demotions} 次
@@ -969,7 +969,7 @@ app.post('/api/ai/contact-summary', requireAuth, aiLimiter, aiCreditsGuard('cont
       o.contactId === contactId && o.stage !== 'D' && o.stage !== 'Won'
     );
     const oppSummary = opps.length
-      ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}仟`).join('；')
+      ? opps.map(o => `${o.company} ${o.product || ''} ${o.stage} $${o.amount || '?'}K`).join('；')
       : '（無進行中商機）';
 
     const model = gemini.getModel();
@@ -2983,9 +2983,9 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
     '合約金額(NT$K)', '毛利金額(NT$K)'
   ];
 
-  // 資料列
+  // 資料列 (amount 已是 K)
   const rows = opps.map(o => {
-    const amt    = (parseFloat(o.amount) || 0) * 10;
+    const amt    = parseFloat(o.amount) || 0;
     const gm     = parseFloat(o.grossMarginRate) || 0;
     const profit = Math.round(amt * gm / 100);
     return [
@@ -3001,10 +3001,10 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
     ];
   });
 
-  // 合計列
-  const totAmt    = opps.reduce((s, o) => s + (parseFloat(o.amount) || 0) * 10, 0);
+  // 合計列 (amount 已是 K)
+  const totAmt    = opps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
   const totProfit = Math.round(opps.reduce((s, o) => {
-    const a = (parseFloat(o.amount) || 0) * 10;
+    const a = parseFloat(o.amount) || 0;
     const g = parseFloat(o.grossMarginRate) || 0;
     return s + a * g / 100;
   }, 0));
@@ -3061,7 +3061,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const headers = [
     '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
-    '合約金額(仟元)', '預估毛利率(%)', '備註(description)',
+    '合約金額(K)', '預估毛利率(%)', '備註(description)',
     '建立時間', '商機ID'
   ];
 
@@ -3482,7 +3482,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
 
   const headers = [
     '合約編號', '客戶名稱', '聯絡人', '產品/服務', '合約開始日', '合約結束日',
-    '合約金額(仟元)', '業務人員', '類型', '備註',
+    '合約金額(K)', '業務人員', '類型', '備註',
     '業務帳號(owner)', '業務姓名', '建立時間', '合約ID'
   ];
 

@@ -677,7 +677,7 @@ function renderDashboardCharts() {
         <div class="dash-pipeline-col-name">${name}</div>
         <div class="dash-pipeline-col-count">${stageOpps.length}</div>
         <div class="dash-pipeline-col-label">筆商機</div>
-        <div class="dash-pipeline-col-amt">$ ${total.toLocaleString()} 仟</div>`;
+        <div class="dash-pipeline-col-amt">$ ${total.toLocaleString()} K</div>`;
       col.addEventListener('click', () => showSection('pipeline'));
       pipelineCols.appendChild(col);
     });
@@ -1094,7 +1094,7 @@ function buildCompanyGroupEl(company, members) {
          <span class="cg-recent-icon">&#128161;</span>
          <span class="cg-opp-stage opp-${(recentOpp.stage||'').toLowerCase()}">${recentOpp.stage}</span>
          <span class="cg-recent-text">${recentOpp.product || recentOpp.category || ''}</span>
-         ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} 仟</span>` : ''}
+         ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} K</span>` : ''}
        </div>`
     : '';
 
@@ -3089,7 +3089,7 @@ function renderKanban() {
 
     $('kanbanBadge' + key).textContent = stageOpps.length;
     $('kanbanTotal' + key).innerHTML =
-      '$' + total.toLocaleString() + '<span class="kanban-col-total-label">仟</span>';
+      '$' + total.toLocaleString() + '<span class="kanban-col-total-label">K</span>';
 
     const container = $('kanbanCards' + key);
     container.innerHTML = '';
@@ -3162,7 +3162,7 @@ function celebrateWon(opp) {
 
   // 填入商機資訊
   document.getElementById('wonCelebCompany').textContent = opp.company || '';
-  const amt = opp.amount ? `合約金額：$${Number(opp.amount).toLocaleString()} 仟` : '';
+  const amt = opp.amount ? `合約金額：$${Number(opp.amount).toLocaleString()} K` : '';
   document.getElementById('wonCelebAmount').textContent = amt;
 
   // 顯示 overlay
@@ -3307,7 +3307,7 @@ function buildKanbanCard(o) {
     <div class="kanban-card-contact">${escapeHtml(o.contactName) || ''}</div>
     ${cat}${prod}${overdueTag}
     <div class="kanban-card-footer">
-      <span class="kanban-card-amount" style="${amtStyle}">${escapeHtml(amt)} 仟</span>
+      <span class="kanban-card-amount" style="${amtStyle}">${escapeHtml(amt)} K</span>
       <span class="kanban-card-date" style="${isOverdueExpected ? 'color:#e74c3c;font-weight:600' : ''}">${escapeHtml(dateLabel)}</span>
     </div>
     <div class="kanban-card-edit-hint">點擊編輯</div>`;
@@ -3595,7 +3595,7 @@ async function loadManagerAchievement(year) {
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
           <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-              <span style="font-size:11px;color:#666;font-weight:600">季度目標（仟）${teamHint}</span>
+              <span style="font-size:11px;color:#666;font-weight:600">季度目標（K）${teamHint}</span>
               ${editBtn}
             </div>
             <div class="qr-display" style="display:flex;gap:3px">
@@ -3616,14 +3616,14 @@ async function loadManagerAchievement(year) {
           <span style="font-size:11px;color:#888">目標</span>
           <span class="mgr-target-display" title="點擊編輯目標"
             style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
-            ${r.target ? r.target.toLocaleString() + ' 仟' : '未設定'}
+            ${r.target ? r.target.toLocaleString() + ' K' : '未設定'}
           </span>
           <span style="font-size:11px;color:#aaa">✎</span>
         </div>
         <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
-          <div><div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div><div style="color:#aaa;margin-top:2px">已成交（仟）</div></div>
+          <div><div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div><div style="color:#aaa;margin-top:2px">已成交（K）</div></div>
           <div style="width:1px;background:#f0f0f0"></div>
-          <div><div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div><div style="color:#aaa;margin-top:2px">在手商機（仟）</div></div>
+          <div><div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div><div style="color:#aaa;margin-top:2px">在手商機（K）</div></div>
           <div style="width:1px;background:#f0f0f0"></div>
           <div><div style="font-weight:700;font-size:14px;color:#555">${r.wonCount}</div><div style="color:#aaa;margin-top:2px">成交件數</div></div>
         </div>
@@ -3990,8 +3990,8 @@ function renderBuBreakdown() {
     const color = rate >= 90 ? '#10b981' : rate >= 60 ? '#f59e0b' : '#ef4444';
     return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]}">
       <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu} <span style="font-size:10px;color:#9ca3af;font-weight:500">${usersInBu.length}人</span></div>
-      <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} 仟</span></div>
-      <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} 仟</span></div>
+      <div class="bu-card-row"><span class="bu-card-lbl">目標</span><span class="bu-card-val">${target > 0 ? target.toLocaleString() : '—'} K</span></div>
+      <div class="bu-card-row"><span class="bu-card-lbl">已達</span><span class="bu-card-val">${achieved > 0 ? achieved.toLocaleString() : '—'} K</span></div>
       <div class="bu-card-rate" style="color:${color}">${target > 0 ? rate + '%' : '—'}</div>
       <div class="bu-card-bar"><div class="bu-card-bar-fill" style="width:${rate}%;background:${color}"></div></div>
     </div>`;
@@ -4573,7 +4573,7 @@ function updateTargetCard() {
   } else {
     for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, myUsername);
   }
-  $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' 仟';
+  $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' K';
 
   if (window._myRole === 'manager1' || window._myRole === 'executive') {
     // 一級主管 / 董事長/總經理：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
@@ -4590,7 +4590,7 @@ function updateTargetCard() {
       return;
     }
     const rate = Math.min(100, Math.round(achieved / totalAmount * 100));
-    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' 仟';
+    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' K';
     $('targetRateDisplay').textContent = rate + '%';
     $('targetProgressFill').style.width = rate + '%';
     updateQuarterCards(totalAmount, year, true);
@@ -4609,7 +4609,7 @@ function updateTargetCard() {
     return;
   }
   const rate = Math.min(100, Math.round(achieved / target.amount * 100));
-  $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' 仟';
+  $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' K';
   $('targetRateDisplay').textContent = rate + '%';
   $('targetProgressFill').style.width = rate + '%';
   updateQuarterCards(target.amount, year);
@@ -4676,8 +4676,8 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     const gapClass = isFuture ? 'q-muted' : (gap >= 0 ? 'q-gap-pos' : 'q-gap-neg');
     const achSuffix = (achRate === null) ? '' : ` (${achRate}%)`;
     const gapText  = isFuture ? '—' : (gap >= 0
-      ? `▲ ${Math.abs(gap).toLocaleString()} 仟${achSuffix}`
-      : `▼ ${Math.abs(gap).toLocaleString()} 仟${achSuffix}`);
+      ? `▲ ${Math.abs(gap).toLocaleString()} K${achSuffix}`
+      : `▼ ${Math.abs(gap).toLocaleString()} K${achSuffix}`);
 
     // OPR 計算
     const pipeline = getQuarterPipeline(year, q);
@@ -4714,11 +4714,11 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="q-nums">
         <div class="q-row">
           <span class="q-row-label">季度目標</span>
-          <span class="q-row-val">${qTarget.toLocaleString()} 仟</span>
+          <span class="q-row-val">${qTarget.toLocaleString()} K</span>
         </div>
         <div class="q-row">
           <span class="q-row-label">已達成</span>
-          <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' 仟'}</span>
+          <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' K'}</span>
         </div>
         <div class="q-row">
           <span class="q-row-label">落差</span>
@@ -4741,7 +4741,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="zone-bar-labels">
         <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
       </div>
-      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} 仟</div>`;
+      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} K</div>`;
     grid.appendChild(card);
   });
 }
@@ -4864,8 +4864,8 @@ function renderTargetHistory() {
       const rate = t.amount ? Math.round(ach / t.amount * 100) : 0;
       return `<div class="target-history-chip">
         <span class="target-history-year">${t.year} 年</span>
-        <span class="target-history-amt">目標 ${t.amount.toLocaleString()} 仟</span>
-        <span class="target-history-ach">已達成 ${ach.toLocaleString()} 仟（${rate}%）</span>
+        <span class="target-history-amt">目標 ${t.amount.toLocaleString()} K</span>
+        <span class="target-history-ach">已達成 ${ach.toLocaleString()} K（${rate}%）</span>
       </div>`;
     }).join('');
 }
@@ -4883,7 +4883,7 @@ $('saveTargetBtn').addEventListener('click', async () => {
     await loadTargets();
     renderTargetHistory();
     updateTargetCard();
-    showToast(`${year} 年度目標已儲存：${amount.toLocaleString()} 仟元`);
+    showToast(`${year} 年度目標已儲存：${amount.toLocaleString()} K`);
   } catch { showToast('儲存失敗，請重試'); }
 });
 
@@ -4950,7 +4950,7 @@ function renderOppTable() {
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${escapeHtml(o.product||'-')}</td>
-      <td data-label="預估金額（仟）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
+      <td data-label="預估金額（K）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${o.expectedDate || '-'}</td>
       <td data-label="狀態">
         <select class="opp-stage-sel" data-id="${o.id}" style="color:${OPP_STAGE_COLORS[o.stage]||'#333'}">${stageOpts}</select>
@@ -4979,7 +4979,7 @@ function renderOppTable() {
       <td data-label="聯絡人">${o.contactName || '-'}</td>
       <td data-label="商機類別">${o.category || '-'}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${o.product || '-'}</td>
-      <td data-label="預估金額（仟）" style="text-align:right">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
+      <td data-label="預估金額（K）" style="text-align:right">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${o.expectedDate || '-'}</td>
       <td data-label="狀態">
         <span class="opp-lost-badge">💔 流失</span>
@@ -5213,15 +5213,15 @@ function renderForecastTable() {
   const year = forecastYear;
   const opps = getForecastOpps(year);
 
-  // ── 摘要卡 ──
-  const totContract = opps.reduce((s, o) => s + (parseFloat(o.amount) || 0) * 10, 0); // 萬→NT$K
+  // ── 摘要卡 ── (amount 已是 K，直接加總)
+  const totContract = opps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
   const totGrossProfit = opps.reduce((s, o) => {
-    const amt = (parseFloat(o.amount) || 0) * 10;
+    const amt = parseFloat(o.amount) || 0;
     const gm  = parseFloat(o.grossMarginRate) || 0;
     return s + amt * gm / 100;
   }, 0);
   const wonOpps = opps.filter(o => o.stage === 'Won');
-  const totWon = wonOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0) * 10, 0);
+  const totWon = wonOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
   // ── 篩選標籤（顯示目前套用的條件）──
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
@@ -5283,7 +5283,7 @@ function renderForecastTable() {
   const sorted = [...opps].sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''));
 
   sorted.forEach(o => {
-    const amt    = (parseFloat(o.amount) || 0) * 10;           // 萬 → NT$K
+    const amt    = parseFloat(o.amount) || 0;                  // amount 已是 K
     const gm     = parseFloat(o.grossMarginRate) || 0;
     const profit = Math.round(amt * gm / 100);
     const confLabel   = STAGE_CONF_LABEL[o.stage] || null;
@@ -5494,7 +5494,7 @@ function renderLostOppTable() {
       <div style="font-size:22px;font-weight:700;color:#ea4335">${rows.length}</div>
     </div>
     <div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">流失金額(仟)</div>
+      <div style="font-size:11px;color:#888;margin-bottom:4px">流失金額(K)</div>
       <div style="font-size:22px;font-weight:700;color:#f57c00">${totalAmt.toLocaleString()}</div>
     </div>
     ${topReason ? `<div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
@@ -5709,11 +5709,11 @@ async function loadPipelineReport() {
 
 function renderPrSummary(s) {
   const cards = [
-    { icon:'💼', label:'在手商機總額', value:`${(s.totalPipeline||0).toLocaleString()} 仟`, sub:`共 ${s.totalCount} 件`, color:'#1a73e8', bg:'#e8f0fe' },
-    { icon:'✨', label:'本期新增商機', value:`${(s.newAmount||0).toLocaleString()} 仟`, sub:`${s.newCount} 件`, color:'#34a853', bg:'#e6f4ea' },
-    { icon:'⬆️', label:'階段晉升', value:`${(s.promotedAmount||0).toLocaleString()} 仟`, sub:`${s.promotedCount} 次`, color:'#1e8e3e', bg:'#e6f4ea' },
-    { icon:'⬇️', label:'階段退後', value:`${(s.demotedAmount||0).toLocaleString()} 仟`, sub:`${s.demotedCount} 次`, color:'#f57c00', bg:'#fff3e0' },
-    { icon:'💔', label:'本期流失', value:`${(s.lostAmount||0).toLocaleString()} 仟`, sub:`${s.lostCount} 件`, color:'#c62828', bg:'#fce8e6' },
+    { icon:'💼', label:'在手商機總額', value:`${(s.totalPipeline||0).toLocaleString()} K`, sub:`共 ${s.totalCount} 件`, color:'#1a73e8', bg:'#e8f0fe' },
+    { icon:'✨', label:'本期新增商機', value:`${(s.newAmount||0).toLocaleString()} K`, sub:`${s.newCount} 件`, color:'#34a853', bg:'#e6f4ea' },
+    { icon:'⬆️', label:'階段晉升', value:`${(s.promotedAmount||0).toLocaleString()} K`, sub:`${s.promotedCount} 次`, color:'#1e8e3e', bg:'#e6f4ea' },
+    { icon:'⬇️', label:'階段退後', value:`${(s.demotedAmount||0).toLocaleString()} K`, sub:`${s.demotedCount} 次`, color:'#f57c00', bg:'#fff3e0' },
+    { icon:'💔', label:'本期流失', value:`${(s.lostAmount||0).toLocaleString()} K`, sub:`${s.lostCount} 件`, color:'#c62828', bg:'#fce8e6' },
   ];
   $('prSummaryCards').innerHTML = cards.map(c => `
     <div class="pr-summary-card" style="border-top:3px solid ${c.color}">
@@ -5739,7 +5739,7 @@ function renderPrFunnel(funnel) {
           <div class="pr-funnel-bar" style="width:${pct}%;background:${color}"></div>
         </div>
         <div class="pr-funnel-meta">
-          <span class="pr-funnel-amt">${f.amount ? f.amount.toLocaleString()+'仟' : '—'}</span>
+          <span class="pr-funnel-amt">${f.amount ? f.amount.toLocaleString()+'K' : '—'}</span>
           <span class="pr-funnel-cnt">${f.count}件</span>
         </div>
       </div>`;
@@ -5772,7 +5772,7 @@ function renderPrFunnel(funnel) {
         legend: { position:'bottom', labels:{ font:{size:10}, padding:8, boxWidth:10 } },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.label}：${ctx.parsed.toLocaleString()} 仟`
+            label: ctx => ` ${ctx.label}：${ctx.parsed.toLocaleString()} K`
           }
         }
       },
@@ -5784,7 +5784,7 @@ function renderPrFunnel(funnel) {
 function renderPrMoves(data) {
   const fmt = o => {
     const stageTag = o.stage ? `<span class="pr-stage-tag" style="background:${STAGE_COLOR[o.stage]||'#90a4ae'}20;color:${STAGE_COLOR[o.stage]||'#90a4ae'};border:1px solid ${STAGE_COLOR[o.stage]||'#90a4ae'}40">${STAGE_LBL[o.stage]||o.stage}</span>` : '';
-    const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>` : '';
+    const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}K</span>` : '';
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
         <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
@@ -5805,10 +5805,10 @@ function renderPrMoves(data) {
       const diffSign  = diff > 0 ? '+' : '';
       amtHtml = `<span class="pr-deal-amt" style="color:#888;text-decoration:line-through;font-weight:500">${aFrom.toLocaleString()}</span>
         <span style="color:#888;font-size:11px">→</span>
-        <span class="pr-deal-amt">${aTo.toLocaleString()}仟</span>
+        <span class="pr-deal-amt">${aTo.toLocaleString()}K</span>
         <span style="color:${diffColor};font-size:11px;font-weight:600">(${diffSign}${diff.toLocaleString()})</span>`;
     } else {
-      amtHtml = `<span class="pr-deal-amt">${(o.amount||0).toLocaleString()}仟</span>`;
+      amtHtml = `<span class="pr-deal-amt">${(o.amount||0).toLocaleString()}K</span>`;
     }
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
@@ -5846,7 +5846,7 @@ function renderPrMoves(data) {
   $('prLostCount').textContent = data.lostDeals.length;
   $('prLostList').innerHTML = data.lostDeals.length
     ? data.lostDeals.map(o => {
-        const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}仟</span>` : '';
+        const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}K</span>` : '';
         return `<div class="pr-deal-row">
           <div class="pr-deal-info">
             <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
@@ -7689,14 +7689,14 @@ function renderExecBuComparison(d) {
             <div style="position:absolute;height:100%;width:${barW}%;background:${barColor};border-radius:4px;opacity:.85"></div>
           </div>
         </td>
-        <td style="text-align:right">${fmt(b.achieved)} 仟</td>
-        <td style="text-align:right;color:#999">${b.target ? fmt(b.target) + ' 仟' : '—'}</td>
+        <td style="text-align:right">${fmt(b.achieved)} K</td>
+        <td style="text-align:right;color:#999">${b.target ? fmt(b.target) + ' K' : '—'}</td>
         <td style="text-align:center">
           <b style="color:${barColor}">${b.pct !== null ? b.pct + '%' : '—'}</b>
         </td>
         <td style="text-align:center">${b.wonCount}</td>
         <td style="text-align:center">${b.oppCount}</td>
-        <td style="text-align:right;color:#1a73e8">${fmt(b.pipeline)} 仟</td>
+        <td style="text-align:right;color:#1a73e8">${fmt(b.pipeline)} K</td>
       </tr>`;
   }).join('');
 
@@ -7841,7 +7841,7 @@ function renderExecTrend(data) {
     const fill = isThisYear ? '#1a73e8' : '#c5d9f5';
     bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}"
       rx="2" fill="${fill}" data-i="${i}" class="exec-bar">
-      <title>${d.month}：${d.amount.toLocaleString()} 仟（${d.count} 件）</title>
+      <title>${d.month}：${d.amount.toLocaleString()} K（${d.count} 件）</title>
     </rect>`;
     // X axis: show label every 3 months
     if (i % 3 === 0) {
@@ -7873,12 +7873,12 @@ function renderExecTrend(data) {
     <div class="exec-kpi-row" style="margin-bottom:16px">
       <div class="exec-kpi-card">
         <div class="exec-kpi-label">${cy} 年 YTD 成交</div>
-        <div class="exec-kpi-val">${totalAmt.toLocaleString()} 仟</div>
+        <div class="exec-kpi-val">${totalAmt.toLocaleString()} K</div>
         <div class="exec-kpi-sub">${totalCnt} 件 ${growthStr}</div>
       </div>
       <div class="exec-kpi-card">
         <div class="exec-kpi-label">${cy - 1} 年全年成交</div>
-        <div class="exec-kpi-val">${prevAmt.toLocaleString()} 仟</div>
+        <div class="exec-kpi-val">${prevAmt.toLocaleString()} K</div>
         <div class="exec-kpi-sub">${prevYearData.reduce((s,d)=>s+d.count,0)} 件</div>
       </div>
     </div>`;
@@ -8036,10 +8036,10 @@ function renderMgrGap(gap, achievement) {
   el.innerHTML = `
     <span style="font-size:20px">${isAhead ? '🎯' : '📈'}</span>
     <span style="flex:1">
-      <b>年底預測達成：${fmt(gap.yearEndForecast)} 仟</b>（目標達成率 ${gap.forecastPct}%）
+      <b>年底預測達成：${fmt(gap.yearEndForecast)} K</b>（目標達成率 ${gap.forecastPct}%）
       ${isAhead
-        ? `<span style="color:#1e8e3e;margin-left:8px">超前目標 ${fmt(gapAbs)} 仟 ✅</span>`
-        : `<span style="color:#e37400;margin-left:8px">距目標尚差 ${fmt(gapAbs)} 仟</span>`}
+        ? `<span style="color:#1e8e3e;margin-left:8px">超前目標 ${fmt(gapAbs)} K ✅</span>`
+        : `<span style="color:#e37400;margin-left:8px">距目標尚差 ${fmt(gapAbs)} K</span>`}
     </span>
     <span style="font-size:12px;color:#999">目前進度 ${gap.dayProgress}%</span>`;
 }
@@ -8051,8 +8051,8 @@ function renderMgrGauge(a) {
   $('mgrGaugePct').textContent   = pct === null ? '—' : pct + '%';
   $('mgrGaugeLabel').textContent = a.target > 0 ? '本年達成度' : '尚未設定目標';
   $('mgrGaugeDetail').innerHTML = a.target > 0
-    ? `已達成 <b>${fmt(a.achieved)}</b> 仟 / 目標 <b>${fmt(a.target)}</b> 仟`
-    : `本年成交 <b>${fmt(a.achieved)}</b> 仟（無目標可比對）`;
+    ? `已達成 <b>${fmt(a.achieved)}</b> K / 目標 <b>${fmt(a.target)}</b> K`
+    : `本年成交 <b>${fmt(a.achieved)}</b> K（無目標可比對）`;
 
   // 顏色：>=90 綠 / 60-89 橘 / <60 紅
   const color = pct === null ? '#bbb' : pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
@@ -8088,14 +8088,14 @@ function renderMgrCommit(c) {
         <span class="mgr-commit-stage" style="background:${color}">${o.stage}</span>
         <span class="mgr-commit-co">${escapeHtml(o.company || '—')}</span>
         <span class="mgr-commit-prod">${escapeHtml(o.product || '')}</span>
-        <span class="mgr-commit-amt">${fmt(o.amount)}仟</span>
+        <span class="mgr-commit-amt">${fmt(o.amount)}K</span>
       </div>`).join('');
     const more = group.items.length > 4 ? `<div class="mgr-commit-more">…還有 ${group.items.length - 4} 案</div>` : '';
     return `
       <div class="mgr-commit-block" style="border-left-color:${color}">
         <div class="mgr-commit-head">
           <span class="mgr-commit-label">${label}</span>
-          <span class="mgr-commit-stat">${group.count} 案 · <b>${fmt(group.amount)}仟</b></span>
+          <span class="mgr-commit-stat">${group.count} 案 · <b>${fmt(group.amount)}K</b></span>
         </div>
         <div class="mgr-commit-hint">${hint}</div>
         ${items || '<div class="mgr-commit-empty">本月無此類案件</div>'}
@@ -8184,14 +8184,14 @@ function renderMgrTopCust(list) {
       responsive: true, maintainAspectRatio: false,
       indexAxis: 'y',
       scales: {
-        x: { stacked: true, title: { display: true, text: '金額（仟）' } },
+        x: { stacked: true, title: { display: true, text: '金額（K）' } },
         y: { stacked: true }
       },
       plugins: {
         legend: { position: 'bottom' },
         tooltip: {
           callbacks: {
-            label: (c) => `${c.dataset.label}：${Number(c.parsed.x).toLocaleString('zh-TW')} 仟`,
+            label: (c) => `${c.dataset.label}：${Number(c.parsed.x).toLocaleString('zh-TW')} K`,
             footer: (items) => {
               const idx = items[0].dataIndex;
               return `共 ${list[idx].count} 件商機`;
@@ -8270,7 +8270,7 @@ function renderCampaignCards() {
             <div class="campaign-stat-val">${c.leadCount > 0 ? convRate + '%' : '—'}</div>
             <div class="campaign-stat-lbl">轉換率</div>
           </div>
-          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}仟</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
+          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}K</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
         </div>
         ${c.targetCount > 0 ? `
           <div style="margin-top:10px">
@@ -8643,8 +8643,8 @@ function renderExecProduct(data) {
           <tr style="background:#fafafa;border-bottom:2px solid #eee">
             <th ${thStyle('category')}>產品線 / BU${sortArrow('category')}</th>
             <th ${thStyle('count')}>商機數${sortArrow('count')}</th>
-            <th ${thStyle('pipelineAmount')}>在手金額(仟)${sortArrow('pipelineAmount')}</th>
-            <th ${thStyle('wonAmount')}>成交金額(仟)${sortArrow('wonAmount')}</th>
+            <th ${thStyle('pipelineAmount')}>在手金額(K)${sortArrow('pipelineAmount')}</th>
+            <th ${thStyle('wonAmount')}>成交金額(K)${sortArrow('wonAmount')}</th>
             <th ${thStyle('winRate')}>Win Rate${sortArrow('winRate')}</th>
             <th ${thStyle('avgGrossMargin')}>平均毛利率${sortArrow('avgGrossMargin')}</th>
           </tr>
