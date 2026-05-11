@@ -112,6 +112,7 @@
     .badge-manager1 { background: #fce4ec; color: #c2185b; }
     .badge-manager2 { background: #f3e5f5; color: #7b1fa2; }
     .badge-secretary { background: #e0f7fa; color: #00838f; }
+    .badge-tecopm    { background: #ede9fe; color: #6d28d9; }
     .badge-active   { background: #e6f4ea; color: #1e7e34; }
     .badge-inactive { background: #fce8e6; color: #c62828; }
     /* ── Toggle Switch ── */
@@ -1524,7 +1525,21 @@
             <option value="manager1">一級主管</option>
             <option value="executive">董事長/總經理</option>
             <option value="admin">系統管理員</option>
+            <option value="tecopm">集團PM（唯讀）</option>
           </select>
+        </div>
+        <!-- 集團PM 專屬欄位（其他角色隱藏）-->
+        <div class="form-group" id="tecopmFieldGroup" style="display:none">
+          <label>查看的業務 <span style="color:#ef4444;font-size:12px">*</span></label>
+          <select id="fieldViewOwnerScope">
+            <option value="">— 請選擇 —</option>
+          </select>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">集團PM 只能看這位業務名下的資料</div>
+          <label style="margin-top:12px;display:block">查看的集團 <span style="color:#ef4444;font-size:12px">*</span></label>
+          <select id="fieldViewGroupId">
+            <option value="">— 請選擇 —</option>
+          </select>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">只能看這個集團 memberCompanies 名單內公司的資料</div>
         </div>
         <div class="form-group" id="buFieldGroup">
           <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*至少選一個（可複選）</span></label>
@@ -1548,10 +1563,23 @@
           function onRoleChange() {
             const role = document.getElementById('fieldRole').value;
             const isCrossBu = role === 'admin' || role === 'executive';
+            const isTecoPm  = role === 'tecopm';
             const cbs = document.querySelectorAll('#buCheckboxWrap .bu-cb');
             const hint = document.getElementById('buRequiredHint');
             const crossHint = document.getElementById('buCrossHint');
             const wrap = document.getElementById('buCheckboxWrap');
+            const buGroup = document.getElementById('buFieldGroup');
+            const tecopmGroup = document.getElementById('tecopmFieldGroup');
+
+            // 集團PM：完全隱藏 BU + 顯示 tecopm 欄位
+            if (isTecoPm) {
+              buGroup.style.display = 'none';
+              tecopmGroup.style.display = '';
+              return;
+            }
+            buGroup.style.display = '';
+            tecopmGroup.style.display = 'none';
+
             if (isCrossBu) {
               cbs.forEach(cb => { cb.checked = false; cb.disabled = true; });
               wrap.style.opacity = '.4';
@@ -1947,16 +1975,19 @@
     }
 
     function renderUserTable() {
-      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員'};
+      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）'};
       const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
       $('userTableBody').innerHTML = allUsers.map(u => {
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
-        const buCell = buArr.length === 0
-          ? `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`
-          : buArr.map(b => {
-              const c = BU_BADGE[b] || '#6b7280';
-              return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${b}</span>`;
-            }).join('');
+        // 集團PM：顯示「依集團限制」並把 viewOwnerScope 寫上
+        const buCell = u.role === 'tecopm'
+          ? `<span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px" title="只看 ${u.viewOwnerScope || '?'} 名下、且公司在指定集團內的資料">🔒 看 ${u.viewOwnerScope || '?'} ／ 集團限制</span>`
+          : (buArr.length === 0
+            ? `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`
+            : buArr.map(b => {
+                const c = BU_BADGE[b] || '#6b7280';
+                return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${b}</span>`;
+              }).join(''));
         return `
         <tr>
           <td><strong>${u.username}</strong></td>
@@ -2032,8 +2063,36 @@
       return Array.from(document.querySelectorAll('#buCheckboxWrap .bu-cb:checked')).map(cb => cb.value);
     }
 
+    // 載入 tecopm 兩個下拉所需資料（業務員清單 + 全系統集團清單）
+    async function loadTecopmOptions() {
+      // 業務員清單：用 allUsers 過濾 active 且非 tecopm 自己
+      const ownerSel = $('fieldViewOwnerScope');
+      ownerSel.innerHTML = '<option value="">— 請選擇 —</option>';
+      allUsers.filter(u => u.active !== false && u.role !== 'tecopm').forEach(u => {
+        const o = document.createElement('option');
+        o.value = u.username;
+        o.textContent = `${u.displayName || u.username} (${u.username}, ${u.role || 'user'})`;
+        ownerSel.appendChild(o);
+      });
+      // 集團清單：呼叫 /api/admin/all-groups
+      const groupSel = $('fieldViewGroupId');
+      groupSel.innerHTML = '<option value="">— 請選擇 —</option>';
+      try {
+        const r = await adminFetch(`${API}/admin/all-groups`);
+        if (r.ok) {
+          const groups = await r.json();
+          groups.forEach(g => {
+            const o = document.createElement('option');
+            o.value = g.id;
+            o.textContent = `${g.name}（owner: ${g.owner}, ${g.memberCount} 家公司）`;
+            groupSel.appendChild(o);
+          });
+        }
+      } catch { /* ignore */ }
+    }
+
     // ── 新增帳號 ──
-    $('addUserBtn').addEventListener('click', () => {
+    $('addUserBtn').addEventListener('click', async () => {
       $('userModalTitle').textContent = '新增帳號';
       $('editUsername').value = '';
       $('fieldUsername').value = '';
@@ -2046,11 +2105,14 @@
       $('fieldActive').value = 'true';
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
+      await loadTecopmOptions();
+      $('fieldViewOwnerScope').value = '';
+      $('fieldViewGroupId').value = '';
       onRoleChange();
       $('userModal').classList.add('open');
     });
 
-    function openEditUser(username) {
+    async function openEditUser(username) {
       const u = allUsers.find(x => x.username === username);
       if (!u) return;
       $('userModalTitle').textContent = '編輯帳號';
@@ -2064,6 +2126,9 @@
       $('fieldActive').value = u.active ? 'true' : 'false';
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
+      await loadTecopmOptions();
+      $('fieldViewOwnerScope').value = u.viewOwnerScope || '';
+      $('fieldViewGroupId').value    = u.viewGroupId    || '';
       onRoleChange();
       $('userModal').classList.add('open');
     }
@@ -2077,10 +2142,19 @@
       const isEdit = !!editUn;
       const role = $('fieldRole').value;
       const isCrossBu = role === 'admin' || role === 'executive';
-      const buArr = isCrossBu ? null : getBuCheckboxes();
-      if (!isCrossBu && (!buArr || buArr.length === 0)) {
+      const isTecoPm  = role === 'tecopm';
+      const buArr = (isCrossBu || isTecoPm) ? null : getBuCheckboxes();
+      if (!isCrossBu && !isTecoPm && (!buArr || buArr.length === 0)) {
         showToast('請至少勾選一個 BU');
         return;
+      }
+      // 集團PM 必填校驗
+      let viewOwnerScope = null, viewGroupId = null;
+      if (isTecoPm) {
+        viewOwnerScope = $('fieldViewOwnerScope').value;
+        viewGroupId    = $('fieldViewGroupId').value;
+        if (!viewOwnerScope) { showToast('請選擇查看的業務'); return; }
+        if (!viewGroupId)    { showToast('請選擇查看的集團'); return; }
       }
       const payload = {
         displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
@@ -2088,7 +2162,8 @@
         bu: buArr,
         active: $('fieldActive').value === 'true',
         canDownloadContacts: $('fieldCanDownload').checked,
-        canSetTargets: $('fieldCanTargets').checked
+        canSetTargets: $('fieldCanTargets').checked,
+        ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
       try {
         let r;

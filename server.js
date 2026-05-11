@@ -408,6 +408,24 @@ app.use((req, res, next) => {
   });
 });
 
+// ── 集團PM（tecopm）唯讀 + 路徑白名單 middleware ────────────
+// tecopm 角色：1) 只能 GET（不可 POST/PUT/DELETE）2) 只能存取以下 API 端點
+const TECOPM_ALLOWED_PATHS = new Set([
+  '/api/me', '/api/me/permissions', '/api/logout',
+  '/api/opportunities',     // 商機 + 預測表共用
+  '/api/contacts',          // 客戶/聯絡人
+  '/api/visits',            // 拜訪記錄
+  '/api/groups',            // 載入 group → 取 memberCompanies
+  '/api/usermap',           // 預測表業務員名稱對應
+]);
+app.use((req, res, next) => {
+  if (req.session?.user?.role !== 'tecopm') return next();
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
+  if (!TECOPM_ALLOWED_PATHS.has(req.path)) return res.status(403).json({ error: '無權存取此資源' });
+  next();
+});
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -427,22 +445,38 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
+    const role = user.role || 'user';
+
+    // 集團PM 額外查詢 group 名稱（顯示在頂部 badge 用）
+    let tecopmExtra = {};
+    if (role === 'tecopm') {
+      const data = db.load();
+      const grp = (data.groups || []).find(g => g.id === user.viewGroupId);
+      tecopmExtra = {
+        viewOwnerScope: user.viewOwnerScope || null,
+        viewGroupId:    user.viewGroupId    || null,
+        viewGroupName:  grp?.name || ''
+      };
+    }
+
     req.session.user = {
       username: user.username,
       displayName: user.displayName,
-      role: user.role || 'user',
+      role,
       bu: userBus,
       mustChangePassword: !!pwReason,
-      passwordChangeReason: pwReason
+      passwordChangeReason: pwReason,
+      ...tecopmExtra
     };
     writeLog('LOGIN', username, username, `登入成功${pwReason ? `（需更換密碼:${pwReason}）` : ''}`, req);
     res.json({
       success: true,
       displayName: user.displayName,
-      role: user.role || 'user',
+      role,
       bu: userBus,
       mustChangePassword: !!pwReason,
-      passwordChangeReason: pwReason
+      passwordChangeReason: pwReason,
+      ...tecopmExtra
     });
   } catch (e) {
     console.error('[LOGIN ERROR]', e);
@@ -1170,6 +1204,8 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
 
 // 合法 BU 值
 const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+// 集團PM（tecopm）= 唯讀角色，不走 BU 過濾、改用 viewOwnerScope + viewGroupId 二維過濾
+const READONLY_ROLES = ['tecopm'];
 // 跨 BU 角色（bu 應為 null）
 const CROSS_BU_ROLES = ['admin', 'executive'];
 
@@ -1183,7 +1219,10 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     bu: normalizeBu(u.bu),
     canDownloadContacts: u.canDownloadContacts || false,
     canSetTargets: u.canSetTargets || false,
-    active: u.active !== false
+    active: u.active !== false,
+    // 集團PM 專用欄位（其他角色為 undefined）
+    viewOwnerScope: u.viewOwnerScope || null,
+    viewGroupId:    u.viewGroupId    || null
   }));
   res.json(users);
 });
@@ -1191,6 +1230,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 // 校驗並回傳 finalBu（陣列）；錯誤時回傳 { error }
 function validateBuInput(role, buInput) {
   if (CROSS_BU_ROLES.includes(role)) return { bu: null }; // 跨 BU 角色一律 null
+  if (READONLY_ROLES.includes(role)) return { bu: null }; // 唯讀角色不走 BU，一律 null
   const arr = Array.isArray(buInput) ? buInput : (buInput ? [buInput] : []);
   const cleaned = [...new Set(arr.filter(b => VALID_BUS.includes(b)))];
   if (cleaned.length === 0) {
@@ -1201,7 +1241,8 @@ function validateBuInput(role, buInput) {
 
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
-  const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets } = req.body;
+  const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets,
+          viewOwnerScope, viewGroupId } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
@@ -1211,6 +1252,19 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const finalRole = role || 'user';
   const buCheck = validateBuInput(finalRole, bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+
+  // 集團PM 必須指定 viewOwnerScope + viewGroupId
+  if (finalRole === 'tecopm') {
+    if (!viewOwnerScope) return res.status(400).json({ error: '集團PM 必須指定查看的業務（viewOwnerScope）' });
+    if (!viewGroupId)    return res.status(400).json({ error: '集團PM 必須指定查看的集團（viewGroupId）' });
+    if (!auth.users.find(u => u.username === viewOwnerScope)) {
+      return res.status(400).json({ error: `查看的業務 ${viewOwnerScope} 不存在` });
+    }
+    const data = db.load();
+    if (!(data.groups || []).find(g => g.id === viewGroupId)) {
+      return res.status(400).json({ error: '指定的集團不存在' });
+    }
+  }
 
   const hashedPassword = await bcrypt.hash(password, 12);
   const newUser = {
@@ -1223,12 +1277,14 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     canSetTargets: !!canSetTargets,
     active: true,
     createdAt: new Date().toISOString(),
-    mustChangePassword: true   // 第一次登入必須更換密碼
+    mustChangePassword: true,   // 第一次登入必須更換密碼
+    ...(finalRole === 'tecopm' ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${buLabel}`, req);
+  const scopeLabel = finalRole === 'tecopm' ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${buLabel}${scopeLabel}`, req);
   res.json({ success: true });
 });
 
@@ -1237,7 +1293,8 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
-  const { displayName, role, bu, canDownloadContacts, canSetTargets, active } = req.body;
+  const { displayName, role, bu, canDownloadContacts, canSetTargets, active,
+          viewOwnerScope, viewGroupId } = req.body;
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
   if (role !== undefined)               auth.users[idx].role = role;
   const effectiveRole = auth.users[idx].role;
@@ -1249,6 +1306,29 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
   if (active !== undefined)             auth.users[idx].active = !!active;
+
+  // 集團PM 唯讀範圍欄位
+  if (effectiveRole === 'tecopm') {
+    if (viewOwnerScope !== undefined) auth.users[idx].viewOwnerScope = viewOwnerScope || null;
+    if (viewGroupId    !== undefined) auth.users[idx].viewGroupId    = viewGroupId    || null;
+    // 校驗（更新後值）
+    const finalScope = auth.users[idx].viewOwnerScope;
+    const finalGid   = auth.users[idx].viewGroupId;
+    if (!finalScope) return res.status(400).json({ error: '集團PM 必須指定查看的業務' });
+    if (!finalGid)   return res.status(400).json({ error: '集團PM 必須指定查看的集團' });
+    if (!auth.users.find(u => u.username === finalScope)) {
+      return res.status(400).json({ error: `查看的業務 ${finalScope} 不存在` });
+    }
+    const data = db.load();
+    if (!(data.groups || []).find(g => g.id === finalGid)) {
+      return res.status(400).json({ error: '指定的集團不存在' });
+    }
+  } else {
+    // 角色改回非 tecopm 時清掉相關欄位避免殘留
+    delete auth.users[idx].viewOwnerScope;
+    delete auth.users[idx].viewGroupId;
+  }
+
   saveAuth(auth);
   const buLabel = auth.users[idx].bu ? auth.users[idx].bu.join('+') : '全公司';
   writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）`, req);
@@ -1459,6 +1539,12 @@ function getViewableOwners(req, dataType) {
     return auth.users.map(u => u.username);
   }
 
+  // 集團PM（唯讀）：只能看設定的 viewOwnerScope 那位 owner 的資料
+  if (role === 'tecopm') {
+    const ownerScope = req.session.user.viewOwnerScope;
+    return ownerScope ? [ownerScope] : [];
+  }
+
   // 同 BU 判斷：viewer 的任一 BU 與目標的任一 BU 有交集
   const sameBu = u => {
     if (!myBus.length) return false;
@@ -1518,6 +1604,8 @@ function inferItemBu(item, authOrUsersArr) {
 function filterByBu(req, items) {
   const role = req.session.user.role;
   if (role === 'admin' || role === 'executive') return items;
+  // 唯讀角色（tecopm）不走 BU 過濾，後續會由 filterByViewGroup() 用集團 memberCompanies 做公司過濾
+  if (READONLY_ROLES.includes(role)) return items;
   const myBus = getMyBus(req);
   const myUsername = req.session.user.username;
   if (!myBus.length) return items.filter(it => it.owner === myUsername);
@@ -1526,6 +1614,24 @@ function filterByBu(req, items) {
     if (item.owner === myUsername) return true;       // 自己的資料一律可見
     const itemBu = inferItemBu(item, auth);
     return itemBu && myBus.includes(itemBu);
+  });
+}
+
+// 集團PM（tecopm）的「集團公司」過濾：只看 viewGroupId 對應 group 的 memberCompanies
+// 非 tecopm 直接放行；getCompany(item, data) 回傳該筆資料對應的公司名稱
+function filterByViewGroup(req, items, getCompany) {
+  const role = req.session?.user?.role;
+  if (!READONLY_ROLES.includes(role)) return items;
+  const gid = req.session.user.viewGroupId;
+  if (!gid) return [];                         // 沒設定 group → 看不到任何資料（fail-safe）
+  const data = db.load();
+  const group = (data.groups || []).find(g => g.id === gid);
+  if (!group) return [];                       // group 已被刪除 → 看不到
+  const allowed = new Set(group.memberCompanies || []);
+  if (!allowed.size) return [];                // 集團 memberCompanies 為空 → 看不到
+  return items.filter(it => {
+    const co = getCompany(it, data);
+    return co && allowed.has(co);
   });
 }
 
@@ -1622,6 +1728,7 @@ app.get('/api/contacts', requireAuth, (req, res) => {
   const owners = getViewableOwners(req, 'contacts');
   let contacts = (data.contacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
   contacts = filterByBu(req, contacts);
+  contacts = filterByViewGroup(req, contacts, c => c.company);   // tecopm: 限定 group memberCompanies
   if (search) {
     const kw = search.toLowerCase();
     contacts = contacts.filter(c =>
@@ -1792,11 +1899,28 @@ app.delete('/api/contacts/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Admin: 列出全系統所有集團（供後台設定 tecopm 的 viewGroupId）──
+app.get('/api/admin/all-groups', requireAdmin, (req, res) => {
+  const data = db.load();
+  res.json((data.groups || []).map(g => ({
+    id: g.id,
+    name: g.name,
+    owner: g.owner,
+    memberCount: (g.memberCompanies || []).length
+  })));
+});
+
 // ── 集團 CRUD ──────────────────────────────────────────────
 app.get('/api/groups', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const role = req.session.user.role;
   const data = db.load();
   if (!data.groups) data.groups = [];
+  // 集團PM（tecopm）：只能看自己 viewGroupId 對應的那一筆 group（用於前端取 memberCompanies）
+  if (role === 'tecopm') {
+    const gid = req.session.user.viewGroupId;
+    return res.json(data.groups.filter(g => g.id === gid));
+  }
   res.json(data.groups.filter(g => g.owner === owner));
 });
 
@@ -1904,7 +2028,13 @@ app.get('/api/visits', requireAuth, (req, res) => {
   if (role === 'secretary') return res.json([]);
   const owners = getViewableOwners(req, 'visits');
   const items = (data.visits || []).filter(v => owners.includes(v.owner) && !v.deleted);
-  res.json(filterByBu(req, items));
+  let filtered = filterByBu(req, items);
+  // tecopm: 拜訪本身無 company 欄位，要從 contactId join contacts 取公司名再用 group 過濾
+  filtered = filterByViewGroup(req, filtered, (v, d) => {
+    const c = (d.contacts || []).find(c => c.id === v.contactId);
+    return c?.company || v.company || '';
+  });
+  res.json(filtered);
 });
 
 app.post('/api/visits', requireAuth, (req, res) => {
@@ -2359,7 +2489,9 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();
   const owners = getViewableOwners(req, 'opportunities');
   const items = (data.opportunities || []).filter(o => owners.includes(o.owner));
-  res.json(filterByBu(req, items));
+  let filtered = filterByBu(req, items);
+  filtered = filterByViewGroup(req, filtered, o => o.company);    // tecopm: 限定 group memberCompanies
+  res.json(filtered);
 });
 
 app.post('/api/opportunities', requireAuth, (req, res) => {
@@ -2786,6 +2918,10 @@ const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, Won: 100 };
 const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', Won: 'Won' };
 
 app.get('/api/forecast/export', requireAuth, (req, res) => {
+  // 集團PM 不可下載 Excel（深度防禦：tecopm middleware 已用路徑白名單擋下，這裡再多一層）
+  if (req.session.user.role === 'tecopm') {
+    return res.status(403).json({ error: '集團PM 不可下載 Excel' });
+  }
   const yr   = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
   const user = req.session.user;

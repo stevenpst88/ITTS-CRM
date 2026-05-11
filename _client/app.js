@@ -31,6 +31,82 @@ async function loadPermissions() {
 }
 
 function applyPermissions() {
+  // ── 集團PM（tecopm）— 唯讀角色，最高優先級處理 ──────────────
+  // 只允許 4 個 nav：銷售預測 / 商機列表 / 客戶 / 拜訪
+  if (userPermissions.role === 'tecopm') {
+    document.body.classList.add('role-tecopm');
+    // CSS 保險：注入一段樣式，確保動作按鈕即使被 modal 開啟邏輯重新 display 也仍然隱藏
+    if (!document.getElementById('tecopmStyleGuard')) {
+      const st = document.createElement('style');
+      st.id = 'tecopmStyleGuard';
+      st.textContent = `
+        body.role-tecopm #viewEditBtn,
+        body.role-tecopm #viewDeleteBtn,
+        body.role-tecopm #visitViewEditBtn,
+        body.role-tecopm #visitViewDeleteBtn,
+        body.role-tecopm #cOppSaveBtn,
+        body.role-tecopm #visitSaveBtn,
+        body.role-tecopm #contractSaveBtn,
+        body.role-tecopm #leadModalSaveBtn,
+        body.role-tecopm #campaignModalSaveBtn,
+        body.role-tecopm #groupModalSaveBtn,
+        body.role-tecopm #groupModalDeleteBtn,
+        body.role-tecopm #groupListAddBtn,
+        body.role-tecopm #saveBtn,
+        body.role-tecopm #saveTargetBtn,
+        body.role-tecopm #addContactBtn,
+        body.role-tecopm #addBtn,
+        body.role-tecopm #addVisitBtn,
+        body.role-tecopm #addOppBtn,
+        body.role-tecopm #addProspectBtn,
+        body.role-tecopm #addCampaignBtn,
+        body.role-tecopm #addLeadBtn,
+        body.role-tecopm #addQuotationBtn,
+        body.role-tecopm #addQuoteBtn,
+        body.role-tecopm #addContractBtn,
+        body.role-tecopm #addSapContractBtn,
+        body.role-tecopm #addReceivableBtn,
+        body.role-tecopm #addCallinBtn,
+        body.role-tecopm #newContactBtn,
+        body.role-tecopm #exportBtn,
+        body.role-tecopm #forecastExportBtn,
+        body.role-tecopm #manageGroupsBtn,
+        body.role-tecopm #manageGroupsBtnP,
+        body.role-tecopm #adminPanelLink {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(st);
+    }
+
+    const TECOPM_NAV_ALLOW = new Set(['navForecast','navPipeline','navContacts','navVisits']);
+    document.querySelectorAll('.sidebar-nav-item, .sidebar-nav-group').forEach(el => {
+      const id = el.id;
+      if (!id) return;
+      if (el.classList.contains('sidebar-nav-item') && !el.classList.contains('sidebar-nav-group-hd')) {
+        el.style.display = TECOPM_NAV_ALLOW.has(id) ? '' : 'none';
+      } else {
+        // group 容器：一律隱藏（合約 / 帳務群組對 tecopm 都不需要）
+        el.style.display = 'none';
+      }
+    });
+
+    // 隱藏管理者後台、名單移轉、Excel 匯出、集團管理按鈕
+    ['adminPanelLink','exportBtn','manageGroupsBtn','manageGroupsBtnP','forecastExportBtn',
+     // 所有「新增」按鈕（tecopm 不可寫入）
+     'addContactBtn','addBtn','addVisitBtn','addOppBtn','addProspectBtn','addCampaignBtn','addLeadBtn',
+     'addQuotationBtn','addQuoteBtn','addContractBtn','addSapContractBtn','addReceivableBtn',
+     'addCallinBtn','newContactBtn',
+     // 所有「儲存 / 編輯 / 刪除」按鈕（modal 內）
+     'viewEditBtn','viewDeleteBtn','visitViewEditBtn','visitViewDeleteBtn',
+     'cOppSaveBtn','visitSaveBtn','contractSaveBtn','leadModalSaveBtn','campaignModalSaveBtn',
+     'groupModalSaveBtn','groupModalDeleteBtn','groupListAddBtn','saveBtn','saveTargetBtn'
+    ].forEach(id => {
+      const el = $(id); if (el) el.style.display = 'none';
+    });
+    return;   // tecopm 不執行後續其他角色邏輯
+  }
+
   // 業績目標：只有有權限才能儲存
   const saveTargetBtn = $('saveTargetBtn');
   if (saveTargetBtn) {
@@ -2319,18 +2395,26 @@ async function initUser() {
     // 頂部工具列也顯示角色 + BU 徽章（方便快速核對權限狀態）
     const topbarBadge = document.getElementById('topbarUserBadge');
     if (topbarBadge) {
-      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'業務', marketing:'行銷' };
+      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）' };
       const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
-      const isCross = user.role === 'admin' || user.role === 'executive';
-      const buHtml = isCross
-        ? `<span style="background:${BU_C['全公司']}20;color:${BU_C['全公司']};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">全公司</span>`
-        : myBus.map(b => {
-            const c = BU_C[b] || '#6b7280';
-            return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">${b}</span>`;
-          }).join(' ') || `<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">⚠️ 未設定 BU</span>`;
-      topbarBadge.innerHTML = `
-        <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL[user.role] || user.role}</span>
-        ${buHtml}`;
+      // 集團PM：badge 顯示集團名稱（取代 BU 徽章）
+      if (user.role === 'tecopm') {
+        const groupName = user.viewGroupName || '未設定集團';
+        topbarBadge.innerHTML = `
+          <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL.tecopm}</span>
+          <span style="background:#6b728020;color:#6b7280;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">🔒 ${escapeHtml(groupName)}</span>`;
+      } else {
+        const isCross = user.role === 'admin' || user.role === 'executive';
+        const buHtml = isCross
+          ? `<span style="background:${BU_C['全公司']}20;color:${BU_C['全公司']};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">全公司</span>`
+          : myBus.map(b => {
+              const c = BU_C[b] || '#6b7280';
+              return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">${b}</span>`;
+            }).join(' ') || `<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">⚠️ 未設定 BU</span>`;
+        topbarBadge.innerHTML = `
+          <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL[user.role] || user.role}</span>
+          ${buHtml}`;
+      }
     }
     const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'', marketing:'行銷人員' };
     const roleLabel = ROLE_LABEL[user.role] || '';
@@ -2361,7 +2445,10 @@ async function initUser() {
     if (isFirstLoad) {
       sessionStorage.removeItem('justLoggedIn');
       const role = user.role || 'user';
-      if (role === 'manager1' || role === 'manager2' || role === 'executive') {
+      if (role === 'tecopm') {
+        // 集團PM → 一律進銷售預測報表
+        showSection('forecast');
+      } else if (role === 'manager1' || role === 'manager2' || role === 'executive') {
         // 一級 / 二級主管 / 董總 → 主管首頁
         showSection('managerHome');
       } else {
@@ -2374,6 +2461,9 @@ async function initUser() {
           showDashboard();
         }
       }
+    } else if ((user.role || 'user') === 'tecopm') {
+      // 非首次載入時的安全網：tecopm 一律強制進預測表
+      showSection('forecast');
     }
   } catch { window.location.href = '/login.html'; }
 }
@@ -4947,6 +5037,12 @@ function initForecastYearSel() {
 }
 
 function initForecastSalesFilter() {
+  // 集團PM 只看一位 owner（usermap 後端只回傳那一位），下拉沒意義 → 直接隱藏
+  if (userPermissions.role === 'tecopm') {
+    const salesFilter0 = $('forecastSalesFilter');
+    if (salesFilter0) salesFilter0.style.display = 'none';
+    return;
+  }
   const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
   const salesFilter = $('forecastSalesFilter');
 
