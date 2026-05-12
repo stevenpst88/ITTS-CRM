@@ -2283,7 +2283,7 @@ function openView(id) {
 
   html += `
     <div class="view-section">
-      <div class="view-row"><span class="view-label">姓名</span><span class="view-value">${escapeHtml(c.name) || '-'}${c.nameEn ? `<span style="color:#888;font-size:13px;margin-left:8px">${escapeHtml(c.nameEn)}</span>` : ''}${c.isPrimary ? ' <span class="primary-badge">&#11088; 主要聯繫窗口</span>' : ''}</span></div>
+      <div class="view-row"><span class="view-label">姓名</span><span class="view-value">${escapeHtml(c.name) || '-'}${c.nameEn ? `<span class="muted-13" style="margin-left:8px">${escapeHtml(c.nameEn)}</span>` : ''}${c.isPrimary ? ' <span class="primary-badge">&#11088; 主要聯繫窗口</span>' : ''}</span></div>
       <div class="view-row"><span class="view-label">公司</span><span class="view-value">${escapeHtml(c.company) || '-'}</span></div>
       <div class="view-row"><span class="view-label">統編</span><span class="view-value">${escapeHtml(c.taxId) || '-'}</span></div>
       <div class="view-row"><span class="view-label">職稱</span><span class="view-value">${escapeHtml(c.title) || '-'}</span></div>
@@ -2293,7 +2293,7 @@ function openView(id) {
     </div>
     <div class="view-section">
       <div class="view-section-title">聯絡方式</div>
-      <div class="view-row"><span class="view-label">電話</span><span class="view-value">${c.phone ? `<a href="tel:${escapeHtml(c.phone)}">${escapeHtml(c.phone)}</a>` : '-'}${c.ext ? `<span style="color:#888;font-size:13px;margin-left:8px">分機 ${escapeHtml(c.ext)}</span>` : ''}</span></div>
+      <div class="view-row"><span class="view-label">電話</span><span class="view-value">${c.phone ? `<a href="tel:${escapeHtml(c.phone)}">${escapeHtml(c.phone)}</a>` : '-'}${c.ext ? `<span class="muted-13" style="margin-left:8px">分機 ${escapeHtml(c.ext)}</span>` : ''}</span></div>
       <div class="view-row"><span class="view-label">手機</span><span class="view-value">${c.mobile ? `<a href="tel:${escapeHtml(c.mobile)}">${escapeHtml(c.mobile)}</a>` : '-'}</span></div>
       <div class="view-row"><span class="view-label">Email</span><span class="view-value">${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : '-'}</span></div>
       <div class="view-row"><span class="view-label">地址</span><span class="view-value">${escapeHtml(c.address) || '-'}</span></div>
@@ -3023,7 +3023,7 @@ function openVisitView(id) {
   currentVisitId = id;
   const contact = allContacts.find(c => c.id === v.contactId);
   const contactLabel = contact
-    ? `${escapeHtml(contact.name)}${contact.company ? '<span style="color:#888;font-size:13px;margin-left:6px">' + escapeHtml(contact.company) + '</span>' : ''}`
+    ? `${escapeHtml(contact.name)}${contact.company ? '<span class="visit-contact-co" style="font-size:13px;margin-left:6px">' + escapeHtml(contact.company) + '</span>' : ''}`
     : escapeHtml(v.contactName) || '-';
   $v('visitViewTitle').textContent = v.topic || '拜訪記錄';
   $v('visitViewBody').innerHTML = `
@@ -3033,8 +3033,8 @@ function openVisitView(id) {
       <div class="view-row"><span class="view-label">聯絡人</span><span class="view-value">${contactLabel}</span></div>
       <div class="view-row"><span class="view-label">主題</span><span class="view-value" style="font-weight:700">${escapeHtml(v.topic) || '-'}</span></div>
     </div>
-    ${v.content ? `<div class="view-section"><div class="view-section-title">會談內容</div><div style="font-size:14px;color:#333;line-height:1.7;white-space:pre-wrap">${escapeHtml(v.content)}</div></div>` : ''}
-    ${v.nextAction ? `<div class="view-section"><div class="view-section-title">下一步行動</div><div style="font-size:14px;color:#34a853;font-weight:600;line-height:1.7;white-space:pre-wrap">${escapeHtml(v.nextAction)}</div></div>` : ''}`;
+    ${v.content ? `<div class="view-section"><div class="view-section-title">會談內容</div><div class="visit-detail-content" style="font-size:14px;line-height:1.7;white-space:pre-wrap">${escapeHtml(v.content)}</div></div>` : ''}
+    ${v.nextAction ? `<div class="view-section"><div class="view-section-title">下一步行動</div><div class="visit-detail-next" style="font-size:14px;font-weight:600;line-height:1.7;white-space:pre-wrap">${escapeHtml(v.nextAction)}</div></div>` : ''}`;
   $v('visitViewOverlay').classList.add('open');
 }
 
@@ -3521,7 +3521,7 @@ async function loadManagerAchievement(year) {
     const { rows } = await res.json();
     const container = $('managerAchTable');
 
-    if (!rows.length) { container.innerHTML = '<div style="color:#aaa;text-align:center;padding:20px">暫無資料</div>'; return; }
+    if (!rows.length) { container.innerHTML = '<div class="empty-msg" style="text-align:center;padding:20px">暫無資料</div>'; return; }
 
     const fmt = n => (n || 0).toLocaleString();
     const rateColor = r => r === null ? '#bbb' : r >= 100 ? '#0a8a4a' : r >= 70 ? '#1a73e8' : r >= 40 ? '#f59e0b' : '#e53e3e';
@@ -3606,7 +3606,7 @@ async function loadManagerAchievement(year) {
           ${budgetBtn}
         </div>` : '';
       return `
-      <div class="ach-gauge-card" style="background:#fff;border:1.5px solid #e8ecf4;border-radius:14px;padding:14px 16px;width:230px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div class="ach-gauge-card gauge-card-light" style="border-radius:14px;padding:14px 16px;width:230px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
         <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${r.displayName}${badge}
         </div>
@@ -3693,7 +3693,7 @@ async function loadManagerAchievement(year) {
 
     container.innerHTML = visibleRoots.length
       ? `<ul class="org-tree">${visibleRoots.map(renderNode).join('')}</ul>`
-      : '<div style="color:#aaa;text-align:center;padding:20px">暫無團隊資料</div>';
+      : '<div class="empty-msg" style="text-align:center;padding:20px">暫無團隊資料</div>';
 
     // ── Inline 編輯：點擊目標欄位 ──
     container.querySelectorAll('.mgr-target-cell').forEach(cell => {
@@ -5513,7 +5513,7 @@ function renderLostOppTable() {
 
   const tbody = $('lostOppTbody');
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#aaa">沒有符合條件的流失商機</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-msg" style="text-align:center;padding:40px">沒有符合條件的流失商機</td></tr>`;
     return;
   }
 
@@ -7809,10 +7809,10 @@ function renderExecConversion(d) {
 
   el.innerHTML = summaryHtml + funnelHtml + `
     <div class="exec-section-title">📋 階段轉換明細</div>
-    <div style="overflow-x:auto;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-top:8px">
+    <div class="view-stat-card stage-conv-wrap" style="overflow-x:auto;border-radius:10px;margin-top:8px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
-          <tr style="background:#fafafa;border-bottom:2px solid #eee">
+          <tr class="stage-conv-thead">
             <th style="padding:10px 16px;text-align:left;font-weight:600">轉換路徑</th>
             <th style="padding:10px 16px;text-align:right;font-weight:600">進入數</th>
             <th style="padding:10px 16px;text-align:right;font-weight:600">晉升數</th>
@@ -8253,7 +8253,7 @@ function renderCampaignCards() {
     (!statusF || c.status === statusF)
   );
   if (!list.length) {
-    container.innerHTML = '<div style="grid-column:1/-1;padding:48px;text-align:center;color:#aaa">尚無行銷活動，點「新增活動」開始建立</div>';
+    container.innerHTML = '<div class="empty-msg" style="grid-column:1/-1;padding:48px;text-align:center">尚無行銷活動，點「新增活動」開始建立</div>';
     return;
   }
   const role = userPermissions.role;
@@ -8425,7 +8425,7 @@ function renderLeadsTable() {
   const tbody = $('leadsTbody');
   if (!tbody) return;
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#aaa">暫無 Lead 資料</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg" style="text-align:center;padding:32px">暫無 Lead 資料</td></tr>';
     return;
   }
 

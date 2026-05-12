@@ -334,14 +334,14 @@
               </div>
             </div>
             <div class="stat-card" id="statCardA">
-              <div class="stat-icon" style="background:#fce8e6;color:#c5221f">&#128178;</div>
+              <div class="stat-icon stat-badge-red">&#128178;</div>
               <div class="stat-body">
                 <div class="stat-value" id="statCommit">0</div>
                 <div class="stat-label">A｜Commit</div>
               </div>
             </div>
             <div class="stat-card" id="statCardB">
-              <div class="stat-icon" style="background:#fff3e0;color:#e37400">&#128200;</div>
+              <div class="stat-icon stat-badge-orange">&#128200;</div>
               <div class="stat-body">
                 <div class="stat-value" id="statUpside">0</div>
                 <div class="stat-label">B｜Upside</div>
@@ -636,7 +636,7 @@
             <!-- 業務人員篩選（主管/秘書才顯示） -->
             <div id="prOwnerWrap" style="display:none;align-items:center;gap:6px">
               <span style="font-size:13px;color:#555">👤 業務：</span>
-              <select id="prOwnerSelect" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;background:#fff;cursor:pointer">
+              <select id="prOwnerSelect" class="select-plain" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 8px;cursor:pointer">
                 <option value="">全部業務</option>
               </select>
             </div>
@@ -651,7 +651,7 @@
             <div style="font-size:15px;font-weight:700;color:#333;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #e8e8e8">📅 Pipeline 月度變動</div>
             <div class="pr-controls" style="margin-bottom:16px">
               <label style="font-size:13px;color:#555;font-weight:500">年度：</label>
-              <select id="pdcYearSel" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff;cursor:pointer"></select>
+              <select id="pdcYearSel" class="select-plain" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;cursor:pointer"></select>
               <button class="btn btn-primary btn-sm" id="pdcRefreshBtn" style="margin-left:8px">重新整理</button>
             </div>
             <div class="card" style="padding:0;overflow:auto">
@@ -790,11 +790,11 @@
               <input type="hidden" id="convertLeadId">
               <div class="form-group">
                 <label>客戶</label>
-                <input type="text" id="convertLeadCompany" class="form-control" readonly style="background:#f5f5f5">
+                <input type="text" id="convertLeadCompany" class="form-control input-readonly" readonly>
               </div>
               <div class="form-group">
                 <label>聯絡人</label>
-                <input type="text" id="convertLeadContact" class="form-control" readonly style="background:#f5f5f5">
+                <input type="text" id="convertLeadContact" class="form-control input-readonly" readonly>
               </div>
               <div class="form-group">
                 <label>商機名稱 / 產品 <span style="color:red">*</span></label>
@@ -1127,7 +1127,7 @@
                 <div style="font-weight:700;font-size:16px;color:#1a73e8">📊 業務團隊業績達成率</div>
                 <div style="display:flex;align-items:center;gap:8px">
                   <label style="font-size:13px;color:#555">年度：</label>
-                  <select id="managerAchYear" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px;background:#fff"></select>
+                  <select id="managerAchYear" class="select-plain" style="font-size:13px;border:1px solid #ddd;border-radius:6px;padding:4px 10px"></select>
                 </div>
               </div>
               <div id="managerAchTable"></div>
@@ -1415,7 +1415,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="assignCallinId">
-        <div id="assignCallinInfo" style="background:#f8f9fa;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+        <div id="assignCallinInfo" class="info-card-soft" style="border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
         <div class="form-group">
           <label>指派給業務</label>
           <select id="assignToUser"><option value="">請選擇業務...</option></select>
@@ -1437,7 +1437,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="respondCallinId">
-        <div id="respondCallinInfo" style="background:#f8f9fa;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+        <div id="respondCallinInfo" class="info-card-soft" style="border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
         <div class="form-group">
           <label>聯繫結果</label>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
@@ -2007,11 +2007,11 @@
         <div class="form-grid">
           <div class="form-group full-width">
             <label>客戶公司</label>
-            <input type="text" id="oppEditCompany" readonly style="background:#f8f9fa;color:#888">
+            <input type="text" id="oppEditCompany" class="input-readonly" readonly>
           </div>
           <div class="form-group full-width">
             <label>聯絡人</label>
-            <input type="text" id="oppEditContact" readonly style="background:#f8f9fa;color:#888">
+            <input type="text" id="oppEditContact" class="input-readonly" readonly>
           </div>
           <div class="form-group full-width" id="oppEditBuGroup" style="display:none">
             <label>所屬 BU</label>
@@ -2072,9 +2072,9 @@
         <div id="oppWinRateFactors" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
       <div class="modal-footer" style="justify-content:space-between">
-        <button class="btn" id="oppEditDelete" style="background:#fce8e6;color:#c62828;border:1px solid #f5c6cb">🗑️ 刪除案件</button>
+        <button class="btn btn-soft-danger" id="oppEditDelete">🗑️ 刪除案件</button>
         <div style="display:flex;gap:8px">
-          <button class="btn" id="oppWinRateBtn" style="background:#e8f5e9;color:#1e8e3e;border:1px solid #a8d5b0">🤖 預測贏率</button>
+          <button class="btn btn-soft-success" id="oppWinRateBtn">🤖 預測贏率</button>
           <button class="btn btn-secondary" id="oppEditCancel">取消</button>
           <button class="btn btn-primary" id="oppEditSave">儲存</button>
         </div>
@@ -2090,16 +2090,16 @@
         <button class="modal-close" id="oppDeleteClose">&#10005;</button>
       </div>
       <div class="modal-body">
-        <div style="background:#fce8e6;border-left:4px solid #ea4335;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px;color:#c62828">
+        <div class="alert-soft-error" style="padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
           刪除後案件將移至「流失商機」留存分析，不會永久消失。
         </div>
         <div class="form-group">
           <label>客戶名稱</label>
-          <input type="text" id="oppDeleteCompany" readonly style="background:#f5f5f5;color:#888">
+          <input type="text" id="oppDeleteCompany" class="input-readonly" readonly>
         </div>
         <div class="form-group">
           <label>銷售案名</label>
-          <input type="text" id="oppDeleteProduct" readonly style="background:#f5f5f5;color:#888">
+          <input type="text" id="oppDeleteProduct" class="input-readonly" readonly>
         </div>
         <div class="form-group">
           <label>刪除原因 <span style="color:#ea4335">*</span></label>
@@ -2464,9 +2464,9 @@
           <label style="font-size:13px;font-weight:600;color:#555;display:block;margin-bottom:6px">確認新密碼</label>
           <input type="password" id="changePwConfirm" class="form-control" placeholder="再輸入一次新密碼" autocomplete="new-password">
         </div>
-        <div id="changePwError" style="display:none;background:#fce8e6;color:#c5352a;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
+        <div id="changePwError" class="alert-soft-error" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
-          <button class="btn" id="changePwCancel" style="background:#f0f2f5;color:#333">取消</button>
+          <button class="btn btn-soft-cancel" id="changePwCancel">取消</button>
           <button class="btn btn-primary" id="changePwSubmit">確認更改</button>
         </div>
       </div>
@@ -2544,7 +2544,7 @@
   <div id="mbActualOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeMbActualModal()">
     <div class="modal" style="width:720px;max-width:96vw">
       <div class="modal-header" style="padding:18px 24px 12px;border-bottom:1px solid #f3f4f6">
-        <h2 style="font-size:15px;font-weight:700;color:#111" id="mbActualTitle">✏️ 編輯月度認列金額</h2>
+        <h2 style="font-size:15px;font-weight:700" id="mbActualTitle">✏️ 編輯月度認列金額</h2>
         <button class="modal-close" onclick="closeMbActualModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -2581,7 +2581,7 @@
   <div id="mbBudgetOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeMbBudgetModal()">
     <div class="modal" style="width:720px;max-width:96vw">
       <div class="modal-header" style="padding:18px 24px 12px;border-bottom:1px solid #f3f4f6">
-        <h2 style="font-size:15px;font-weight:700;color:#111" id="mbBudgetTitle">📆 設定月度預算</h2>
+        <h2 style="font-size:15px;font-weight:700" id="mbBudgetTitle">📆 設定月度預算</h2>
         <button class="modal-close" onclick="closeMbBudgetModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -2643,13 +2643,13 @@
     <div class="modal" style="max-width:400px;text-align:center">
       <div class="modal-body" style="padding:32px 24px">
         <div style="font-size:48px;margin-bottom:16px">⏱️</div>
-        <h3 style="margin:0 0 12px;font-size:18px;color:#333">閒置逾時警告</h3>
-        <p style="color:#666;margin:0 0 8px;font-size:14px">您已閒置一段時間，將在</p>
+        <h3 class="idle-title" style="margin:0 0 12px;font-size:18px">閒置逾時警告</h3>
+        <p class="idle-text" style="margin:0 0 8px;font-size:14px">您已閒置一段時間，將在</p>
         <div id="idleCountdown" style="font-size:36px;font-weight:700;color:#e74c3c;margin:12px 0">5:00</div>
-        <p style="color:#666;margin:0 0 24px;font-size:14px">後自動登出</p>
+        <p class="idle-text" style="margin:0 0 24px;font-size:14px">後自動登出</p>
         <div style="display:flex;gap:12px;justify-content:center">
           <button class="btn btn-primary" id="idleStayBtn" style="min-width:120px">繼續使用</button>
-          <button class="btn" id="idleLogoutBtn" style="background:#f0f2f5;color:#333;min-width:120px">立即登出</button>
+          <button class="btn btn-soft-cancel" id="idleLogoutBtn" style="min-width:120px">立即登出</button>
         </div>
       </div>
     </div>

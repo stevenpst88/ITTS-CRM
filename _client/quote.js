@@ -64,7 +64,7 @@ function renderQuoteList() {
   const tbody = $('quoteTbody');
   if (!tbody) return;
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#aaa">尚無報價單資料，點擊「新增報價單」開始建立</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg" style="text-align:center;padding:32px">尚無報價單資料，點擊「新增報價單」開始建立</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(q => {
@@ -82,7 +82,7 @@ function renderQuoteList() {
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="openQuoteModal('${q.id}')">✏️ 編輯</button>
         <button class="btn btn-sm btn-export" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}')">&#11015; Excel</button>
-        <button class="btn btn-sm" style="background:#fce8e6;color:#c62828;border:1px solid #f5c6cb" onclick="deleteQuote('${q.id}')">🗑️</button>
+        <button class="btn btn-sm btn-soft-danger" onclick="deleteQuote('${q.id}')">🗑️</button>
       </td>
     </tr>`;
   }).join('');

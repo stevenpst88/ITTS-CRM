@@ -552,6 +552,32 @@ body {
 .view-value a { color: #1a73e8; text-decoration: none; }
 .view-value a:hover { text-decoration: underline; }
 
+/* ── 拜訪詳情內文 / 下一步行動 / 聯絡人公司副標 ── */
+.visit-detail-content { color: #333; }
+.visit-detail-next    { color: #34a853; }
+.visit-contact-co     { color: #888; }
+
+/* ── readonly input (商機編輯客戶公司、聯絡人) ── */
+.input-readonly { background: #f8f9fa; color: #888; }
+
+/* ── 通用工具 class（取代 inline style，便於深色模式覆寫） ── */
+.btn-soft-cancel { background: #f0f2f5; color: #333; border: 1px solid #e5e7eb; }
+.btn-soft-danger { background: #fce8e6; color: #c62828; border: 1px solid #f5c6cb; }
+.btn-soft-success { background: #e8f5e9; color: #1e8e3e; border: 1px solid #a8d5b0; }
+.alert-soft-error { background: #fce8e6; border-left: 4px solid #ea4335; color: #c5352a; }
+.info-card-soft { background: #f8f9fa; }
+.empty-msg { color: #aaa; }
+.muted-13 { color: #888; font-size: 13px; }
+.update-btn-top { background: #fff; color: #1a3c7a; border: 0; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+.select-plain { background: #fff; }
+.stat-badge-red { background: #fce8e6; color: #c5221f; }
+.stat-badge-orange { background: #fff3e0; color: #e37400; }
+.gauge-card-light { background: #fff; border: 1.5px solid #e8ecf4; }
+.quarter-badge-light { background: #f5f7fb; }
+.idle-title { color: #333; }
+.idle-text  { color: #666; }
+.stage-conv-thead { background: #fafafa; border-bottom: 2px solid #eee; }
+
 /* ── Toast ── */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -3459,6 +3485,55 @@ body.dark .modal-header h2 { color: #e6edf3; }
 body.dark .modal-footer { border-top-color: #30363d; }
 body.dark .modal-close { background: #21262d; color: #8b949e; }
 body.dark .modal-close:hover { background: #30363d; }
+
+/* ── 聯絡人詳情 view-row / view-value ── */
+body.dark .view-row { border-bottom-color: #30363d; }
+body.dark .view-label { color: #8b949e; }
+body.dark .view-value { color: #e6edf3; }
+body.dark .view-value a { color: #58a6ff; }
+body.dark .view-section-title { color: #636e7b; }
+body.dark .view-card-image { border-color: #30363d; }
+
+/* ── 拜訪詳情：會談內容 / 下一步行動 / 聯絡人公司副標 ── */
+body.dark .visit-detail-content { color: #c9d1d9; }
+body.dark .visit-detail-next    { color: #4ade80; }
+body.dark .visit-contact-co     { color: #8b949e; }
+
+/* ── readonly input (深色模式) ── */
+body.dark .input-readonly { background: #21262d !important; color: #8b949e !important; border-color: #30363d !important; }
+
+/* ── 通用工具 class 深色覆寫 ── */
+body.dark .btn-soft-cancel { background: #21262d !important; color: #c9d1d9 !important; border-color: #30363d !important; }
+body.dark .btn-soft-danger { background: #2a0d0d !important; color: #ff8080 !important; border-color: #5a1010 !important; }
+body.dark .btn-soft-success { background: #0a1f10 !important; color: #4ade80 !important; border-color: #145a30 !important; }
+body.dark .alert-soft-error { background: #2a0d0d !important; border-left-color: #ff6060 !important; color: #ff8080 !important; }
+body.dark .info-card-soft { background: #21262d !important; }
+body.dark .empty-msg { color: #636e7b !important; }
+body.dark .muted-13 { color: #8b949e !important; }
+body.dark .update-btn-top { background: #21262d !important; color: #8ecfff !important; }
+body.dark .select-plain { background: #21262d !important; color: #c9d1d9 !important; border-color: #30363d !important; }
+body.dark .stat-badge-red    { background: #2a0d0d !important; color: #ff8080 !important; }
+body.dark .stat-badge-orange { background: #2a1a00 !important; color: #d4a84e !important; }
+body.dark .gauge-card-light  { background: #161b22 !important; border-color: #30363d !important; }
+body.dark .quarter-badge-light { background: #21262d !important; color: #c9d1d9 !important; }
+body.dark .idle-title { color: #e6edf3 !important; }
+body.dark .idle-text  { color: #8b949e !important; }
+body.dark .stage-conv-thead { background: #21262d !important; border-bottom-color: #30363d !important; }
+body.dark .stage-conv-thead th { color: #8b949e !important; }
+
+/* ── 產業 / 系統 / Primary badge (深色模式) ── */
+body.dark .industry-badge  { background: #0a2a14; color: #4ade80; }
+body.dark .system-badge    { background: #0d2040; color: #8ecfff; }
+body.dark .primary-badge   { background: #0d2040; color: #8ecfff; }
+
+/* ── jf-badge：覆蓋 inline style ── */
+body.dark .jf-badge        { background: #21262d !important; color: #c9d1d9 !important; border-color: #444c56 !important; }
+
+/* ── opp-badge 各階段 (深色模式) ── */
+body.dark .opp-a { background: #2a0d0d; color: #ff8080; }
+body.dark .opp-b { background: #2a1a00; color: #d4a84e; }
+body.dark .opp-c { background: #0d2040; color: #8ecfff; }
+body.dark .opp-d { background: #21262d; color: #8b949e; }
 
 /* ── Forms ── */
 body.dark .form-group label { color: #8b949e; }
