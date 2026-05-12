@@ -2091,6 +2091,14 @@ body {
 .recv-stat-label { font-size: 11px; color: #888; font-weight: 600; text-transform: uppercase; }
 .recv-stat-val   { font-size: 22px; font-weight: 800; color: #1a2d52; margin-top: 2px; }
 
+/* ── view-stat-card (流失商機統計卡) ── */
+.view-stat-card { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.view-stat-card .stat-label   { color: #888; }
+.view-stat-card .stat-val-red    { color: #ea4335; }
+.view-stat-card .stat-val-orange { color: #f57c00; }
+.view-stat-card .stat-val-text   { color: #333; }
+.view-stat-card .stat-sub        { color: #888; }
+
 .table-wrap { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 5px rgba(0,0,0,.07); }
 .data-table th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 700; color: #666; border-bottom: 2px solid #e9ecef; white-space: nowrap; }
@@ -3392,3 +3400,594 @@ th.mb-q-col {
 @media (max-width: 900px) {
   .bu-breakdown-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ══════════════════════════════════════════════════════════
+   DARK MODE — body.dark 全域覆寫
+   色盤：GitHub Dark (#0d1117 / #161b22 / #21262d / #30363d)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── 深色模式切換按鈕 ── */
+.dark-toggle-btn {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.7); border-radius: 6px; padding: 5px 9px;
+  font-size: 15px; cursor: pointer; transition: all .18s; white-space: nowrap; flex-shrink: 0;
+}
+.dark-toggle-btn:hover { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+body.dark {
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+/* ── Topbar ── */
+body.dark .topbar { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .topbar-title { color: #e6edf3; }
+body.dark .contact-count { background: #21262d; color: #8b949e; }
+body.dark .mobile-menu-btn { color: #c9d1d9; }
+
+/* ── Search ── */
+body.dark .search-box { background: #21262d; }
+body.dark .search-box input { color: #c9d1d9; }
+body.dark .search-icon { color: #8b949e; }
+body.dark .clear-search { color: #8b949e; }
+
+/* ── Buttons ── */
+body.dark .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+body.dark .btn-secondary:hover { background: #30363d; }
+body.dark .cal-nav-btn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+body.dark .cal-nav-btn:hover { background: #30363d; }
+
+/* ── Contact Card ── */
+body.dark .contact-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .contact-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.6); }
+body.dark .card-name { color: #e6edf3; }
+body.dark .card-title-company { color: #8b949e; }
+body.dark .card-info-row { color: #8b949e; }
+body.dark .card-image-thumb { border-color: #30363d; }
+body.dark .card-opp-row { border-top-color: #21262d; }
+body.dark .contact-card-sub { border-color: #30363d; }
+body.dark .contact-card-sub:hover { border-color: #58a6ff; }
+
+/* ── Tabs ── */
+body.dark .tab-btn { color: #8b949e; }
+body.dark .tab-btn:hover { background: #21262d; color: #c9d1d9; }
+body.dark .tab-btn.active { background: #161b22; color: #58a6ff; border-bottom-color: #58a6ff; }
+
+/* ── Modal ── */
+body.dark .modal { background: #161b22; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+body.dark .modal-header h2 { color: #e6edf3; }
+body.dark .modal-footer { border-top-color: #30363d; }
+body.dark .modal-close { background: #21262d; color: #8b949e; }
+body.dark .modal-close:hover { background: #30363d; }
+
+/* ── Forms ── */
+body.dark .form-group label { color: #8b949e; }
+body.dark .form-group input,
+body.dark .form-group textarea { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+body.dark .form-group input:focus,
+body.dark .form-group textarea:focus { border-color: #58a6ff; }
+body.dark .form-group select { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+body.dark .form-group select:focus { border-color: #58a6ff; }
+body.dark .product-custom-input { background: #1e1a00; border-color: #4a3f00; color: #c9d1d9; }
+body.dark .year-amount-row input { background: #0d1117; border-color: #1c3a5f; color: #c9d1d9; }
+body.dark .card-image-preview { background: #21262d; border-color: #30363d; }
+
+/* ── Stat Cards ── */
+body.dark .stat-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .stat-value { color: #e6edf3; }
+body.dark .stat-label { color: #8b949e; }
+
+/* ── Chart Cards ── */
+body.dark .chart-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .chart-title { color: #c9d1d9; }
+body.dark .chart-legend-row { color: #8b949e; }
+body.dark .chart-legend-count { color: #e6edf3; }
+body.dark .chart-legend-pct { color: #8b949e; }
+
+/* ── Dashboard Welcome ── */
+body.dark .welcome-greeting { color: #e6edf3; }
+body.dark .welcome-sub { color: #8b949e; }
+
+/* ── Dashboard Pipeline 摘要卡 ── */
+body.dark .dash-pipeline-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .dash-pipeline-title { color: #c9d1d9; }
+body.dark .dpc-d { background: linear-gradient(135deg,#21262d,#30363d); color: #8b949e; }
+body.dark .dpc-c { background: linear-gradient(135deg,#0d2040,#1a3a6a); color: #8ecfff; }
+body.dark .dpc-b { background: linear-gradient(135deg,#2a1a00,#3a2500); color: #d4a44e; }
+body.dark .dpc-a { background: linear-gradient(135deg,#2a0d0d,#3a1515); color: #ff8080; }
+
+/* ── BU 業績卡 ── */
+body.dark .bu-breakdown-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .bu-breakdown-title { color: #8ecfff; }
+body.dark .bu-card { background: #21262d; border-color: #30363d; }
+body.dark .bu-card-val { color: #e6edf3; }
+body.dark .bu-card-lbl { color: #8b949e; }
+body.dark .bu-card-bar { background: #30363d; }
+
+/* ── 月度業績表格 ── */
+body.dark .mb-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .mb-card-header { border-bottom-color: #30363d; }
+body.dark .mb-card-title { color: #8ecfff; }
+body.dark .mb-year-badge { background: #0d2040; color: #8ecfff; }
+body.dark .mb-section-header { border-bottom-color: #30363d; }
+body.dark .mb-th-label { color: #8b949e; border-bottom-color: #30363d; }
+body.dark .mb-row-label { color: #c9d1d9; }
+body.dark .mb-gm-label { color: #a78bfa; }
+body.dark .mb-cur-month { background: #1c2a40 !important; }
+body.dark .mb-td { color: #e6edf3 !important; border-bottom-color: #21262d; }
+body.dark .mb-td-muted { color: #636e7b !important; }
+body.dark td.mb-q-col { background: #1a2840 !important; border-color: #1c3a5f !important; }
+body.dark th.mb-q-col { background: #0d2040 !important; color: #8ecfff !important; }
+body.dark .mb-total-col { color: #e6edf3 !important; border-left-color: #30363d; }
+body.dark .mb-table-wrap { background: #161b22; }
+body.dark .mb-th { color: #8b949e; border-bottom-color: #30363d; }
+body.dark .mb-gm-divider td { border-top-color: #30363d; }
+body.dark .mb-manual-tag { background: #1e1a40; color: #a78bfa; }
+
+/* ── 銷售預測表格 ── */
+body.dark .forecast-table-wrap { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .forecast-table td { border-bottom-color: #21262d; color: #c9d1d9; }
+body.dark .forecast-table td.ft-company-col { background: #161b22; color: #c9d1d9; border-right-color: #30363d; }
+body.dark .forecast-table tbody tr:not(.ft-total-row):hover td { background: #1c2128; }
+body.dark .forecast-table tbody tr:not(.ft-total-row):hover td.ft-company-col { background: #21262d; }
+body.dark .forecast-table tr:hover td { background: #1c2128; }
+body.dark .forecast-table tr:hover td.ft-company-col { background: #21262d; }
+body.dark .forecast-table td.ft-cur-month { background: #2a2200; }
+body.dark .forecast-table tr:hover td.ft-cur-month { background: #332b00; }
+body.dark .forecast-table td.ft-subtotal { background: #1a2840; color: #58a6ff; }
+body.dark .forecast-table tr.ft-total-row td { background: #21262d; color: #c9d1d9; border-top-color: #58a6ff; }
+body.dark .forecast-table tr.ft-total-row td.ft-company-col { background: #1a2840; color: #8ecfff; }
+body.dark .forecast-table tr.ft-total-row:hover td { background: #252d3a; }
+body.dark .forecast-table td.ft-cell-pink { background: #330d1e; color: #f48db4; }
+body.dark .forecast-table tr:hover td.ft-cell-pink { background: #3d1025; }
+body.dark .forecast-table tr.ft-total-row td.ft-cell-pink { background: #4a1428; color: #ffb3ce; }
+body.dark .forecast-table td.ft-cell-yellow { background: #2a1f00; color: #c9a84c; }
+body.dark .forecast-table tr:hover td.ft-cell-yellow { background: #332600; }
+body.dark .forecast-table tr.ft-total-row td.ft-cell-yellow { background: #3d2e00; color: #dfc06a; }
+body.dark .forecast-table tr.ft-won td { background: #0a1f10; }
+body.dark .forecast-table tr.ft-won td.ft-cell-pink { background: #0d1f1a; }
+body.dark .forecast-table tr.ft-won td.ft-cell-yellow { background: #0d1f10; }
+body.dark .forecast-table tr.ft-stage-a td { background: #1f1500; }
+body.dark .forecast-year-sel { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+body.dark .forecast-metric-tabs { border-color: #30363d; }
+body.dark .fmet-btn { background: #161b22; color: #8b949e; }
+body.dark .fmet-btn + .fmet-btn { border-left-color: #30363d; }
+body.dark .fmet-btn.active { background: #1a2840; color: #58a6ff; }
+body.dark .forecast-hint { color: #636e7b; }
+
+/* ── 合約管理 ── */
+body.dark .contract-table-wrap { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .contract-table td { border-bottom-color: #21262d; color: #c9d1d9; }
+body.dark .contract-table tr:hover td { background: #1c2128; }
+body.dark .contract-table tr.ct-expiring td { background: #1f1000; }
+body.dark .contract-table tr.ct-expiring:hover td { background: #2a1500; }
+body.dark .contract-table tr.ct-urgent td { background: #1f0000; }
+body.dark .contract-table tr.ct-urgent:hover td { background: #2a0000; }
+body.dark .contract-table tr.ct-expired td { background: #161b22; color: #636e7b; }
+body.dark .contract-stat-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .csc-value { color: #e6edf3; }
+body.dark .csc-label { color: #8b949e; }
+body.dark .ct-progress-wrap { background: #30363d; }
+body.dark .sap-notice-bar { background: #161b22; border-color: #4a3800; }
+body.dark .sap-notice-title { color: #c9d1d9; }
+body.dark .sap-notice-item { color: #8b949e; }
+body.dark .sap-notice-co { color: #e6edf3; }
+body.dark .multi-year-section { background: #0d1a2a; border-color: #1c3a5f; }
+body.dark .multi-year-title { color: #58a6ff; }
+body.dark .multi-year-tcv-input { background: #0d1a2a; border-color: #1c3a5f; color: #58a6ff; }
+
+/* ── Fin Table (公司財報) ── */
+body.dark .fin-table th { background: #21262d; color: #8b949e; }
+body.dark .fin-table td { border-top-color: #21262d; color: #c9d1d9; }
+body.dark .fin-table tr:hover td { background: #1c2128; }
+
+/* ── 拜訪記錄卡 ── */
+body.dark .visit-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .visit-card:hover { border-color: #58a6ff; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+body.dark .visit-topic { color: #e6edf3; }
+body.dark .visit-content-preview { color: #8b949e; }
+body.dark .visit-next { color: #8b949e; }
+body.dark .visit-contact { color: #8b949e; }
+body.dark .visit-type-badge { background: #21262d; color: #8b949e; }
+
+/* ── 日曆 ── */
+body.dark .cal-cell { background: #161b22; }
+body.dark .cal-cell.other-month { background: #0d1117; }
+body.dark .cal-cell.other-month .cal-date { color: #444c56; }
+body.dark .cal-cell.today { background: #0d2040; border-color: #58a6ff; }
+body.dark .cal-cell:hover { border-color: #30363d; }
+body.dark .cal-date { color: #c9d1d9; }
+body.dark .cal-month-title { color: #e6edf3; }
+body.dark .cal-more { color: #8b949e; }
+body.dark .cal-add-btn { color: #444c56; }
+body.dark .cal-cell:hover .cal-add-btn { color: #58a6ff; }
+
+/* ── 看板 Kanban ── */
+body.dark .kanban-col { background: #161b22; }
+body.dark .kanban-col-header { background: #161b22; }
+body.dark .kanban-col-won { background: #0a1f10; }
+body.dark .kanban-col-won .kanban-col-header { background: #0a1f10; }
+body.dark .kanban-col-name { color: #e6edf3; }
+body.dark .kanban-col-badge { background: #21262d; color: #8b949e; }
+body.dark .kanban-col-total { color: #e6edf3; }
+body.dark .kanban-col-total-label { color: #636e7b; }
+body.dark .kanban-card { background: #21262d; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .kanban-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.5); border-color: #30363d; }
+body.dark .kanban-card-won { background: #0d2416; }
+body.dark .kanban-card-company { color: #e6edf3; }
+body.dark .kanban-card-contact { color: #8b949e; }
+body.dark .kanban-card-product { background: #161b22; color: #8b949e; }
+body.dark .kanban-card-footer { border-top-color: #30363d; }
+body.dark .kanban-card-date { color: #636e7b; }
+body.dark .kanban-empty-col { color: #444c56; border-color: #30363d; }
+body.dark .kanban-card-edit-hint { color: #444c56; }
+
+/* ── 公司分組 ── */
+body.dark .company-group { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+body.dark .company-group-header:hover { background: #1c2128; }
+body.dark .company-group.expanded .company-group-header { background: #1c2128; border-bottom-color: #21262d; }
+body.dark .company-group-name { color: #e6edf3; }
+body.dark .company-group-primary { color: #8b949e; }
+body.dark .company-group-count { background: #21262d; color: #8b949e; }
+body.dark .company-group-chevron { color: #444c56; }
+body.dark .company-group-recent { border-top-color: #21262d; }
+body.dark .cg-recent-row { color: #8b949e; }
+body.dark .cg-recent-text { color: #8b949e; }
+body.dark .contact-card-sub { background: #21262d; }
+
+/* ── 關係選擇浮動選單 ── */
+body.dark .rel-picker { background: #1c2128; border-color: #30363d; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+body.dark .rel-picker-item { color: #c9d1d9; }
+body.dark .rel-picker-item:hover { background: #21262d; }
+
+/* ── 商機 Modal 內容 ── */
+body.dark .opp-sub { color: #8b949e; }
+body.dark .opp-stage-hint { background: #1c2128; border-left-color: #30363d; color: #8b949e; }
+
+/* ── AI 區塊 ── */
+body.dark .ai-suggest-box { background: #0d1117; border-color: #30363d; }
+body.dark .ka-signal-green  { background: #0a1f10; }
+body.dark .ka-signal-yellow { background: #1f1500; }
+body.dark .ka-signal-red    { background: #1f0000; }
+body.dark .ka-summary-title { color: #c9d1d9; }
+body.dark .ka-opps-title    { color: #c9d1d9; }
+body.dark .visit-email-draft { background: #161b22; border-color: #30363d; }
+body.dark .visit-email-section { background: #161b22; border-color: #30363d; }
+body.dark .email-subject-text { background: #0d1117; color: #c9d1d9; border-left-color: #30363d; }
+body.dark .email-body-text { background: #0d1117; color: #c9d1d9; border-left-color: #30363d; }
+body.dark .email-subject-text:focus { background: #161b22; }
+body.dark .email-body-text:focus { background: #161b22; }
+body.dark .email-toolbar { background: #21262d; border-bottom-color: #30363d; }
+body.dark .email-actions { border-top-color: #30363d; background: #161b22; }
+body.dark .btn-email-open { background: #161b22; border-color: #30363d; color: #8b949e; }
+body.dark .btn-email-copy { background: #1a2840; border-color: #1c3a5f; color: #8ecfff; }
+
+/* ── 公司洞察 (company insight) ── */
+body.dark .ci-section { background: #161b22; }
+body.dark .ci-empty { color: #636e7b; }
+
+/* ── 財報 section ── */
+body.dark .badge-otc { background: #2a0d00; color: #ff8080; }
+body.dark .badge-unlisted { background: #21262d; color: #8b949e; }
+
+/* ── 產品線 Modal ── */
+body.dark .product-line-modal { background: #161b22; }
+body.dark .product-line-title { color: #e6edf3; }
+body.dark .product-line-sub { color: #8b949e; }
+body.dark .pl-cancel { background: #21262d; border-color: #30363d; color: #8b949e; }
+body.dark .pl-cancel:hover { background: #30363d; }
+
+/* ── Domain dropdown ── */
+body.dark .domain-item { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+body.dark .domain-item:hover { background: #21262d; }
+
+/* ── 統編查詢 ── */
+body.dark .taxid-top input { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+body.dark .taxid-top input:focus { border-color: #58a6ff; background: #0d1117; }
+
+/* ── 個人特徵 chips ── */
+body.dark .personal-chip { background: #21262d; border-color: #30363d; color: #8b949e; }
+body.dark .personal-chip:hover { border-color: #58a6ff; background: #0d2040; }
+
+/* ── 季度達成卡片 ── */
+body.dark .q-card {
+  background: #161b22;
+  border-top-color: #30363d;
+  box-shadow: 0 1px 4px rgba(0,0,0,.5);
+}
+body.dark .q-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+body.dark .q-card.q-current {
+  background: linear-gradient(180deg, #0d2040 0%, #161b22 100%);
+  border-top-color: #58a6ff;
+}
+body.dark .q-label { color: #e6edf3; }
+body.dark .q-months { color: #8b949e; }
+body.dark .q-ratio-badge { color: #8b949e; }
+body.dark .q-row-label { color: #8b949e; }
+body.dark .q-row-val { color: #e6edf3; }
+body.dark .opr-label { color: #8b949e; }
+body.dark .opr-divider { border-top-color: #30363d; }
+body.dark .opr-status.s-crit { background: #2a0d0d; color: #ff8080; }
+body.dark .opr-status.s-low  { background: #2a2000; color: #d4a84e; }
+body.dark .opr-status.s-ok   { background: #0a1f10; color: #4ade80; }
+body.dark .opr-status.s-hi   { background: #0d2040; color: #8ecfff; }
+body.dark .q-prog-wrap { background: #21262d; }
+body.dark .zone-bar-wrap { background: #21262d; }
+body.dark .zone-bar-zone { background: rgba(255,255,255,0.08); }
+body.dark .opr-pipeline { color: #8b949e; }
+
+/* ── Scrollbar (深色模式) ── */
+body.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+body.dark ::-webkit-scrollbar-track { background: #0d1117; }
+body.dark ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+body.dark ::-webkit-scrollbar-thumb:hover { background: #444c56; }
+
+/* ── 通知 Notification Dropdown ── */
+body.dark .notif-dropdown { background: #161b22; border-color: #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+body.dark .notif-header { background: #21262d; border-bottom-color: #30363d; color: #e6edf3; }
+body.dark .notif-item { border-bottom-color: #21262d; }
+body.dark .notif-item:hover { background: #21262d; }
+body.dark .notif-item.unread { background: #0d2040; }
+body.dark .notif-item.unread:hover { background: #122048; }
+body.dark .notif-title { color: #e6edf3; }
+body.dark .notif-body { color: #8b949e; }
+body.dark .notif-group-hd { background: #21262d; color: #8b949e; border-bottom-color: #30363d; }
+body.dark .notif-days-bar { color: #8b949e; }
+body.dark .notif-bday.unread .notif-title { color: #a78bfa; }
+body.dark .notif-contract.unread .notif-title { color: #58a6ff; }
+body.dark .notif-mark-all { color: #58a6ff; }
+body.dark .notif-badge { background: #58a6ff; color: #0d1117; }
+body.dark .notif-empty { color: #8b949e; }
+
+/* ── 帳務管理 Billing ── */
+body.dark .view-tab { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .view-tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+body.dark .view-tab:hover:not(.active) { background: #30363d; }
+body.dark .recv-stat { background: #161b22; border-color: #30363d; }
+body.dark .recv-stat-val { color: #e6edf3; }
+body.dark .recv-stat-label { color: #8b949e; }
+body.dark .data-table { background: #161b22 !important; border-color: #30363d; }
+body.dark .data-table th { background: #21262d !important; color: #8b949e; border-color: #30363d; border-bottom-color: #30363d; }
+body.dark .data-table td { background: #161b22; color: #c9d1d9; border-color: #30363d; }
+body.dark .data-table tr:last-child td { border-bottom: none; }
+body.dark .data-table tr:hover td { background: #21262d !important; }
+
+/* ── view-stat-card (流失商機 / 通用統計卡) ── */
+body.dark .view-stat-card { background: #161b22 !important; box-shadow: 0 1px 4px rgba(0,0,0,.4) !important; }
+body.dark .view-stat-card .stat-label { color: #8b949e !important; }
+body.dark .view-stat-card .stat-val-red  { color: #ff8080 !important; }
+body.dark .view-stat-card .stat-val-orange { color: #d4a84e !important; }
+body.dark .view-stat-card .stat-val-text { color: #e6edf3 !important; }
+body.dark .view-stat-card .stat-sub { color: #8b949e !important; }
+
+/* ── 流失商機表格容器 & 表頭 ── */
+body.dark #lostOppTableWrap { background: #161b22 !important; box-shadow: 0 1px 4px rgba(0,0,0,.4) !important; }
+body.dark #lostOppTableWrap thead tr { background: #21262d !important; border-bottom-color: #30363d !important; }
+body.dark #lostOppTableWrap th { color: #8b949e !important; border-bottom-color: #30363d !important; padding: 10px 14px; }
+body.dark #lostOppTableWrap td { color: #c9d1d9 !important; border-bottom-color: #30363d !important; }
+body.dark #lostOppTableWrap tbody tr:hover td { background: #21262d !important; }
+body.dark .dash-callin-item { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+body.dark .dash-callin-item:hover { background: #21262d; }
+body.dark .radio-btn { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .radio-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+body.dark .billing-card { background: #161b22; border-color: #30363d; }
+body.dark .billing-card-title { color: #8b949e; }
+body.dark .billing-amount { color: #e6edf3; }
+body.dark .billing-status-paid { color: #4ade80; }
+body.dark .billing-status-unpaid { color: #ff8080; }
+body.dark .billing-status-partial { color: #d4a84e; }
+
+/* ── 商機列表 Opportunity List ── */
+body.dark .opp-list-card { background: #161b22; border-color: #30363d; }
+body.dark .opp-table th { background: #21262d; color: #8b949e; border-color: #30363d; }
+body.dark .opp-table td { color: #c9d1d9; border-color: #30363d; }
+body.dark .opp-table tr:hover td { background: #21262d; }
+body.dark .opp-won-row td { background: #0a1f10 !important; color: #4ade80; }
+body.dark .opp-zombie-warn td { background: #2a2000 !important; }
+body.dark .opp-zombie-danger td { background: #2a0d0d !important; }
+body.dark .opp-stage-sel { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .opp-list-filters select { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .opp-list-filters input { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .opp-lost-separator td { background: #21262d !important; color: #8b949e; border-color: #30363d; }
+body.dark .opp-lost-row td { color: #636e7b; }
+body.dark .opp-restore-btn { background: #21262d; border-color: #30363d; color: #58a6ff; }
+body.dark .opp-restore-btn:hover { background: #1f6feb; color: #fff; }
+body.dark .opp-amt-chip { background: #21262d; color: #c9d1d9; }
+body.dark .opp-tag { background: #21262d; color: #8b949e; border-color: #30363d; }
+
+/* ── 年度目標 Annual Target ── */
+body.dark .target-set-card { background: #161b22; border-color: #30363d; }
+body.dark .target-set-title { color: #8b949e; }
+body.dark .target-history-chip { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .target-history-chip:hover { background: #30363d; }
+body.dark .target-input-wrap input { background: #21262d; border-color: #30363d; color: #e6edf3; }
+body.dark .target-month-row { border-bottom-color: #30363d; }
+body.dark .target-month-label { color: #8b949e; }
+
+/* ── 殭屍商機 Zombie Opportunities ── */
+body.dark .zombie-section-card { background: #161b22; border-color: #30363d; }
+body.dark .zombie-rules-hint { background: #21262d; border-color: #30363d; color: #8b949e; }
+body.dark .zombie-chip-a { background: #2a0d0d; color: #ff8080; border-color: #5a1010; }
+body.dark .zombie-chip-b { background: #2a2000; color: #d4a84e; border-color: #5a4000; }
+body.dark .zombie-chip-c { background: #21262d; color: #8b949e; border-color: #30363d; }
+body.dark .zombie-table th { background: #21262d; color: #8b949e; border-color: #30363d; }
+body.dark .zombie-table td { color: #c9d1d9; border-color: #30363d; }
+body.dark .z-row:hover td { background: #21262d; }
+body.dark .z-sev-danger td { background: #2a0d0d !important; }
+body.dark .z-sev-warn td { background: #2a2000 !important; }
+
+/* ── 名單移轉 Transfer ── */
+body.dark .transfer-panel { background: #161b22; border-color: #30363d; }
+body.dark .transfer-list { background: #0d1117; border-color: #30363d; }
+body.dark .transfer-item { border-bottom-color: #21262d; color: #c9d1d9; }
+body.dark .transfer-item:hover { background: #21262d; }
+body.dark .transfer-item.selected { background: #0d2040; color: #58a6ff; }
+body.dark .transfer-item-name { color: #e6edf3; }
+body.dark .transfer-footer { background: #21262d; border-top-color: #30363d; }
+
+/* ── 職能選擇 Job Function ── */
+body.dark .jf-btn { background: #21262d; border-color: #30363d; }
+body.dark .jf-btn:hover { background: #30363d; }
+body.dark .jf-btn.active { background: #1f6feb; border-color: #1f6feb; }
+body.dark .jf-btn-label { color: #c9d1d9; }
+body.dark .jf-btn.active .jf-btn-label { color: #fff; }
+body.dark .jf-btn-sub { color: #8b949e; }
+
+/* ── 生日提醒 Birthday ── */
+body.dark .bday-card { background: #161b22; border-color: #30363d; }
+body.dark .bday-item { border-bottom-color: #21262d; }
+body.dark .bday-item:hover { background: #21262d; }
+body.dark .bday-item.bday-today { background: #0d2040; border-left-color: #58a6ff; }
+body.dark .bday-name { color: #e6edf3; }
+body.dark .bday-company { color: #8b949e; }
+body.dark .bday-date-chip { background: #21262d; color: #8b949e; }
+body.dark .bday-item.bday-today .bday-date-chip { background: #1f6feb; color: #fff; }
+
+/* ── 拜訪 Tooltip ── */
+body.dark .opp-visit-tooltip { background: #1c2128; border-color: #30363d; box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
+body.dark .ovt-header { border-bottom-color: #30363d; color: #e6edf3; }
+body.dark .ovt-date { color: #8b949e; }
+body.dark .ovt-type { background: #21262d; color: #c9d1d9; }
+body.dark .ovt-topic { color: #e6edf3; }
+body.dark .ovt-content { color: #c9d1d9; }
+body.dark .ovt-next { background: #0d2040; color: #8ecfff; border-color: #1c3a5f; }
+
+/* ── 商機動態報表 Pipeline Report ── */
+body.dark .pr-period-btn { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .pr-period-btn:hover { background: #30363d; }
+body.dark .pr-period-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+body.dark .pr-summary-card { background: #161b22; border-color: #30363d; }
+body.dark .pr-card { background: #161b22; border-color: #30363d; }
+body.dark .pr-card-title { color: #8b949e; }
+body.dark .pr-funnel-bar-wrap { background: #21262d; }
+body.dark .pr-funnel-amt { color: #c9d1d9; }
+body.dark .pr-deal-row { border-bottom-color: #21262d; }
+body.dark .pr-deal-row:hover { background: #21262d; }
+body.dark .pr-deal-company { color: #e6edf3; }
+body.dark .pr-deal-amt { color: #58a6ff; }
+body.dark .pr-deal-stage { color: #8b949e; }
+
+/* ── 報價 Modal Tab ── */
+body.dark .q-modal-tabs { border-bottom-color: #30363d; background: #161b22; }
+body.dark .q-tab-btn { color: #8b949e; border-bottom-color: transparent; }
+body.dark .q-tab-btn:hover { color: #c9d1d9; background: #21262d; }
+body.dark .q-tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+/* ── 報價單 Quote ── */
+body.dark .quote-items-table thead th { background: #21262d; color: #8b949e; border-color: #30363d; }
+body.dark .quote-items-table tbody td { color: #c9d1d9; border-color: #30363d; }
+body.dark .quote-items-table tbody tr:hover td { background: #21262d; }
+body.dark .quote-discount-bar { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .quote-total-bar { background: #161b22; border-top-color: #30363d; }
+body.dark .quote-total-row td { color: #e6edf3; border-color: #30363d; }
+body.dark .quote-total-row.quote-grand td { color: #58a6ff; font-weight: 700; }
+body.dark .quote-st-draft { background: #2a2000; color: #d4a84e; border-color: #5a4000; }
+body.dark .quote-st-sent { background: #0d2040; color: #58a6ff; border-color: #1c3a5f; }
+body.dark .quote-st-accepted { background: #0a1f10; color: #4ade80; border-color: #145a30; }
+body.dark .quote-st-rejected { background: #2a0d0d; color: #ff8080; border-color: #5a1010; }
+
+/* ── PNL ── */
+body.dark .pnl-note { background: #21262d; border-color: #30363d; color: #8b949e; }
+body.dark .pnl-discount-note { color: #d4a84e; }
+body.dark .pnl-summary-bar { background: #21262d; border-top-color: #30363d; }
+body.dark .pnl-sum-card { background: #161b22; border-color: #30363d; }
+body.dark .pnl-sum-label { color: #8b949e; }
+body.dark .pnl-sum-value { color: #e6edf3; }
+body.dark .pnl-cost-input { background: #21262d; border-color: #30363d; color: #e6edf3; }
+body.dark .pnl-cost-input:focus { border-color: #58a6ff; }
+body.dark .pnl-gross-pos { color: #4ade80; }
+body.dark .pnl-gross-neg { color: #ff8080; }
+
+/* ── 行銷管理 Campaign ── */
+body.dark .campaign-card { background: #161b22; border-color: #30363d; }
+body.dark .campaign-card:hover { background: #1c2128; border-color: #444c56; }
+body.dark .campaign-card-name { color: #e6edf3; }
+body.dark .campaign-card-date { color: #8b949e; }
+body.dark .campaign-card-desc { color: #c9d1d9; }
+body.dark .campaign-card-actions { border-top-color: #30363d; }
+body.dark .campaign-status-active { background: #0a1f10; color: #4ade80; }
+body.dark .campaign-status-draft { background: #2a2000; color: #d4a84e; }
+body.dark .campaign-status-done { background: #21262d; color: #8b949e; }
+
+/* ── 主管首頁 Manager Dashboard ── */
+body.dark .mgr-filter-bar { background: #161b22; border-color: #30363d; }
+body.dark .mgr-card { background: #161b22; border-color: #30363d; }
+body.dark .mgr-card:hover { border-color: #444c56; }
+body.dark .mgr-card-title { color: #8b949e; }
+body.dark .mgr-gauge-pct { color: #58a6ff; }
+body.dark .mgr-commit-block { background: #21262d; border-color: #30363d; }
+body.dark .mgr-commit-label { color: #8b949e; }
+body.dark .mgr-commit-val { color: #e6edf3; }
+body.dark .mgr-aging-hint { color: #d4a84e; background: #2a2000; border-color: #5a4000; }
+body.dark .mgr-rep-row { border-bottom-color: #21262d; }
+body.dark .mgr-rep-row:hover { background: #21262d; }
+body.dark .mgr-rep-name { color: #e6edf3; }
+body.dark .mgr-rep-amt { color: #58a6ff; }
+body.dark .mgr-rep-pct-good { color: #4ade80; }
+body.dark .mgr-rep-pct-mid { color: #d4a84e; }
+body.dark .mgr-rep-pct-low { color: #ff8080; }
+
+/* ── Executive Dashboard ── */
+body.dark .exec-filter-bar { background: #161b22; border-color: #30363d; }
+body.dark .exec-tab-btn { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .exec-tab-btn:hover:not(.active) { background: #30363d; }
+body.dark .exec-tab-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+body.dark .exec-kpi-card { background: #161b22; border-color: #30363d; }
+body.dark .exec-kpi-label { color: #8b949e; }
+body.dark .exec-kpi-val { color: #e6edf3; }
+body.dark .exec-kpi-sub { color: #8b949e; }
+body.dark .exec-funnel { background: #161b22; border-color: #30363d; }
+body.dark .exec-chart-wrap { background: #161b22; border-color: #30363d; }
+body.dark .exec-prod-row:nth-child(even) { background: #1c2128; }
+body.dark .exec-prod-row:hover { background: #21262d; }
+body.dark .exec-section-title { color: #8b949e; border-bottom-color: #30363d; }
+
+/* ── 集團卡 Group Card ── */
+body.dark .group-card { background: #161b22; border-color: #30363d; }
+body.dark .group-card:hover { border-color: #444c56; }
+body.dark .group-card-name { color: #e6edf3; }
+body.dark .glist-row { border-bottom-color: #21262d; }
+body.dark .glist-row:hover { background: #21262d; }
+body.dark .glist-name { color: #c9d1d9; }
+body.dark .glist-role { color: #8b949e; }
+body.dark .group-card-header { border-bottom-color: #30363d; }
+body.dark .group-card-footer { border-top-color: #30363d; background: #21262d; }
+
+/* ── 搜尋下拉 Search Dropdown ── */
+body.dark .search-dropdown { background: #161b22; border-color: #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+body.dark .search-result-item { color: #c9d1d9; border-bottom-color: #21262d; }
+body.dark .search-result-item:hover { background: #21262d; }
+body.dark .search-result-name { color: #e6edf3; }
+body.dark .search-result-meta { color: #8b949e; }
+
+/* ── Tooltip / Popover ── */
+body.dark .tooltip-box { background: #1c2128; border-color: #30363d; color: #c9d1d9; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+body.dark .popover-box { background: #161b22; border-color: #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+
+/* ── Badge / Chip ── */
+body.dark .badge-gray { background: #21262d; color: #8b949e; }
+body.dark .badge-blue { background: #0d2040; color: #8ecfff; }
+body.dark .badge-green { background: #0a1f10; color: #4ade80; }
+body.dark .badge-red { background: #2a0d0d; color: #ff8080; }
+body.dark .badge-yellow { background: #2a2000; color: #d4a84e; }
+body.dark .badge-purple { background: #1a1040; color: #a78bfa; }
+
+/* ── 分頁 Pagination ── */
+body.dark .page-btn { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+body.dark .page-btn:hover { background: #30363d; }
+body.dark .page-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+body.dark .page-btn:disabled { color: #444c56; }
+
+/* ── Context Menu ── */
+body.dark .ctx-menu { background: #161b22; border-color: #30363d; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+body.dark .ctx-menu-item { color: #c9d1d9; }
+body.dark .ctx-menu-item:hover { background: #21262d; }
+body.dark .ctx-menu-sep { border-color: #30363d; }
+
+/* ── 進度條 Progress (generic) ── */
+body.dark .prog-bar-bg { background: #21262d; }
+body.dark .prog-bar-fill { background: #1f6feb; }
+
+/* ── Empty State ── */
+body.dark .empty-state { color: #8b949e; }
+body.dark .empty-state-icon { opacity: 0.4; }

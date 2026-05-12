@@ -310,6 +310,29 @@
     .co-field-bar-wrap { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
     .co-field-pct { width: 36px; font-weight: 600; text-align: right; flex-shrink: 0; }
     .co-field-count { color: #9ca3af; flex-shrink: 0; }
+
+    /* ── Admin Dark Mode ── */
+    body.dark { background: #0d1117; color: #c9d1d9; }
+    body.dark .admin-main { background: #0d1117; }
+    body.dark .section-title { color: #8ecfff; }
+    body.dark .section-sub { color: #8b949e; }
+    body.dark .admin-card { background: #161b22; box-shadow: 0 1px 6px rgba(0,0,0,.5); }
+    body.dark .admin-card-header { border-bottom-color: #30363d; }
+    body.dark .admin-card-title { color: #c9d1d9; }
+    body.dark .admin-table th { background: #21262d; color: #8b949e; border-bottom-color: #30363d; }
+    body.dark .admin-table td { border-bottom-color: #21262d; color: #c9d1d9; }
+    body.dark .admin-table tr:hover td { background: #1c2128; }
+    body.dark .admin-login-box { background: #161b22; }
+    body.dark .admin-login-logo h1 { color: #e6edf3; }
+    body.dark .admin-login-group label { color: #8b949e; }
+    body.dark .admin-login-group input { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+    body.dark .admin-sidebar { background: #0d1a2e; }
+    body.dark .co-field-bar-wrap { background: #30363d; }
+    body.dark .co-field-label { color: #8b949e; }
+    body.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body.dark ::-webkit-scrollbar-track { background: #0d1117; }
+    body.dark ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    body.dark ::-webkit-scrollbar-thumb:hover { background: #444c56; }
   </style>
   <script>
   (function(){
@@ -370,6 +393,7 @@
     </div>
     <div class="admin-topbar-right">
       <span class="admin-user" id="adminUser"></span>
+      <button id="adminDarkToggle" title="切換深/淺色模式" onclick="toggleDarkMode()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:8px;padding:7px 12px;font-size:15px;cursor:pointer;transition:background .2s;">🌙</button>
       <a href="/" class="btn-back">← 返回系統</a>
       <button class="btn-back" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5" onclick="adminLogout()">登出</button>
     </div>
@@ -1691,6 +1715,21 @@
     let allUsers = [];
 
     function $(id) { return document.getElementById(id); }
+
+    // ── 深色模式 ──
+    function toggleDarkMode() {
+      const isDark = document.body.classList.toggle('dark');
+      localStorage.setItem('darkMode', isDark ? '1' : '0');
+      const btn = document.getElementById('adminDarkToggle');
+      if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+    }
+    (function initDarkMode() {
+      if (localStorage.getItem('darkMode') === '1') {
+        document.body.classList.add('dark');
+        const btn = document.getElementById('adminDarkToggle');
+        if (btn) btn.textContent = '☀️';
+      }
+    })();
 
     function showToast(msg, duration = 2500) {
       const t = $('toast');

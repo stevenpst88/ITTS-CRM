@@ -5489,18 +5489,18 @@ function renderLostOppTable() {
   const topReason = Object.entries(byReason).sort((a,b)=>b[1]-a[1])[0];
 
   $('lostOppStats').innerHTML = `
-    <div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">流失案件數</div>
-      <div style="font-size:22px;font-weight:700;color:#ea4335">${rows.length}</div>
+    <div class="view-stat-card" style="border-radius:8px;padding:14px 20px;min-width:140px">
+      <div class="stat-label" style="font-size:11px;margin-bottom:4px">流失案件數</div>
+      <div class="stat-val-red" style="font-size:22px;font-weight:700">${rows.length}</div>
     </div>
-    <div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">流失金額(K)</div>
-      <div style="font-size:22px;font-weight:700;color:#f57c00">${totalAmt.toLocaleString()}</div>
+    <div class="view-stat-card" style="border-radius:8px;padding:14px 20px;min-width:140px">
+      <div class="stat-label" style="font-size:11px;margin-bottom:4px">流失金額(K)</div>
+      <div class="stat-val-orange" style="font-size:22px;font-weight:700">${totalAmt.toLocaleString()}</div>
     </div>
-    ${topReason ? `<div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:14px 20px;min-width:140px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">最常見原因</div>
-      <div style="font-size:16px;font-weight:600;color:#333">${escapeHtml(topReason[0])}</div>
-      <div style="font-size:12px;color:#888">${topReason[1]} 件</div>
+    ${topReason ? `<div class="view-stat-card" style="border-radius:8px;padding:14px 20px;min-width:140px">
+      <div class="stat-label" style="font-size:11px;margin-bottom:4px">最常見原因</div>
+      <div class="stat-val-text" style="font-size:16px;font-weight:600">${escapeHtml(topReason[0])}</div>
+      <div class="stat-sub" style="font-size:12px">${topReason[1]} 件</div>
     </div>` : ''}
   `;
 
@@ -6327,6 +6327,22 @@ $('addSapContractBtn').addEventListener('click', () => openContractModal(null, '
   document.querySelectorAll('.sidebar-nav-item:not(.sidebar-nav-group-hd)').forEach(el => {
     el.addEventListener('click', () => { if (window.innerWidth <= 900) closeSidebar(); });
   });
+})();
+
+// ── 深色模式 ───────────────────────────────────────────────
+function toggleDarkMode() {
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('darkMode', isDark ? '1' : '0');
+  const btn = document.getElementById('darkModeToggle');
+  if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+(function initDarkMode() {
+  if (localStorage.getItem('darkMode') === '1') {
+    document.body.classList.add('dark');
+    const btn = document.getElementById('darkModeToggle');
+    if (btn) btn.textContent = '☀️';
+  }
 })();
 
 initUser();
