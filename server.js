@@ -11,6 +11,7 @@ const bcrypt = require('bcryptjs');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const helmet = require('helmet');
 const compression = require('compression');
+const crypto = require('crypto');
 const db = require('./db');
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
@@ -4450,6 +4451,133 @@ app.get('/api/notifications', requireAuth, (req, res) => {
   const data = db.load();
   const list = (data.notifications || []).filter(n => n.to === username);
   res.json(list);
+});
+
+// ── 通知合併端點：notifications + contract-reminders + birthday-reminders ──
+// 單次 db.load() 完成三組計算 + ETag 支援，省 Supabase egress
+app.get('/api/poll-bundle', requireAuth, (req, res) => {
+  const username = req.session.user.username;
+  const role     = req.session.user.role;
+  const data = db.load();
+  const auth = loadAuth();
+
+  // ── 1. 一般通知 ──
+  const notifications = (data.notifications || []).filter(n => n.to === username);
+
+  // ── 2. 合約到期提醒 ──
+  let contractReminders = [];
+  if (role !== 'secretary') {
+    let owners;
+    if (role === 'manager1') {
+      owners = auth.users.map(u => u.username);
+    } else if (role === 'manager2') {
+      owners = auth.users.filter(u => u.role === 'user' || u.username === username).map(u => u.username);
+    } else {
+      owners = [username];
+    }
+    const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const calcStatus = (c) => {
+      if (!c.endDate) return null;
+      const end     = new Date(c.endDate);
+      const endDiff = Math.ceil((end - today) / 86400000);
+      let effectiveEnd, isRenewed = false;
+      if (endDiff < 0 && c.renewDate) {
+        effectiveEnd = new Date(c.renewDate);
+        isRenewed    = true;
+      } else if (endDiff < 0) {
+        return { key: 'expired', days: Math.abs(endDiff), isRenewed: false };
+      } else {
+        effectiveEnd = end;
+      }
+      const diff = Math.ceil((effectiveEnd - today) / 86400000);
+      if (diff <= 25)  return { key: 'urgent',   days: diff, isRenewed };
+      if (diff <= 90)  return { key: 'expiring', days: diff, isRenewed };
+      return null;
+    };
+    contracts.forEach(c => {
+      const st = calcStatus(c);
+      if (!st) return;
+      const ownerUser = auth.users.find(u => u.username === c.owner);
+      const ownerName = ownerUser?.displayName || c.owner;
+      let title, body, icon;
+      if (st.key === 'expired') {
+        icon  = '🔴';
+        title = `合約逾期：${c.company}`;
+        body  = `${c.product || '合約'} 已逾期 ${st.days} 天，請盡速處理${role !== 'user' ? `（業務：${ownerName}）` : ''}`;
+      } else if (st.key === 'urgent') {
+        icon  = '🟠';
+        title = `合約即將到期：${c.company}`;
+        body  = `${c.product || '合約'} 剩餘 ${st.days} 天${st.isRenewed ? '（已續約）' : ''}到期${role !== 'user' ? `，業務：${ownerName}` : ''}`;
+      } else {
+        icon  = '🟡';
+        title = `合約 90 天內到期：${c.company}`;
+        body  = `${c.product || '合約'} 剩餘 ${st.days} 天${st.isRenewed ? '（已續約）' : ''}到期${role !== 'user' ? `，業務：${ownerName}` : ''}`;
+      }
+      contractReminders.push({
+        id:         `contract_${c.id}`,
+        type:       `contract_${st.key}`,
+        title:      `${icon} ${title}`,
+        body,
+        days:       st.days,
+        isRenewed:  st.isRenewed,
+        contractId: c.id,
+        company:    c.company,
+        product:    c.product || '',
+        endDate:    c.endDate,
+        renewDate:  c.renewDate || null,
+        ownerName,
+      });
+    });
+    const ORDER = { expired: 0, contract_expired: 0, contract_urgent: 1, contract_expiring: 2 };
+    contractReminders.sort((a, b) => (ORDER[a.type] ?? 9) - (ORDER[b.type] ?? 9) || a.days - b.days);
+  }
+
+  // ── 3. 生日提醒 ──
+  let birthdayReminders = [];
+  if (role !== 'secretary') {
+    const days = parseInt(req.query.days) || 3;
+    const owners = getViewableOwners(req, 'contacts');
+    let contacts = (data.contacts || []).filter(c => !c.deleted && owners.includes(c.owner) && c.personalBirthday);
+    contacts = filterByBu(req, contacts);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    contacts.forEach(c => {
+      const parts = c.personalBirthday.split('/').map(Number);
+      if (parts.length < 2) return;
+      const [mm, dd] = parts;
+      if (!mm || !dd || mm < 1 || mm > 12 || dd < 1 || dd > 31) return;
+      let bDate = new Date(today.getFullYear(), mm - 1, dd);
+      if (bDate < today) bDate = new Date(today.getFullYear() + 1, mm - 1, dd);
+      const diffDays = Math.round((bDate - today) / 86400000);
+      if (diffDays < 0 || diffDays > days) return;
+      const ownerUser = auth.users.find(u => u.username === c.owner);
+      birthdayReminders.push({
+        id:               c.id,
+        name:             c.name,
+        nameEn:           c.nameEn || '',
+        company:          c.company || '',
+        title:            c.title  || '',
+        personalBirthday: c.personalBirthday,
+        owner:            c.owner,
+        ownerName:        ownerUser?.displayName || c.owner,
+        daysLeft:         diffDays,
+        birthdayFull:     `${bDate.getFullYear()}/${String(mm).padStart(2,'0')}/${String(dd).padStart(2,'0')}`
+      });
+    });
+    birthdayReminders.sort((a, b) => a.daysLeft - b.daysLeft);
+  }
+
+  // ── 序列化 + ETag ──
+  const body = { notifications, contractReminders, birthdayReminders };
+  const json = JSON.stringify(body);
+  const etag = 'W/"' + crypto.createHash('sha1').update(json).digest('base64').slice(0, 22) + '"';
+  if (req.headers['if-none-match'] === etag) {
+    res.set('ETag', etag);
+    return res.status(304).end();
+  }
+  res.set('ETag', etag);
+  res.set('Cache-Control', 'private, no-cache');
+  res.type('application/json').send(json);
 });
 
 app.put('/api/notifications/:id/read', requireAuth, (req, res) => {

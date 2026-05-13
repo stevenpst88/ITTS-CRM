@@ -6510,25 +6510,26 @@ function markBirthdayReminderRead(id) {
   localStorage.setItem(_birthdayReadKey(id), '1');
 }
 
+let _pollBundleEtag = null;
+let _pollBundleCache = null; // 快取上次 304 之前的 payload，避免重新 render
+
 async function pollNotifications() {
   try {
-    // 1. 一般通知
-    const r1 = await fetch(`${API}/notifications`);
-    const regularList = r1.ok ? await r1.json() : [];
+    // 單一合併端點：notifications + contract-reminders + birthday-reminders
+    const headers = _pollBundleEtag ? { 'If-None-Match': _pollBundleEtag } : {};
+    const resp = await fetch(`${API}/poll-bundle?days=3`, { headers });
 
-    // 2. 合約到期提醒（靜默失敗）
-    let contractList = [];
-    try {
-      const r2 = await fetch(`${API}/contract-reminders`);
-      if (r2.ok) contractList = await r2.json();
-    } catch {}
+    // 304 Not Modified：資料沒變，無需重新 render（省 egress + CPU）
+    if (resp.status === 304) return;
+    if (!resp.ok) return;
 
-    // 3. 生日提醒（靜默失敗）
-    let birthdayList = [];
-    try {
-      const r3 = await fetch(`${API}/birthday-reminders?days=3`);
-      if (r3.ok) birthdayList = await r3.json();
-    } catch {}
+    _pollBundleEtag = resp.headers.get('ETag') || null;
+    const bundle = await resp.json();
+    _pollBundleCache = bundle;
+
+    const regularList  = bundle.notifications      || [];
+    const contractList = bundle.contractReminders  || [];
+    const birthdayList = bundle.birthdayReminders  || [];
 
     // 合約提醒轉換成統一格式（加 isContract flag 供 render 識別）
     const contractNotifs = contractList.map(c => ({
@@ -6653,18 +6654,31 @@ function renderNotifList(list) {
       if (item.dataset.birthday) {
         markBirthdayReminderRead(id);
         item.classList.remove('unread');
-        pollNotifications();
+        _updateBadgeFromDOM(); // localStorage 變動：server 狀態未改，直接 DOM 算 badge
       } else if (item.dataset.contract) {
         markContractReminderRead(id);
         item.classList.remove('unread');
-        pollNotifications();
+        _updateBadgeFromDOM();
       } else {
         await fetch(`${API}/notifications/${id}/read`, { method: 'PUT' });
         item.classList.remove('unread');
+        _pollBundleEtag = null; // server 狀態已改，強制下次取最新
         pollNotifications();
       }
     });
   });
+}
+
+// 由 DOM 重算未讀 badge（用於 localStorage 已讀，不需打 server）
+function _updateBadgeFromDOM() {
+  const unreadCount = document.querySelectorAll('#notifList .notif-item.unread').length;
+  const badge = $('notifBadge');
+  if (unreadCount > 0) {
+    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 $('notifReadAll').addEventListener('click', async () => {
@@ -6677,6 +6691,7 @@ $('notifReadAll').addEventListener('click', async () => {
     markContractReminderRead(item.dataset.id);
   });
   await fetch(`${API}/notifications/read-all`, { method: 'PUT' });
+  _pollBundleEtag = null; // server 狀態已改，強制下次取最新
   pollNotifications();
 });
 
@@ -6691,8 +6706,25 @@ document.addEventListener('click', e => {
   if (!$('notifBellWrap').contains(e.target)) $('notifDropdown').style.display = 'none';
 });
 
-// 每 30 秒輪詢一次
-_notifPollTimer = setInterval(pollNotifications, 30000);
+// 通知輪詢：90 秒一次（合併端點 + ETag 304 → 大幅降低 Supabase egress）
+// + 分頁隱藏時暫停，回到可見立即觸發一次
+const NOTIF_POLL_INTERVAL = 90000;
+function _startNotifPolling() {
+  if (_notifPollTimer) return;
+  _notifPollTimer = setInterval(pollNotifications, NOTIF_POLL_INTERVAL);
+}
+function _stopNotifPolling() {
+  if (_notifPollTimer) { clearInterval(_notifPollTimer); _notifPollTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    _stopNotifPolling();
+  } else {
+    _startNotifPolling();
+    pollNotifications(); // 切回前景立即拉一次（多半 304 → 幾乎零成本）
+  }
+});
+if (document.visibilityState !== 'hidden') _startNotifPolling();
 pollNotifications(); // 立即執行一次
 
 // ════════════════════════════════════════════════════════
