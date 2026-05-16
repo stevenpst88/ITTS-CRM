@@ -267,18 +267,14 @@ function saveAuth(data) {
 
 function writeLog(action, operator, target, detail, req) {
   if (_USE_DB_FOR_META) {
-    const d = db.load();
-    if (!Array.isArray(d._auditLog)) d._auditLog = [];
-    d._auditLog.unshift({
+    // audit log 已拆出主資料 row，不再透過 db.load()/db.save() 整顆改寫
+    db.appendAuditLog({
       id: uuidv4(),
       action, operator, target, detail,
       ip:        (req && req.ip) || '',
       userAgent: (req && req.headers && req.headers['user-agent']) || '',
       timestamp: new Date().toISOString(),
     });
-    // 保留最近 5000 筆
-    if (d._auditLog.length > 5000) d._auditLog.length = 5000;
-    db.save(d);
     return;
   }
   const logFile = path.join(__dirname, 'audit.log.json');
@@ -1426,8 +1422,8 @@ app.get('/api/admin/usage', requireAdmin, (req, res) => {
 // ── Admin: get audit logs ────────────────────────────────
 app.get('/api/admin/logs', requireAdmin, (req, res) => {
   if (_USE_DB_FOR_META) {
-    const d = db.load();
-    return res.json(Array.isArray(d._auditLog) ? d._auditLog : []);
+    // 從獨立 row 讀（拆出後省主資料 egress）
+    return res.json(db.loadAuditLog());
   }
   const logFile = path.join(__dirname, 'audit.log.json');
   try {

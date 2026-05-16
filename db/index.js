@@ -24,4 +24,8 @@ module.exports = {
   ready: impl.ready || (async () => {}),
   // Postgres 特有：等待所有背景寫入完成（Vercel serverless 必備）。JSON 是同步寫入，no-op 即可
   flush: impl.flush || (async () => {}),
+  // 稽核日誌：拆出主資料以省 Supabase egress
+  // 兩個後端都有實作（json 仍存在 data.json 同檔，postgres 拆獨立 row）
+  loadAuditLog:   impl.loadAuditLog,
+  appendAuditLog: impl.appendAuditLog,
 };
