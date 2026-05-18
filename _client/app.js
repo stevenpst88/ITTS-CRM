@@ -3345,7 +3345,23 @@ function openOppEdit(id) {
   $('oppEditAmount').value         = o.amount          || '';
   $('oppEditGrossMargin').value    = o.grossMarginRate !== undefined ? o.grossMarginRate : '';
   $('oppEditExpectedDate').value   = o.expectedDate    || '';
+  $('oppEditAchievedDate').value   = o.achievedDate    || '';
   $('oppEditDescription').value    = o.description     || '';
+
+  // 成交日期欄位：stage=Won 時顯示，否則隱藏
+  const _toggleAchievedDate = () => {
+    const isWon = $('oppEditStage').value === 'Won';
+    $('oppEditAchievedDateGroup').style.display = isWon ? '' : 'none';
+    // 切到 Won 但沒值時預設今天（避免使用者忘了填）
+    if (isWon && !$('oppEditAchievedDate').value) {
+      $('oppEditAchievedDate').value = new Date().toISOString().slice(0, 10);
+    }
+  };
+  _toggleAchievedDate();
+  if (!$('oppEditStage')._achBound) {
+    $('oppEditStage')._achBound = true;
+    $('oppEditStage').addEventListener('change', _toggleAchievedDate);
+  }
 
   // 商品選單
   populateOppEditProduct(o.category, o.product);
@@ -3478,9 +3494,11 @@ $('oppEditSave').addEventListener('click', async () => {
     amount:          $('oppEditAmount').value,
     grossMarginRate: gmRaw !== '' ? parseFloat(gmRaw) : '',
     expectedDate:    $('oppEditExpectedDate').value,
+    achievedDate:    $('oppEditAchievedDate').value || '',
     description:     $('oppEditDescription').value.trim(),
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
   };
+  // 若標記為 Won 但使用者沒填成交日期，預設今天
   if (newStage === 'Won' && !payload.achievedDate) {
     payload.achievedDate = new Date().toISOString().slice(0, 10);
   }
@@ -4450,11 +4468,14 @@ async function loadGroups() {
 }
 
 // 取得某年某季的 Pipeline 金額（A+B+C stage，預計成交日落在該季）
+// 商機預算比的分子：該季度「預計簽約日」落在這季的商機總額
+// 涵蓋：A/B/C/D/Won 五個 stage（依預計簽約日歸屬於該季度即計入）
+// 排除：已刪除 (lostOpportunities，allOpportunities 本身就不含)
 function getQuarterPipeline(year, q) {
   const qStart = (q - 1) * 3 + 1;
   const qEnd   = q * 3;
   return allOpportunities
-    .filter(o => ['A', 'B', 'C'].includes(o.stage))
+    .filter(o => ['A', 'B', 'C', 'D', 'Won'].includes(o.stage))
     .filter(o => {
       if (!o.expectedDate) return false;
       const d = new Date(o.expectedDate);
@@ -4741,7 +4762,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="zone-bar-labels">
         <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
       </div>
-      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} K</div>`;
+      <div class="opr-pipeline" title="含 A/B/C/D/Won 全部商機，依預計簽約日歸屬該季度，排除已刪除案件">該季度商機 ${pipeline.toLocaleString()} K</div>`;
     grid.appendChild(card);
   });
 }
@@ -5038,7 +5059,13 @@ async function updateOppStage(id, stage, confirmWon = false) {
   if (confirmWon && !confirm(`確認將此商機標記為【${stage}】並計入年度業績？`)) return;
   try {
     const body = { stage };
-    if (isWon) body.achievedDate = new Date().toISOString().slice(0,10);
+    if (isWon) {
+      // 補成交日期但不覆蓋已有值（讓使用者回填歷史資料時可保留舊日期）
+      const opp = allOpportunities.find(o => o.id === id);
+      if (!opp || !opp.achievedDate) {
+        body.achievedDate = new Date().toISOString().slice(0, 10);
+      }
+    }
     await fetch(`${API}/opportunities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
