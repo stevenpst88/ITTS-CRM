@@ -208,8 +208,6 @@ function applyPermissions() {
 let allContacts = [];
 let allOpportunities = [];
 let allKeyAccounts = [];      // [{ id, owner, company, createdAt, note }]
-let kaCrossBuOpps = [];       // 自己擁有的 KA 公司的跨 BU 商機（KA 主頁專用）
-let kaCrossBuLoaded = false;  // 是否已成功載入過跨 BU 資料（用於切換 render 邏輯）
 let contactsKaFilterMode = 'all'; // 'all' | 'ka' | 'non-ka'
 let currentViewId = null;
 
@@ -994,39 +992,13 @@ async function toggleKeyAccount(companyName) {
 
 // 載入並渲染 KA 主頁（4 KPI + 列表 + 可展開的在手商機）
 async function loadKeyAccountView() {
-  // Step 1：必要資料（必須等）— 渲染基本畫面用
+  // 先確保資料齊備
   await Promise.all([
     loadKeyAccounts(),
     allOpportunities.length === 0 ? fetch(`${API}/opportunities`).then(r => r.json()).then(d => { allOpportunities = d; }) : Promise.resolve(),
     allContacts.length === 0 ? loadContacts() : Promise.resolve(),
   ]);
-  // 重置跨 BU 資料（每次進頁面重新拿）
-  kaCrossBuOpps = [];
-  kaCrossBuLoaded = false;
-  // Step 2：立即用個人視角先 render 一次（不卡 UI）
   renderKeyAccountView();
-  // Step 3：背景拉跨 BU 商機（5 秒 timeout）— 成功回來再重 render
-  _fetchKaCrossBuOpps();
-}
-
-// 背景拉取跨 BU 商機（KA 主頁專用），5 秒 timeout，silent fail
-function _fetchKaCrossBuOpps() {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  fetch(`${API}/key-accounts/my-opps`, { signal: ctrl.signal })
-    .then(r => r.ok ? r.json() : [])
-    .then(d => {
-      kaCrossBuOpps = Array.isArray(d) ? d : [];
-      kaCrossBuLoaded = true;
-      // 只有當前還在 KA 主頁才重 render
-      if (currentSection === 'keyAccount') renderKeyAccountView();
-    })
-    .catch(() => {
-      // timeout 或 network error → silent fail，維持個人視角
-      kaCrossBuOpps = [];
-      kaCrossBuLoaded = false;
-    })
-    .finally(() => clearTimeout(timer));
 }
 
 function renderKeyAccountView() {
@@ -1043,22 +1015,8 @@ function renderKeyAccountView() {
   const lastYear = curYear - 1;
 
   // 計算每個 KA 的數字
-  const myUsername = window._myUsername || '';
-  // 預先 index 跨 BU 商機（只對自己擁有的 KA 公司有資料；未載入則 Map 為空）
-  const crossBuByCo = new Map();
-  if (kaCrossBuLoaded) {
-    (kaCrossBuOpps || []).forEach(o => {
-      if (!crossBuByCo.has(o.company)) crossBuByCo.set(o.company, []);
-      crossBuByCo.get(o.company).push(o);
-    });
-  }
   const stats = kas.map(ka => {
-    // 自己 Owner 且跨 BU 已載入 → 用跨 BU 資料；否則 fallback 個人視角
-    const isMine = ka.owner === myUsername;
-    const useCrossBu = isMine && kaCrossBuLoaded && crossBuByCo.has(ka.company);
-    const oppsOfCo = useCrossBu
-      ? crossBuByCo.get(ka.company)
-      : allOpportunities.filter(o => o.company === ka.company);
+    const oppsOfCo = allOpportunities.filter(o => o.company === ka.company);
     const wonThisYear = oppsOfCo.filter(o => {
       if (o.stage !== 'Won') return false;
       const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
@@ -1151,9 +1109,7 @@ function renderKeyAccountView() {
     const canRemove = isMine || myRole === 'admin';
     const ownerDisp = escapeHtml(s.ka.ownerDisplayName || s.ka.owner);
     const ownerChip = isMine
-      ? (kaCrossBuLoaded
-          ? `<span class="ka-owner-chip ka-owner-mine" title="你是 Account Owner，數字含跨 BU 商機">${ownerDisp}（我） 🌐</span>`
-          : `<span class="ka-owner-chip ka-owner-mine" title="你是 Account Owner">${ownerDisp}（我）</span>`)
+      ? `<span class="ka-owner-chip ka-owner-mine" title="你是這個 KA 的 Account Owner">${ownerDisp}（我）</span>`
       : `<span class="ka-owner-chip" title="Account Owner：${ownerDisp}">${ownerDisp}</span>`;
     const removeBtnHtml = canRemove
       ? `<button class="ka-remove-btn" data-ka-id="${escapeHtml(s.ka.id)}" title="取消標記">✕</button>`
@@ -1185,13 +1141,9 @@ function renderKeyAccountView() {
         .map(o => {
           const amt = parseFloat(o.amount) || 0;
           const stageBadge = `<span class="ka-stage-${o.stage}">${o.stage}</span>`;
-          // 跨 BU 透明：有 ownerDisplayName 表示來自 my-opps endpoint
-          const ownerChipHtml = o.ownerDisplayName
-            ? `<span class="ka-opp-owner-chip" title="商機由 ${escapeHtml(o.ownerDisplayName)}（${escapeHtml(o.ownerBu || '—')}）建立">${escapeHtml(o.ownerDisplayName)}${o.ownerBu ? ' · <b>' + escapeHtml(o.ownerBu) + '</b>' : ''}</span>`
-            : '';
           return `<tr>
             <td style="width:60px">${stageBadge}</td>
-            <td>${escapeHtml(o.product || o.description || '—')}${ownerChipHtml ? '<br>' + ownerChipHtml : ''}</td>
+            <td>${escapeHtml(o.product || o.description || '—')}</td>
             <td style="text-align:right">${escapeHtml(o.expectedDate || '—')}</td>
             <td style="text-align:right">把握 ${escapeHtml(String(STAGE_CONFIDENCE[o.stage] ?? '—'))}%</td>
             <td style="text-align:right;font-weight:600">${fmt(amt)} K</td>
