@@ -238,6 +238,76 @@ function requireAuth(req, res, next) {
 // Serverless 相容：當 DB_BACKEND=postgres 時，auth / audit 也存在 app_data.content 裡
 const _USE_DB_FOR_META = (process.env.DB_BACKEND === 'postgres');
 
+// ── 角色功能權限（Phase 1：功能可見性勾選表）─────────────
+// 18 個側邊導覽功能 + 各角色預設可見性
+const FEATURE_REGISTRY = [
+  { key: 'home',            label: '首頁',                  icon: '🏠', navId: 'navHome' },
+  { key: 'managerHome',     label: '主管首頁',              icon: '👔', navId: 'navManagerHome' },
+  { key: 'execDash',        label: 'Executive Dashboard',   icon: '📈', navId: 'navExecDash' },
+  { key: 'prospects',       label: '潛在客戶',              icon: '🌱', navId: 'navProspects' },
+  { key: 'contacts',        label: '聯絡人',                icon: '👤', navId: 'navContacts' },
+  { key: 'visits',          label: '拜訪記錄',              icon: '📋', navId: 'navVisits' },
+  { key: 'targets',         label: '業績目標',              icon: '🎯', navId: 'navTargets' },
+  { key: 'forecast',        label: '銷售預測報表',          icon: '📊', navId: 'navForecast' },
+  { key: 'pipeline',        label: '商機看板',              icon: '💼', navId: 'navPipeline' },
+  { key: 'pipelineReport',  label: '商機動態報表',          icon: '📑', navId: 'navPipelineReport' },
+  { key: 'contractGroup',   label: '合約管理',              icon: '📄', navId: 'navContractGroup' },
+  { key: 'accountingGroup', label: '帳務管理',              icon: '💰', navId: 'navAccountingGroup' },
+  { key: 'callin',          label: 'Call-in Pass',          icon: '📞', navId: 'navCallin' },
+  { key: 'lostOpp',         label: '流失商機',              icon: '🪦', navId: 'navLostOpp' },
+  { key: 'transfer',        label: '名單移轉',              icon: '🔄', navId: 'navTransfer' },
+  { key: 'campaigns',       label: '行銷活動',              icon: '🎪', navId: 'navCampaigns' },
+  { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
+  { key: 'quotations',      label: '報價單',                icon: '📋', navId: 'navQuotations' },
+];
+const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','marketing','user'];
+const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
+const DEFAULT_ROLE_PERMISSIONS = {
+  admin:     ALL_FEATURES,
+  executive: ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations'],
+  manager1:  ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
+  manager2:  ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
+  secretary: ['home','targets','forecast','accountingGroup','callin'],
+  tecopm:    ['forecast','prospects','contacts','visits','pipeline'],
+  marketing: ['campaigns','leads'],
+  user:      ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations'],
+};
+
+function getRolePermissions() {
+  const data = db.load();
+  const stored = data.rolePermissions || {};
+  const result = {};
+  KNOWN_ROLES.forEach(role => {
+    if (Array.isArray(stored[role])) {
+      result[role] = stored[role].filter(k => ALL_FEATURES.includes(k));
+    } else {
+      result[role] = (DEFAULT_ROLE_PERMISSIONS[role] || []).slice();
+    }
+  });
+  // admin 永遠擁有所有功能（無法被勾掉）
+  result.admin = ALL_FEATURES.slice();
+  return result;
+}
+
+function saveRolePermissions(matrix) {
+  const data = db.load();
+  if (!data.rolePermissions) data.rolePermissions = {};
+  KNOWN_ROLES.forEach(role => {
+    if (role === 'admin') return; // admin 永遠保留全部，不存
+    if (Array.isArray(matrix[role])) {
+      data.rolePermissions[role] = matrix[role].filter(k => ALL_FEATURES.includes(k));
+    }
+  });
+  db.save(data);
+}
+
+function getUserFeatures(role) {
+  if (!role) role = 'user';
+  if (role === 'admin') return ALL_FEATURES.slice();
+  const matrix = getRolePermissions();
+  return matrix[role] || (DEFAULT_ROLE_PERMISSIONS[role] || []).slice();
+}
+
 function requireAdmin(req, res, next) {
   if (!req.session || !req.session.user) return res.status(401).json({ error: '請先登入' });
   const authData = loadAuth();
@@ -1491,13 +1561,45 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user) return res.status(404).json({ error: '找不到帳號' });
+  const role = user.role || 'user';
   res.json({
-    role: user.role || 'user',
+    role,
     bu: normalizeBu(user.bu),
     canDownloadContacts: user.canDownloadContacts || false,
     canSetTargets: user.canSetTargets || false,
-    active: user.active !== false
+    active: user.active !== false,
+    features: getUserFeatures(role) // Phase 1：依角色功能權限矩陣
   });
+});
+
+// ── Admin: 角色功能權限矩陣（Phase 1）──────────────────────
+app.get('/api/admin/role-permissions', requireAdmin, (req, res) => {
+  res.json({
+    features: FEATURE_REGISTRY,
+    roles: KNOWN_ROLES,
+    matrix: getRolePermissions()
+  });
+});
+
+app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
+  const { matrix } = req.body || {};
+  if (!matrix || typeof matrix !== 'object') {
+    return res.status(400).json({ error: '格式錯誤：須提供 matrix 物件' });
+  }
+  saveRolePermissions(matrix);
+  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', '更新角色功能權限矩陣', req);
+  res.json({ success: true });
+});
+
+// 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
+app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
+  const data = db.load();
+  if (data.rolePermissions) {
+    delete data.rolePermissions;
+    db.save(data);
+  }
+  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', '重置角色功能權限為系統預設', req);
+  res.json({ success: true });
 });
 
 // ── 名片圖片上傳設定（使用 storage 模組的 engine）─────────

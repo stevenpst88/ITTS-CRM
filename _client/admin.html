@@ -444,6 +444,9 @@
       <div class="admin-nav-item" data-sec="jobfunc">
         <span class="admin-nav-icon">🏷️</span> 職能分類
       </div>
+      <div class="admin-nav-item" data-sec="role-permissions">
+        <span class="admin-nav-icon">🔐</span> 功能權限
+      </div>
       <div class="admin-nav-item" data-sec="logs">
         <span class="admin-nav-icon">📋</span> 異動記錄
       </div>
@@ -1107,6 +1110,30 @@
             </div>
             <button class="btn btn-primary" id="migrateJobFuncBtn">🏷️ 開始自動 Mapping</button>
             <div id="migrateJobFuncResult" style="display:none;margin-top:16px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 功能權限（Phase 1：角色 × 功能 勾選表） ── -->
+      <div class="admin-section" id="sec-role-permissions">
+        <div class="section-title">🔐 功能權限管理</div>
+        <div class="section-sub">勾選每個角色可看見的側邊導覽功能。admin 永遠擁有全部功能，無法修改。</div>
+        <div class="admin-card" style="margin-top:16px">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="rpSaveBtn">💾 儲存變更</button>
+            <button class="btn" id="rpResetBtn">⟲ 還原預設</button>
+            <span id="rpStatus" style="font-size:13px;color:#666;margin-left:8px"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="admin-table" id="rpTable" style="min-width:920px">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div style="font-size:12px;color:#888;margin-top:12px;line-height:1.6">
+            ※ 修改後使用者**下次刷新頁面**才會生效（會重新讀取權限）<br>
+            ※ admin 列恆為全勾且禁用，避免管理員自我鎖死<br>
+            ※ 還原預設會把所有非 admin 角色還原為系統建議的權限組合
           </div>
         </div>
       </div>
@@ -4473,6 +4500,115 @@
           `<tr><td colspan="5" style="color:red">載入失敗：${e.message}</td></tr>`;
       }
     }
+
+    // ════════════════════════════════════════════════════════
+    // ── 功能權限管理（Phase 1）─────────────────────────────
+    // ════════════════════════════════════════════════════════
+    const ROLE_LABEL = {
+      admin: 'admin（系統管理員）',
+      executive: 'executive（董事/總經理）',
+      manager1: 'manager1（一級主管）',
+      manager2: 'manager2（二級主管）',
+      secretary: 'secretary（秘書）',
+      tecopm: 'tecopm（集團 PM）',
+      marketing: 'marketing（行銷）',
+      user: 'user（業務）'
+    };
+    let _rpData = null; // { features, roles, matrix }
+
+    async function loadRolePermissions() {
+      const status = document.getElementById('rpStatus');
+      status.textContent = '載入中…';
+      try {
+        const r = await fetch('/api/admin/role-permissions');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        _rpData = await r.json();
+        renderRpTable();
+        status.textContent = '';
+      } catch (e) {
+        status.style.color = '#c5221f';
+        status.textContent = '載入失敗：' + e.message;
+      }
+    }
+
+    function renderRpTable() {
+      if (!_rpData) return;
+      const { features, roles, matrix } = _rpData;
+      const thead = document.querySelector('#rpTable thead');
+      const tbody = document.querySelector('#rpTable tbody');
+      // 表頭：第一欄是功能名稱，其後每個角色一欄
+      let headHtml = '<tr><th style="text-align:left;min-width:180px;background:#f8f9fa">功能</th>';
+      roles.forEach(r => {
+        headHtml += `<th style="text-align:center;background:#f8f9fa;white-space:nowrap;padding:8px 6px;font-size:12px">${ROLE_LABEL[r] || r}</th>`;
+      });
+      headHtml += '</tr>';
+      thead.innerHTML = headHtml;
+      // 表身：每個功能一列
+      let bodyHtml = '';
+      features.forEach(f => {
+        bodyHtml += `<tr><td style="font-weight:500">${f.icon} ${f.label}</td>`;
+        roles.forEach(r => {
+          const checked = (matrix[r] || []).includes(f.key);
+          const disabled = (r === 'admin'); // admin 永遠全勾且禁用
+          bodyHtml += `<td style="text-align:center"><input type="checkbox" data-role="${r}" data-feature="${f.key}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} style="cursor:${disabled ? 'not-allowed' : 'pointer'};transform:scale(1.2)"></td>`;
+        });
+        bodyHtml += '</tr>';
+      });
+      tbody.innerHTML = bodyHtml;
+    }
+
+    async function saveRolePermissions() {
+      if (!_rpData) return;
+      const status = document.getElementById('rpStatus');
+      const btn = document.getElementById('rpSaveBtn');
+      btn.disabled = true; btn.textContent = '儲存中…';
+      // 從 DOM 重建 matrix
+      const newMatrix = {};
+      _rpData.roles.forEach(r => { newMatrix[r] = []; });
+      document.querySelectorAll('#rpTable tbody input[type="checkbox"]').forEach(cb => {
+        if (cb.checked) {
+          newMatrix[cb.dataset.role].push(cb.dataset.feature);
+        }
+      });
+      try {
+        const r = await fetch('/api/admin/role-permissions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matrix: newMatrix })
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        // 重新拉取以反映 server 側驗證後的結果（含 admin 強制全勾）
+        await loadRolePermissions();
+        status.style.color = '#10b981';
+        status.textContent = '✅ 已儲存（使用者下次刷新生效）';
+        setTimeout(() => { status.textContent = ''; }, 4000);
+      } catch (e) {
+        status.style.color = '#c5221f';
+        status.textContent = '儲存失敗：' + e.message;
+      } finally {
+        btn.disabled = false; btn.textContent = '💾 儲存變更';
+      }
+    }
+
+    async function resetRolePermissions() {
+      if (!confirm('確定要還原所有非 admin 角色為系統建議的預設權限？')) return;
+      const status = document.getElementById('rpStatus');
+      try {
+        const r = await fetch('/api/admin/role-permissions', { method: 'DELETE' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        await loadRolePermissions();
+        status.style.color = '#10b981';
+        status.textContent = '✅ 已還原為系統預設';
+        setTimeout(() => { status.textContent = ''; }, 4000);
+      } catch (e) {
+        status.style.color = '#c5221f';
+        status.textContent = '還原失敗：' + e.message;
+      }
+    }
+
+    document.getElementById('rpSaveBtn').addEventListener('click', saveRolePermissions);
+    document.getElementById('rpResetBtn').addEventListener('click', resetRolePermissions);
+    document.querySelector('[data-sec="role-permissions"]').addEventListener('click', loadRolePermissions);
 
   </script>
 </body>

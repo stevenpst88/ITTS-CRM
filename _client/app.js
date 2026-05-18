@@ -129,42 +129,37 @@ function applyPermissions() {
   // 管理者後台入口：只有 admin 才顯示
   const adminLink = $('adminPanelLink');
   if (adminLink) adminLink.style.display = (userPermissions.role === 'admin') ? 'block' : 'none';
-  // 名單移轉：manager1、manager2、admin 才顯示
-  const navTransfer = $('navTransfer');
-  if (navTransfer) navTransfer.style.display = ['admin','manager1','manager2'].includes(userPermissions.role) ? '' : 'none';
-  // 角色導覽限制
+
+  // ── Phase 1：資料驅動的 nav 顯示（伺服器回傳 features 陣列）──
+  // features = ['home','contacts','pipeline',...] 中有的才顯示
+  const FEATURE_NAV_MAP = {
+    home: 'navHome',
+    managerHome: 'navManagerHome',
+    execDash: 'navExecDash',
+    prospects: 'navProspects',
+    contacts: 'navContacts',
+    visits: 'navVisits',
+    targets: 'navTargets',
+    forecast: 'navForecast',
+    pipeline: 'navPipeline',
+    pipelineReport: 'navPipelineReport',
+    contractGroup: 'navContractGroup',
+    accountingGroup: 'navAccountingGroup',
+    callin: 'navCallin',
+    lostOpp: 'navLostOpp',
+    transfer: 'navTransfer',
+    campaigns: 'navCampaigns',
+    leads: 'navLeads',
+    quotations: 'navQuotations'
+  };
+  const allowedFeatures = new Set(userPermissions.features || []);
+  Object.entries(FEATURE_NAV_MAP).forEach(([key, navId]) => {
+    const el = $(navId);
+    if (el) el.style.display = allowedFeatures.has(key) ? '' : 'none';
+  });
+
+  // Pipeline 月度變動：嵌入商機動態報表下方（仍以角色硬編，未列入勾選表）
   const role = userPermissions.role;
-  if (role === 'secretary') {
-    // 秘書可看首頁看板、業績目標、銷售預測、帳務管理、Call-in Pass，隱藏其他功能
-    ['navProspects','navContacts','navVisits','navPipeline','navContractGroup'].forEach(id => {
-      const el = $(id); if (el) el.style.display = 'none';
-    });
-    // navHome、navAccountingGroup、navForecast、navCallin 保留
-  } else if (role === 'manager1' || role === 'manager2') {
-    // 主管可以看全部，但隱藏目標設定（除非有 canSetTargets 權限）
-    // 顯示所有導覽
-    ['navHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navContractGroup','navForecast','navLostOpp'].forEach(id => {
-      const el = $(id); if (el) el.style.display = '';
-    });
-  }
-  // 管理儀表板 + 主管首頁：主管 / admin 才顯示
-  if (role === 'manager1' || role === 'manager2' || role === 'admin') {
-    const e1 = $('navExecDash');     if (e1) e1.style.display = '';
-    const e2 = $('navManagerHome');  if (e2) e2.style.display = '';
-  }
-  // 行銷功能
-  if (role === 'marketing') {
-    ['navProspects','navContacts','navVisits','navTargets','navPipeline',
-     'navContractGroup','navForecast','navLostOpp','navExecDash','navQuotations',
-     'navPipelineReport','navAccountingGroup','navCallin'].forEach(id => {
-      const el = $(id); if (el) el.style.display = 'none';
-    });
-  }
-  // 行銷活動 & Lead 管理：僅行銷人員可見
-  if (role === 'marketing') {
-    ['navCampaigns','navLeads'].forEach(id => { const el=$(id); if(el) el.style.display=''; });
-  }
-  // Pipeline 月度變動：嵌入商機動態報表下方，側邊欄項目永久隱藏
   const pdcSec = $('pdcSection');
   const canSeePDC = ['manager1','secretary','admin'].includes(role);
   if (pdcSec) pdcSec.style.display = canSeePDC ? '' : 'none';
