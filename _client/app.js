@@ -916,7 +916,7 @@ async function loadContacts(search = '') {
 
 // ── 建立單張聯絡人卡片 ───────────────────────────────────
 // ════════════════════════════════════════════════════════
-// ── ⭐ Key Account ──────────────────────────────────────
+// ── ⭐ Key Account（跨 BU 共享，one Owner per company）─
 // ════════════════════════════════════════════════════════
 async function loadKeyAccounts() {
   try {
@@ -925,30 +925,42 @@ async function loadKeyAccounts() {
   } catch { allKeyAccounts = []; }
 }
 
-// 判斷某公司對「目前登入者」而言是否為 KA
+// 該公司是否為 KA（任何人標的都算）
 function isKeyAccount(companyName) {
   if (!companyName) return false;
-  const me = window._myUsername || '';
-  return allKeyAccounts.some(ka => ka.owner === me && ka.company === companyName);
+  return allKeyAccounts.some(ka => ka.company === companyName);
 }
 
-// 找對應的 KA 記錄（用於取消標記時的 id）
+// 取得該公司的 KA 紀錄（dedupe by company，由 server 端保證唯一）
 function getKaRecord(companyName) {
   if (!companyName) return null;
-  const me = window._myUsername || '';
-  return allKeyAccounts.find(ka => ka.owner === me && ka.company === companyName) || null;
+  return allKeyAccounts.find(ka => ka.company === companyName) || null;
+}
+
+// 自己是否為該公司的 Account Owner
+function isMyKa(companyName) {
+  const ka = getKaRecord(companyName);
+  if (!ka) return false;
+  return ka.owner === (window._myUsername || '');
 }
 
 async function toggleKeyAccount(companyName) {
   if (!companyName) { showToast('此名片無公司名稱，無法標記'); return; }
   const existing = getKaRecord(companyName);
+  // 情境 1：別人標的 → 無權變更
+  if (existing && existing.owner !== (window._myUsername || '')) {
+    showToast(`⭐ 已由 ${existing.ownerDisplayName || existing.owner} 標為 Key Account，無權移除`);
+    return;
+  }
   try {
     if (existing) {
+      // 情境 2：自己標的 → 取消
       const r = await fetch(`${API}/key-accounts/${existing.id}`, { method: 'DELETE' });
       if (!r.ok) throw new Error('刪除失敗');
       allKeyAccounts = allKeyAccounts.filter(ka => ka.id !== existing.id);
       showToast(`已取消 ${companyName} 的 Key Account 標記`);
     } else {
+      // 情境 3：無人標 → 我成為 Account Owner
       const r = await fetch(`${API}/key-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -956,11 +968,18 @@ async function toggleKeyAccount(companyName) {
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || '標記失敗');
+        // 競態：剛好有人同時標到 → 提示誰標走了
+        if (r.status === 409 && err.existingOwnerDisplayName) {
+          showToast(`⭐ 剛剛已由 ${err.existingOwnerDisplayName} 標為 KA`);
+          await loadKeyAccounts(); // refresh 同步
+        } else {
+          throw new Error(err.error || '標記失敗');
+        }
+      } else {
+        const ka = await r.json();
+        allKeyAccounts.push(ka);
+        showToast(`⭐ 已標記 ${companyName} 為 Key Account（你是 Account Owner）`);
       }
-      const ka = await r.json();
-      allKeyAccounts.push(ka);
-      showToast(`⭐ 已標記 ${companyName} 為 Key Account`);
     }
     // 重新渲染聯絡人卡（更新該公司所有卡的 ⭐ 狀態）
     if (currentSection === 'contacts' || currentSection === 'prospects') {
@@ -1073,20 +1092,32 @@ function renderKeyAccountView() {
 
   // 列表
   if (stats.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="ka-empty">
+    tbody.innerHTML = `<tr><td colspan="9" class="ka-empty">
       尚未標記任何 Key Account<br>
       <span style="font-size:12px;color:#9ca3af">請到「我的客戶」分頁，於客戶卡片右上角點 ⭐ 標記為 Key Account</span>
     </td></tr>`;
     return;
   }
 
+  const myUsername = window._myUsername || '';
+  const myRole = userPermissions.role || '';
   tbody.innerHTML = '';
   stats.forEach((s) => {
     const tr = document.createElement('tr');
     tr.className = 'ka-row';
+    const isMine = s.ka.owner === myUsername;
+    const canRemove = isMine || myRole === 'admin';
+    const ownerDisp = escapeHtml(s.ka.ownerDisplayName || s.ka.owner);
+    const ownerChip = isMine
+      ? `<span class="ka-owner-chip ka-owner-mine" title="你是這個 KA 的 Account Owner">${ownerDisp}（我）</span>`
+      : `<span class="ka-owner-chip" title="Account Owner：${ownerDisp}">${ownerDisp}</span>`;
+    const removeBtnHtml = canRemove
+      ? `<button class="ka-remove-btn" data-ka-id="${escapeHtml(s.ka.id)}" title="取消標記">✕</button>`
+      : `<button class="ka-remove-btn ka-disabled" disabled title="此 KA 由 ${ownerDisp} 管理，無權移除">✕</button>`;
     tr.innerHTML = `
       <td><span class="ka-expand-icon">▶</span></td>
       <td><span class="ka-company"><span class="ka-star">⭐</span> ${escapeHtml(s.ka.company)}</span></td>
+      <td>${ownerChip}</td>
       <td class="ka-amount">${fmt(s.ytdAmt)} K</td>
       <td class="ka-amount ka-muted">${fmt(s.lastYearAmt)} K</td>
       <td class="ka-amount">${diffHtml(s.diffPct)}</td>
@@ -1097,7 +1128,7 @@ function renderKeyAccountView() {
           : '<span style="color:#9ca3af">—</span>'
       }</td>
       <td style="text-align:center">
-        <button class="ka-remove-btn" data-ka-id="${escapeHtml(s.ka.id)}" title="取消標記">✕</button>
+        ${removeBtnHtml}
       </td>
     `;
     // 展開列：在手商機明細
@@ -1118,11 +1149,11 @@ function renderKeyAccountView() {
             <td style="text-align:right;font-weight:600">${fmt(amt)} K</td>
           </tr>`;
         }).join('');
-      pipelineTr.innerHTML = `<td colspan="8" style="padding:0">
+      pipelineTr.innerHTML = `<td colspan="9" style="padding:0">
         <table class="ka-pipeline-table">${rows}</table>
       </td>`;
     } else {
-      pipelineTr.innerHTML = `<td colspan="8" style="padding:14px;text-align:center;color:#9ca3af;font-size:12px">無在手商機</td>`;
+      pipelineTr.innerHTML = `<td colspan="9" style="padding:14px;text-align:center;color:#9ca3af;font-size:12px">無在手商機</td>`;
     }
     tr.addEventListener('click', e => {
       if (e.target.closest('.ka-remove-btn')) return; // 點 X 不展開
@@ -1165,10 +1196,19 @@ function buildContactCard(c, extraClass = '') {
     ? `健康分數 ${c.healthScore}（${c.healthScore >= 70 ? '良好' : c.healthScore >= 40 ? '待關注' : '風險'}）`
     : '';
   // KA ⭐ 按鈕：僅「我的客戶」（customerType==='customer'）顯示，避免在潛在客戶上看到
+  const kaRec = isKa ? getKaRecord(c.company) : null;
+  const kaIsMine = kaRec && kaRec.owner === (window._myUsername || '');
+  const kaOwnerDisp = kaRec ? (kaRec.ownerDisplayName || kaRec.owner) : '';
+  let kaTooltip;
+  if (!isKa) kaTooltip = '標記為 Key Account';
+  else if (kaIsMine) kaTooltip = `取消 Key Account 標記（你是 Account Owner）`;
+  else kaTooltip = `⭐ Account Owner: ${kaOwnerDisp}（無權移除）`;
   const kaBtn = isCustomer && c.company
-    ? `<button class="ka-star-btn ${isKa ? 'active' : ''}" data-ka-company="${escapeHtml(c.company)}" title="${isKa ? '取消 Key Account 標記' : '標記為 Key Account'}">${isKa ? '⭐' : '☆'}</button>`
+    ? `<button class="ka-star-btn ${isKa ? 'active' : ''}${isKa && !kaIsMine ? ' ka-star-others' : ''}" data-ka-company="${escapeHtml(c.company)}" title="${kaTooltip}">${isKa ? '⭐' : '☆'}</button>`
     : '';
-  const kaChip = isKa ? `<span class="ka-chip">⭐ KEY ACCOUNT</span>` : '';
+  const kaChip = isKa
+    ? `<span class="ka-chip" title="Account Owner: ${escapeHtml(kaOwnerDisp)}">⭐ KEY ACCOUNT${kaIsMine ? '（我管理）' : ''}</span>`
+    : '';
   card.innerHTML = `
     <div class="card-top" style="position:relative">
       <div class="avatar" style="background:linear-gradient(135deg,${c1},${c2})">${getInitial(c.name)}</div>

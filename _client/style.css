@@ -3199,7 +3199,24 @@ body {
   color: #9ca3af; cursor: pointer; padding: 4px 8px;
   font-size: 12px; transition: all .15s;
 }
-.ka-remove-btn:hover { background: #fee2e2; border-color: #fca5a5; color: #c5221f; }
+.ka-remove-btn:hover:not(.ka-disabled) { background: #fee2e2; border-color: #fca5a5; color: #c5221f; }
+.ka-remove-btn.ka-disabled { cursor: not-allowed; opacity: 0.35; }
+
+/* Account Owner chip */
+.ka-owner-chip {
+  display: inline-block;
+  background: #eff6ff; color: #1a3c7a;
+  padding: 2px 10px; border-radius: 99px;
+  font-size: 11px; font-weight: 600;
+}
+.ka-owner-chip.ka-owner-mine {
+  background: #fef3c7; color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+/* 客戶卡 ⭐：被別人標時的視覺差異（金色但帶提示視覺） */
+.ka-star-btn.ka-star-others { color: #f59e0b; cursor: help; }
+.ka-star-btn.ka-star-others:hover { transform: none; }
 
 /* 展開的在手商機明細 */
 .ka-pipeline-row td { padding: 0; background: #fffef5 !important; }
@@ -3263,7 +3280,10 @@ body.dark .ka-pipeline-badge { background: #1a1040; color: #a78bfa; }
 body.dark .ka-empty { color: #636e7b; }
 body.dark .ka-tip { color: #636e7b; }
 body.dark .ka-remove-btn { background: transparent; border-color: #30363d; color: #636e7b; }
-body.dark .ka-remove-btn:hover { background: #2a0d0d; border-color: #5a1010; color: #ff8080; }
+body.dark .ka-remove-btn:hover:not(.ka-disabled) { background: #2a0d0d; border-color: #5a1010; color: #ff8080; }
+body.dark .ka-remove-btn.ka-disabled { opacity: 0.3; }
+body.dark .ka-owner-chip { background: #0d2040; color: #8ecfff; }
+body.dark .ka-owner-chip.ka-owner-mine { background: #2a1f00; color: #fcd34d; border-color: #d97706; }
 
 body.dark .ka-pipeline-row td { background: #161914 !important; }
 body.dark .ka-pipeline-table td { border-bottom-color: #2a1f00; color: #8b949e; }

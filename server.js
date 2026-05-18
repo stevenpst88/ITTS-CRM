@@ -1886,17 +1886,33 @@ app.get('/api/birthday-reminders', requireAuth, (req, res) => {
 
 // ── Key Account（重點客戶）─────────────────────────────
 // 資料模型：data.keyAccounts = [{ id, owner, company, createdAt, note }]
-// 可視範圍：依 getViewableOwners(req, 'keyAccounts')
-//   - user：自己
-//   - manager1/2：自己+部屬
-//   - admin/executive/accounting_manager/finance_manager：全公司
-//   - secretary：不看
-//   - tecopm：只看 viewOwnerScope
+// 設計（Phase A v2，跨 BU 共享）：
+//   - 一家公司只能有一位 Account Owner（第一位標記者）
+//   - 全公司可見（除 secretary/marketing/tecopm 不顯示）
+//   - 只有 Account Owner 或 admin 能移除
+
+const _KA_HIDDEN_ROLES = new Set(['secretary','marketing','tecopm']);
 
 app.get('/api/key-accounts', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (_KA_HIDDEN_ROLES.has(role)) return res.json([]);
   const data = db.load();
-  const owners = new Set(getViewableOwners(req, 'keyAccounts'));
-  const list = (data.keyAccounts || []).filter(ka => owners.has(ka.owner));
+  const auth = loadAuth();
+  const usernameToDisplay = {};
+  (auth.users || []).forEach(u => { usernameToDisplay[u.username] = u.displayName || u.username; });
+
+  // 全公司可見；同公司可能有歷史重複資料 → 依 company dedupe，取最早 createdAt 為 Account Owner
+  const byCompany = new Map();
+  (data.keyAccounts || []).forEach(ka => {
+    const existing = byCompany.get(ka.company);
+    if (!existing || (ka.createdAt && existing.createdAt && ka.createdAt < existing.createdAt)) {
+      byCompany.set(ka.company, ka);
+    }
+  });
+  const list = [...byCompany.values()].map(ka => ({
+    ...ka,
+    ownerDisplayName: usernameToDisplay[ka.owner] || ka.owner
+  }));
   res.json(list);
 });
 
@@ -1905,13 +1921,24 @@ app.post('/api/key-accounts', requireAuth, (req, res) => {
   if (!company || !company.trim()) {
     return res.status(400).json({ error: '公司名稱為必填' });
   }
+  const role = req.session.user.role;
+  if (_KA_HIDDEN_ROLES.has(role)) {
+    return res.status(403).json({ error: '此角色無法操作 Key Account' });
+  }
   const owner = req.session.user.username;
   const data = db.load();
   if (!data.keyAccounts) data.keyAccounts = [];
-  // 去重：同 owner + company 只能一筆
-  const dup = data.keyAccounts.find(ka => ka.owner === owner && ka.company === company.trim());
+  // 唯一性：同公司只能有一筆（不論 owner）
+  const dup = data.keyAccounts.find(ka => ka.company === company.trim());
   if (dup) {
-    return res.status(409).json({ error: '此公司已是 Key Account', id: dup.id });
+    const auth = loadAuth();
+    const dupOwner = (auth.users || []).find(u => u.username === dup.owner);
+    return res.status(409).json({
+      error: '此公司已是 Key Account',
+      id: dup.id,
+      existingOwner: dup.owner,
+      existingOwnerDisplayName: dupOwner?.displayName || dup.owner
+    });
   }
   const ka = {
     id: 'ka_' + uuidv4(),
@@ -1922,7 +1949,7 @@ app.post('/api/key-accounts', requireAuth, (req, res) => {
   };
   data.keyAccounts.push(ka);
   db.save(data);
-  writeLog('CREATE_KEY_ACCOUNT', owner, company.trim(), `標記為 Key Account`, req);
+  writeLog('CREATE_KEY_ACCOUNT', owner, company.trim(), `標記為 Key Account（Account Owner）`, req);
   res.json(ka);
 });
 
@@ -1933,9 +1960,9 @@ app.delete('/api/key-accounts/:id', requireAuth, (req, res) => {
   const idx = data.keyAccounts.findIndex(ka => ka.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '找不到此 Key Account' });
   const ka = data.keyAccounts[idx];
-  // 只有標記者本人或 admin 可移除
+  // 只有 Account Owner 本人或 admin 可移除
   if (ka.owner !== username && req.session.user.role !== 'admin') {
-    return res.status(403).json({ error: '無權移除他人標記的 Key Account' });
+    return res.status(403).json({ error: '此 Key Account 由其他業務管理，無權移除' });
   }
   data.keyAccounts.splice(idx, 1);
   db.save(data);
