@@ -307,12 +307,32 @@ const DEFAULT_ROLE_PERMISSIONS = {
 function getRolePermissions() {
   const data = db.load();
   const stored = data.rolePermissions || {};
+
+  // 偵測「程式新增、但 DB 未儲存過」的 feature
+  // 邏輯：把所有角色 stored 的 features 加起來成全集；不在這個全集裡的 ALL_FEATURES key
+  // 就視為「新加入的功能」，自動補進有自訂設定的角色（依該角色 DEFAULT）
+  // 這保證新功能上線後，已自訂過的 admin 不會「閃退」看不到新 nav
+  const everUsedFeatures = new Set();
+  Object.values(stored).forEach(arr => {
+    if (Array.isArray(arr)) arr.forEach(k => everUsedFeatures.add(k));
+  });
+  const hasAnyStored = Object.keys(stored).length > 0;
+  const brandNewFeatures = hasAnyStored
+    ? ALL_FEATURES.filter(k => !everUsedFeatures.has(k))
+    : [];
+
   const result = {};
   KNOWN_ROLES.forEach(role => {
+    const defaults = (DEFAULT_ROLE_PERMISSIONS[role] || []).slice();
     if (Array.isArray(stored[role])) {
-      result[role] = stored[role].filter(k => ALL_FEATURES.includes(k));
+      const merged = stored[role].filter(k => ALL_FEATURES.includes(k));
+      // 補上「全新功能」：若 DEFAULT 該角色包含此 brand-new feature，自動加入
+      brandNewFeatures.forEach(k => {
+        if (defaults.includes(k) && !merged.includes(k)) merged.push(k);
+      });
+      result[role] = merged;
     } else {
-      result[role] = (DEFAULT_ROLE_PERMISSIONS[role] || []).slice();
+      result[role] = defaults;
     }
   });
   // admin 永遠擁有所有功能（無法被勾掉）
