@@ -18,7 +18,7 @@ function safeHref(url) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : '#';
 }
 
-let userPermissions = { role: 'user', canDownloadContacts: false, canSetTargets: false };
+let userPermissions = { role: 'user', canDownloadContacts: false, canSetTargets: false, accessMode: 'edit' };
 
 async function loadPermissions() {
   try {
@@ -26,9 +26,48 @@ async function loadPermissions() {
     if (r.ok) {
       userPermissions = await r.json();
       applyPermissions();
+      applyAccessMode();
     }
   } catch {}
 }
+
+// ── Phase 3：唯讀模式 banner + fetch 攔截器 ─────────────────
+function applyAccessMode() {
+  if (userPermissions.accessMode !== 'view') return;
+  document.body.classList.add('access-view');
+  // 在 topbar 下方插入唯讀提示條（如未存在）
+  if (!document.getElementById('viewModeBanner')) {
+    const banner = document.createElement('div');
+    banner.id = 'viewModeBanner';
+    banner.innerHTML = '🔒 <b>唯讀模式</b>：您目前為唯讀模式，無法新增、編輯或刪除資料。如需修改權限，請聯繫管理員。';
+    // 插到 body 最前面，CSS sticky 確保始終可見
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+}
+
+// 全域 fetch 攔截：唯讀模式下擋下所有 POST/PUT/DELETE/PATCH（除白名單外）
+const _ACCESS_VIEW_EXEMPT_CLIENT = ['/api/logout', '/api/user/password'];
+(function patchFetch() {
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    if (userPermissions && userPermissions.accessMode === 'view') {
+      const method = ((opts && opts.method) || 'GET').toUpperCase();
+      if (['POST','PUT','DELETE','PATCH'].includes(method)) {
+        const u = String(url);
+        const exempt = _ACCESS_VIEW_EXEMPT_CLIENT.some(p => u.includes(p));
+        if (!exempt) {
+          // 顯示 toast（若 showToast 存在）
+          try { if (typeof showToast === 'function') showToast('🔒 您目前為唯讀模式，無法執行此操作'); } catch {}
+          return Promise.resolve(new Response(JSON.stringify({ error: '您目前為唯讀模式，無法執行此操作' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+      }
+    }
+    return _origFetch(url, opts);
+  };
+})();
 
 function applyPermissions() {
   // ── 集團PM（tecopm）— 唯讀角色，最高優先級處理 ──────────────

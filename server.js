@@ -174,6 +174,32 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Phase 3：View / Edit 模式攔截 ─────────────────────────
+// 若使用者 accessMode === 'view'，所有寫入操作回 403。
+// admin 角色永遠視為 edit（即使 accessMode 被設成 view 也忽略）。
+const _ACCESS_VIEW_EXEMPT_PATHS = new Set([
+  '/api/login',
+  '/api/logout',
+  '/api/user/password',     // 唯讀使用者仍可改自己密碼
+]);
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
+  if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
+  if (!req.session || !req.session.user) return next(); // 未登入交由後續 requireAuth 處理
+  try {
+    const auth = loadAuth();
+    const u = auth.users.find(x => x.username === req.session.user.username);
+    if (!u) return next();
+    if (u.role === 'admin') return next(); // admin 強制 edit
+    if (u.accessMode === 'view') {
+      return res.status(403).json({ error: '您目前為唯讀模式，無法執行此操作' });
+    }
+  } catch (e) {
+    console.error('[access-view middleware]', e);
+  }
+  next();
+});
+
 // ── AI 功能速率限制（每人每分鐘 5 次）─────────────────────
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -1290,6 +1316,8 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     canDownloadContacts: u.canDownloadContacts || false,
     canSetTargets: u.canSetTargets || false,
     active: u.active !== false,
+    // Phase 3：存取模式（admin 永遠 edit）
+    accessMode: (u.role === 'admin') ? 'edit' : (u.accessMode === 'view' ? 'view' : 'edit'),
     // 集團PM 專用欄位（其他角色為 undefined）
     viewOwnerScope: u.viewOwnerScope || null,
     viewGroupId:    u.viewGroupId    || null
@@ -1312,7 +1340,7 @@ function validateBuInput(role, buInput) {
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets,
-          viewOwnerScope, viewGroupId } = req.body;
+          accessMode, viewOwnerScope, viewGroupId } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
@@ -1337,6 +1365,8 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
+  // 存取模式：admin 永遠 edit，其餘看送入值，預設 edit
+  const finalAccessMode = (finalRole === 'admin') ? 'edit' : (accessMode === 'view' ? 'view' : 'edit');
   const newUser = {
     username: username.trim(),
     password: hashedPassword,
@@ -1345,6 +1375,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     bu: buCheck.bu,
     canDownloadContacts: !!canDownloadContacts,
     canSetTargets: !!canSetTargets,
+    accessMode: finalAccessMode,
     active: true,
     createdAt: new Date().toISOString(),
     mustChangePassword: true,   // 第一次登入必須更換密碼
@@ -1364,7 +1395,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
   const { displayName, role, bu, canDownloadContacts, canSetTargets, active,
-          viewOwnerScope, viewGroupId } = req.body;
+          accessMode, viewOwnerScope, viewGroupId } = req.body;
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
   if (role !== undefined)               auth.users[idx].role = role;
   const effectiveRole = auth.users[idx].role;
@@ -1376,6 +1407,12 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
   if (active !== undefined)             auth.users[idx].active = !!active;
+  // Phase 3：存取模式（admin 永遠 edit）
+  if (effectiveRole === 'admin') {
+    auth.users[idx].accessMode = 'edit';
+  } else if (accessMode !== undefined) {
+    auth.users[idx].accessMode = (accessMode === 'view') ? 'view' : 'edit';
+  }
 
   // 集團PM 唯讀範圍欄位
   if (effectiveRole === 'tecopm') {
@@ -1565,13 +1602,18 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user) return res.status(404).json({ error: '找不到帳號' });
   const role = user.role || 'user';
+  // admin 永遠 edit；其他角色看 accessMode 欄位（缺失預設 edit）
+  const accessMode = (role === 'admin')
+    ? 'edit'
+    : (user.accessMode === 'view' ? 'view' : 'edit');
   res.json({
     role,
     bu: normalizeBu(user.bu),
     canDownloadContacts: user.canDownloadContacts || false,
     canSetTargets: user.canSetTargets || false,
     active: user.active !== false,
-    features: getUserFeatures(role) // Phase 1：依角色功能權限矩陣
+    accessMode,                       // Phase 3：View / Edit 模式
+    features: getUserFeatures(role)   // Phase 1：依角色功能權限矩陣
   });
 });
 

@@ -503,6 +503,7 @@
                   <th>角色</th>
                   <th>BU</th>
                   <th>狀態</th>
+                  <th>存取模式</th>
                   <th>下載名單</th>
                   <th>設定業績目標</th>
                   <th>操作</th>
@@ -1612,6 +1613,18 @@
             <option value="false">停用</option>
           </select>
         </div>
+        <div class="form-group" id="fieldAccessModeWrap">
+          <label>存取模式</label>
+          <div style="display:flex;gap:14px;align-items:center;font-size:13px">
+            <label style="cursor:pointer">
+              <input type="radio" name="fieldAccessMode" value="edit" checked> ✏️ 可以修改（預設）
+            </label>
+            <label style="cursor:pointer">
+              <input type="radio" name="fieldAccessMode" value="view"> 🔒 只能查看（View Only）
+            </label>
+          </div>
+          <div id="fieldAccessModeHint" style="font-size:11px;color:#9ca3af;margin-top:4px">View 模式下：使用者可看見有權限的頁面，但無法新增/編輯/刪除任何資料</div>
+        </div>
         <script>
           function onRoleChange() {
             const role = document.getElementById('fieldRole').value;
@@ -1643,6 +1656,20 @@
               wrap.style.opacity = '1';
               hint.style.display = '';
               crossHint.style.display = 'none';
+            }
+
+            // Phase 3：admin 永遠 edit 且禁用 radio
+            const accessModeRadios = document.querySelectorAll('input[name="fieldAccessMode"]');
+            const accessHint = document.getElementById('fieldAccessModeHint');
+            if (role === 'admin') {
+              accessModeRadios.forEach(r => {
+                r.disabled = true;
+                if (r.value === 'edit') r.checked = true;
+              });
+              if (accessHint) accessHint.textContent = '※ admin 強制為「可以修改」，不允許設為唯讀（避免管理員自我鎖死）';
+            } else {
+              accessModeRadios.forEach(r => { r.disabled = false; });
+              if (accessHint) accessHint.textContent = 'View 模式下：使用者可看見有權限的頁面，但無法新增/編輯/刪除任何資料';
             }
           }
         </script>
@@ -2063,6 +2090,11 @@
           <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
           <td>${buCell}</td>
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
+          <td>${
+            u.accessMode === 'view'
+              ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">🔒 唯讀</span>'
+              : '<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">✏️ 可編輯</span>'
+          }</td>
           <td style="text-align:center">
             <label class="toggle" title="下載客戶名單">
               <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} data-action="toggle" data-username="${u.username}" data-field="canDownloadContacts">
@@ -2173,6 +2205,9 @@
       $('fieldActive').value = 'true';
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
+      // Phase 3：accessMode 預設 edit
+      const accEdit = document.querySelector('input[name="fieldAccessMode"][value="edit"]');
+      if (accEdit) accEdit.checked = true;
       await loadTecopmOptions();
       $('fieldViewOwnerScope').value = '';
       $('fieldViewGroupId').value = '';
@@ -2194,6 +2229,10 @@
       $('fieldActive').value = u.active ? 'true' : 'false';
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
+      // Phase 3：載入 accessMode
+      const accVal = (u.accessMode === 'view') ? 'view' : 'edit';
+      const accRadio = document.querySelector(`input[name="fieldAccessMode"][value="${accVal}"]`);
+      if (accRadio) accRadio.checked = true;
       await loadTecopmOptions();
       $('fieldViewOwnerScope').value = u.viewOwnerScope || '';
       $('fieldViewGroupId').value    = u.viewGroupId    || '';
@@ -2224,6 +2263,9 @@
         if (!viewOwnerScope) { showToast('請選擇查看的業務'); return; }
         if (!viewGroupId)    { showToast('請選擇查看的集團'); return; }
       }
+      // Phase 3：accessMode（admin 永遠 edit）
+      const accessModeRaw = document.querySelector('input[name="fieldAccessMode"]:checked')?.value || 'edit';
+      const accessMode = (role === 'admin') ? 'edit' : (accessModeRaw === 'view' ? 'view' : 'edit');
       const payload = {
         displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
         role,
@@ -2231,6 +2273,7 @@
         active: $('fieldActive').value === 'true',
         canDownloadContacts: $('fieldCanDownload').checked,
         canSetTargets: $('fieldCanTargets').checked,
+        accessMode,
         ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
       try {
