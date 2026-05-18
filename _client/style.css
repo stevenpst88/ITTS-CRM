@@ -3218,6 +3218,15 @@ body {
 .ka-star-btn.ka-star-others { color: #f59e0b; cursor: help; }
 .ka-star-btn.ka-star-others:hover { transform: none; }
 
+/* KA 展開列：opp 業主 chip（跨 BU 透明） */
+.ka-opp-owner-chip {
+  display: inline-block;
+  background: #f3e8ff; color: #6d28d9;
+  padding: 1px 8px; border-radius: 99px;
+  font-size: 10px; font-weight: 600;
+  margin-top: 3px;
+}
+
 /* 展開的在手商機明細 */
 .ka-pipeline-row td { padding: 0; background: #fffef5 !important; }
 .ka-pipeline-table { width: 100%; font-size: 12px; }
@@ -3284,6 +3293,7 @@ body.dark .ka-remove-btn:hover:not(.ka-disabled) { background: #2a0d0d; border-c
 body.dark .ka-remove-btn.ka-disabled { opacity: 0.3; }
 body.dark .ka-owner-chip { background: #0d2040; color: #8ecfff; }
 body.dark .ka-owner-chip.ka-owner-mine { background: #2a1f00; color: #fcd34d; border-color: #d97706; }
+body.dark .ka-opp-owner-chip { background: #1a1040; color: #a78bfa; }
 
 body.dark .ka-pipeline-row td { background: #161914 !important; }
 body.dark .ka-pipeline-table td { border-bottom-color: #2a1f00; color: #8b949e; }

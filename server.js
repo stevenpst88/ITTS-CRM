@@ -1953,6 +1953,42 @@ app.post('/api/key-accounts', requireAuth, (req, res) => {
   res.json(ka);
 });
 
+// ── KA 主頁專用：自己擁有的 KA 公司的全部商機（跨 BU 透明） ──
+// 僅 Account Owner 視角；其他角色不會看到別人 BU 的 opp
+app.get('/api/key-accounts/my-opps', requireAuth, (req, res) => {
+  const role = req.session.user.role;
+  if (_KA_HIDDEN_ROLES.has(role)) return res.json([]);
+  const username = req.session.user.username;
+  const data = db.load();
+  const myKaCompanies = new Set(
+    (data.keyAccounts || [])
+      .filter(ka => ka.owner === username)
+      .map(ka => ka.company)
+  );
+  if (myKaCompanies.size === 0) return res.json([]);
+  const auth = loadAuth();
+  const usernameToDisplay = {};
+  const usernameToBu = {};
+  (auth.users || []).forEach(u => {
+    usernameToDisplay[u.username] = u.displayName || u.username;
+    usernameToBu[u.username] = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
+  });
+  const opps = (data.opportunities || [])
+    .filter(o => myKaCompanies.has(o.company))
+    .map(o => {
+      let buStr = '';
+      if (typeof o.bu === 'string') buStr = o.bu;
+      else if (Array.isArray(o.bu) && o.bu.length) buStr = String(o.bu[0]);
+      if (!buStr) buStr = String((usernameToBu[o.owner] || [])[0] || '');
+      return {
+        ...o,
+        ownerDisplayName: usernameToDisplay[o.owner] || o.owner,
+        ownerBu: buStr.toUpperCase()
+      };
+    });
+  res.json(opps);
+});
+
 app.delete('/api/key-accounts/:id', requireAuth, (req, res) => {
   const username = req.session.user.username;
   const data = db.load();
