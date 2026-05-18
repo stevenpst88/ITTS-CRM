@@ -281,6 +281,7 @@ const FEATURE_REGISTRY = [
   { key: 'accountingGroup', label: '帳務管理',              icon: '💰', navId: 'navAccountingGroup' },
   { key: 'callin',          label: 'Call-in Pass',          icon: '📞', navId: 'navCallin' },
   { key: 'lostOpp',         label: '流失商機',              icon: '🪦', navId: 'navLostOpp' },
+  { key: 'keyAccount',      label: 'Key Account（重點客戶）', icon: '⭐', navId: 'navKeyAccount' },
   { key: 'transfer',        label: '名單移轉',              icon: '🔄', navId: 'navTransfer' },
   { key: 'campaigns',       label: '行銷活動',              icon: '🎪', navId: 'navCampaigns' },
   { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
@@ -292,15 +293,15 @@ const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
 const DEFAULT_ROLE_PERMISSIONS = {
   admin:              ALL_FEATURES,
-  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations'],
-  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
-  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
+  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations','keyAccount'],
+  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
+  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   secretary:          ['home','targets','forecast','accountingGroup','callin'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads'],
-  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations'],
-  accounting_manager: ['home','execDash','accountingGroup','quotations'],
-  finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup'],
+  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
+  accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount'],
+  finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount'],
 };
 
 function getRolePermissions() {
@@ -1861,6 +1862,65 @@ app.get('/api/birthday-reminders', requireAuth, (req, res) => {
 
   upcoming.sort((a, b) => a.daysLeft - b.daysLeft);
   res.json(upcoming);
+});
+
+// ── Key Account（重點客戶）─────────────────────────────
+// 資料模型：data.keyAccounts = [{ id, owner, company, createdAt, note }]
+// 可視範圍：依 getViewableOwners(req, 'keyAccounts')
+//   - user：自己
+//   - manager1/2：自己+部屬
+//   - admin/executive/accounting_manager/finance_manager：全公司
+//   - secretary：不看
+//   - tecopm：只看 viewOwnerScope
+
+app.get('/api/key-accounts', requireAuth, (req, res) => {
+  const data = db.load();
+  const owners = new Set(getViewableOwners(req, 'keyAccounts'));
+  const list = (data.keyAccounts || []).filter(ka => owners.has(ka.owner));
+  res.json(list);
+});
+
+app.post('/api/key-accounts', requireAuth, (req, res) => {
+  const { company, note } = req.body || {};
+  if (!company || !company.trim()) {
+    return res.status(400).json({ error: '公司名稱為必填' });
+  }
+  const owner = req.session.user.username;
+  const data = db.load();
+  if (!data.keyAccounts) data.keyAccounts = [];
+  // 去重：同 owner + company 只能一筆
+  const dup = data.keyAccounts.find(ka => ka.owner === owner && ka.company === company.trim());
+  if (dup) {
+    return res.status(409).json({ error: '此公司已是 Key Account', id: dup.id });
+  }
+  const ka = {
+    id: 'ka_' + uuidv4(),
+    owner,
+    company: company.trim(),
+    createdAt: new Date().toISOString(),
+    note: (note || '').trim()
+  };
+  data.keyAccounts.push(ka);
+  db.save(data);
+  writeLog('CREATE_KEY_ACCOUNT', owner, company.trim(), `標記為 Key Account`, req);
+  res.json(ka);
+});
+
+app.delete('/api/key-accounts/:id', requireAuth, (req, res) => {
+  const username = req.session.user.username;
+  const data = db.load();
+  if (!data.keyAccounts) data.keyAccounts = [];
+  const idx = data.keyAccounts.findIndex(ka => ka.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '找不到此 Key Account' });
+  const ka = data.keyAccounts[idx];
+  // 只有標記者本人或 admin 可移除
+  if (ka.owner !== username && req.session.user.role !== 'admin') {
+    return res.status(403).json({ error: '無權移除他人標記的 Key Account' });
+  }
+  data.keyAccounts.splice(idx, 1);
+  db.save(data);
+  writeLog('DELETE_KEY_ACCOUNT', username, ka.company, `取消 Key Account 標記`, req);
+  res.json({ success: true });
 });
 
 // ── 取得所有聯絡人 ──────────────────────────────────────

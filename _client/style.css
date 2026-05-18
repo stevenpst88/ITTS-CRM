@@ -3123,6 +3123,100 @@ body {
   font-size:10px; color:#9ca3af; margin-top:4px; text-align:right;
 }
 
+/* ════════════════════════════════════════════════════════
+   ⭐ Key Account
+   ════════════════════════════════════════════════════════ */
+
+/* 客戶卡 ⭐ 按鈕 */
+.ka-star-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; padding: 4px; line-height: 1;
+  opacity: 0.4; transition: opacity .15s, transform .15s;
+  color: #9ca3af;
+  z-index: 2;
+}
+.ka-star-btn:hover { opacity: 1; transform: scale(1.15); color: #f59e0b; }
+.ka-star-btn.active { opacity: 1; color: #f59e0b; }
+
+/* KA 客戶卡視覺強化 */
+.contact-card.is-ka {
+  border-left: 3px solid #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff 70%);
+}
+.contact-card.is-ka:hover { box-shadow: 0 4px 14px rgba(245,158,11,.18); }
+.ka-chip {
+  display: inline-block; background: #fde68a; color: #92400e;
+  padding: 2px 8px; border-radius: 99px;
+  font-size: 10px; font-weight: 700; letter-spacing: .3px;
+  margin-left: 6px;
+}
+
+/* KA 主頁 */
+.ka-page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.ka-page-title { font-size: 22px; font-weight: 700; color: #1a3c7a; }
+.ka-page-sub { color: #6b7280; font-size: 13px; margin-top: 2px; }
+
+.ka-kpi-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px;
+}
+@media (max-width: 1024px) { .ka-kpi-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .ka-kpi-row { grid-template-columns: 1fr; } }
+
+.ka-kpi-card {
+  background: #fff; padding: 14px 18px; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06); border-left: 4px solid #ccc;
+}
+.ka-kpi-gold   { border-left-color: #f59e0b; background: linear-gradient(135deg, #fef3c7 0%, #fff 100%); }
+.ka-kpi-blue   { border-left-color: #3b82f6; background: linear-gradient(135deg, #eff6ff 0%, #fff 100%); }
+.ka-kpi-green  { border-left-color: #10b981; background: linear-gradient(135deg, #d1fae5 0%, #fff 100%); }
+.ka-kpi-purple { border-left-color: #8b5cf6; background: linear-gradient(135deg, #f3e8ff 0%, #fff 100%); }
+.ka-kpi-label  { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+.ka-kpi-value  { font-size: 22px; font-weight: 800; color: #1f2937; }
+.ka-kpi-sub    { font-size: 11px; color: #9ca3af; margin-top: 4px; }
+
+.ka-table-wrap { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.ka-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ka-table thead tr { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+.ka-table th { padding: 12px 14px; text-align: left; font-weight: 700; color: #92400e; font-size: 12px; letter-spacing: .3px; }
+.ka-table td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.ka-row { cursor: pointer; transition: background .15s; }
+.ka-row:hover td { background: #fffbeb; }
+.ka-row.expanded td { background: #fef3c722; }
+.ka-company { font-weight: 600; color: #1a3c7a; display: inline-flex; align-items: center; gap: 6px; }
+.ka-star { color: #f59e0b; font-size: 15px; }
+.ka-amount { font-weight: 600; text-align: right; color: #1f2937; }
+.ka-muted { color: #9ca3af; font-weight: 400; }
+.ka-diff-pos { color: #10b981; font-weight: 700; }
+.ka-diff-neg { color: #ef4444; font-weight: 700; }
+.ka-pipeline-badge { background: #e0e7ff; color: #3730a3; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.ka-expand-icon { color: #9ca3af; transition: transform .2s; display: inline-block; font-size: 11px; }
+.ka-row.expanded .ka-expand-icon { transform: rotate(90deg); color: #1a3c7a; }
+.ka-empty { padding: 32px 16px !important; text-align: center; color: #9ca3af; font-size: 13px; line-height: 1.8; }
+.ka-tip { font-size: 11px; color: #9ca3af; margin-top: 10px; text-align: right; }
+.ka-remove-btn {
+  background: transparent; border: 1px solid #e5e7eb; border-radius: 6px;
+  color: #9ca3af; cursor: pointer; padding: 4px 8px;
+  font-size: 12px; transition: all .15s;
+}
+.ka-remove-btn:hover { background: #fee2e2; border-color: #fca5a5; color: #c5221f; }
+
+/* 展開的在手商機明細 */
+.ka-pipeline-row td { padding: 0; background: #fffef5 !important; }
+.ka-pipeline-table { width: 100%; font-size: 12px; }
+.ka-pipeline-table td { padding: 8px 14px; border-bottom: 1px dashed #fef3c7; color: #555; }
+.ka-pipeline-table tr:last-child td { border-bottom: none; }
+.ka-stage-A, .ka-stage-B, .ka-stage-C, .ka-stage-D {
+  padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700;
+}
+.ka-stage-A { background: #d1fae5; color: #166534; }
+.ka-stage-B { background: #fed7aa; color: #9a3412; }
+.ka-stage-C { background: #fef3c7; color: #854d0e; }
+.ka-stage-D { background: #f3f4f6; color: #6b7280; }
+
+/* 我的客戶 KA 篩選下拉 */
+.contacts-ka-filter:focus { outline: none; border-color: #f59e0b; }
+
 /* ── Phase 3：唯讀模式 banner ────────────────────────── */
 #viewModeBanner {
   position: sticky; top: 0; z-index: 9999;
@@ -3135,6 +3229,52 @@ body {
   font-weight: 500;
   box-shadow: 0 1px 4px rgba(0,0,0,.08);
 }
+/* ── Key Account 深色模式 ──────────────────────── */
+body.dark .contact-card.is-ka {
+  background: linear-gradient(135deg, #2a1f00 0%, #161b22 70%);
+  border-left-color: #f59e0b;
+}
+body.dark .ka-chip { background: #2a1f00; color: #fcd34d; border: 1px solid #5a4000; }
+body.dark .ka-star-btn { color: #636e7b; }
+body.dark .ka-star-btn:hover, body.dark .ka-star-btn.active { color: #fcd34d; }
+
+body.dark .ka-page-title { color: #8ecfff; }
+body.dark .ka-page-sub { color: #8b949e; }
+
+body.dark .ka-kpi-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+body.dark .ka-kpi-gold   { background: linear-gradient(135deg, #2a1f00 0%, #161b22 100%); }
+body.dark .ka-kpi-blue   { background: linear-gradient(135deg, #0d2040 0%, #161b22 100%); }
+body.dark .ka-kpi-green  { background: linear-gradient(135deg, #0a1f10 0%, #161b22 100%); }
+body.dark .ka-kpi-purple { background: linear-gradient(135deg, #1a1040 0%, #161b22 100%); }
+body.dark .ka-kpi-label { color: #8b949e; }
+body.dark .ka-kpi-value { color: #e6edf3; }
+body.dark .ka-kpi-sub { color: #636e7b; }
+
+body.dark .ka-table-wrap { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+body.dark .ka-table thead tr { background: linear-gradient(135deg, #2a1f00 0%, #3a2a00 100%); }
+body.dark .ka-table th { color: #fcd34d; }
+body.dark .ka-table td { color: #c9d1d9; border-bottom-color: #21262d; }
+body.dark .ka-row:hover td { background: #1c2128 !important; }
+body.dark .ka-row.expanded td { background: #1a1a0a !important; }
+body.dark .ka-company { color: #8ecfff; }
+body.dark .ka-amount { color: #e6edf3; }
+body.dark .ka-muted { color: #636e7b; }
+body.dark .ka-pipeline-badge { background: #1a1040; color: #a78bfa; }
+body.dark .ka-empty { color: #636e7b; }
+body.dark .ka-tip { color: #636e7b; }
+body.dark .ka-remove-btn { background: transparent; border-color: #30363d; color: #636e7b; }
+body.dark .ka-remove-btn:hover { background: #2a0d0d; border-color: #5a1010; color: #ff8080; }
+
+body.dark .ka-pipeline-row td { background: #161914 !important; }
+body.dark .ka-pipeline-table td { border-bottom-color: #2a1f00; color: #8b949e; }
+body.dark .ka-stage-A { background: #0a1f10; color: #4ade80; }
+body.dark .ka-stage-B { background: #2a1a00; color: #d4a84e; }
+body.dark .ka-stage-C { background: #2a1f00; color: #fcd34d; }
+body.dark .ka-stage-D { background: #21262d; color: #8b949e; }
+
+body.dark .contacts-ka-filter { background: #21262d; color: #c9d1d9; border-color: #30363d; }
+body.dark .contacts-ka-filter:focus { border-color: #f59e0b; }
+
 body.dark #viewModeBanner {
   background: linear-gradient(135deg, #2a1f00 0%, #3a2a00 100%);
   color: #fcd34d;

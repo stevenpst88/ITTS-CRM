@@ -186,6 +186,7 @@ function applyPermissions() {
     accountingGroup: 'navAccountingGroup',
     callin: 'navCallin',
     lostOpp: 'navLostOpp',
+    keyAccount: 'navKeyAccount',
     transfer: 'navTransfer',
     campaigns: 'navCampaigns',
     leads: 'navLeads',
@@ -206,6 +207,8 @@ function applyPermissions() {
 
 let allContacts = [];
 let allOpportunities = [];
+let allKeyAccounts = [];      // [{ id, owner, company, createdAt, note }]
+let contactsKaFilterMode = 'all'; // 'all' | 'ka' | 'non-ka'
 let currentViewId = null;
 
 // ── 職能分類 ─────────────────────────────────────────────
@@ -754,7 +757,7 @@ function showDashboard() {
   localStorage.setItem('lastSection', 'dashboard');
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
-  ['prospectsView','contactsView','visitsView','targetsView','pipelineView',
+  ['prospectsView','contactsView','keyAccountView','visitsView','targetsView','pipelineView',
    'forecastView','lostOppView','execDashView','managerHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
@@ -780,6 +783,7 @@ function showSection(section) {
   $('dashboardView').style.display    = 'none';
   $('prospectsView').style.display    = section === 'prospects'   ? '' : 'none';
   $('contactsView').style.display     = section === 'contacts'    ? '' : 'none';
+  if ($('keyAccountView')) $('keyAccountView').style.display = section === 'keyAccount' ? '' : 'none';
   $('visitsView').style.display       = section === 'visits'      ? '' : 'none';
   $('targetsView').style.display      = section === 'targets'     ? '' : 'none';
   $('pipelineView').style.display     = section === 'pipeline'    ? '' : 'none';
@@ -801,7 +805,8 @@ function showSection(section) {
   $('visitsToolbar').style.display    = section === 'visits'    ? 'flex' : 'none';
   setActiveNav(section);
   if (section === 'prospects')   { loadContacts(); loadGroups(); }
-  if (section === 'contacts')    { loadContacts(); loadGroups(); }
+  if (section === 'contacts')    { loadContacts(); loadGroups(); loadKeyAccounts(); }
+  if (section === 'keyAccount')  loadKeyAccountView();
   if (section === 'visits')      { loadVisits(); if (allContacts.length === 0) loadContacts(); }
   if (section === 'targets')     loadTargetsView();
   if (section === 'pipeline')    loadPipelineView();
@@ -823,6 +828,14 @@ function showSection(section) {
 $('navHome').addEventListener('click', showDashboard);
 $('navProspects').addEventListener('click', () => showSection('prospects'));
 $('navContacts').addEventListener('click',  () => showSection('contacts'));
+if ($('navKeyAccount')) $('navKeyAccount').addEventListener('click', () => showSection('keyAccount'));
+// 「我的客戶」頁面的 KA 篩選下拉
+if ($('contactsKaFilter')) {
+  $('contactsKaFilter').addEventListener('change', e => {
+    contactsKaFilterMode = e.target.value;
+    if (Array.isArray(allContacts)) renderContacts(allContacts);
+  });
+}
 $('navVisits').addEventListener('click',    () => showSection('visits'));
 $('navTargets').addEventListener('click',   () => showSection('targets'));
 $('navPipeline').addEventListener('click',  () => showSection('pipeline'));
@@ -867,6 +880,7 @@ async function loadContacts(search = '') {
       fetch(url),
       allVisits.length === 0        ? fetch(`${API}/visits`).then(r => r.json()).then(d => { allVisits = d; }) : Promise.resolve(),
       allOpportunities.length === 0 ? fetch(`${API}/opportunities`).then(r => r.json()).then(d => { allOpportunities = d; }) : Promise.resolve(),
+      allKeyAccounts.length === 0   ? loadKeyAccounts() : Promise.resolve(),
     ]);
     const data = await res.json();
     if (!isSearchMode) allContacts = data;
@@ -901,10 +915,241 @@ async function loadContacts(search = '') {
 }
 
 // ── 建立單張聯絡人卡片 ───────────────────────────────────
+// ════════════════════════════════════════════════════════
+// ── ⭐ Key Account ──────────────────────────────────────
+// ════════════════════════════════════════════════════════
+async function loadKeyAccounts() {
+  try {
+    const r = await fetch(`${API}/key-accounts`);
+    allKeyAccounts = r.ok ? await r.json() : [];
+  } catch { allKeyAccounts = []; }
+}
+
+// 判斷某公司對「目前登入者」而言是否為 KA
+function isKeyAccount(companyName) {
+  if (!companyName) return false;
+  const me = window._myUsername || '';
+  return allKeyAccounts.some(ka => ka.owner === me && ka.company === companyName);
+}
+
+// 找對應的 KA 記錄（用於取消標記時的 id）
+function getKaRecord(companyName) {
+  if (!companyName) return null;
+  const me = window._myUsername || '';
+  return allKeyAccounts.find(ka => ka.owner === me && ka.company === companyName) || null;
+}
+
+async function toggleKeyAccount(companyName) {
+  if (!companyName) { showToast('此名片無公司名稱，無法標記'); return; }
+  const existing = getKaRecord(companyName);
+  try {
+    if (existing) {
+      const r = await fetch(`${API}/key-accounts/${existing.id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('刪除失敗');
+      allKeyAccounts = allKeyAccounts.filter(ka => ka.id !== existing.id);
+      showToast(`已取消 ${companyName} 的 Key Account 標記`);
+    } else {
+      const r = await fetch(`${API}/key-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: companyName })
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || '標記失敗');
+      }
+      const ka = await r.json();
+      allKeyAccounts.push(ka);
+      showToast(`⭐ 已標記 ${companyName} 為 Key Account`);
+    }
+    // 重新渲染聯絡人卡（更新該公司所有卡的 ⭐ 狀態）
+    if (currentSection === 'contacts' || currentSection === 'prospects') {
+      renderContacts(allContacts);
+    }
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+}
+
+// 載入並渲染 KA 主頁（4 KPI + 列表 + 可展開的在手商機）
+async function loadKeyAccountView() {
+  // 先確保資料齊備
+  await Promise.all([
+    loadKeyAccounts(),
+    allOpportunities.length === 0 ? fetch(`${API}/opportunities`).then(r => r.json()).then(d => { allOpportunities = d; }) : Promise.resolve(),
+    allContacts.length === 0 ? loadContacts() : Promise.resolve(),
+  ]);
+  renderKeyAccountView();
+}
+
+function renderKeyAccountView() {
+  const tbody = $('kaTbody');
+  const kpiRow = $('kaKpiRow');
+  if (!tbody || !kpiRow) return;
+
+  const me = window._myUsername || '';
+  // 該登入者可看的 KA（後端已過濾）
+  const kas = allKeyAccounts.slice();
+  // 排序：今年成交金額 desc
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const lastYear = curYear - 1;
+
+  // 計算每個 KA 的數字
+  const stats = kas.map(ka => {
+    const oppsOfCo = allOpportunities.filter(o => o.company === ka.company);
+    const wonThisYear = oppsOfCo.filter(o => {
+      if (o.stage !== 'Won') return false;
+      const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+      return d.getFullYear() === curYear;
+    });
+    const wonLastYear = oppsOfCo.filter(o => {
+      if (o.stage !== 'Won') return false;
+      const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+      return d.getFullYear() === lastYear;
+    });
+    const inHandOpps = oppsOfCo.filter(o => ['A','B','C','D'].includes(o.stage));
+    const ytdAmt = wonThisYear.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const lastYearAmt = wonLastYear.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    const inHandAmt = inHandOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+    let diffPct;
+    if (lastYearAmt === 0 && ytdAmt === 0) diffPct = 0;
+    else if (lastYearAmt === 0) diffPct = 100;
+    else diffPct = Math.round((ytdAmt - lastYearAmt) / lastYearAmt * 100);
+    return {
+      ka,
+      ytdAmt,
+      lastYearAmt,
+      diffPct,
+      wonCount: wonThisYear.length,
+      inHandOpps,
+      inHandCount: inHandOpps.length,
+      inHandAmt,
+    };
+  });
+  stats.sort((a, b) => b.ytdAmt - a.ytdAmt);
+
+  // KPI 計算
+  const kaCount = stats.length;
+  const totalYtd = stats.reduce((s, x) => s + x.ytdAmt, 0);
+  const totalLastYear = stats.reduce((s, x) => s + x.lastYearAmt, 0);
+  const avgPerKa = kaCount > 0 ? Math.round(totalYtd / kaCount) : 0;
+  const totalInHand = stats.reduce((s, x) => s + x.inHandAmt, 0);
+  const totalInHandCount = stats.reduce((s, x) => s + x.inHandCount, 0);
+  let totalDiff = 0;
+  if (totalLastYear > 0) totalDiff = Math.round((totalYtd - totalLastYear) / totalLastYear * 100);
+  else if (totalYtd > 0) totalDiff = 100;
+
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  const diffHtml = (pct) => {
+    if (pct === 0) return '<span style="color:#9ca3af">—</span>';
+    return pct > 0
+      ? `<span class="ka-diff-pos">▲ ${pct}%</span>`
+      : `<span class="ka-diff-neg">▼ ${Math.abs(pct)}%</span>`;
+  };
+
+  kpiRow.innerHTML = `
+    <div class="ka-kpi-card ka-kpi-gold">
+      <div class="ka-kpi-label">⭐ 重點客戶數</div>
+      <div class="ka-kpi-value">${kaCount} 家</div>
+      <div class="ka-kpi-sub">${kaCount === 0 ? '尚未標記' : '已標記 Key Account'}</div>
+    </div>
+    <div class="ka-kpi-card ka-kpi-blue">
+      <div class="ka-kpi-label">今年 YTD 成交（K）</div>
+      <div class="ka-kpi-value">${fmt(totalYtd)}</div>
+      <div class="ka-kpi-sub">較去年同期 ${diffHtml(totalDiff)}</div>
+    </div>
+    <div class="ka-kpi-card ka-kpi-green">
+      <div class="ka-kpi-label">平均單客貢獻（K）</div>
+      <div class="ka-kpi-value">${fmt(avgPerKa)}</div>
+      <div class="ka-kpi-sub">${kaCount > 0 ? `共 ${kaCount} 家平均` : '尚無資料'}</div>
+    </div>
+    <div class="ka-kpi-card ka-kpi-purple">
+      <div class="ka-kpi-label">KA 在手商機（K）</div>
+      <div class="ka-kpi-value">${fmt(totalInHand)}</div>
+      <div class="ka-kpi-sub">共 ${totalInHandCount} 筆</div>
+    </div>
+  `;
+
+  // 列表
+  if (stats.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="ka-empty">
+      尚未標記任何 Key Account<br>
+      <span style="font-size:12px;color:#9ca3af">請到「我的客戶」分頁，於客戶卡片右上角點 ⭐ 標記為 Key Account</span>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = '';
+  stats.forEach((s) => {
+    const tr = document.createElement('tr');
+    tr.className = 'ka-row';
+    tr.innerHTML = `
+      <td><span class="ka-expand-icon">▶</span></td>
+      <td><span class="ka-company"><span class="ka-star">⭐</span> ${escapeHtml(s.ka.company)}</span></td>
+      <td class="ka-amount">${fmt(s.ytdAmt)} K</td>
+      <td class="ka-amount ka-muted">${fmt(s.lastYearAmt)} K</td>
+      <td class="ka-amount">${diffHtml(s.diffPct)}</td>
+      <td style="text-align:center">${s.wonCount} 筆</td>
+      <td style="text-align:center">${
+        s.inHandCount > 0
+          ? `<span class="ka-pipeline-badge">${s.inHandCount} 筆 · ${fmt(s.inHandAmt)} K</span>`
+          : '<span style="color:#9ca3af">—</span>'
+      }</td>
+      <td style="text-align:center">
+        <button class="ka-remove-btn" data-ka-id="${escapeHtml(s.ka.id)}" title="取消標記">✕</button>
+      </td>
+    `;
+    // 展開列：在手商機明細
+    const pipelineTr = document.createElement('tr');
+    pipelineTr.className = 'ka-pipeline-row';
+    pipelineTr.style.display = 'none';
+    if (s.inHandOpps.length > 0) {
+      const rows = s.inHandOpps
+        .sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''))
+        .map(o => {
+          const amt = parseFloat(o.amount) || 0;
+          const stageBadge = `<span class="ka-stage-${o.stage}">${o.stage}</span>`;
+          return `<tr>
+            <td style="width:60px">${stageBadge}</td>
+            <td>${escapeHtml(o.product || o.description || '—')}</td>
+            <td style="text-align:right">${escapeHtml(o.expectedDate || '—')}</td>
+            <td style="text-align:right">把握 ${escapeHtml(String(STAGE_CONFIDENCE[o.stage] ?? '—'))}%</td>
+            <td style="text-align:right;font-weight:600">${fmt(amt)} K</td>
+          </tr>`;
+        }).join('');
+      pipelineTr.innerHTML = `<td colspan="8" style="padding:0">
+        <table class="ka-pipeline-table">${rows}</table>
+      </td>`;
+    } else {
+      pipelineTr.innerHTML = `<td colspan="8" style="padding:14px;text-align:center;color:#9ca3af;font-size:12px">無在手商機</td>`;
+    }
+    tr.addEventListener('click', e => {
+      if (e.target.closest('.ka-remove-btn')) return; // 點 X 不展開
+      const isOpen = pipelineTr.style.display !== 'none';
+      pipelineTr.style.display = isOpen ? 'none' : '';
+      tr.classList.toggle('expanded', !isOpen);
+    });
+    const removeBtn = tr.querySelector('.ka-remove-btn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`取消「${s.ka.company}」的 Key Account 標記？`)) return;
+        await toggleKeyAccount(s.ka.company);
+        renderKeyAccountView();
+      });
+    }
+    tbody.appendChild(tr);
+    tbody.appendChild(pipelineTr);
+  });
+}
+
 function buildContactCard(c, extraClass = '') {
   const [c1, c2] = avatarColor(c.name);
   const card = document.createElement('div');
-  card.className = 'contact-card' + (extraClass ? ' ' + extraClass : '');
+  const isCustomer = c.customerType === 'customer';
+  const isKa = isCustomer && isKeyAccount(c.company);
+  card.className = 'contact-card' + (isKa ? ' is-ka' : '') + (extraClass ? ' ' + extraClass : '');
   card.dataset.id = c.id;
   const titleOnly = c.title || '';
   const imageThumb = c.cardImage ? `<img class="card-image-thumb" src="${c.cardImage}" alt="名片">` : '';
@@ -913,13 +1158,17 @@ function buildContactCard(c, extraClass = '') {
     : '';
   const primaryMark = c.isPrimary ? `<span class="primary-badge">&#11088; 主要</span>` : '';
   const resignedBadge = c.isResigned ? `<span class="resigned-badge">&#128683; 離職</span>` : '';
-  const isCustomer = c.customerType === 'customer';
   const relLabel = isCustomer ? `我的客戶${c.productLine ? '｜' + c.productLine : ''}` : '潛在客戶';
   const relClass = isCustomer ? 'rel-customer' : 'rel-prospect';
   const healthIcon = c.healthIcon || '';
   const healthTitle = c.healthScore !== undefined
     ? `健康分數 ${c.healthScore}（${c.healthScore >= 70 ? '良好' : c.healthScore >= 40 ? '待關注' : '風險'}）`
     : '';
+  // KA ⭐ 按鈕：僅「我的客戶」（customerType==='customer'）顯示，避免在潛在客戶上看到
+  const kaBtn = isCustomer && c.company
+    ? `<button class="ka-star-btn ${isKa ? 'active' : ''}" data-ka-company="${escapeHtml(c.company)}" title="${isKa ? '取消 Key Account 標記' : '標記為 Key Account'}">${isKa ? '⭐' : '☆'}</button>`
+    : '';
+  const kaChip = isKa ? `<span class="ka-chip">⭐ KEY ACCOUNT</span>` : '';
   card.innerHTML = `
     <div class="card-top" style="position:relative">
       <div class="avatar" style="background:linear-gradient(135deg,${c1},${c2})">${getInitial(c.name)}</div>
@@ -930,6 +1179,7 @@ function buildContactCard(c, extraClass = '') {
       ${resignedBadge}
       ${healthIcon ? `<span class="contact-health-icon" title="${escapeHtml(healthTitle)}">${healthIcon}</span>` : ''}
       ${imageThumb}
+      ${kaBtn}
     </div>
     <div class="card-info">
       ${c.phone  ? `<div class="card-info-row"><span class="info-icon">&#128222;</span><span class="info-text">${escapeHtml(c.phone)}</span></div>` : ''}
@@ -939,10 +1189,18 @@ function buildContactCard(c, extraClass = '') {
     ${oppBadge ? `<div class="card-opp-row">${oppBadge}</div>` : ''}
     <div class="card-rel-row">
       <span class="contact-rel-badge ${relClass}" data-cid="${escapeHtml(c.id)}">${escapeHtml(relLabel)}</span>
+      ${kaChip}
     </div>`;
   card.addEventListener('click', () => openView(c.id));
   const relBadge = card.querySelector('.contact-rel-badge');
   relBadge.addEventListener('click', e => { e.stopPropagation(); openRelPicker(c, relBadge); });
+  const kaStarBtn = card.querySelector('.ka-star-btn');
+  if (kaStarBtn) {
+    kaStarBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleKeyAccount(c.company);
+    });
+  }
   return card;
 }
 
@@ -1035,6 +1293,14 @@ function renderContacts(contacts) {
   const isProspects = currentSection === 'prospects';
   const list = $(isProspects ? 'prospectList' : 'contactList');
   list.innerHTML = '';
+
+  // Key Account 篩選（僅「我的客戶」分頁套用）
+  if (!isProspects && contactsKaFilterMode !== 'all') {
+    contacts = contacts.filter(c => {
+      const ka = isKeyAccount(c.company);
+      return contactsKaFilterMode === 'ka' ? ka : !ka;
+    });
+  }
 
   if (contacts.length === 0) {
     list.className = 'contact-list';

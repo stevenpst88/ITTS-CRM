@@ -71,6 +71,10 @@
           <span class="nav-icon">&#127942;</span>
           <span class="nav-label">我的客戶</span>
         </div>
+        <div class="sidebar-nav-item" id="navKeyAccount" data-section="keyAccount">
+          <span class="nav-icon">&#11088;</span>
+          <span class="nav-label">Key Account</span>
+        </div>
         <div class="sidebar-nav-item" id="navVisits" data-section="visits">
           <span class="nav-icon">&#128203;</span>
           <span class="nav-label">業務日報</span>
@@ -395,9 +399,14 @@
 
         <!-- ── 我的客戶 ── -->
         <div id="contactsView" style="display:none">
-          <div class="section-stats">
+          <div class="section-stats" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span class="contact-count" id="companyCount2">0 家公司</span>
             <span class="contact-count" id="contactCount2">0 位聯絡人</span>
+            <select id="contactsKaFilter" class="contacts-ka-filter" style="margin-left:auto;padding:6px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;cursor:pointer">
+              <option value="all">👥 全部客戶</option>
+              <option value="ka">⭐ 僅 Key Account</option>
+              <option value="non-ka">非 Key Account</option>
+            </select>
           </div>
           <div class="contact-list" id="contactList">
             <div class="empty-state" id="emptyState">
@@ -406,6 +415,39 @@
               <p class="empty-sub">點擊右上角「新增名片」開始建立聯絡人</p>
             </div>
           </div>
+        </div>
+
+        <!-- ── ⭐ Key Account 主頁 ── -->
+        <div id="keyAccountView" style="display:none">
+          <div class="ka-page-header">
+            <div>
+              <div class="ka-page-title">⭐ Key Account</div>
+              <div class="ka-page-sub">重點客戶管理 — 標記的公司清單、年度貢獻、在手商機</div>
+            </div>
+          </div>
+          <!-- KPI 4 卡 -->
+          <div class="ka-kpi-row" id="kaKpiRow"></div>
+          <!-- KA 列表表格 -->
+          <div class="ka-table-wrap">
+            <table class="ka-table" id="kaTable">
+              <thead>
+                <tr>
+                  <th style="width:34px"></th>
+                  <th>客戶公司</th>
+                  <th style="text-align:right">今年 YTD 成交</th>
+                  <th style="text-align:right">去年同期</th>
+                  <th style="text-align:right">較去年</th>
+                  <th style="text-align:center">成交筆數</th>
+                  <th style="text-align:center">在手商機</th>
+                  <th style="text-align:center;width:50px"></th>
+                </tr>
+              </thead>
+              <tbody id="kaTbody">
+                <tr><td colspan="8" class="ka-empty">載入中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ka-tip">💡 點任一列展開該 KA 在手商機明細｜在「我的客戶」卡片右上角點 ⭐ 即可標記為 Key Account</div>
         </div>
 
         <!-- ── 商機推進進度（Kanban）── -->
