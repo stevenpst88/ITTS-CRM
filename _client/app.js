@@ -4450,18 +4450,37 @@ async function loadGroups() {
 }
 
 // 取得某年某季的 Pipeline 金額（A+B+C stage，預計成交日落在該季）
+// 商機預算比的分子：該季度「預計簽約日」落在這季的商機總額
+// 涵蓋範圍：
+//   ① 在手商機 A/B/C
+//   ② Won 已成交（仍計入該季度商機總量，反映實際成交的部份）
+//   ③ 已刪除的流失商機（從 allLostOppsForTargets 撈，反映流失的部份）
+// 不含：D（靜止中）
 function getQuarterPipeline(year, q) {
   const qStart = (q - 1) * 3 + 1;
   const qEnd   = q * 3;
-  return allOpportunities
-    .filter(o => ['A', 'B', 'C'].includes(o.stage))
-    .filter(o => {
-      if (!o.expectedDate) return false;
-      const d = new Date(o.expectedDate);
-      const m = d.getMonth() + 1;
-      return d.getFullYear() === year && m >= qStart && m <= qEnd;
-    })
-    .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
+  const inQuarter = (o) => {
+    if (!o.expectedDate) return false;
+    const d = new Date(o.expectedDate);
+    const m = d.getMonth() + 1;
+    return d.getFullYear() === year && m >= qStart && m <= qEnd;
+  };
+  const sumAmt = (arr) => arr.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+  // ① + ② 活商機（含 Won，排除 D）
+  const active = sumAmt(
+    allOpportunities
+      .filter(o => ['A', 'B', 'C', 'Won'].includes(o.stage))
+      .filter(inQuarter)
+  );
+
+  // ③ 流失商機（已刪除，但原預計簽約日仍落在該季度）
+  const lost = sumAmt(
+    (typeof allLostOppsForTargets !== 'undefined' ? allLostOppsForTargets : [])
+      .filter(inQuarter)
+  );
+
+  return active + lost;
 }
 
 // 取得某業務員某月最終實際值（手動認列優先，否則從 Won 商機自動計算）
@@ -4741,7 +4760,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="zone-bar-labels">
         <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
       </div>
-      <div class="opr-pipeline">在手商機 ${pipeline.toLocaleString()} K</div>`;
+      <div class="opr-pipeline" title="含在手 A/B/C、Won、與已流失，依預計簽約日落點計入">該季度商機 ${pipeline.toLocaleString()} K</div>`;
     grid.appendChild(card);
   });
 }
