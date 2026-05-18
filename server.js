@@ -1551,10 +1551,16 @@ app.get('/api/admin/usage', requireAdmin, (req, res) => {
 });
 
 // ── Admin: get audit logs ────────────────────────────────
-app.get('/api/admin/logs', requireAdmin, (req, res) => {
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   if (_USE_DB_FOR_META) {
-    // 從獨立 row 讀（拆出後省主資料 egress）
-    return res.json(db.loadAuditLog());
+    // 從獨立 row 讀（拆出後省主資料 egress）；改 lazy load 後第一次查才從 DB 拉
+    try {
+      const logs = await db.loadAuditLog();
+      return res.json(logs);
+    } catch (e) {
+      console.error('[/api/admin/logs]', e);
+      return res.status(500).json({ error: '讀取日誌失敗' });
+    }
   }
   const logFile = path.join(__dirname, 'audit.log.json');
   try {

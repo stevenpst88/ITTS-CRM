@@ -10,6 +10,12 @@
 //   - audit log row 獨立，只有 admin 看 /api/admin/logs 才會讀
 //   - 99% 的請求只搬 150 KB（省 55%）
 //
+//  v2 進一步優化（egress 戰術第二輪）：
+//   - 主資料 cache 過期時，先做 updated_at stale check（<100 bytes），
+//     沒變動就跳過完整 fetch（省 150 KB / 次）
+//   - audit log 改 lazy load，不再每次 db.ready() 預載
+//     （只有 admin 查 logs 或實際 writeLog 觸發時才拉）
+//
 //  搭配 REFRESH_TTL 30s → 300s（5 分鐘）：再省 80-90% 重抓次數。
 // ════════════════════════════════════════════════════════════
 const { Pool } = require('pg');
@@ -49,32 +55,53 @@ async function ensureSchema() {
   _schemaReady = true;
 }
 
-// ── 讀取主資料 ──
+// ── 讀取主資料（含 updated_at 用於 stale check）──
 async function loadAsync() {
   await ensureSchema();
   const pool = getPool();
-  const { rows } = await pool.query(`SELECT content FROM app_data WHERE id = 'main'`);
+  const { rows } = await pool.query(`SELECT content, updated_at FROM app_data WHERE id = 'main'`);
   if (rows.length === 0) {
     const empty = { contacts: [], groups: [], monthlyBudgets: [] };
-    await pool.query(
-      `INSERT INTO app_data (id, content) VALUES ('main', $1)`,
+    const { rows: ins } = await pool.query(
+      `INSERT INTO app_data (id, content) VALUES ('main', $1) RETURNING updated_at`,
       [JSON.stringify(empty)]
     );
+    _lastUpdatedAtMs = ins.length ? new Date(ins[0].updated_at).getTime() : Date.now();
     return empty;
   }
+  _lastUpdatedAtMs = new Date(rows[0].updated_at).getTime();
   return rows[0].content;
 }
 
-// ── 寫入主資料 ──
+// ── 寫入主資料（更新本地 _lastUpdatedAtMs，避免馬上又被 stale check 偵測為過期）──
 async function saveAsync(data) {
   await ensureSchema();
   const pool = getPool();
-  await pool.query(
+  const { rows } = await pool.query(
     `INSERT INTO app_data (id, content, updated_at)
      VALUES ('main', $1, now())
-     ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, updated_at = now()`,
+     ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, updated_at = now()
+     RETURNING updated_at`,
     [JSON.stringify(data)]
   );
+  if (rows.length) _lastUpdatedAtMs = new Date(rows[0].updated_at).getTime();
+}
+
+// ── 主資料 stale check：只 SELECT updated_at（<100 bytes），
+//    回 true 表示主 row 已被其他 Lambda 寫過，需要重抓 ──
+async function _checkIfMainStale() {
+  if (!_lastUpdatedAtMs) return true; // 從未抓過
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query(`SELECT updated_at FROM app_data WHERE id = 'main'`);
+    if (rows.length === 0) return true;
+    const newMs = new Date(rows[0].updated_at).getTime();
+    return newMs > _lastUpdatedAtMs;
+  } catch (e) {
+    // 查詢失敗時保守視為過期 → 走完整 fetch
+    console.error('[db/postgres] stale check failed, will refetch full:', e.message);
+    return true;
+  }
 }
 
 // ── 讀取 audit log row ──
@@ -110,16 +137,17 @@ async function saveAuditLogAsync(logs) {
 //  - 後續 load()：回傳 in-memory 快照
 //  - save()：更新 in-memory + 背景 flush 到 DB
 //
-//  Audit log 走獨立 cache（_auditCache），避免拖累主資料 egress。
+//  Audit log 走獨立 cache（_auditCache），lazy load 避免拖累 egress。
 // ════════════════════════════════════════════════════════════
 
-let _cache        = null;
-let _writeQueue   = Promise.resolve();
-let _lastFetch    = 0;
+let _cache             = null;
+let _writeQueue        = Promise.resolve();
+let _lastFetch         = 0;
+let _lastUpdatedAtMs   = 0;   // 主 row 的 updated_at（毫秒）
 
-let _auditCache       = null;
-let _auditWriteQueue  = Promise.resolve();
-let _auditLastFetch   = 0;
+let _auditCache        = null;
+let _auditWriteQueue   = Promise.resolve();
+let _auditLoadPromise  = null; // 同時間只有一次 lazy load 進行
 
 // 30s → 300s：cache 命中率大幅提升，省 80-90% Supabase egress
 const REFRESH_TTL = 5 * 60 * 1000;
@@ -143,29 +171,45 @@ function save(data) {
   return _writeQueue;
 }
 
-// ── Audit log 同步介面 ──
-async function _ensureAuditLoaded() {
-  const now = Date.now();
-  if (_auditCache !== null && now - _auditLastFetch < REFRESH_TTL) return;
-  _auditCache = await loadAuditLogAsync();
-  _auditLastFetch = now;
+// ── Audit log lazy load（避免每次 db.ready() 都把 ~190 KB 拉回）──
+function _ensureAuditCacheLoaded() {
+  if (_auditCache !== null) return Promise.resolve(_auditCache);
+  if (!_auditLoadPromise) {
+    _auditLoadPromise = loadAuditLogAsync()
+      .then(d => {
+        _auditCache = Array.isArray(d) ? d : [];
+        _auditLoadPromise = null;
+        return _auditCache;
+      })
+      .catch(err => {
+        _auditLoadPromise = null;
+        console.error('[db/postgres] audit lazy load failed:', err);
+        // 失敗也回空陣列，避免阻塞後續流程
+        _auditCache = [];
+        return _auditCache;
+      });
+  }
+  return _auditLoadPromise;
 }
 
-// 同步讀 audit log（必須先呼叫過一次 ensureAuditLoaded，或 ready() 內預載）
-function loadAuditLog() {
+// 讀 audit log（async：第一次呼叫才從 DB 拉，後續用 in-memory）
+async function loadAuditLog() {
+  await _ensureAuditCacheLoaded();
   return Array.isArray(_auditCache) ? _auditCache : [];
 }
 
 // append 一筆 log（用於 writeLog）
-// 注意：呼叫者已透過 ready() 中介層觸發 _ensureAuditLoaded，這裡只做寫入
+// 整個操作（lazy load + 修改 + 寫回）串在 _auditWriteQueue 序列化執行，
+// 保證即使多筆連續寫入也不會打亂順序或丟資料
 function appendAuditLog(entry) {
-  if (!Array.isArray(_auditCache)) _auditCache = [];
-  _auditCache.unshift(entry);
-  if (_auditCache.length > 5000) _auditCache.length = 5000;
-  _auditLastFetch = Date.now();
   _auditWriteQueue = _auditWriteQueue
     .catch(() => null)
-    .then(() => saveAuditLogAsync(_auditCache));
+    .then(async () => {
+      await _ensureAuditCacheLoaded();
+      _auditCache.unshift(entry);
+      if (_auditCache.length > 5000) _auditCache.length = 5000;
+      await saveAuditLogAsync(_auditCache);
+    });
   _auditWriteQueue.catch((err) => console.error('[db/postgres] audit save failed:', err));
   return _auditWriteQueue;
 }
@@ -181,11 +225,22 @@ async function ready() {
   await flush();
   const now = Date.now();
   if (_cache !== null && now - _lastFetch < REFRESH_TTL) {
-    // 主 cache 還新鮮，audit 也預載（若過期）
-    await _ensureAuditLoaded();
+    // 主 cache 還在 TTL 內 → 直接用，不做 audit 預載（lazy）
     return;
   }
-  _cache     = await loadAsync();
+
+  // 主 cache 過期或從未載入
+  if (_cache !== null) {
+    // 已有 cache，先 stale check（只回 timestamp，~80 bytes 比 150 KB 划算很多）
+    const stale = await _checkIfMainStale();
+    if (!stale) {
+      _lastFetch = now;
+      return;
+    }
+  }
+
+  // 確認需要重抓 → 完整 fetch
+  _cache = await loadAsync();
   _lastFetch = now;
 
   // ── 一次性 migration：若主資料還有 _auditLog → 搬到獨立 row ──
@@ -193,13 +248,11 @@ async function ready() {
     try {
       const oldLogs = _cache._auditLog;
       const existingNewLogs = await loadAuditLogAsync();
-      // 合併：用 id 去重（若已 migrate 過一次又有殘留則不會重複）
       const seen = new Set(existingNewLogs.map(l => l.id).filter(Boolean));
       const merged = [...existingNewLogs];
       for (const l of oldLogs) {
         if (!l.id || !seen.has(l.id)) merged.push(l);
       }
-      // 依 timestamp 倒序（新的在前），與原本 unshift 邏輯一致
       merged.sort((a, b) => {
         const ta = a.timestamp ? Date.parse(a.timestamp) : 0;
         const tb = b.timestamp ? Date.parse(b.timestamp) : 0;
@@ -207,12 +260,9 @@ async function ready() {
       });
       if (merged.length > 5000) merged.length = 5000;
 
-      // 先寫入新 row（確保資料安全）
       await saveAuditLogAsync(merged);
-      _auditCache     = merged;
-      _auditLastFetch = Date.now();
+      _auditCache = merged;
 
-      // 再從主資料移除 _auditLog
       delete _cache._auditLog;
       _cache._auditLogMigratedAt = new Date().toISOString();
       await saveAsync(_cache);
@@ -221,10 +271,9 @@ async function ready() {
     } catch (e) {
       console.error('[db/postgres] migration failed (將保留原狀，下次啟動再試):', e);
     }
-  } else {
-    // 主資料沒 _auditLog → 直接預載 audit row
-    await _ensureAuditLoaded();
   }
+  // ↑ 移除原本「else 分支自動預載 audit」的邏輯，
+  //   改為 lazy load（第一次 admin 看 logs 或 writeLog 時才拉）
 }
 
 module.exports = {

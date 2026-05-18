@@ -24,7 +24,8 @@ function save(data) {
 }
 
 // ── Audit log（本地：直接存在 data.json 的 _auditLog 欄位）──
-function loadAuditLog() {
+// 改 async 與 postgres 介面一致（呼叫端 await db.loadAuditLog()）
+async function loadAuditLog() {
   const d = load();
   return Array.isArray(d._auditLog) ? d._auditLog : [];
 }
