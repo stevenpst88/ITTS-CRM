@@ -5123,6 +5123,10 @@ const STAGE_CONF_LABEL = { A: 'Commit', B: 'Upside', C: 'Pipeline', Won: 'Won' }
 let forecastSalesPerson = '';
 // 用戶名稱對應表（username → displayName），供多用戶報表顯示
 let forecastUserMap = {};
+// 表頭排序狀態：null = 預設（依預定簽約日）；'amount' = 合約金額；'profit' = 毛利金額
+// 方向：'desc' | 'asc'
+let forecastSortKey = null;
+let forecastSortDir = 'desc';
 
 async function loadForecastView() {
   await Promise.all([
@@ -5302,7 +5306,13 @@ function renderForecastTable() {
       <div class="fsc-value">${totWon.toLocaleString()}</div>
     </div>`;
 
-  // ── 表頭 ──
+  // ── 表頭（合約金額 / 毛利金額 可點擊排序）──
+  const arrow = (key) => {
+    if (forecastSortKey !== key) return '<span class="ft-sort-arrow">⇅</span>';
+    return forecastSortDir === 'desc'
+      ? '<span class="ft-sort-arrow active">↓</span>'
+      : '<span class="ft-sort-arrow active">↑</span>';
+  };
   $('forecastThead').innerHTML = `
     <tr>
       <th class="ft-company-col">客戶名稱</th>
@@ -5312,9 +5322,23 @@ function renderForecastTable() {
       <th>業務人員</th>
       <th class="ft-head-pink">把握度%</th>
       <th class="ft-head-pink">預估<br>毛利率</th>
-      <th class="ft-head-yellow">合約金額<br>（NT$K）</th>
-      <th class="ft-head-yellow">毛利金額<br>（NT$K）</th>
+      <th class="ft-head-yellow ft-sortable" data-sort-key="amount" title="點擊切換：降冪 → 升冪 → 取消">合約金額<br>（NT$K）${arrow('amount')}</th>
+      <th class="ft-head-yellow ft-sortable" data-sort-key="profit" title="點擊切換：降冪 → 升冪 → 取消">毛利金額<br>（NT$K）${arrow('profit')}</th>
     </tr>`;
+  // 綁定點擊：三段切換（降 → 升 → 取消）
+  $('forecastThead').querySelectorAll('th.ft-sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (forecastSortKey !== key) {
+        forecastSortKey = key; forecastSortDir = 'desc';
+      } else if (forecastSortDir === 'desc') {
+        forecastSortDir = 'asc';
+      } else {
+        forecastSortKey = null; forecastSortDir = 'desc';
+      }
+      renderForecastTable();
+    });
+  });
 
   // ── 資料列 ──
   const tbody = $('forecastTbody');
@@ -5326,8 +5350,23 @@ function renderForecastTable() {
     return;
   }
 
-  // 依預定簽約日排序
-  const sorted = [...opps].sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''));
+  // 排序：依目前排序狀態
+  const profitOf = (o) => (parseFloat(o.amount) || 0) * (parseFloat(o.grossMarginRate) || 0) / 100;
+  let sorted;
+  if (forecastSortKey === 'amount') {
+    sorted = [...opps].sort((a, b) => {
+      const av = parseFloat(a.amount) || 0;
+      const bv = parseFloat(b.amount) || 0;
+      return forecastSortDir === 'desc' ? bv - av : av - bv;
+    });
+  } else if (forecastSortKey === 'profit') {
+    sorted = [...opps].sort((a, b) => {
+      const ap = profitOf(a), bp = profitOf(b);
+      return forecastSortDir === 'desc' ? bp - ap : ap - bp;
+    });
+  } else {
+    sorted = [...opps].sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''));
+  }
 
   sorted.forEach(o => {
     const amt    = parseFloat(o.amount) || 0;                  // amount 已是 K

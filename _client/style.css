@@ -802,6 +802,18 @@ body {
 .forecast-table tr:hover td.ft-cell-yellow { background: #fff9c4; }
 .forecast-table tr.ft-total-row td.ft-cell-yellow { background: #ffe082; color: #3e2000; }
 
+/* 表頭可點擊排序：金額欄 */
+.forecast-table th.ft-sortable {
+  cursor: pointer; user-select: none; position: relative;
+  transition: filter .15s;
+}
+.forecast-table th.ft-sortable:hover { filter: brightness(1.1); }
+.ft-sort-arrow {
+  display: inline-block; margin-left: 4px; font-size: 11px;
+  opacity: .55; transition: opacity .15s, color .15s;
+}
+.ft-sort-arrow.active { opacity: 1; color: #fff7c8; font-weight: 800; }
+
 /* 把握度標籤 */
 .ft-conf-label {
   display: block; font-size: 12px; font-weight: 800;
