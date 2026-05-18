@@ -4769,15 +4769,15 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
       <div class="opr-divider"></div>
       <div class="opr-title-row">
         <span class="opr-label">📊 商機預算比</span>
-        <span class="opr-val ${oprColorClass}">${opr.toFixed(2)}</span>
+        <span class="opr-val ${oprColorClass}">${Math.round(opr * 100)}%</span>
       </div>
-      <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${oprMin}~${oprMax}）</span>
+      <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${Math.round(oprMin * 100)}%~${Math.round(oprMax * 100)}%）</span>
       <div class="zone-bar-wrap">
         <div class="zone-bar-zone" style="left:${zoneLeft}%;width:${zoneW}%"></div>
         <div class="zone-bar-fill" style="left:${fillLeft}%;background:${fillColor}"></div>
       </div>
       <div class="zone-bar-labels">
-        <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
+        <span>0%</span><span>${Math.round(oprMin * 100)}%</span><span>${Math.round(oprMax * 100)}%</span><span>${Math.round(barMax * 100)}%</span>
       </div>
       <div class="opr-pipeline" title="含 A/B/C/D/Won 全部商機，依預計簽約日歸屬該季度，排除已刪除案件">該季度商機 ${pipeline.toLocaleString()} K</div>`;
     grid.appendChild(card);
@@ -5548,15 +5548,15 @@ function renderForecastQuarterPanel(username) {
         <div class="opr-divider"></div>
         <div class="opr-title-row">
           <span class="opr-label">📊 商機預算比</span>
-          <span class="opr-val ${oprColorClass}">${opr.toFixed(2)}</span>
+          <span class="opr-val ${oprColorClass}">${Math.round(opr * 100)}%</span>
         </div>
-        <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${oprMin}~${oprMax}）</span>
+        <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${Math.round(oprMin * 100)}%~${Math.round(oprMax * 100)}%）</span>
         <div class="zone-bar-wrap">
           <div class="zone-bar-zone" style="left:${zoneLeft}%;width:${zoneW}%"></div>
           <div class="zone-bar-fill" style="left:${fillLeft}%;background:${fillColor}"></div>
         </div>
         <div class="zone-bar-labels">
-          <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
+          <span>0%</span><span>${Math.round(oprMin * 100)}%</span><span>${Math.round(oprMax * 100)}%</span><span>${Math.round(barMax * 100)}%</span>
         </div>
         <div class="opr-pipeline" title="含 A/B/C/D/Won，依預計簽約日歸屬該季度，排除已刪除案件">該季度商機 ${pipeline.toLocaleString()} K</div>
       </div>`;
