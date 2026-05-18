@@ -1840,7 +1840,7 @@ function setupBuSelector(selectId, groupId, presetBu) {
   if (!sel || !grp) return;
   const myBus = window._myBus || [];
   const role = window._myRole || '';
-  const isCrossBu = role === 'admin' || role === 'executive';
+  const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
   const ALL_BUS = ['ERP','ITS','MDM','CRM'];
   const options = isCrossBu ? ALL_BUS : myBus;
 
@@ -2390,7 +2390,7 @@ async function initUser() {
     // 頂部工具列也顯示角色 + BU 徽章（方便快速核對權限狀態）
     const topbarBadge = document.getElementById('topbarUserBadge');
     if (topbarBadge) {
-      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）' };
+      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）' };
       const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
       // 集團PM：badge 顯示集團名稱（取代 BU 徽章）
       if (user.role === 'tecopm') {
@@ -2411,7 +2411,7 @@ async function initUser() {
           ${buHtml}`;
       }
     }
-    const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', user:'', marketing:'行銷人員' };
+    const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'', marketing:'行銷人員' };
     const roleLabel = ROLE_LABEL[user.role] || '';
     const isCrossBu = user.role === 'admin' || user.role === 'executive';
     if (roleLabel || myBus.length || isCrossBu) {
@@ -4507,7 +4507,7 @@ function getMonthActualFinal(year, month, owner) {
   const viewerRole = window._myRole;
   const viewerBus = window._myBus || [];
   const isSelf = owner === window._myUsername;
-  const isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+  const isCrossViewer = ['admin','executive','accounting_manager','finance_manager'].includes(viewerRole);
   if (isSelf || isCrossViewer) return v;
   const ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
   const ownerPrimaryBu = ownerBus[0] || null;
@@ -4541,7 +4541,7 @@ function getGmActualFinal(year, month, owner) {
   var viewerRole = window._myRole;
   var viewerBus = window._myBus || [];
   var isSelf = owner === window._myUsername;
-  var isCrossViewer = viewerRole === 'admin' || viewerRole === 'executive';
+  var isCrossViewer = ['admin','executive','accounting_manager','finance_manager'].includes(viewerRole);
   if (isSelf || isCrossViewer) return v;
   var ownerBus = (typeof _userBus === 'function') ? _userBus(owner) : [];
   var ownerPrimaryBu = ownerBus[0] || null;

@@ -260,17 +260,21 @@ const FEATURE_REGISTRY = [
   { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
   { key: 'quotations',      label: '報價單',                icon: '📋', navId: 'navQuotations' },
 ];
-const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','marketing','user'];
+const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','marketing','user','accounting_manager','finance_manager'];
 const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
+// 跨 BU 全公司視角的角色（不受 BU 隔離限制）
+const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
 const DEFAULT_ROLE_PERMISSIONS = {
-  admin:     ALL_FEATURES,
-  executive: ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations'],
-  manager1:  ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
-  manager2:  ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
-  secretary: ['home','targets','forecast','accountingGroup','callin'],
-  tecopm:    ['forecast','prospects','contacts','visits','pipeline'],
-  marketing: ['campaigns','leads'],
-  user:      ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations'],
+  admin:              ALL_FEATURES,
+  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations'],
+  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
+  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations'],
+  secretary:          ['home','targets','forecast','accountingGroup','callin'],
+  tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
+  marketing:          ['campaigns','leads'],
+  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations'],
+  accounting_manager: ['home','execDash','accountingGroup','quotations'],
+  finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup'],
 };
 
 function getRolePermissions() {
@@ -1273,8 +1277,7 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
 const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
 // 集團PM（tecopm）= 唯讀角色，不走 BU 過濾、改用 viewOwnerScope + viewGroupId 二維過濾
 const READONLY_ROLES = ['tecopm'];
-// 跨 BU 角色（bu 應為 null）
-const CROSS_BU_ROLES = ['admin', 'executive'];
+// 跨 BU 角色（bu 應為 null）— 定義在前面 FEATURE_REGISTRY 區塊，這裡不重新宣告
 
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
@@ -1633,8 +1636,8 @@ function getViewableOwners(req, dataType) {
   const me = auth.users.find(u => u.username === username);
   const myBus = normalizeBu(me?.bu);
 
-  // 跨 BU 全看（系統管理員、董事長/總經理）
-  if (role === 'admin' || role === 'executive') {
+  // 跨 BU 全看（系統管理員、董事長/總經理、會計主管、財務主管）
+  if (CROSS_BU_ROLES.includes(role)) {
     return auth.users.map(u => u.username);
   }
 
@@ -1702,7 +1705,7 @@ function inferItemBu(item, authOrUsersArr) {
 // items 已先經過 owner 過濾（getViewableOwners）
 function filterByBu(req, items) {
   const role = req.session.user.role;
-  if (role === 'admin' || role === 'executive') return items;
+  if (CROSS_BU_ROLES.includes(role)) return items;
   // 唯讀角色（tecopm）不走 BU 過濾，後續會由 filterByViewGroup() 用集團 memberCompanies 做公司過濾
   if (READONLY_ROLES.includes(role)) return items;
   const myBus = getMyBus(req);
@@ -1738,7 +1741,7 @@ function filterByViewGroup(req, items, getCompany) {
 function resolveItemBuOnCreate(req, bodyBu) {
   const role = req.session.user.role;
   // admin / executive 不一定有 BU，允許指定也可以為 null
-  if (role === 'admin' || role === 'executive') {
+  if (CROSS_BU_ROLES.includes(role)) {
     if (bodyBu && VALID_BUS.includes(bodyBu)) return { bu: bodyBu };
     return { bu: null };
   }
@@ -1755,7 +1758,7 @@ function resolveItemBuOnCreate(req, bodyBu) {
 // 為更新資料驗證 bu（若 body 含 bu 才會呼叫）
 function resolveItemBuOnUpdate(req, bodyBu) {
   const role = req.session.user.role;
-  if (role === 'admin' || role === 'executive') {
+  if (CROSS_BU_ROLES.includes(role)) {
     if (bodyBu === null || bodyBu === '') return { bu: null };
     if (!VALID_BUS.includes(bodyBu)) return { error: '無效的 BU' };
     return { bu: bodyBu };
@@ -2456,7 +2459,7 @@ app.get('/api/settings/user-quarter-ratios', requireAuth, (req, res) => {
   const username = req.session.user.username;
   const all = (data.settings && data.settings.userQuarterRatios) || {};
   // admin/executive：全部；manager1/secretary：只給同 BU 的；其他：只給自己
-  if (role === 'admin' || role === 'executive') return res.json(all);
+  if (CROSS_BU_ROLES.includes(role)) return res.json(all);
   if (role === 'manager1' || role === 'secretary') {
     const owners = new Set(getViewableOwners(req, 'opportunities'));
     const filtered = {};
@@ -6219,7 +6222,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const monthlyBudgets = data.monthlyBudgets || [];
     const authForBu = loadAuth();
     const myBus = getMyBus(req); // viewer 的 BU 範圍
-    const isCrossBuViewer = role === 'admin' || role === 'executive';
+    const isCrossBuViewer = CROSS_BU_ROLES.includes(role);
     let achieved = 0;
     owners.forEach(owner => {
       const ownerBus = normalizeBu(authForBu.users.find(u => u.username === owner)?.bu);

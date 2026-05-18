@@ -1574,6 +1574,8 @@
             <option value="secretary">秘書</option>
             <option value="manager2">二級主管</option>
             <option value="manager1">一級主管</option>
+            <option value="accounting_manager">會計主管</option>
+            <option value="finance_manager">財務主管</option>
             <option value="executive">董事長/總經理</option>
             <option value="admin">系統管理員</option>
             <option value="tecopm">集團PM（唯讀）</option>
@@ -1600,7 +1602,7 @@
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="MDM" style="width:16px;height:16px"> MDM</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="CRM" style="width:16px;height:16px"> CRM</label>
           </div>
-          <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
+          <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
         </div>
         <div class="form-group">
@@ -1613,7 +1615,7 @@
         <script>
           function onRoleChange() {
             const role = document.getElementById('fieldRole').value;
-            const isCrossBu = role === 'admin' || role === 'executive';
+            const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
             const isTecoPm  = role === 'tecopm';
             const cbs = document.querySelectorAll('#buCheckboxWrap .bu-cb');
             const hint = document.getElementById('buRequiredHint');
@@ -2041,7 +2043,7 @@
     }
 
     function renderUserTable() {
-      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）'};
+      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）'};
       const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
       $('userTableBody').innerHTML = allUsers.map(u => {
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
@@ -2207,7 +2209,7 @@
       const editUn = $('editUsername').value;
       const isEdit = !!editUn;
       const role = $('fieldRole').value;
-      const isCrossBu = role === 'admin' || role === 'executive';
+      const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
       const isTecoPm  = role === 'tecopm';
       const buArr = (isCrossBu || isTecoPm) ? null : getBuCheckboxes();
       if (!isCrossBu && !isTecoPm && (!buArr || buArr.length === 0)) {
@@ -4509,6 +4511,8 @@
       executive: 'executive（董事/總經理）',
       manager1: 'manager1（一級主管）',
       manager2: 'manager2（二級主管）',
+      accounting_manager: 'accounting_manager（會計主管）',
+      finance_manager: 'finance_manager（財務主管）',
       secretary: 'secretary（秘書）',
       tecopm: 'tecopm（集團 PM）',
       marketing: 'marketing（行銷）',
