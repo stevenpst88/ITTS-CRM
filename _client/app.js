@@ -208,6 +208,7 @@ function applyPermissions() {
 let allContacts = [];
 let allOpportunities = [];
 let allKeyAccounts = [];      // [{ id, owner, company, createdAt, note }]
+let kaCrossBuOpps = [];       // 自己擁有的 KA 公司的跨 BU 商機（KA 主頁專用）
 let contactsKaFilterMode = 'all'; // 'all' | 'ka' | 'non-ka'
 let currentViewId = null;
 
@@ -997,6 +998,8 @@ async function loadKeyAccountView() {
     loadKeyAccounts(),
     allOpportunities.length === 0 ? fetch(`${API}/opportunities`).then(r => r.json()).then(d => { allOpportunities = d; }) : Promise.resolve(),
     allContacts.length === 0 ? loadContacts() : Promise.resolve(),
+    // Phase A v3：自己擁有的 KA 公司的跨 BU 商機（含其他 BU 業務建立的）
+    fetch(`${API}/key-accounts/my-opps`).then(r => r.ok ? r.json() : []).then(d => { kaCrossBuOpps = d; }).catch(() => { kaCrossBuOpps = []; }),
   ]);
   renderKeyAccountView();
 }
@@ -1015,8 +1018,19 @@ function renderKeyAccountView() {
   const lastYear = curYear - 1;
 
   // 計算每個 KA 的數字
+  const myUsername = window._myUsername || '';
+  // 預先 index 跨 BU 商機（只對自己擁有的 KA 公司有資料）
+  const crossBuByCo = new Map();
+  (kaCrossBuOpps || []).forEach(o => {
+    if (!crossBuByCo.has(o.company)) crossBuByCo.set(o.company, []);
+    crossBuByCo.get(o.company).push(o);
+  });
   const stats = kas.map(ka => {
-    const oppsOfCo = allOpportunities.filter(o => o.company === ka.company);
+    // 自己 Owner 的 KA → 用跨 BU 資料；不是 Owner → 用個人可見的 allOpportunities
+    const isMine = ka.owner === myUsername;
+    const oppsOfCo = isMine
+      ? (crossBuByCo.get(ka.company) || [])
+      : allOpportunities.filter(o => o.company === ka.company);
     const wonThisYear = oppsOfCo.filter(o => {
       if (o.stage !== 'Won') return false;
       const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
@@ -1109,8 +1123,8 @@ function renderKeyAccountView() {
     const canRemove = isMine || myRole === 'admin';
     const ownerDisp = escapeHtml(s.ka.ownerDisplayName || s.ka.owner);
     const ownerChip = isMine
-      ? `<span class="ka-owner-chip ka-owner-mine" title="你是這個 KA 的 Account Owner">${ownerDisp}（我）</span>`
-      : `<span class="ka-owner-chip" title="Account Owner：${ownerDisp}">${ownerDisp}</span>`;
+      ? `<span class="ka-owner-chip ka-owner-mine" title="你是 Account Owner，數字含跨 BU 商機">${ownerDisp}（我） 🌐</span>`
+      : `<span class="ka-owner-chip" title="Account Owner：${ownerDisp}（你看到的數字只含自己可見的商機）">${ownerDisp}</span>`;
     const removeBtnHtml = canRemove
       ? `<button class="ka-remove-btn" data-ka-id="${escapeHtml(s.ka.id)}" title="取消標記">✕</button>`
       : `<button class="ka-remove-btn ka-disabled" disabled title="此 KA 由 ${ownerDisp} 管理，無權移除">✕</button>`;
@@ -1141,9 +1155,13 @@ function renderKeyAccountView() {
         .map(o => {
           const amt = parseFloat(o.amount) || 0;
           const stageBadge = `<span class="ka-stage-${o.stage}">${o.stage}</span>`;
+          // 跨 BU 透明：若 opp 帶 ownerDisplayName/ownerBu 表示來自 my-opps endpoint
+          const ownerChipHtml = o.ownerDisplayName
+            ? `<span class="ka-opp-owner-chip" title="商機由 ${escapeHtml(o.ownerDisplayName)}（${escapeHtml(o.ownerBu || '—')}）建立">${escapeHtml(o.ownerDisplayName)}${o.ownerBu ? `・<b>${escapeHtml(o.ownerBu)}</b>` : ''}</span>`
+            : '';
           return `<tr>
             <td style="width:60px">${stageBadge}</td>
-            <td>${escapeHtml(o.product || o.description || '—')}</td>
+            <td>${escapeHtml(o.product || o.description || '—')}${ownerChipHtml ? '<br>' + ownerChipHtml : ''}</td>
             <td style="text-align:right">${escapeHtml(o.expectedDate || '—')}</td>
             <td style="text-align:right">把握 ${escapeHtml(String(STAGE_CONFIDENCE[o.stage] ?? '—'))}%</td>
             <td style="text-align:right;font-weight:600">${fmt(amt)} K</td>
