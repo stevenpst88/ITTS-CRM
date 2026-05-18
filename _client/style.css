@@ -3111,6 +3111,35 @@ body {
   font-size:10px; color:#9ca3af; margin-top:4px; text-align:right;
 }
 
+/* ── 銷售預測報表：季度業績進度面板 ────────────────────── */
+.forecast-q-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #1a3c7a;
+  border-radius: 14px;
+  padding: 16px 18px 18px;
+  margin: 8px 0 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
+}
+.forecast-q-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+}
+.forecast-q-title { font-size: 15px; font-weight: 700; color: #1a3c7a; }
+.forecast-q-sub   { font-size: 12px; color: #6b7280; }
+.forecast-q-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+.forecast-q-empty {
+  grid-column: 1 / -1;
+  padding: 28px 16px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+@media (max-width: 1024px) { .forecast-q-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .forecast-q-grid { grid-template-columns: 1fr; } }
+
 /* ═══════════════════════════════════════════════════════
    集團卡（group-card）
    ═══════════════════════════════════════════════════════ */
@@ -3763,6 +3792,17 @@ body.dark .taxid-top input:focus { border-color: #58a6ff; background: #0d1117; }
 /* ── 個人特徵 chips ── */
 body.dark .personal-chip { background: #21262d; border-color: #30363d; color: #8b949e; }
 body.dark .personal-chip:hover { border-color: #58a6ff; background: #0d2040; }
+
+/* ── 銷售預測報表：季度業績進度面板（深色） ── */
+body.dark .forecast-q-panel {
+  background: #161b22;
+  border-color: #30363d;
+  border-left-color: #58a6ff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+body.dark .forecast-q-title { color: #8ecfff; }
+body.dark .forecast-q-sub   { color: #8b949e; }
+body.dark .forecast-q-empty { color: #636e7b; }
 
 /* ── 季度達成卡片 ── */
 body.dark .q-card {

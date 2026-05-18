@@ -4485,6 +4485,23 @@ function getQuarterPipeline(year, q) {
     .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
 }
 
+// 指定 owner 版本：給銷售預測報表「個人季度業績進度」用
+function getQuarterPipelineForOwner(year, q, owner) {
+  if (!owner) return 0;
+  const qStart = (q - 1) * 3 + 1;
+  const qEnd   = q * 3;
+  return allOpportunities
+    .filter(o => o.owner === owner)
+    .filter(o => ['A', 'B', 'C', 'D', 'Won'].includes(o.stage))
+    .filter(o => {
+      if (!o.expectedDate) return false;
+      const d = new Date(o.expectedDate);
+      const m = d.getMonth() + 1;
+      return d.getFullYear() === year && m >= qStart && m <= qEnd;
+    })
+    .reduce((sum, o) => sum + (parseFloat(o.amount) || 0), 0);
+}
+
 // 取得某業務員某月最終實際值（手動認列優先，否則從 Won 商機自動計算）
 function getMonthActualFinal(year, month, owner) {
   // 只算 Debbie 手動輸入；BU 規則：非主 BU 的 viewer 不算
@@ -5264,6 +5281,9 @@ function renderForecastTable() {
   const hintEl = $('forecastFilterHint');
   if (hintEl) hintEl.innerHTML = filterHint;
 
+  // ── 季度業績進度面板（僅選定單一業務時顯示） ──
+  renderForecastQuarterPanel(salesVal);
+
   $('forecastSummaryCards').innerHTML = `
     <div class="forecast-summary-card fsc-blue">
       <div class="fsc-label">商機筆數</div>
@@ -5358,6 +5378,151 @@ function renderForecastTable() {
     <td class="ft-cell-yellow ft-right">${Math.round(totContract).toLocaleString()}</td>
     <td class="ft-cell-yellow ft-right">${Math.round(totGrossProfit).toLocaleString()}</td>`;
   tbody.appendChild(tr);
+}
+
+// ── 銷售預測報表：個人季度業績進度面板 ─────────────────────
+// 重用業績目標頁的 q-card 樣式 + getQuarterAchieved / getQuarterPipelineForOwner 邏輯
+function renderForecastQuarterPanel(username) {
+  const panel = $('forecastQuarterPanel');
+  if (!panel) return;
+
+  // 觸發條件：必須選定單一業務
+  if (!username) { panel.style.display = 'none'; return; }
+  // 一級主管選自己時隱藏（manager1 沒個人目標）
+  if (username === window._myUsername && window._myRole === 'manager1') {
+    panel.style.display = 'none'; return;
+  }
+
+  const year = forecastYear;
+  const displayName = forecastUserMap[username] || username;
+
+  // ── 計算季度目標 ──
+  // 優先：月度業績計畫表設定的各月預算加總
+  // Fallback：個人 / 全域季度配比
+  let qTargets = [0, 0, 0, 0];
+  const budget = allMonthlyBudgets.find(b => b.year === year && b.owner === username);
+  if (budget && Array.isArray(budget.months)) {
+    for (let qi = 0; qi < 4; qi++) {
+      for (let m = 0; m < 3; m++) {
+        qTargets[qi] += parseFloat(budget.months[qi * 3 + m]) || 0;
+      }
+    }
+  }
+  // 若月度預算全為 0 → 嘗試季度配比
+  if (qTargets.every(v => !v)) {
+    const ratios = getUserRatios(username, year);
+    if (ratios) qTargets = ratios.map(r => Math.round(r || 0));
+  }
+
+  const totalTarget = qTargets.reduce((s, v) => s + v, 0);
+
+  panel.style.display = '';
+  $('forecastQTitle').textContent = `📊 ${displayName} 的 ${year} 年季度業績進度`;
+
+  // 完全沒目標 → 顯示提示
+  if (totalTarget === 0) {
+    $('forecastQSub').textContent = '';
+    $('forecastQGrid').innerHTML =
+      `<div class="forecast-q-empty">${escapeHtml(displayName)} 在 ${year} 年尚未設定月度預算或季度配比</div>`;
+    return;
+  }
+
+  const qRatios = qTargets.map(v => totalTarget > 0 ? Math.round(v / totalTarget * 100) : 0);
+  $('forecastQSub').textContent =
+    `年度配比：${qRatios.join('% / ')}%　目標合計 ${totalTarget.toLocaleString()} K`;
+
+  // ── 渲染 4 張季度卡 ──
+  const now = new Date();
+  const isCurYear = year === now.getFullYear();
+  const curQ = isCurYear ? Math.ceil((now.getMonth() + 1) / 3) : 0;
+  const labels = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const months = ['1 月 — 3 月', '4 月 — 6 月', '7 月 — 9 月', '10 月 — 12 月'];
+
+  const oprMin = allOprRange.min || 1.1;
+  const oprMax = allOprRange.max || 1.2;
+
+  let html = '';
+  for (let i = 0; i < 4; i++) {
+    const q = i + 1;
+    const ratio   = qRatios[i] || 0;
+    const qTarget = qTargets[i] || 0;
+    const qAch    = getQuarterAchieved(year, q, false, username);
+    const gap     = qAch - qTarget;
+    const isFuture  = isCurYear && q > curQ;
+    const isCurrent = q === curQ;
+    const pct      = qTarget > 0 ? Math.min(100, Math.round(qAch / qTarget * 100)) : 0;
+    const achRate  = qTarget > 0 ? Math.round(qAch / qTarget * 100) : null;
+
+    // 商機預算比
+    const pipeline = getQuarterPipelineForOwner(year, q, username);
+    const opr = qTarget > 0 ? pipeline / qTarget : 0;
+    let oprColorClass, oprStatusClass, oprStatusText;
+    if (opr < 1.0)            { oprColorClass = 'opr-red';    oprStatusClass = 's-crit'; oprStatusText = '🔴 嚴重不足'; }
+    else if (opr < oprMin)    { oprColorClass = 'opr-orange'; oprStatusClass = 's-low';  oprStatusText = '🟡 略低'; }
+    else if (opr <= oprMax)   { oprColorClass = 'opr-green';  oprStatusClass = 's-ok';   oprStatusText = '🟢 達標 ✓'; }
+    else                      { oprColorClass = 'opr-blue';   oprStatusClass = 's-hi';   oprStatusText = '🔵 充足'; }
+
+    const barMax  = Math.max(oprMax * 1.8, 2.0);
+    const zonePct = (v) => Math.min(100, Math.round(v / barMax * 100));
+    const zoneLeft = zonePct(oprMin);
+    const zoneW    = zonePct(oprMax) - zoneLeft;
+    const fillLeft = Math.min(100, Math.round(opr / barMax * 100));
+    let fillColor;
+    if (opr < 1.0)          fillColor = '#ef4444';
+    else if (opr < oprMin)  fillColor = '#f59e0b';
+    else if (opr <= oprMax) fillColor = '#10b981';
+    else                    fillColor = '#3b82f6';
+
+    const gapClass = isFuture ? 'q-muted' : (gap >= 0 ? 'q-gap-pos' : 'q-gap-neg');
+    const achSuffix = (achRate === null) ? '' : ` (${achRate}%)`;
+    const gapText = isFuture ? '—' : (gap >= 0
+      ? `▲ ${Math.abs(gap).toLocaleString()} K${achSuffix}`
+      : `▼ ${Math.abs(gap).toLocaleString()} K${achSuffix}`);
+
+    html += `
+      <div class="q-card${isCurrent ? ' q-current' : ''}">
+        ${isCurrent ? '<div class="cur-strip">▶ 當前季度</div>' : ''}
+        <div class="q-header">
+          <div>
+            <div class="q-label">${labels[i]}</div>
+            <div class="q-months">${months[i]}</div>
+          </div>
+          <div class="q-ratio-badge" title="該季目標佔年度總目標的配比">配比 ${ratio}%</div>
+        </div>
+        <div class="q-nums">
+          <div class="q-row">
+            <span class="q-row-label">季度目標</span>
+            <span class="q-row-val">${qTarget.toLocaleString()} K</span>
+          </div>
+          <div class="q-row">
+            <span class="q-row-label">已達成</span>
+            <span class="q-row-val ${isFuture ? 'q-muted' : ''}">${isFuture ? '—' : qAch.toLocaleString() + ' K'}</span>
+          </div>
+          <div class="q-row">
+            <span class="q-row-label">落差</span>
+            <span class="q-row-val ${gapClass}">${gapText}</span>
+          </div>
+        </div>
+        <div class="q-prog-wrap">
+          <div class="q-prog-fill ${pct >= 100 ? 'q-prog-over' : ''}" style="width:${pct}%"></div>
+        </div>
+        <div class="opr-divider"></div>
+        <div class="opr-title-row">
+          <span class="opr-label">📊 商機預算比</span>
+          <span class="opr-val ${oprColorClass}">${opr.toFixed(2)}</span>
+        </div>
+        <span class="opr-status ${oprStatusClass}">${oprStatusText}（目標 ${oprMin}~${oprMax}）</span>
+        <div class="zone-bar-wrap">
+          <div class="zone-bar-zone" style="left:${zoneLeft}%;width:${zoneW}%"></div>
+          <div class="zone-bar-fill" style="left:${fillLeft}%;background:${fillColor}"></div>
+        </div>
+        <div class="zone-bar-labels">
+          <span>0</span><span>${oprMin}</span><span>${oprMax}</span><span>${barMax.toFixed(1)}</span>
+        </div>
+        <div class="opr-pipeline" title="含 A/B/C/D/Won，依預計簽約日歸屬該季度，排除已刪除案件">該季度商機 ${pipeline.toLocaleString()} K</div>
+      </div>`;
+  }
+  $('forecastQGrid').innerHTML = html;
 }
 
 // ── 商機拜訪記錄浮動 Tooltip ─────────────────────────────
