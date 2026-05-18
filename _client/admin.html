@@ -447,6 +447,9 @@
       <div class="admin-nav-item" data-sec="role-permissions">
         <span class="admin-nav-icon">🔐</span> 功能權限
       </div>
+      <div class="admin-nav-item" data-sec="data-repair">
+        <span class="admin-nav-icon">🔧</span> 資料修復
+      </div>
       <div class="admin-nav-item" data-sec="logs">
         <span class="admin-nav-icon">📋</span> 異動記錄
       </div>
@@ -1136,6 +1139,23 @@
             ※ admin 列恆為全勾且禁用，避免管理員自我鎖死<br>
             ※ 還原預設會把所有非 admin 角色還原為系統建議的權限組合
           </div>
+        </div>
+      </div>
+
+      <!-- ── 資料修復 ── -->
+      <div class="admin-section" id="sec-data-repair">
+        <div class="section-title">🔧 資料修復</div>
+        <div class="section-sub">系統工具：修補因歷史 bug 造成的資料不一致</div>
+
+        <div class="admin-card" style="margin-top:16px">
+          <div style="font-size:15px;font-weight:700;color:#1a3c7a;margin-bottom:8px">同公司聯絡人「我的客戶」一致性修復</div>
+          <div style="font-size:13px;color:#6b7280;line-height:1.7;margin-bottom:14px">
+            <strong>適用情境</strong>：同一家公司有些聯絡人是「我的客戶」、有些卻是「潛在客戶」。<br>
+            <strong>修復邏輯</strong>：依（業務 + 公司名）分組，只要該組內有任一人是「我的客戶」，就把同組其他人也一起 promote 為「我的客戶」並補上產品線（取多數決或第一個 customer 的）。<br>
+            <strong>單向修復</strong>：不會把「我的客戶」降為「潛在客戶」，只會把不一致的群組統一向「我的客戶」對齊。
+          </div>
+          <button class="btn btn-primary" id="repairCustomerTypeBtn">🔧 開始修復</button>
+          <div id="repairCustomerTypeResult" style="display:none;margin-top:16px"></div>
         </div>
       </div>
 
@@ -4656,6 +4676,56 @@
     document.getElementById('rpSaveBtn').addEventListener('click', saveRolePermissions);
     document.getElementById('rpResetBtn').addEventListener('click', resetRolePermissions);
     document.querySelector('[data-sec="role-permissions"]').addEventListener('click', loadRolePermissions);
+
+    // ── 資料修復：同公司 customerType 一致性 ──
+    document.getElementById('repairCustomerTypeBtn').addEventListener('click', async () => {
+      if (!confirm('將同公司有「我的客戶」標記的群組全部對齊為「我的客戶」。\n\n此操作不會把「我的客戶」降為「潛在客戶」，只會單向修復。\n\n確定執行？')) return;
+      const btn = document.getElementById('repairCustomerTypeBtn');
+      const resultEl = document.getElementById('repairCustomerTypeResult');
+      btn.disabled = true; btn.textContent = '修復中…';
+      resultEl.style.display = '';
+      resultEl.innerHTML = '<div style="color:#6b7280;font-size:13px">處理中，請稍候…</div>';
+      try {
+        const r = await fetch('/api/admin/repair-customer-type', { method: 'POST' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        if (data.totalCompaniesFixed === 0) {
+          resultEl.innerHTML = `
+            <div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:14px;color:#166534">
+              ✅ <b>檢查完成，無需修復</b><br>
+              <span style="font-size:12px">所有同公司聯絡人 customerType 已一致</span>
+            </div>`;
+        } else {
+          const rows = data.fixedCompanies.map(f => `
+            <tr>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${f.owner}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${f.company}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right">${f.promoted}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:center"><span style="background:#e8f0fe;color:#1a73e8;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600">${f.productLine}</span></td>
+            </tr>`).join('');
+          resultEl.innerHTML = `
+            <div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:14px;color:#166534;margin-bottom:12px">
+              ✅ <b>修復完成</b><br>
+              共修復 <b>${data.totalCompaniesFixed}</b> 家公司、<b>${data.totalContactsFixed}</b> 位聯絡人
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+              <thead>
+                <tr style="background:#f8f9fa">
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#555">業務</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:700;color:#555">公司</th>
+                  <th style="padding:8px 10px;text-align:right;font-weight:700;color:#555">提升筆數</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:700;color:#555">套用產品線</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>`;
+        }
+      } catch (e) {
+        resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:14px;color:#c5221f">❌ 修復失敗：${e.message}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '🔧 開始修復';
+      }
+    });
 
   </script>
 </body>

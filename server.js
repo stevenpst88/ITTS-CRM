@@ -1943,6 +1943,66 @@ app.delete('/api/key-accounts/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Admin: 修復同公司聯絡人 customerType 不一致 ──────────
+// 邏輯：依 (owner, company) 分組。若該組內有任一聯絡人是 customer，
+//   則把同組其他聯絡人也設為 customer，并補上 productLine（取多數決或第一個 customer 的）
+//   不會把 customer 降為 prospect，只會單向修復。
+app.post('/api/admin/repair-customer-type', requireAdmin, (req, res) => {
+  const data = db.load();
+  const groups = new Map(); // key: owner|company → contacts[]
+  (data.contacts || []).filter(c => !c.deleted && c.company).forEach(c => {
+    const key = (c.owner || '') + '|' + c.company;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+
+  const fixedCompanies = [];
+  let fixedContactCount = 0;
+
+  groups.forEach((arr, key) => {
+    const customers = arr.filter(c => c.customerType === 'customer');
+    if (customers.length === 0) return; // 整組都不是 customer，跳過
+    const nonCustomers = arr.filter(c => c.customerType !== 'customer');
+    if (nonCustomers.length === 0) return; // 已全 customer，沒事
+
+    // 決定要套用的 productLine：取 customer 中出現最多次的（多數決），都空白則 fallback ''
+    const plCount = {};
+    customers.forEach(c => {
+      const pl = c.productLine || '';
+      plCount[pl] = (plCount[pl] || 0) + 1;
+    });
+    let bestPl = '';
+    let bestCnt = -1;
+    Object.entries(plCount).forEach(([pl, cnt]) => {
+      if (cnt > bestCnt) { bestCnt = cnt; bestPl = pl; }
+    });
+
+    // 把 nonCustomers 全部 promote 為 customer
+    nonCustomers.forEach(c => {
+      c.customerType = 'customer';
+      if (!c.productLine) c.productLine = bestPl;
+      fixedContactCount++;
+    });
+
+    const [owner, company] = key.split('|');
+    fixedCompanies.push({
+      owner, company,
+      promoted: nonCustomers.length,
+      productLine: bestPl || '(未填)'
+    });
+  });
+
+  db.save(data);
+  writeLog('REPAIR_CUSTOMER_TYPE', req.session.user.username, 'system',
+    `修復 ${fixedCompanies.length} 家公司、${fixedContactCount} 位聯絡人 customer 一致性`, req);
+  res.json({
+    success: true,
+    fixedCompanies,
+    totalCompaniesFixed: fixedCompanies.length,
+    totalContactsFixed: fixedContactCount
+  });
+});
+
 // ── 取得所有聯絡人 ──────────────────────────────────────
 app.get('/api/contacts', requireAuth, (req, res) => {
   const { search } = req.query;
@@ -2083,9 +2143,18 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
-    const buCheck = resolveItemBuOnUpdate(req, safeBody.bu);
-    if (buCheck.error) return res.status(400).json({ error: buCheck.error });
-    safeBody.bu = buCheck.bu;
+    // 若 bu 沒變動，跳過驗證（避免未設 BU 的使用者只想改其他欄位時被 BU 驗證擋下）
+    const normBu = (v) => (v === undefined || v === null || v === '') ? null : v;
+    const newBuNorm = normBu(safeBody.bu);
+    const oldBuNorm = normBu(old.bu);
+    if (newBuNorm !== oldBuNorm) {
+      const buCheck = resolveItemBuOnUpdate(req, safeBody.bu);
+      if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+      safeBody.bu = buCheck.bu;
+    } else {
+      // BU 沒改 → 保留原值，不送驗證
+      safeBody.bu = old.bu;
+    }
   }
   const updated = { ...old, ...safeBody, id: req.params.id, owner };
   updated.isPrimary = req.body.isPrimary === true || req.body.isPrimary === 'true';
