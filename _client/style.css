@@ -4400,3 +4400,118 @@ body.dark .prog-bar-fill { background: #1f6feb; }
 /* ── Empty State ── */
 body.dark .empty-state { color: #8b949e; }
 body.dark .empty-state-icon { opacity: 0.4; }
+
+/* ════════════════════════════════════════════════════════
+   📊 商機分析 (Biz Type Analysis)
+   ════════════════════════════════════════════════════════ */
+.biz-controls {
+  display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap; margin-bottom: 16px;
+}
+.biz-gran-tabs { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid #d1d5db; }
+.biz-gran-btn {
+  padding: 6px 14px; border: 0; background: #fff; color: #6b7280;
+  cursor: pointer; font-size: 13px; transition: all .15s;
+  border-right: 1px solid #d1d5db;
+}
+.biz-gran-btn:last-child { border-right: 0; }
+.biz-gran-btn:hover { background: #f3f4f6; }
+.biz-gran-btn.active { background: #1a3c7a; color: #fff; }
+.biz-hint { font-size: 11px; color: #9ca3af; cursor: help; }
+
+/* KPI cards */
+.biz-kpi-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) { .biz-kpi-row { grid-template-columns: 1fr; } }
+.biz-kpi-card {
+  background: #fff; border-radius: 12px; padding: 14px 18px;
+  border-left: 5px solid #ccc;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  cursor: pointer; transition: all .15s;
+}
+.biz-kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.biz-kpi-new       { border-left-color: #1a73e8; background: linear-gradient(135deg, #eff6ff 0%, #fff 100%); }
+.biz-kpi-recurring { border-left-color: #1e8e3e; background: linear-gradient(135deg, #d1fae5 0%, #fff 100%); }
+.biz-kpi-expansion { border-left-color: #9334e6; background: linear-gradient(135deg, #f3e8ff 0%, #fff 100%); }
+.biz-kpi-label { font-size: 13px; font-weight: 700; color: #1f2937; margin-bottom: 6px; }
+.biz-kpi-sublabel { font-size: 11px; color: #9ca3af; font-weight: 400; margin-left: 4px; }
+.biz-kpi-value { font-size: 24px; font-weight: 800; line-height: 1.1; }
+.biz-kpi-unit { font-size: 12px; font-weight: 400; color: #6b7280; }
+.biz-kpi-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6b7280; margin-top: 6px; }
+.biz-kpi-pct { font-weight: 700; color: #1a3c7a; }
+.biz-kpi-won { font-size: 11px; color: #6b7280; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e5e7eb; }
+
+/* Charts */
+.biz-charts-grid {
+  display: grid; grid-template-columns: 1fr 1.6fr; gap: 12px; margin-bottom: 16px;
+}
+@media (max-width: 900px) { .biz-charts-grid { grid-template-columns: 1fr; } }
+.biz-chart-card {
+  background: #fff; border-radius: 12px; padding: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.biz-chart-title { font-size: 13px; font-weight: 700; color: #1a3c7a; margin-bottom: 10px; }
+.biz-chart-hint { font-size: 11px; color: #9ca3af; text-align: center; margin-top: 6px; }
+.biz-donut-wrap, .biz-trend-wrap { position: relative; height: 280px; }
+
+/* By owner table */
+.biz-owner-card {
+  background: #fff; border-radius: 12px; padding: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 16px;
+}
+.biz-owner-tbl-wrap { overflow-x: auto; }
+.biz-owner-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.biz-owner-tbl th { padding: 8px 10px; text-align: center; background: #f8f9fa; color: #555; font-weight: 700; }
+.biz-owner-tbl tr.biz-owner-tbl-sub th { background: #f3f4f6; font-size: 11px; color: #888; font-weight: 600; }
+.biz-owner-tbl td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
+.biz-owner-tbl tr:hover td { background: #fafafa; }
+.biz-num { text-align: right; }
+.biz-col-new { color: #1a73e8; background: rgba(26,115,232,0.05); }
+.biz-col-rec { color: #1e8e3e; background: rgba(30,142,62,0.05); }
+.biz-col-exp { color: #9334e6; background: rgba(147,52,230,0.05); }
+
+/* Drilldown */
+.biz-drill-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.biz-drill-tbl th { padding: 8px 10px; text-align: left; background: #f8f9fa; color: #555; font-weight: 700; border-bottom: 1px solid #e5e7eb; }
+.biz-drill-tbl td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
+.biz-drill-tbl tr:hover td { background: #fafafa; }
+.biz-empty { text-align: center; color: #9ca3af; padding: 24px; font-size: 13px; }
+
+/* 深色模式 */
+body.dark .biz-gran-btn { background: #21262d; color: #c9d1d9; border-right-color: #30363d; }
+body.dark .biz-gran-tabs { border-color: #30363d; }
+body.dark .biz-gran-btn:hover { background: #30363d; }
+body.dark .biz-gran-btn.active { background: #1f6feb; color: #fff; }
+body.dark .biz-hint { color: #636e7b; }
+
+body.dark .biz-kpi-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+body.dark .biz-kpi-new       { background: linear-gradient(135deg, #0d2040 0%, #161b22 100%); }
+body.dark .biz-kpi-recurring { background: linear-gradient(135deg, #0a1f10 0%, #161b22 100%); }
+body.dark .biz-kpi-expansion { background: linear-gradient(135deg, #1a1040 0%, #161b22 100%); }
+body.dark .biz-kpi-label { color: #e6edf3; }
+body.dark .biz-kpi-sublabel { color: #8b949e; }
+body.dark .biz-kpi-unit { color: #8b949e; }
+body.dark .biz-kpi-meta { color: #8b949e; }
+body.dark .biz-kpi-pct { color: #8ecfff; }
+body.dark .biz-kpi-won { color: #8b949e; border-top-color: #30363d; }
+
+body.dark .biz-chart-card, body.dark .biz-owner-card {
+  background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+body.dark .biz-chart-title { color: #8ecfff; }
+body.dark .biz-chart-hint { color: #636e7b; }
+
+body.dark .biz-owner-tbl th { background: #21262d; color: #c9d1d9; }
+body.dark .biz-owner-tbl tr.biz-owner-tbl-sub th { background: #1c2128; color: #8b949e; }
+body.dark .biz-owner-tbl td { border-bottom-color: #21262d; color: #c9d1d9; }
+body.dark .biz-owner-tbl tr:hover td { background: #1c2128; }
+body.dark .biz-col-new { color: #58a6ff; background: rgba(88,166,255,0.08); }
+body.dark .biz-col-rec { color: #4ade80; background: rgba(74,222,128,0.08); }
+body.dark .biz-col-exp { color: #a78bfa; background: rgba(167,139,250,0.08); }
+
+body.dark .biz-drill-tbl th { background: #21262d; color: #c9d1d9; border-bottom-color: #30363d; }
+body.dark .biz-drill-tbl td { border-bottom-color: #21262d; color: #c9d1d9; }
+body.dark .biz-drill-tbl tr:hover td { background: #1c2128; }
+body.dark .biz-empty { color: #636e7b; }

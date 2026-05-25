@@ -97,6 +97,11 @@
           <span class="nav-label">商機動態報表</span>
         </div>
 
+        <div class="sidebar-nav-item" id="navBizAnalysis" data-section="bizAnalysis">
+          <span class="nav-icon">&#128200;</span>
+          <span class="nav-label">商機分析</span>
+        </div>
+
         <!-- Pipeline 月度變動（一級主管/秘書專用） -->
         <div class="sidebar-nav-item" id="navPipelineDateChange" data-section="pipelineDateChange" style="display:none">
           <span class="nav-icon">&#128202;</span>
@@ -758,6 +763,69 @@
               </div>
             </div>
 
+          </div>
+        </div>
+
+        <!-- ── 商機分析 ── -->
+        <div id="bizAnalysisView" style="display:none">
+          <div class="biz-controls">
+            <select id="bizYearSel" class="forecast-year-sel"></select>
+            <select id="bizOwnerSel" class="forecast-year-sel" style="display:none">
+              <option value="">全部業務</option>
+            </select>
+            <div class="biz-gran-tabs">
+              <button class="biz-gran-btn active" data-gran="month">月</button>
+              <button class="biz-gran-btn" data-gran="quarter">季</button>
+              <button class="biz-gran-btn" data-gran="year">年</button>
+            </div>
+            <span class="biz-hint" title="依商品名稱與公司歷史成交自動分類，可在商機編輯手動覆寫">分類規則：含 MA / 續約 → Recurring；公司過去成交過 → Expansion；首筆 → New</span>
+          </div>
+          <div class="biz-kpi-row" id="bizKpiRow"></div>
+          <div class="biz-charts-grid">
+            <div class="biz-chart-card">
+              <div class="biz-chart-title">📊 三類商機占比（依金額）</div>
+              <div class="biz-donut-wrap"><canvas id="bizDonutChart"></canvas></div>
+              <div class="biz-chart-hint">點擊類別查看明細</div>
+            </div>
+            <div class="biz-chart-card">
+              <div class="biz-chart-title">📈 趨勢（堆疊）</div>
+              <div class="biz-trend-wrap"><canvas id="bizTrendChart"></canvas></div>
+            </div>
+          </div>
+          <div class="biz-owner-card" id="bizByOwnerCard" style="display:none">
+            <div class="biz-chart-title">👥 業務員 × 類型</div>
+            <div class="biz-owner-tbl-wrap">
+              <table class="biz-owner-tbl">
+                <thead>
+                  <tr>
+                    <th>業務</th>
+                    <th class="biz-col-new" colspan="2">🌱 New Business</th>
+                    <th class="biz-col-rec" colspan="2">🔄 Recurring</th>
+                    <th class="biz-col-exp" colspan="2">📈 Expansion</th>
+                    <th>合計（K）</th>
+                  </tr>
+                  <tr class="biz-owner-tbl-sub">
+                    <th></th>
+                    <th>件</th><th>金額(K)</th>
+                    <th>件</th><th>金額(K)</th>
+                    <th>件</th><th>金額(K)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="bizByOwnerTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 商機分析：drilldown modal -->
+        <div class="modal-overlay" id="bizDrillOverlay">
+          <div class="modal" style="width:760px;max-width:95vw">
+            <div class="modal-header">
+              <h2 id="bizDrillTitle">商機明細</h2>
+              <button class="modal-close" id="bizDrillClose">&#10005;</button>
+            </div>
+            <div class="modal-body" id="bizDrillBody"></div>
           </div>
         </div>
 
@@ -2112,6 +2180,16 @@
           <div class="form-group" id="oppEditAchievedDateGroup" style="display:none">
             <label>成交日期</label>
             <input type="date" id="oppEditAchievedDate">
+          </div>
+          <div class="form-group">
+            <label>業務類型</label>
+            <select id="oppEditBusinessType">
+              <option value="">🤖 自動分類</option>
+              <option value="new">🌱 New Business（新客戶）</option>
+              <option value="recurring">🔄 Recurring（續約）</option>
+              <option value="expansion">📈 Expansion（既客擴張）</option>
+            </select>
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px">空白 = 系統依規則自動判斷（含 MA / 續約 → Recurring；公司有過 Won → Expansion；否則 New）</div>
           </div>
           <div class="form-group full-width">
             <label>商機說明</label>

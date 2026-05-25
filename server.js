@@ -277,6 +277,7 @@ const FEATURE_REGISTRY = [
   { key: 'forecast',        label: '銷售預測報表',          icon: '📊', navId: 'navForecast' },
   { key: 'pipeline',        label: '商機看板',              icon: '💼', navId: 'navPipeline' },
   { key: 'pipelineReport',  label: '商機動態報表',          icon: '📑', navId: 'navPipelineReport' },
+  { key: 'bizAnalysis',     label: '商機分析',              icon: '📊', navId: 'navBizAnalysis' },
   { key: 'contractGroup',   label: '合約管理',              icon: '📄', navId: 'navContractGroup' },
   { key: 'accountingGroup', label: '帳務管理',              icon: '💰', navId: 'navAccountingGroup' },
   { key: 'callin',          label: 'Call-in Pass',          icon: '📞', navId: 'navCallin' },
@@ -293,15 +294,15 @@ const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
 const DEFAULT_ROLE_PERMISSIONS = {
   admin:              ALL_FEATURES,
-  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','quotations','keyAccount'],
-  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
+  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
+  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
+  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   secretary:          ['home','targets','forecast','accountingGroup','callin'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads'],
-  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
-  accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount'],
-  finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount'],
+  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
+  accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
+  finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
 };
 
 function getRolePermissions() {
@@ -452,7 +453,7 @@ function pickFields(obj, fields) {
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu'];
-const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu'];
+const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
@@ -2917,6 +2918,12 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     if (buCheck.error) return res.status(400).json({ error: buCheck.error });
     req.body.bu = buCheck.bu;
   }
+  // 業務類型 enum 驗證（空字串視為清除回自動分類）
+  if (req.body.businessType !== undefined &&
+      !['new','recurring','expansion','', null].includes(req.body.businessType)) {
+    return res.status(400).json({ error: 'businessType 值無效（須為 new/recurring/expansion 或空白）' });
+  }
+  if (req.body.businessType === '') req.body.businessType = null;
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   const newStage = data.opportunities[idx].stage;
   // 記錄預計簽約日變動歷史
@@ -6572,6 +6579,170 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     });
   } catch (e) {
     console.error('[manager-home]', e);
+    res.status(500).json({ error: '載入失敗：' + e.message });
+  }
+});
+
+// ── 商機分析（New / Recurring / Expansion） ─────────────────
+// 規則：
+//   1) opp.businessType 已手動設定（非 null/空）→ 該值
+//   2) product 命中 RECURRING_PATTERN → 'recurring'
+//   3) opp 建立日之前，該 company 已有 Won → 'expansion'
+//   4) 否則 → 'new'
+const _RECURRING_PATTERN = /(MA|續約|License\s*MA|PCOE|PCE\s*License|Service\s*MA|Basis\s*MA|維運|保固|年費)/i;
+const _BIZ_TYPES = ['new','recurring','expansion'];
+const _normCompany = (s) => (s || '').trim().toLowerCase();
+function classifyOpportunity(opp, wonCompaniesMap) {
+  const manual = opp && opp.businessType;
+  if (manual && _BIZ_TYPES.includes(manual)) return manual;
+  const product = opp.product || '';
+  if (_RECURRING_PATTERN.test(product)) return 'recurring';
+  const coKey = _normCompany(opp.company);
+  if (!coKey) return 'new';
+  const earliestWon = wonCompaniesMap.get(coKey);
+  if (!earliestWon) return 'new';
+  const oppDate = new Date(opp.createdAt || opp.expectedDate || Date.now()).getTime();
+  // 該公司的最早 Won 早於此 opp → expansion；否則本身就是「客戶化轉換點」前 → new
+  return earliestWon < oppDate ? 'expansion' : 'new';
+}
+// 預先建立 全公司歷史 Won Map<company, earliestDateMs>（不受 viewer BU 限制）
+function _buildWonCompaniesMap(allOpps) {
+  const m = new Map();
+  for (const o of allOpps) {
+    if (o.stage !== 'Won') continue;
+    const k = _normCompany(o.company);
+    if (!k) continue;
+    const d = new Date(o.achievedDate || o.updatedAt || o.createdAt || Date.now()).getTime();
+    if (!m.has(k) || d < m.get(k)) m.set(k, d);
+  }
+  return m;
+}
+
+app.get('/api/manager/business-type-analysis', requireAuth, (req, res) => {
+  try {
+    const yearNum = parseInt(req.query.year) || new Date().getFullYear();
+    const granularity = ['year','quarter','month'].includes(req.query.granularity) ? req.query.granularity : 'month';
+    const ownerFilter = req.query.owner || '';
+
+    const data = db.load();
+    const auth = loadAuth();
+    const allOpps = data.opportunities || [];
+
+    // 全公司 Won 公司 Map（決定 new vs expansion）— 不受 viewer 限制
+    const wonCompaniesMap = _buildWonCompaniesMap(allOpps);
+
+    // 視圖範圍
+    const allOwners = getViewableOwners(req, 'opportunities');
+    const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
+    let opps = allOpps.filter(o => owners.includes(o.owner));
+    opps = filterByBu(req, opps);
+
+    // 限定本年（依 expectedDate 落點為主，沒值則 createdAt）
+    const inYear = (o) => {
+      const d = new Date(o.expectedDate || o.createdAt || 0);
+      return d.getFullYear() === yearNum;
+    };
+    opps = opps.filter(inYear);
+
+    // 分類 + 加聚合
+    const summary = {
+      new:       { count: 0, amount: 0, wonCount: 0, wonAmount: 0 },
+      recurring: { count: 0, amount: 0, wonCount: 0, wonAmount: 0 },
+      expansion: { count: 0, amount: 0, wonCount: 0, wonAmount: 0 },
+    };
+    const drilldown = { new: [], recurring: [], expansion: [] };
+    const ownerAgg = new Map();
+    const trendMap = new Map(); // bucket → {new, recurring, expansion}
+
+    const userByName = {};
+    (auth.users || []).forEach(u => { userByName[u.username] = u.displayName || u.username; });
+
+    const bucketOf = (d) => {
+      const dt = new Date(d || 0);
+      if (granularity === 'month') return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+      if (granularity === 'quarter') return `${dt.getFullYear()}-Q${Math.ceil((dt.getMonth()+1)/3)}`;
+      return String(dt.getFullYear());
+    };
+
+    for (const o of opps) {
+      const t = classifyOpportunity(o, wonCompaniesMap);
+      if (!_BIZ_TYPES.includes(t)) continue;
+      const amt = parseFloat(o.amount) || 0;
+      summary[t].count++;
+      summary[t].amount += amt;
+      if (o.stage === 'Won') {
+        summary[t].wonCount++;
+        summary[t].wonAmount += amt;
+      }
+      // drilldown slim
+      drilldown[t].push({
+        id: o.id,
+        company: o.company || '',
+        product: o.product || '',
+        amount: amt,
+        stage: o.stage,
+        expectedDate: o.expectedDate || '',
+        achievedDate: o.achievedDate || '',
+        owner: o.owner,
+        ownerDisplay: userByName[o.owner] || o.owner,
+        bu: o.bu || '',
+        manualType: !!o.businessType,
+      });
+      // by owner
+      if (!ownerAgg.has(o.owner)) {
+        ownerAgg.set(o.owner, {
+          owner: o.owner,
+          displayName: userByName[o.owner] || o.owner,
+          new:       { count: 0, amount: 0 },
+          recurring: { count: 0, amount: 0 },
+          expansion: { count: 0, amount: 0 },
+        });
+      }
+      const agg = ownerAgg.get(o.owner);
+      agg[t].count++;
+      agg[t].amount += amt;
+      // trend bucket
+      const bk = bucketOf(o.expectedDate || o.createdAt);
+      if (!trendMap.has(bk)) trendMap.set(bk, { bucket: bk, new: 0, recurring: 0, expansion: 0 });
+      trendMap.get(bk)[t] += amt;
+    }
+
+    // 排序 trend
+    const trend = [...trendMap.values()].sort((a, b) => a.bucket.localeCompare(b.bucket));
+
+    // byOwner 排序：依三類總金額 desc
+    const byOwner = [...ownerAgg.values()].sort((a, b) => {
+      const sa = a.new.amount + a.recurring.amount + a.expansion.amount;
+      const sb = b.new.amount + b.recurring.amount + b.expansion.amount;
+      return sb - sa;
+    });
+
+    // owner 選單
+    const ownerOptions = (auth.users || [])
+      .filter(u => allOwners.includes(u.username))
+      .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
+
+    // drilldown 排序：金額 desc
+    _BIZ_TYPES.forEach(t => drilldown[t].sort((a, b) => b.amount - a.amount));
+
+    // 數字一致性檢核（dev console.warn）
+    const totalSummary = _BIZ_TYPES.reduce((s, t) => s + summary[t].amount, 0);
+    const totalTrend   = trend.reduce((s, b) => s + b.new + b.recurring + b.expansion, 0);
+    if (Math.abs(totalSummary - totalTrend) > 0.5) {
+      console.warn('[biz-analysis] summary/trend mismatch:', totalSummary, 'vs', totalTrend);
+    }
+
+    res.json({
+      year: yearNum,
+      granularity,
+      summary,
+      trend,
+      byOwner,
+      drilldown,
+      ownerOptions,
+    });
+  } catch (e) {
+    console.error('[biz-analysis]', e);
     res.status(500).json({ error: '載入失敗：' + e.message });
   }
 });

@@ -182,6 +182,7 @@ function applyPermissions() {
     forecast: 'navForecast',
     pipeline: 'navPipeline',
     pipelineReport: 'navPipelineReport',
+    bizAnalysis: 'navBizAnalysis',
     contractGroup: 'navContractGroup',
     accountingGroup: 'navAccountingGroup',
     callin: 'navCallin',
@@ -759,7 +760,7 @@ function showDashboard() {
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','keyAccountView','visitsView','targetsView','pipelineView',
    'forecastView','lostOppView','execDashView','managerHomeView','campaignsView','leadsView',
-   'quotationsView','pipelineReportView','erpMaView','sapMaView',
+   'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
   });
@@ -795,6 +796,7 @@ function showSection(section) {
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
   $('quotationsView').style.display       = section === 'quotations'     ? '' : 'none';
   $('pipelineReportView').style.display        = section === 'pipelineReport'      ? '' : 'none';
+  if ($('bizAnalysisView')) $('bizAnalysisView').style.display = section === 'bizAnalysis' ? '' : 'none';
   $('erpMaView').style.display        = section === 'erp-ma'      ? '' : 'none';
   $('sapMaView').style.display        = section === 'sap-ma'      ? '' : 'none';
   $('receivablesView').style.display  = section === 'receivables' ? '' : 'none';
@@ -818,6 +820,7 @@ function showSection(section) {
   if (section === 'lostOpp')         loadLostOppView();
   if (section === 'quotations')      loadQuotationsView();
   if (section === 'pipelineReport')      { loadPipelineReport(); if ($('pdcSection') && $('pdcSection').style.display !== 'none') loadPipelineDateChange(); }
+  if (section === 'bizAnalysis')         loadBizAnalysisView();
   if (section === 'erp-ma')      loadErpMaView();
   if (section === 'sap-ma')      loadSapMaView();
   if (section === 'receivables') loadReceivablesView();
@@ -847,6 +850,7 @@ $('navCampaigns').addEventListener('click',       () => showSection('campaigns')
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
 $('navPipelineReport').addEventListener('click',       () => showSection('pipelineReport'));
+if ($('navBizAnalysis')) $('navBizAnalysis').addEventListener('click', () => showSection('bizAnalysis'));
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
@@ -3696,6 +3700,7 @@ function openOppEdit(id) {
   $('oppEditGrossMargin').value    = o.grossMarginRate !== undefined ? o.grossMarginRate : '';
   $('oppEditExpectedDate').value   = o.expectedDate    || '';
   $('oppEditAchievedDate').value   = o.achievedDate    || '';
+  if ($('oppEditBusinessType')) $('oppEditBusinessType').value = o.businessType || '';
   $('oppEditDescription').value    = o.description     || '';
 
   // 成交日期欄位：stage=Won 時顯示，否則隱藏
@@ -3847,6 +3852,7 @@ $('oppEditSave').addEventListener('click', async () => {
     achievedDate:    $('oppEditAchievedDate').value || '',
     description:     $('oppEditDescription').value.trim(),
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
+    businessType:    ($('oppEditBusinessType') && $('oppEditBusinessType').value) || '',
   };
   // 若標記為 Won 但使用者沒填成交日期，預設今天
   if (newStage === 'Won' && !payload.achievedDate) {
@@ -9607,3 +9613,254 @@ async function submitForcePassword() {
     return res;
   };
 })();
+
+// ════════════════════════════════════════════════════════
+// ── 📊 商機分析（New / Recurring / Expansion）─────────
+// ════════════════════════════════════════════════════════
+let bizYear = new Date().getFullYear();
+let bizOwnerFilter = '';
+let bizGranularity = 'month';
+let bizData = null;
+const _bizCharts = { donut: null, trend: null };
+const BIZ_TYPE_LABEL = { new: '🌱 New Business', recurring: '🔄 Recurring', expansion: '📈 Expansion' };
+const BIZ_TYPE_COLOR = { new: '#1a73e8', recurring: '#1e8e3e', expansion: '#9334e6' };
+const BIZ_TYPE_SUBLABEL = { new: '新業務開拓', recurring: '穩定續約收入', expansion: '既有客戶擴張' };
+
+async function loadBizAnalysisView() {
+  // 初始化年份選單（首次）
+  const yrSel = $('bizYearSel');
+  if (yrSel && !yrSel.options.length) {
+    const cy = new Date().getFullYear();
+    for (let y = cy + 1; y >= cy - 3; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y + ' 年';
+      if (y === bizYear) o.selected = true;
+      yrSel.appendChild(o);
+    }
+    yrSel.addEventListener('change', () => { bizYear = parseInt(yrSel.value); loadBizAnalysisView(); });
+  }
+  // 粒度切換（首次綁定）
+  document.querySelectorAll('.biz-gran-btn').forEach(btn => {
+    if (btn._bound) return;
+    btn._bound = true;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.biz-gran-btn').forEach(b => b.classList.toggle('active', b === btn));
+      bizGranularity = btn.dataset.gran;
+      loadBizAnalysisView();
+    });
+  });
+  // owner 選單事件（首次）
+  const ownerSel = $('bizOwnerSel');
+  if (ownerSel && !ownerSel._bound) {
+    ownerSel._bound = true;
+    ownerSel.addEventListener('change', () => {
+      bizOwnerFilter = ownerSel.value;
+      loadBizAnalysisView();
+    });
+  }
+  // 關閉 drill modal
+  if ($('bizDrillClose') && !$('bizDrillClose')._bound) {
+    $('bizDrillClose')._bound = true;
+    $('bizDrillClose').addEventListener('click', () => $('bizDrillOverlay').classList.remove('open'));
+  }
+
+  try {
+    const qs = `year=${bizYear}&granularity=${bizGranularity}` + (bizOwnerFilter ? `&owner=${encodeURIComponent(bizOwnerFilter)}` : '');
+    const r = await fetch(`${API}/manager/business-type-analysis?${qs}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    bizData = await r.json();
+    renderBizAnalysisView(bizData);
+  } catch (e) {
+    console.error('[bizAnalysis] load failed:', e);
+    if ($('bizKpiRow')) $('bizKpiRow').innerHTML = `<div class="biz-empty">載入失敗：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderBizAnalysisView(d) {
+  if (!d) return;
+  // 業務員下拉（manager / admin / exec 才顯示）
+  const ownerWrap = $('bizOwnerSel');
+  if (ownerWrap && d.ownerOptions && d.ownerOptions.length > 1) {
+    ownerWrap.style.display = '';
+    const exist = new Set(Array.from(ownerWrap.options).map(o => o.value));
+    d.ownerOptions.forEach(u => {
+      if (!exist.has(u.username)) {
+        const o = document.createElement('option');
+        o.value = u.username; o.textContent = u.displayName;
+        ownerWrap.appendChild(o);
+      }
+    });
+  } else if (ownerWrap) {
+    ownerWrap.style.display = 'none';
+  }
+
+  renderBizSummaryCards(d.summary);
+  renderBizDonut(d.summary);
+  renderBizTrend(d.trend, d.granularity);
+  renderBizByOwner(d.byOwner);
+}
+
+function renderBizSummaryCards(s) {
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  const row = $('bizKpiRow');
+  if (!row) return;
+  const types = ['new','recurring','expansion'];
+  const total = types.reduce((sum, t) => sum + (s[t].amount || 0), 0);
+  const cards = types.map(t => {
+    const obj = s[t];
+    const color = BIZ_TYPE_COLOR[t];
+    const pct = total > 0 ? Math.round(obj.amount / total * 100) : 0;
+    return `
+      <div class="biz-kpi-card biz-kpi-${t}" data-biz-type="${t}" title="點擊查看 ${BIZ_TYPE_LABEL[t]} 明細">
+        <div class="biz-kpi-label">${BIZ_TYPE_LABEL[t]} <span class="biz-kpi-sublabel">${BIZ_TYPE_SUBLABEL[t]}</span></div>
+        <div class="biz-kpi-value" style="color:${color}">${fmt(obj.amount)} <span class="biz-kpi-unit">K</span></div>
+        <div class="biz-kpi-meta">
+          <span>${obj.count} 筆</span>
+          <span class="biz-kpi-pct">${pct}%</span>
+        </div>
+        <div class="biz-kpi-won">🏆 已成交：${obj.wonCount} 筆 / ${fmt(obj.wonAmount)} K</div>
+      </div>`;
+  }).join('');
+  row.innerHTML = cards;
+  // 點 KPI → 開 drilldown
+  row.querySelectorAll('.biz-kpi-card').forEach(c => {
+    c.addEventListener('click', () => openBizDrilldown(c.dataset.bizType));
+  });
+}
+
+function renderBizDonut(s) {
+  const ctx = $('bizDonutChart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (_bizCharts.donut) { try { _bizCharts.donut.destroy(); } catch {} _bizCharts.donut = null; }
+  const types = ['new','recurring','expansion'];
+  const data = types.map(t => s[t].amount || 0);
+  const total = data.reduce((a, b) => a + b, 0);
+  _bizCharts.donut = new Chart(ctx.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: types.map(t => BIZ_TYPE_LABEL[t]),
+      datasets: [{
+        data,
+        backgroundColor: types.map(t => BIZ_TYPE_COLOR[t]),
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx2) => {
+              const v = ctx2.parsed || 0;
+              const pct = total > 0 ? Math.round(v / total * 100) : 0;
+              return `${ctx2.label}: ${v.toLocaleString()} K (${pct}%)`;
+            }
+          }
+        }
+      },
+      onClick: (e, elements) => {
+        if (elements.length) {
+          const idx = elements[0].index;
+          openBizDrilldown(types[idx]);
+        }
+      }
+    }
+  });
+}
+
+function renderBizTrend(trend, gran) {
+  const ctx = $('bizTrendChart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (_bizCharts.trend) { try { _bizCharts.trend.destroy(); } catch {} _bizCharts.trend = null; }
+  if (!trend || !trend.length) {
+    ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
+    return;
+  }
+  const labels = trend.map(b => b.bucket);
+  _bizCharts.trend = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: BIZ_TYPE_LABEL.new,       data: trend.map(b => b.new),       backgroundColor: BIZ_TYPE_COLOR.new,       stack: 's' },
+        { label: BIZ_TYPE_LABEL.recurring, data: trend.map(b => b.recurring), backgroundColor: BIZ_TYPE_COLOR.recurring, stack: 's' },
+        { label: BIZ_TYPE_LABEL.expansion, data: trend.map(b => b.expansion), backgroundColor: BIZ_TYPE_COLOR.expansion, stack: 's' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, title: { display: true, text: gran === 'year' ? '年度' : gran === 'quarter' ? '季度' : '月份' } },
+        y: { stacked: true, title: { display: true, text: '金額 (K)' }, ticks: { callback: v => v.toLocaleString() } }
+      },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toLocaleString()} K` } }
+      }
+    }
+  });
+}
+
+function renderBizByOwner(arr) {
+  const card = $('bizByOwnerCard');
+  const tbody = $('bizByOwnerTbody');
+  if (!card || !tbody) return;
+  if (!arr || arr.length <= 1) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  tbody.innerHTML = arr.map(r => {
+    const total = (r.new.amount || 0) + (r.recurring.amount || 0) + (r.expansion.amount || 0);
+    return `<tr>
+      <td><strong>${escapeHtml(r.displayName || r.owner)}</strong></td>
+      <td class="biz-num">${r.new.count}</td>
+      <td class="biz-num biz-col-new">${fmt(r.new.amount)}</td>
+      <td class="biz-num">${r.recurring.count}</td>
+      <td class="biz-num biz-col-rec">${fmt(r.recurring.amount)}</td>
+      <td class="biz-num">${r.expansion.count}</td>
+      <td class="biz-num biz-col-exp">${fmt(r.expansion.amount)}</td>
+      <td class="biz-num"><strong>${fmt(total)}</strong></td>
+    </tr>`;
+  }).join('');
+}
+
+function openBizDrilldown(type) {
+  if (!bizData || !bizData.drilldown) return;
+  const list = bizData.drilldown[type] || [];
+  $('bizDrillTitle').textContent = `${BIZ_TYPE_LABEL[type]}（${BIZ_TYPE_SUBLABEL[type]}）— ${list.length} 筆`;
+  const body = $('bizDrillBody');
+  const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
+  if (!list.length) {
+    body.innerHTML = '<div class="biz-empty">無資料</div>';
+  } else {
+    const stageColor = { Won: '#1e8e3e', A: '#c5221f', B: '#e37400', C: '#1a73e8', D: '#888' };
+    body.innerHTML = `
+      <table class="biz-drill-tbl">
+        <thead><tr>
+          <th>客戶公司</th>
+          <th>商品</th>
+          <th style="text-align:right">金額 (K)</th>
+          <th>階段</th>
+          <th>預計成交</th>
+          <th>業務</th>
+          <th style="text-align:center">手動</th>
+        </tr></thead>
+        <tbody>
+          ${list.map(o => `
+            <tr>
+              <td>${typeof kaCompanyMark === 'function' ? kaCompanyMark(o.company) : ''}${escapeHtml(o.company || '—')}</td>
+              <td>${escapeHtml(o.product || '—')}</td>
+              <td style="text-align:right;font-weight:600">${fmt(o.amount)}</td>
+              <td><span style="background:${stageColor[o.stage]||'#aaa'}22;color:${stageColor[o.stage]||'#666'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${escapeHtml(o.stage || '')}</span></td>
+              <td>${escapeHtml(o.expectedDate || '—')}</td>
+              <td>${escapeHtml(o.ownerDisplay || o.owner)}</td>
+              <td style="text-align:center">${o.manualType ? '<span title="使用者手動覆寫">✋</span>' : '<span style="opacity:.3" title="自動分類">🤖</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+  $('bizDrillOverlay').classList.add('open');
+}
