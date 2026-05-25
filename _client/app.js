@@ -6165,6 +6165,7 @@ async function loadLostOppView() {
   try {
     const res = await fetch('/api/lost-opportunities');
     allLostOpps = await res.json();
+    if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
     renderLostOppTable();
 
     if (!lostOppListenersSet) {
@@ -6242,7 +6243,7 @@ function renderLostOppTable() {
     const amt = parseFloat(o.amount) || 0;
     return `<tr style="border-bottom:1px solid #f0f0f0">
       <td style="padding:10px 14px;white-space:nowrap;color:#888;font-size:12px">${date}</td>
-      <td style="padding:10px 14px;font-weight:500">${escapeHtml(o.company||'')}</td>
+      <td style="padding:10px 14px;font-weight:500">${kaCompanyMark(o.company)}${escapeHtml(o.company||'')}</td>
       <td style="padding:10px 14px">${escapeHtml(o.product||'')}</td>
       <td style="padding:10px 14px">
         <span style="background:${stageColor}20;color:${stageColor};padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500">${escapeHtml(o.stage||'')}</span>
@@ -6376,6 +6377,7 @@ async function loadPipelineReport() {
     const res = await fetch(`/api/pipeline-report?${qs}`);
     if (!res.ok) throw new Error('載入失敗');
     const data = await res.json();
+    if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
 
     // 第一次載入時建立業務人員篩選下拉
     if (!prOwnerBuilt && data.ownerOptions && data.ownerOptions.length > 1) {
@@ -6506,7 +6508,7 @@ function renderPrMoves(data) {
     const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}K</span>` : '';
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
-        <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
+        <div class="pr-deal-company">${kaCompanyMark(o.company)}${escapeHtml(o.company||'')}</div>
         <div class="pr-deal-product">${escapeHtml(o.product||'')}</div>
       </div>
       <div class="pr-deal-right">${stageTag}${amt}</div>
@@ -6531,7 +6533,7 @@ function renderPrMoves(data) {
     }
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
-        <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
+        <div class="pr-deal-company">${kaCompanyMark(o.company)}${escapeHtml(o.company||'')}</div>
         <div class="pr-deal-product">${escapeHtml(o.product||'')}</div>
       </div>
       <div class="pr-deal-right">
@@ -6568,7 +6570,7 @@ function renderPrMoves(data) {
         const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}K</span>` : '';
         return `<div class="pr-deal-row">
           <div class="pr-deal-info">
-            <div class="pr-deal-company">${escapeHtml(o.company||'')}</div>
+            <div class="pr-deal-company">${kaCompanyMark(o.company)}${escapeHtml(o.company||'')}</div>
             <div class="pr-deal-product">${escapeHtml(o.product||'')} ${o.deleteReason ? `<span style="color:#ea4335;font-size:11px">（${escapeHtml(o.deleteReason)}）</span>` : ''}</div>
           </div>
           <div class="pr-deal-right">${amt}</div>
@@ -6586,6 +6588,7 @@ async function fetchAllContracts() {
 async function loadErpMaView() {
   try {
     await fetchAllContracts();
+    if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
     const list = allContracts.filter(c => !c.type || c.type === 'ERP_MA');
     renderContractStat(list, 'contractStatRow');
     renderContractTable(list, 'contractTbody',
@@ -6596,6 +6599,7 @@ async function loadErpMaView() {
 async function loadSapMaView() {
   try {
     await fetchAllContracts();
+    if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
     const list = allContracts.filter(c => c.type === 'SAP_MA');
     renderSapNoticeBar(list);
     renderContractStat(list, 'sapStatRow');
@@ -6778,7 +6782,7 @@ function renderContractTable(baseList, tbodyId, search = '', filterStatus = '') 
     tr.className = rowCls;
     tr.innerHTML = `
       <td><strong>${c.contractNo || '—'}</strong></td>
-      <td><strong>${c.company || '—'}</strong>${c.contactName ? `<div style="font-size:11px;color:#888">${c.contactName}</div>` : ''}</td>
+      <td>${kaCompanyMark(c.company)}<strong>${escapeHtml(c.company || '—')}</strong>${c.contactName ? `<div style="font-size:11px;color:#888">${escapeHtml(c.contactName)}</div>` : ''}</td>
       <td>${c.product || '—'}</td>
       <td>${c.startDate || '—'}</td>
       <td>${endCellHtml}</td>
@@ -7458,6 +7462,7 @@ async function loadReceivablesView() {
     if (!r.ok) return;
     allReceivables = await r.json();
   } catch { showToast('無法載入帳款資料'); return; }
+  if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
   renderReceivables();
 }
 
@@ -7503,7 +7508,7 @@ function renderReceivables() {
     const days = overdueDays(r.dueDate);
     const balance = r.amount - (r.paidAmount || 0);
     return `<tr>
-      <td>${r.company || '-'}</td>
+      <td>${kaCompanyMark(r.company)}${escapeHtml(r.company || '-')}</td>
       <td>${r.contactName || '-'}</td>
       <td>${r.invoiceNo || '-'}</td>
       <td>${r.invoiceDate || '-'}</td>
@@ -8363,6 +8368,8 @@ let execOwnerFilter = '';
 let execData = { conversion: null, trend: null, product: null };
 
 async function loadExecDash() {
+  // 確保 KA 已載入
+  if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
   // 初始化年份選單
   const yrSel = $('execYearSel');
   if (!yrSel.options.length) {
@@ -8710,6 +8717,8 @@ let mgrAgingOwnerFilter = '';
 const _mgrCharts = { gauge: null, aging: null, topCust: null };
 
 async function loadManagerHome() {
+  // 確保 KA 已載入（topCust 圖表、commit 區公司名 ⭐ 用）
+  if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
   // 初始化年份選單與事件（只綁一次）
   const yrSel = $('mgrYearSel');
   if (!yrSel.options.length) {
@@ -8853,7 +8862,7 @@ function renderMgrCommit(c) {
     const items = group.items.slice(0, 4).map(o => `
       <div class="mgr-commit-item">
         <span class="mgr-commit-stage" style="background:${color}">${o.stage}</span>
-        <span class="mgr-commit-co">${escapeHtml(o.company || '—')}</span>
+        <span class="mgr-commit-co">${kaCompanyMark(o.company)}${escapeHtml(o.company || '—')}</span>
         <span class="mgr-commit-prod">${escapeHtml(o.product || '')}</span>
         <span class="mgr-commit-amt">${fmt(o.amount)}K</span>
       </div>`).join('');
@@ -8937,7 +8946,11 @@ function renderMgrTopCust(list) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     return;
   }
-  const labels = list.map(c => c.company.length > 20 ? c.company.slice(0, 20) + '…' : c.company);
+  const labels = list.map(c => {
+    const star = isKeyAccount(c.company) ? '⭐ ' : '';
+    const name = c.company.length > 20 ? c.company.slice(0, 20) + '…' : c.company;
+    return star + name;
+  });
   _mgrCharts.topCust = new Chart(ctx, {
     type: 'bar',
     data: {

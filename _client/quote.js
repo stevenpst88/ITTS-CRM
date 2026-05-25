@@ -45,6 +45,10 @@ async function loadQuotationsView() {
   } catch(e) {
     allQuotations = [];
   }
+  // 確保 KA 資料已載入（公司名前綴 ⭐ 用）
+  if (typeof loadKeyAccounts === 'function' && Array.isArray(allKeyAccounts) && allKeyAccounts.length === 0) {
+    try { await loadKeyAccounts(); } catch {}
+  }
   renderQuoteList();
   bindQuoteListHandlers();
 }
@@ -73,7 +77,7 @@ function renderQuoteList() {
     const stLabel = QUOTE_STATUS_LABEL[q.status] || q.status;
     return `<tr>
       <td><span class="quote-no">${escapeHtml(q.quoteNo || '')}</span></td>
-      <td>${escapeHtml(q.company || '')}</td>
+      <td>${typeof kaCompanyMark === 'function' ? kaCompanyMark(q.company) : ''}${escapeHtml(q.company || '')}</td>
       <td>${escapeHtml(q.contactName || '')}</td>
       <td>${escapeHtml(q.projectName || '')}</td>
       <td>${escapeHtml(q.quoteDate || '')}</td>
