@@ -944,6 +944,16 @@ function isMyKa(companyName) {
   return ka.owner === (window._myUsername || '');
 }
 
+// 公司名稱前綴 ⭐ 標記（KA 才回傳，否則回空字串）
+// 用法：${kaCompanyMark(opp.company)}${escapeHtml(opp.company)}
+function kaCompanyMark(companyName) {
+  if (!isKeyAccount(companyName)) return '';
+  const ka = getKaRecord(companyName);
+  const ownerDisp = ka ? (ka.ownerDisplayName || ka.owner) : '';
+  const titleTxt = ownerDisp ? `Key Account（Account Owner：${ownerDisp}）` : 'Key Account';
+  return `<span class="ka-mark" title="${escapeHtml(titleTxt)}">⭐</span>`;
+}
+
 async function toggleKeyAccount(companyName) {
   if (!companyName) { showToast('此名片無公司名稱，無法標記'); return; }
   const existing = getKaRecord(companyName);
@@ -3410,7 +3420,7 @@ const KANBAN_STAGES = [
 let dragOppId = null;
 
 async function loadPipelineView() {
-  await Promise.all([loadOpportunities(), loadOwnerMap()]);
+  await Promise.all([loadOpportunities(), loadOwnerMap(), loadKeyAccounts()]);
   buildOwnerSelect('kanbanOwnerSel', 'kanbanOwnerWrap', kanbanOwnerFilter, () => {
     kanbanOwnerFilter = $('kanbanOwnerSel').value;
     renderKanban();
@@ -3643,7 +3653,7 @@ function buildKanbanCard(o) {
     : '';
 
   card.innerHTML = `
-    <div class="kanban-card-company">${escapeHtml(o.company) || '（未填公司）'}</div>
+    <div class="kanban-card-company">${kaCompanyMark(o.company)}${escapeHtml(o.company) || '（未填公司）'}</div>
     <div class="kanban-card-contact">${escapeHtml(o.contactName) || ''}</div>
     ${cat}${prod}${overdueTag}
     <div class="kanban-card-footer">
@@ -5125,7 +5135,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
 }
 
 async function loadTargetsView() {
-  await Promise.all([loadTargets(), loadOpportunities(), loadUserQuarterRatios()]);
+  await Promise.all([loadTargets(), loadOpportunities(), loadUserQuarterRatios(), loadKeyAccounts()]);
   try {
     const res = await fetch(`${API}/lost-opportunities`);
     allLostOppsForTargets = res.ok ? await res.json() : [];
@@ -5324,7 +5334,7 @@ function renderOppTable() {
     ).join('');
     return `<tr class="${won ? 'opp-won-row' : ''} ${zombieCls}" data-id="${o.id}">
       <td data-label="建立日期">${o.createdAt ? o.createdAt.slice(0,10) : ''}</td>
-      <td data-label="客戶公司">${zombieBadge}${escapeHtml(o.company||'-')}</td>
+      <td data-label="客戶公司">${zombieBadge}${kaCompanyMark(o.company)}${escapeHtml(o.company||'-')}</td>
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${escapeHtml(o.product||'-')}</td>
@@ -5353,7 +5363,7 @@ function renderOppTable() {
     const reason = o.deleteReason ? `<span class="opp-lost-reason" title="${o.deleteReason}">原因：${o.deleteReason}</span>` : '';
     return `<tr class="opp-lost-row" data-id="${o.id}">
       <td data-label="建立日期"><span class="opp-lost-date">${o.createdAt ? o.createdAt.slice(0,10) : '-'}</span></td>
-      <td data-label="客戶公司">${o.company || '-'}</td>
+      <td data-label="客戶公司">${kaCompanyMark(o.company)}${o.company || '-'}</td>
       <td data-label="聯絡人">${o.contactName || '-'}</td>
       <td data-label="商機類別">${o.category || '-'}</td>
       <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${o.product || '-'}</td>
@@ -5471,7 +5481,8 @@ let forecastSortDir = 'desc';
 async function loadForecastView() {
   await Promise.all([
     loadOpportunities(),
-    allVisits.length === 0 ? fetch(`${API}/visits`).then(r=>r.json()).then(d=>{ allVisits=d; }) : Promise.resolve()
+    allVisits.length === 0 ? fetch(`${API}/visits`).then(r=>r.json()).then(d=>{ allVisits=d; }) : Promise.resolve(),
+    loadKeyAccounts()
   ]);
   if (!forecastSalesPerson) {
     try {
@@ -5725,7 +5736,7 @@ function renderForecastTable() {
     tr.className = stageClass;
     tr.style.cursor = 'pointer';
     tr.innerHTML = `
-      <td class="ft-company-col">${escapeHtml(o.company) || '—'}</td>
+      <td class="ft-company-col">${kaCompanyMark(o.company)}${escapeHtml(o.company) || '—'}</td>
       <td class="ft-case-col" title="${escapeHtml(salesName)}">${escapeHtml(salesName)}</td>
       <td class="ft-bu-col">${escapeHtml(o.category) || '—'}</td>
       <td>${escapeHtml(o.expectedDate) || '—'}</td>

@@ -3218,6 +3218,16 @@ body {
 .ka-star-btn.ka-star-others { color: #f59e0b; cursor: help; }
 .ka-star-btn.ka-star-others:hover { transform: none; }
 
+/* 公司名前綴 ⭐ 標記（KA 客戶）— 用於 Kanban / 商機列表 / 預測報表 */
+.ka-mark {
+  display: inline-block;
+  color: #f59e0b;
+  font-size: 0.9em;
+  margin-right: 3px;
+  cursor: help;
+  text-shadow: 0 0 2px rgba(245,158,11,.3);
+}
+
 /* 展開的在手商機明細 */
 .ka-pipeline-row td { padding: 0; background: #fffef5 !important; }
 .ka-pipeline-table { width: 100%; font-size: 12px; }
