@@ -5477,6 +5477,9 @@ let forecastUserMap = {};
 // 方向：'desc' | 'asc'
 let forecastSortKey = null;
 let forecastSortDir = 'desc';
+// 表頭金額篩選狀態（null = 不套用）
+let forecastFilterAmount = { min: null, max: null };
+let forecastFilterProfit = { min: null, max: null };
 
 async function loadForecastView() {
   await Promise.all([
@@ -5608,9 +5611,104 @@ function getForecastOpps(year) {
   });
 }
 
+// 開啟金額篩選浮窗（合約金額 / 毛利金額共用）
+function openForecastFilterPopup(key, anchor) {
+  // 移除已存在的浮窗
+  document.querySelectorAll('.ft-filter-popup').forEach(p => p.remove());
+  const cur = key === 'amount' ? forecastFilterAmount : forecastFilterProfit;
+  const label = key === 'amount' ? '合約金額' : '毛利金額';
+  const popup = document.createElement('div');
+  popup.className = 'ft-filter-popup';
+  popup.innerHTML = `
+    <div class="ft-filter-title">🔍 篩選 ${label}（NT$K）</div>
+    <div class="ft-filter-row">
+      <span class="ft-filter-op">≥</span>
+      <input type="number" id="ftFilterMin" placeholder="最小金額" value="${cur.min ?? ''}" step="1">
+      <span class="ft-filter-unit">K</span>
+    </div>
+    <div class="ft-filter-row">
+      <span class="ft-filter-op">≤</span>
+      <input type="number" id="ftFilterMax" placeholder="最大金額" value="${cur.max ?? ''}" step="1">
+      <span class="ft-filter-unit">K</span>
+    </div>
+    <div class="ft-filter-hint">兩個都填 = 範圍；只填一個 = 單邊；都空白 = 不篩選</div>
+    <div class="ft-filter-btns">
+      <button type="button" class="ft-filter-clear">清除</button>
+      <button type="button" class="ft-filter-apply">套用</button>
+    </div>
+  `;
+  // 定位：anchor 下方
+  const rect = anchor.getBoundingClientRect();
+  popup.style.position = 'fixed';
+  popup.style.top  = (rect.bottom + 4) + 'px';
+  popup.style.left = Math.max(8, rect.left - 80) + 'px';
+  document.body.appendChild(popup);
+  setTimeout(() => $v('ftFilterMin')?.focus(), 50);
+
+  const closePopup = () => popup.remove();
+  popup.querySelector('.ft-filter-clear').addEventListener('click', () => {
+    if (key === 'amount') forecastFilterAmount = { min: null, max: null };
+    else if (key === 'profit') forecastFilterProfit = { min: null, max: null };
+    closePopup();
+    renderForecastTable();
+  });
+  popup.querySelector('.ft-filter-apply').addEventListener('click', () => {
+    const minV = popup.querySelector('#ftFilterMin').value.trim();
+    const maxV = popup.querySelector('#ftFilterMax').value.trim();
+    const min = minV === '' ? null : parseFloat(minV);
+    const max = maxV === '' ? null : parseFloat(maxV);
+    // 驗證：若兩者都填且 min > max → 提示
+    if (min !== null && max !== null && min > max) {
+      alert('「最小金額」不可大於「最大金額」');
+      return;
+    }
+    if (key === 'amount') forecastFilterAmount = { min, max };
+    else if (key === 'profit') forecastFilterProfit = { min, max };
+    closePopup();
+    renderForecastTable();
+  });
+  // Enter 套用、Esc 取消
+  popup.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') popup.querySelector('.ft-filter-apply').click();
+      if (e.key === 'Escape') closePopup();
+    });
+  });
+  // 點外面關閉
+  setTimeout(() => {
+    document.addEventListener('click', function outsideClick(e) {
+      if (!popup.contains(e.target) && !e.target.closest('.ft-filter-icon')) {
+        closePopup();
+        document.removeEventListener('click', outsideClick);
+      }
+    });
+  }, 0);
+}
+
 function renderForecastTable() {
   const year = forecastYear;
-  const opps = getForecastOpps(year);
+  let opps = getForecastOpps(year);
+
+  // ── 表頭金額篩選（合約金額 / 毛利金額）── 套用後再做摘要與排序
+  const profitOf = (o) => (parseFloat(o.amount) || 0) * (parseFloat(o.grossMarginRate) || 0) / 100;
+  const fa = forecastFilterAmount;
+  const fp = forecastFilterProfit;
+  if (fa.min !== null || fa.max !== null) {
+    opps = opps.filter(o => {
+      const v = parseFloat(o.amount) || 0;
+      if (fa.min !== null && v < fa.min) return false;
+      if (fa.max !== null && v > fa.max) return false;
+      return true;
+    });
+  }
+  if (fp.min !== null || fp.max !== null) {
+    opps = opps.filter(o => {
+      const v = profitOf(o);
+      if (fp.min !== null && v < fp.min) return false;
+      if (fp.max !== null && v > fp.max) return false;
+      return true;
+    });
+  }
 
   // ── 摘要卡 ── (amount 已是 K，直接加總)
   const totContract = opps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
@@ -5657,12 +5755,27 @@ function renderForecastTable() {
       <div class="fsc-value">${totWon.toLocaleString()}</div>
     </div>`;
 
-  // ── 表頭（合約金額 / 毛利金額 可點擊排序）──
+  // ── 表頭（合約金額 / 毛利金額 可點擊排序 + 🔍 篩選）──
   const arrow = (key) => {
     if (forecastSortKey !== key) return '<span class="ft-sort-arrow">⇅</span>';
     return forecastSortDir === 'desc'
       ? '<span class="ft-sort-arrow active">↓</span>'
       : '<span class="ft-sort-arrow active">↑</span>';
+  };
+  // 套用中的篩選 chip
+  const filterChip = (key) => {
+    const f = key === 'amount' ? forecastFilterAmount : forecastFilterProfit;
+    if (f.min === null && f.max === null) return '';
+    const parts = [];
+    if (f.min !== null) parts.push('≥' + Number(f.min).toLocaleString());
+    if (f.max !== null) parts.push('≤' + Number(f.max).toLocaleString());
+    return `<div class="ft-filter-chip" data-filter-key="${key}" title="點 × 清除">${parts.join(' · ')} <span class="ft-filter-chip-x" data-clear-filter="${key}">×</span></div>`;
+  };
+  // 🔍 篩選圖示（active 時變色）
+  const filterIcon = (key) => {
+    const f = key === 'amount' ? forecastFilterAmount : forecastFilterProfit;
+    const active = (f.min !== null || f.max !== null);
+    return `<span class="ft-filter-icon${active ? ' active' : ''}" data-filter-key="${key}" title="篩選金額範圍">🔍</span>`;
   };
   $('forecastThead').innerHTML = `
     <tr>
@@ -5673,12 +5786,20 @@ function renderForecastTable() {
       <th>業務人員</th>
       <th class="ft-head-pink">把握度%</th>
       <th class="ft-head-pink">預估<br>毛利率</th>
-      <th class="ft-head-yellow ft-sortable" data-sort-key="amount" title="點擊切換：降冪 → 升冪 → 取消">合約金額<br>（NT$K）${arrow('amount')}</th>
-      <th class="ft-head-yellow ft-sortable" data-sort-key="profit" title="點擊切換：降冪 → 升冪 → 取消">毛利金額<br>（NT$K）${arrow('profit')}</th>
+      <th class="ft-head-yellow ft-sortable" data-sort-key="amount" title="點擊文字切換排序：降冪 → 升冪 → 取消；點 🔍 篩選金額">
+        <span class="ft-head-text">合約金額<br>（NT$K）</span>${filterIcon('amount')}${arrow('amount')}
+        ${filterChip('amount')}
+      </th>
+      <th class="ft-head-yellow ft-sortable" data-sort-key="profit" title="點擊文字切換排序：降冪 → 升冪 → 取消；點 🔍 篩選金額">
+        <span class="ft-head-text">毛利金額<br>（NT$K）</span>${filterIcon('profit')}${arrow('profit')}
+        ${filterChip('profit')}
+      </th>
     </tr>`;
-  // 綁定點擊：三段切換（降 → 升 → 取消）
+  // 排序：點擊 .ft-head-text 或 .ft-sort-arrow 才觸發排序（避免點 🔍 或 chip 也觸發）
   $('forecastThead').querySelectorAll('th.ft-sortable').forEach(th => {
-    th.addEventListener('click', () => {
+    th.addEventListener('click', (e) => {
+      // 點到篩選相關元素 → 不觸發排序
+      if (e.target.closest('.ft-filter-icon') || e.target.closest('.ft-filter-chip')) return;
       const key = th.dataset.sortKey;
       if (forecastSortKey !== key) {
         forecastSortKey = key; forecastSortDir = 'desc';
@@ -5687,6 +5808,23 @@ function renderForecastTable() {
       } else {
         forecastSortKey = null; forecastSortDir = 'desc';
       }
+      renderForecastTable();
+    });
+  });
+  // 篩選 icon click → 開浮窗
+  $('forecastThead').querySelectorAll('.ft-filter-icon').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openForecastFilterPopup(icon.dataset.filterKey, icon);
+    });
+  });
+  // chip × click → 清除該欄篩選
+  $('forecastThead').querySelectorAll('.ft-filter-chip-x').forEach(x => {
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = x.dataset.clearFilter;
+      if (key === 'amount') forecastFilterAmount = { min: null, max: null };
+      else if (key === 'profit') forecastFilterProfit = { min: null, max: null };
       renderForecastTable();
     });
   });
@@ -5701,8 +5839,7 @@ function renderForecastTable() {
     return;
   }
 
-  // 排序：依目前排序狀態
-  const profitOf = (o) => (parseFloat(o.amount) || 0) * (parseFloat(o.grossMarginRate) || 0) / 100;
+  // 排序：依目前排序狀態（profitOf 在前面已宣告）
   let sorted;
   if (forecastSortKey === 'amount') {
     sorted = [...opps].sort((a, b) => {
