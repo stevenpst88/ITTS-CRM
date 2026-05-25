@@ -6589,7 +6589,9 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
 //   2) product 命中 RECURRING_PATTERN → 'recurring'
 //   3) opp 建立日之前，該 company 已有 Won → 'expansion'
 //   4) 否則 → 'new'
-const _RECURRING_PATTERN = /(MA|續約|License\s*MA|PCOE|PCE\s*License|Service\s*MA|Basis\s*MA|維運|保固|年費)/i;
+// 注意：英文部分必須用 \b word boundary，避免「Emarsys」內含「ma」誤判
+// 中文部分不需邊界（中文字本身就是邊界）
+const _RECURRING_PATTERN = /\b(MA|License\s*MA|Service\s*MA|Basis\s*MA|PCOE\s*License|PCE\s*License|PE\s*License)\b|續約|維運合約|維護合約|保固|年費|月費/i;
 const _BIZ_TYPES = ['new','recurring','expansion'];
 const _normCompany = (s) => (s || '').trim().toLowerCase();
 function classifyOpportunity(opp, wonCompaniesMap) {
