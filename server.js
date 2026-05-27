@@ -3077,12 +3077,14 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
 
   // 期間預計簽約日調整：篩出 changedAt 在 [from, to] 且 owner 可見的紀錄
   // 同一商機同期內若多次調整，合併為「期初 oldDate → 期末 newDate」（避免重複呈現）
+  const ownerSet = new Set(owners);
   const oppById = new Map(opps.map(o => [o.id, o]));
-  const allDC = (data.opportunityDateChanges || []).filter(c =>
-    viewable.has(c.owner) &&
-    oppById.has(c.dealId) &&
-    (() => { const d = new Date(c.changedAt); return d >= fromDate && d <= toDate; })()
-  );
+  const allDC = (data.opportunityDateChanges || []).filter(c => {
+    if (!ownerSet.has(c.owner)) return false;
+    if (!oppById.has(c.dealId)) return false;
+    const d = new Date(c.changedAt);
+    return d >= fromDate && d <= toDate;
+  });
   // 依 dealId 分組、按 changedAt 升冪
   const dcByDeal = {};
   allDC.forEach(c => {
