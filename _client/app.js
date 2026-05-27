@@ -6283,7 +6283,22 @@ const STAGE_LBL = {
 function getPrDateRange(period) {
   const now = new Date();
   let from, to;
-  if (period === 'month') {
+  // 週的判定：以「週一 00:00」為起點
+  const _mondayOf = (d) => {
+    const x = new Date(d);
+    const day = x.getDay() || 7;            // Sunday(0) → 7
+    x.setDate(x.getDate() - (day - 1));     // 回退到本週一
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  if (period === 'week') {
+    from = _mondayOf(now);
+    to   = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23, 59, 59, 999);
+  } else if (period === 'lastweek') {
+    const thisMon = _mondayOf(now);
+    from = new Date(thisMon); from.setDate(thisMon.getDate() - 7);
+    to   = new Date(thisMon); to.setDate(thisMon.getDate() - 1); to.setHours(23, 59, 59, 999);
+  } else if (period === 'month') {
     from = new Date(now.getFullYear(), now.getMonth(), 1);
     to   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   } else if (period === 'lastmonth') {
