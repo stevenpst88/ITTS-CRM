@@ -500,6 +500,11 @@ const OPP_FIELDS       = ['contactId','contactName','company','category','produc
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
+// ── KPI 過濾 helper ─────────────────────────────────────
+// kpiExcluded = true 表示「歷史補登」，仍存在於商機列表 / 漏斗 / 分類，
+// 但不計入業績達成率、月度趨勢、BU 對比、轉換率等 KPI 指標。
+const isKpiCounting = (o) => !o.kpiExcluded;
+
 // ── 網址安全驗證 ──────────────────────────────────────────
 function sanitizeUrl(url) {
   if (!url) return '';
@@ -2560,7 +2565,7 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       .filter(o => !['Won','D'].includes(o.stage))
       .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
-    const wonCount = myOpps.filter(o => o.stage === 'Won' && (() => {
+    const wonCount = myOpps.filter(o => o.stage === 'Won' && isKpiCounting(o) && (() => {
       const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
       return d >= yearStart && d <= yearEnd;
     })()).length;
@@ -6819,9 +6824,9 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
             continue; // 已用手動認列覆蓋，不再加 Won 商機
           }
         }
-        // 無手動認列 → 從 Won 商機抓該月（已 BU 過濾）
+        // 無手動認列 → 從 Won 商機抓該月（已 BU 過濾；排除 kpiExcluded 歷史補登）
         const monthActual = opps
-          .filter(o => o.owner === owner && o.stage === 'Won')
+          .filter(o => o.owner === owner && o.stage === 'Won' && isKpiCounting(o))
           .filter(o => {
             const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
             return d.getFullYear() === yearNum && d.getMonth() + 1 === m;
@@ -7114,6 +7119,7 @@ app.get('/api/exec/conversion', requireAuth, (req, res) => {
 
   const wonOpps = opps.filter(o => {
     if (o.stage !== 'Won') return false;
+    if (!isKpiCounting(o)) return false;  // 排除 kpiExcluded 歷史補登
     const d = o.achievedDate || o.updatedAt || o.createdAt;
     return d && new Date(d).getFullYear() === yearNum;
   });
@@ -7185,7 +7191,7 @@ app.get('/api/exec/trend', requireAuth, (req, res) => {
   const owners = (owner && allOwners.includes(owner)) ? [owner] : allOwners;
 
   const wonOpps = (data.opportunities || []).filter(o =>
-    o.stage === 'Won' && owners.includes(o.owner)
+    o.stage === 'Won' && isKpiCounting(o) && owners.includes(o.owner)
   );
 
   const now = new Date();
@@ -7273,7 +7279,7 @@ app.get('/api/exec/bu-comparison', requireAuth, (req, res) => {
       .map(u => u.username);
 
     const opps = (data.opportunities || []).filter(o => buUsers.includes(o.owner));
-    const wonOpps = opps.filter(o => o.stage === 'Won' &&
+    const wonOpps = opps.filter(o => o.stage === 'Won' && isKpiCounting(o) &&
       new Date(o.achievedDate || o.updatedAt || o.createdAt).getFullYear() === yearNum);
     const activeOpps = opps.filter(o => ['A','B','C'].includes(o.stage));
 
