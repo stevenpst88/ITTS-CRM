@@ -6599,6 +6599,32 @@ function renderPrMoves(data) {
       }).join('')
     : '<div class="pr-empty-row">本期無流失商機</div>';
 
+  // 金額調整（純改金額、沒 stage 變動）
+  const acList = data.amountChanges || [];
+  if ($('prAmountChangeCount')) $('prAmountChangeCount').textContent = acList.length;
+  if ($('prAmountChangeList')) {
+    $('prAmountChangeList').innerHTML = acList.length
+      ? acList.map(c => {
+          const stageTag = c.stage
+            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${STAGE_LBL[c.stage]||c.stage}</span>`
+            : '';
+          const diffColor = c.diff > 0 ? '#0a8a4a' : c.diff < 0 ? '#c62828' : '#888';
+          const diffSign = c.diff > 0 ? '+' : '';
+          const amtHtml = `<span class="pr-deal-amt" style="color:#888;text-decoration:line-through;font-weight:500">${(c.amountFrom||0).toLocaleString()}</span>
+            <span style="color:#888;font-size:11px">→</span>
+            <span class="pr-deal-amt">${(c.amountTo||0).toLocaleString()}K</span>
+            <span style="color:${diffColor};font-size:11px;font-weight:700">(${diffSign}${c.diff.toLocaleString()})</span>`;
+          return `<div class="pr-deal-row">
+            <div class="pr-deal-info">
+              <div class="pr-deal-company">${kaCompanyMark(c.company)}${escapeHtml(c.company||'')}</div>
+              <div class="pr-deal-product">${escapeHtml(c.product||'')}</div>
+            </div>
+            <div class="pr-deal-right">${stageTag}${amtHtml}</div>
+          </div>`;
+        }).join('')
+      : '<div class="pr-empty-row">本期無金額調整（無 stage 變動的）</div>';
+  }
+
   // 預計簽約日調整
   const dcList = data.dateChanges || [];
   if ($('prDateChangeCount')) $('prDateChangeCount').textContent = dcList.length;

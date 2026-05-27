@@ -2627,6 +2627,7 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 .pr-move-head-new  { background: #e8f0fe; color: #1a73e8; }
 .pr-move-head-lost { background: #fce8e6; color: #c62828; }
 .pr-move-head-date { background: #f3e8ff; color: #6d28d9; }
+.pr-move-head-amt  { background: #fff3e0; color: #b45309; }
 .pr-move-count {
   margin-left: auto; background: #1e8e3e;
   color: #fff; border-radius: 10px; padding: 1px 8px;
@@ -2636,6 +2637,7 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 .pr-move-count-new  { background: #1a73e8; }
 .pr-move-count-lost { background: #c62828; }
 .pr-move-count-date { background: #6d28d9; }
+.pr-move-count-amt  { background: #b45309; }
 
 .pr-move-list { max-height: 220px; overflow-y: auto; }
 
