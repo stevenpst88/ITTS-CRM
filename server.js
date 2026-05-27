@@ -2947,16 +2947,6 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
       changedBy: owner
     });
   }
-  // 記錄金額變動歷史（獨立於 stage 變動，僅金額有改才記）
-  if (oldAmount !== newAmount) {
-    if (!data.opportunityAmountChanges) data.opportunityAmountChanges = [];
-    data.opportunityAmountChanges.push({
-      dealId: req.params.id,
-      oldAmount, newAmount,
-      changedAt: new Date().toISOString(),
-      owner
-    });
-  }
   db.save(data);
   const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
   writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
@@ -3067,15 +3057,10 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       const fi = STAGE_ORDER.indexOf(netFrom);
       const ti = STAGE_ORDER.indexOf(netTo);
       if (fi === -1 || ti === -1) return;
-      // 金額快照：優先用「期間內金額變動歷史」（涵蓋 stage 沒同時改的情況），
-      // fallback 到 stageHistory 內嵌的金額 snapshot（舊版邏輯）
-      let amountFrom = entries[0].amountFrom;
-      let amountTo   = entries[entries.length-1].amountTo;
-      const amtList = amtByDeal[o.id];
-      if (amtList && amtList.length > 0) {
-        amountFrom = amtList[0].oldAmount;
-        amountTo   = amtList[amtList.length - 1].newAmount;
-      }
+      // 金額快照：第一筆的 amountFrom（變動前）→ 最後一筆的 amountTo（變動後）
+      // 舊資料無 amountFrom/amountTo 時，前端會 fallback 用 amount
+      const amountFrom = entries[0].amountFrom;
+      const amountTo   = entries[entries.length-1].amountTo;
       const item = {
         id:      o.id, company: o.company, product: o.product,
         amount:  parseFloat(o.amount)||0,
@@ -3094,21 +3079,6 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
   // 同一商機同期內若多次調整，合併為「期初 oldDate → 期末 newDate」（避免重複呈現）
   const ownerSet = new Set(owners);
   const oppById = new Map(opps.map(o => [o.id, o]));
-
-  // 期間金額變動：依 dealId 分組，計算期初 oldAmount 與期末 newAmount
-  const amtByDeal = {};
-  (data.opportunityAmountChanges || []).forEach(c => {
-    if (!ownerSet.has(c.owner)) return;
-    if (!oppById.has(c.dealId)) return;
-    const d = new Date(c.changedAt);
-    if (d < fromDate || d > toDate) return;
-    if (!amtByDeal[c.dealId]) amtByDeal[c.dealId] = [];
-    amtByDeal[c.dealId].push(c);
-  });
-  Object.keys(amtByDeal).forEach(k => {
-    amtByDeal[k].sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt));
-  });
-
   const allDC = (data.opportunityDateChanges || []).filter(c => {
     if (!ownerSet.has(c.owner)) return false;
     if (!oppById.has(c.dealId)) return false;
@@ -3161,36 +3131,6 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const postponedCount = dateChanges.filter(c => c.daysDiff != null && c.daysDiff > 0).length;
   const advancedCount  = dateChanges.filter(c => c.daysDiff != null && c.daysDiff < 0).length;
 
-  // 獨立的「金額調整」區塊：篩出期間內「純改金額」的 opp（已經在 promoted/demoted 顯示過 amount diff 的不重複列）
-  const promotedIds = new Set(promoted.map(p => p.id));
-  const demotedIds  = new Set(demoted.map(d => d.id));
-  const amountChanges = [];
-  Object.entries(amtByDeal).forEach(([dealId, list]) => {
-    if (promotedIds.has(dealId) || demotedIds.has(dealId)) return; // 已合併在 promoted/demoted 行
-    const first = list[0];
-    const last  = list[list.length - 1];
-    if (first.oldAmount === last.newAmount) return; // 來回抵銷
-    const opp = oppById.get(dealId);
-    if (!opp) return;
-    amountChanges.push({
-      id:      dealId,
-      company: opp.company,
-      product: opp.product,
-      stage:   opp.stage,
-      amount:  parseFloat(opp.amount) || 0,
-      amountFrom: first.oldAmount,
-      amountTo:   last.newAmount,
-      diff:       (last.newAmount || 0) - (first.oldAmount || 0),
-      changedAt:  last.changedAt,
-      owner:      opp.owner
-    });
-  });
-  // 排序：減幅大的在前（最需關注）；同等則最近異動在前
-  amountChanges.sort((a, b) => {
-    if (a.diff !== b.diff) return a.diff - b.diff; // 減幅大（負數小）在前
-    return (b.changedAt || '').localeCompare(a.changedAt || '');
-  });
-
   const sum = arr => arr.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
   res.json({
     period: { from: fromDate.toISOString(), to: toDate.toISOString() },
@@ -3200,7 +3140,6 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
     dateChanges,
-    amountChanges,
     summary: {
       totalPipeline: sum(opps.filter(o=>o.stage!=='Won'&&o.stage!=='D')),
       totalCount:    opps.filter(o=>o.stage!=='Won'&&o.stage!=='D').length,
@@ -3210,7 +3149,6 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       demotedAmount:  sum(demoted),  demotedCount: demoted.length,
       dateChangeCount: dateChanges.length,
       postponedCount, advancedCount,
-      amountChangeCount: amountChanges.length,
     }
   });
 });
