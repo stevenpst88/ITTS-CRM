@@ -496,7 +496,7 @@ function pickFields(obj, fields) {
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu'];
-const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType'];
+const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
@@ -3560,14 +3560,16 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', Won: 'Won' };
 
   const headers = [
-    '客戶名稱', '銷售案名', 'BU(category)', '預定簽約日',
+    '客戶名稱', '聯絡人', '銷售案名', 'BU(category)', '預定簽約日',
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
     '合約金額(K)', '預估毛利率(%)', '備註(description)',
-    '建立時間', '商機ID'
+    '建立日期', '成交日期', '歷史紀錄(Y/N)',
+    '商機ID'
   ];
 
   const rows = (data.opportunities || []).map(o => [
     o.company      || '',
+    o.contactName  || '',
     o.product      || '',
     o.category     || '',
     o.expectedDate || '',
@@ -3578,16 +3580,19 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
     o.grossMarginRate || '',
     o.description  || '',
     o.createdAt    ? o.createdAt.slice(0, 10) : '',
+    o.achievedDate || '',
+    o.kpiExcluded  ? 'Y' : '',
     o.id           || ''
   ]);
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = [
-    { wch: 28 }, { wch: 30 }, { wch: 10 }, { wch: 14 },
+    { wch: 28 }, { wch: 14 }, { wch: 30 }, { wch: 10 }, { wch: 14 },
     { wch: 14 }, { wch: 12 }, { wch: 18 },
     { wch: 14 }, { wch: 14 }, { wch: 30 },
-    { wch: 12 }, { wch: 36 }
+    { wch: 12 }, { wch: 12 }, { wch: 14 },
+    { wch: 36 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, '商機資料');
 
@@ -3791,6 +3796,10 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       amount:       header.findIndex(h => h.includes('合約金額')),
       grossMarginRate: header.findIndex(h => h.includes('毛利率')),
       description:  header.findIndex(h => h.includes('備註')),
+      contactName:  header.findIndex(h => h.includes('聯絡人')),
+      createdAt:    header.findIndex(h => h.includes('建立日期') || h.includes('建立時間')),
+      achievedDate: header.findIndex(h => h.includes('成交日期')),
+      kpiExcluded:  header.findIndex(h => h.includes('歷史紀錄')),
     };
 
     const auth = loadAuth();
@@ -3804,7 +3813,32 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     const data = db.load();
     if (!data.opportunities) data.opportunities = [];
 
-    let created = 0;
+    // Phase B: 建立公司 → contacts 索引（依公司名連結 contactId）
+    const contactsByCompany = new Map();
+    (data.contacts || []).forEach(c => {
+      if (c.deleted || !c.company) return;
+      const key = c.company.trim();
+      if (!contactsByCompany.has(key)) contactsByCompany.set(key, []);
+      contactsByCompany.get(key).push(c);
+    });
+
+    // Phase B: 日期解析 helper（Excel 序號 / ISO / YYYY-MM-DD / YYYY/MM/DD）
+    const parseDate = (v) => {
+      if (v === '' || v == null) return '';
+      if (typeof v === 'number') {
+        const ms = (v - 25569) * 86400 * 1000;
+        const d = new Date(ms);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        return '';
+      }
+      const s = String(v).trim();
+      if (!s) return '';
+      const d = new Date(s.replace(/\//g, '-'));
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return '';
+    };
+
+    let created = 0, linkedContacts = 0;
     const errors = [];
 
     rows.slice(1).forEach((row, i) => {
@@ -3827,22 +3861,50 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C', 'won': 'Won', '成交': 'Won' };
       const resolvedStage = VALID_STAGES.has(stage) ? stage : (stageMap[stage] || 'C');
 
+      // Phase B: 依公司名連結 contactId
+      const contactNameInput = COL.contactName >= 0 ? String(row[COL.contactName] ?? '').trim() : '';
+      let contactId = '';
+      let resolvedContactName = contactNameInput;
+      const candidates = contactsByCompany.get(company) || [];
+      if (candidates.length > 0) {
+        let match = null;
+        if (contactNameInput) {
+          match = candidates.find(c => (c.name || '').trim() === contactNameInput);
+        }
+        if (!match) match = candidates.find(c => c.isPrimary) || candidates[0];
+        if (match) {
+          contactId = match.id;
+          if (!resolvedContactName) resolvedContactName = match.name || '';
+          linkedContacts++;
+        }
+      }
+
+      // Phase B: 日期欄解析
+      const parsedCreatedAt = COL.createdAt >= 0 ? parseDate(row[COL.createdAt]) : '';
+      const parsedAchievedDate = COL.achievedDate >= 0 ? parseDate(row[COL.achievedDate]) : '';
+
+      // Phase B: 歷史紀錄欄判定（Y/Yes/True/1/是 → kpiExcluded）
+      const kpiRaw = COL.kpiExcluded >= 0 ? String(row[COL.kpiExcluded] ?? '').trim() : '';
+      const isHistorical = /^(Y|y|Yes|yes|YES|TRUE|true|True|1|是)$/.test(kpiRaw);
+
       const opp = {
         id:             uuidv4(),
         owner,
         company,
         product:        String(row[COL.product]      ?? '').trim(),
         category:       String(row[COL.category]     ?? '').trim(),
-        expectedDate:   String(row[COL.expectedDate] ?? '').trim(),
+        expectedDate:   parseDate(row[COL.expectedDate]) || String(row[COL.expectedDate] ?? '').trim(),
         stage:          resolvedStage,
         amount:         String(row[COL.amount]       ?? '').trim(),
         grossMarginRate:String(row[COL.grossMarginRate] ?? '').trim(),
         description:    String(row[COL.description]  ?? '').trim(),
-        contactId:      '',
-        contactName:    '',
+        contactId,
+        contactName:    resolvedContactName,
         visitId:        '',
-        createdAt:      new Date().toISOString(),
+        createdAt:      parsedCreatedAt ? new Date(parsedCreatedAt + 'T00:00:00.000Z').toISOString() : new Date().toISOString(),
         importedAt:     new Date().toISOString(),
+        ...(parsedAchievedDate ? { achievedDate: parsedAchievedDate } : {}),
+        ...(isHistorical ? { kpiExcluded: true } : {}),
       };
       data.opportunities.push(opp);
       created++;
@@ -3850,7 +3912,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
     if (created > 0) db.save(data);
 
-    res.json({ success: true, created, errors });
+    res.json({ success: true, created, linkedContacts, errors });
   } catch (err) {
     console.error('[import opp]', err);
     res.status(500).json({ error: '匯入失敗：' + err.message });

@@ -707,8 +707,12 @@
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 批次新增客戶。建議先匯出作為模板，<strong>必填：姓名或公司（至少一項）、業務帳號</strong>
           </div>
-          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+          <div style="font-size:12px;color:#aaa;margin-bottom:8px">
             若 Excel 有「業務帳號」欄位，將依欄位自動指派；無欄位或帳號不存在時，以「預設業務」補充
+          </div>
+          <div style="background:#fff3e0;border:1px dashed #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;line-height:1.6;color:#9a3412">
+            <b>🆕 客戶池支援</b>：業務帳號或預設業務可填 <code>_pool</code>，把客戶放進「📋 客戶池」<br>
+            （適用：歷史客戶尚未指定業務，由 Manager 後續到「客戶池」分配）
           </div>
 
           <!-- 選項列 -->
@@ -772,8 +776,16 @@
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 檔案批次新增商機。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號、把握度階段</strong>
           </div>
-          <div style="font-size:12px;color:#aaa;margin-bottom:16px">
+          <div style="font-size:12px;color:#aaa;margin-bottom:8px">
             把握度請填：A（Commit）、B（Upside）、C（Pipeline）、成交
+          </div>
+          <div style="background:#fff3e0;border:1px dashed #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;line-height:1.6;color:#9a3412">
+            <b>🆕 歷史商機匯入提示</b><br>
+            ▸ <b>聯絡人</b>：填寫姓名 → 系統自動依「公司名」比對 contactId 連結。沒對應到的留 contactName 字串。<br>
+            ▸ <b>建立日期</b>：填 YYYY-MM-DD → 還原為該日創建（影響業績歸屬月份）。空白用當下時間。<br>
+            ▸ <b>成交日期</b>：Won 階段才需要，YYYY-MM-DD。會被「業績達成」計算引用。<br>
+            ▸ <b>歷史紀錄</b>：填 <b>Y</b> 表示「只記錄不算業績」（純歷史檔案，不影響 KPI）。空白＝正常列入。<br>
+            ▸ <b>業務帳號</b>：可填 <code>_pool</code> 把商機放進客戶池暫存，等 Manager 分配。
           </div>
 
           <div class="import-drop-zone" id="oppImportDropZone">
