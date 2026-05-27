@@ -3075,6 +3075,60 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     });
   });
 
+  // 期間預計簽約日調整：篩出 changedAt 在 [from, to] 且 owner 可見的紀錄
+  // 同一商機同期內若多次調整，合併為「期初 oldDate → 期末 newDate」（避免重複呈現）
+  const oppById = new Map(opps.map(o => [o.id, o]));
+  const allDC = (data.opportunityDateChanges || []).filter(c =>
+    viewable.has(c.owner) &&
+    oppById.has(c.dealId) &&
+    (() => { const d = new Date(c.changedAt); return d >= fromDate && d <= toDate; })()
+  );
+  // 依 dealId 分組、按 changedAt 升冪
+  const dcByDeal = {};
+  allDC.forEach(c => {
+    if (!dcByDeal[c.dealId]) dcByDeal[c.dealId] = [];
+    dcByDeal[c.dealId].push(c);
+  });
+  const dateChanges = [];
+  Object.entries(dcByDeal).forEach(([dealId, list]) => {
+    list.sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt));
+    const first = list[0];
+    const last  = list[list.length - 1];
+    if (first.oldDate === last.newDate) return; // 來回抵銷
+    const opp = oppById.get(dealId);
+    if (!opp) return;
+    const oldD = first.oldDate || null;
+    const newD = last.newDate || null;
+    // 跳過「首次設定 + 立刻取消」這種雜訊
+    if (!oldD && !newD) return;
+    // 計算天數差（首次設定時為 null）
+    let daysDiff = null;
+    if (oldD && newD) {
+      daysDiff = Math.round((new Date(newD) - new Date(oldD)) / 86400000);
+    }
+    dateChanges.push({
+      id:      dealId,
+      company: opp.company,
+      product: opp.product,
+      amount:  parseFloat(opp.amount) || 0,
+      stage:   opp.stage,
+      oldDate: oldD,
+      newDate: newD,
+      daysDiff,
+      changedAt: last.changedAt,
+      owner:    opp.owner
+    });
+  });
+  // 排序：延後天數大的在前（最需要關注）；同等則最近異動在前
+  dateChanges.sort((a, b) => {
+    const da = a.daysDiff ?? -1;
+    const db = b.daysDiff ?? -1;
+    if (db !== da) return db - da;
+    return (b.changedAt || '').localeCompare(a.changedAt || '');
+  });
+  const postponedCount = dateChanges.filter(c => c.daysDiff != null && c.daysDiff > 0).length;
+  const advancedCount  = dateChanges.filter(c => c.daysDiff != null && c.daysDiff < 0).length;
+
   const sum = arr => arr.reduce((s,o)=>s+(parseFloat(o.amount)||0),0);
   res.json({
     period: { from: fromDate.toISOString(), to: toDate.toISOString() },
@@ -3083,6 +3137,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     newDeals:   newDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,owner:o.owner,createdAt:o.createdAt})),
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
+    dateChanges,
     summary: {
       totalPipeline: sum(opps.filter(o=>o.stage!=='Won'&&o.stage!=='D')),
       totalCount:    opps.filter(o=>o.stage!=='Won'&&o.stage!=='D').length,
@@ -3090,6 +3145,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       lostAmount: sum(lostDeals), lostCount: lostDeals.length,
       promotedAmount: sum(promoted), promotedCount: promoted.length,
       demotedAmount:  sum(demoted),  demotedCount: demoted.length,
+      dateChangeCount: dateChanges.length,
+      postponedCount, advancedCount,
     }
   });
 });

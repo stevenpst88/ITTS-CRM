@@ -6598,6 +6598,49 @@ function renderPrMoves(data) {
         </div>`;
       }).join('')
     : '<div class="pr-empty-row">本期無流失商機</div>';
+
+  // 預計簽約日調整
+  const dcList = data.dateChanges || [];
+  if ($('prDateChangeCount')) $('prDateChangeCount').textContent = dcList.length;
+  if ($('prDateChangeList')) {
+    $('prDateChangeList').innerHTML = dcList.length
+      ? dcList.map(c => {
+          const amt = c.amount ? `<span class="pr-deal-amt">${c.amount.toLocaleString()}K</span>` : '';
+          const stageTag = c.stage
+            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${STAGE_LBL[c.stage]||c.stage}</span>`
+            : '';
+          let dateHtml;
+          if (!c.oldDate && c.newDate) {
+            // 首次設定
+            dateHtml = `<span style="color:#888;font-size:12px">📅 首次設定</span>
+              <span style="color:#1a73e8;font-weight:600">${escapeHtml(c.newDate)}</span>`;
+          } else if (c.oldDate && !c.newDate) {
+            // 取消設定（罕見）
+            dateHtml = `<span style="color:#888;text-decoration:line-through">${escapeHtml(c.oldDate)}</span>
+              <span style="color:#888;font-size:11px">→</span>
+              <span style="color:#888;font-size:12px">未設定</span>`;
+          } else {
+            // 一般變更
+            const diff = c.daysDiff;
+            const diffColor = diff > 0 ? '#c62828' : diff < 0 ? '#0a8a4a' : '#888';
+            const diffSign = diff > 0 ? '延後' : diff < 0 ? '提前' : '同日';
+            const diffAbs = Math.abs(diff);
+            dateHtml = `<span style="color:#888;text-decoration:line-through;font-size:12px">${escapeHtml(c.oldDate)}</span>
+              <span style="color:#888;font-size:11px">→</span>
+              <span style="color:#1a3c7a;font-weight:600">${escapeHtml(c.newDate)}</span>
+              <span style="color:${diffColor};font-size:11px;font-weight:700">${diff !== 0 ? `▶ ${diffSign} ${diffAbs} 天` : '＝ 同日'}</span>`;
+          }
+          return `<div class="pr-deal-row">
+            <div class="pr-deal-info">
+              <div class="pr-deal-company">${kaCompanyMark(c.company)}${escapeHtml(c.company||'')}</div>
+              <div class="pr-deal-product">${escapeHtml(c.product||'')}</div>
+              <div style="margin-top:4px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${dateHtml}</div>
+            </div>
+            <div class="pr-deal-right">${stageTag}${amt}</div>
+          </div>`;
+        }).join('')
+      : '<div class="pr-empty-row">本期無預計簽約日調整</div>';
+  }
 }
 
 // ── 合約資料載入（共用）──────────────────────────────────
