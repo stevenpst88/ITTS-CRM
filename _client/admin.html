@@ -408,6 +408,9 @@
       <div class="admin-nav-item" data-sec="transfer">
         <span class="admin-nav-icon">🔄</span> 名單移轉
       </div>
+      <div class="admin-nav-item" data-sec="pool">
+        <span class="admin-nav-icon">📋</span> 客戶池
+      </div>
       <div class="admin-nav-group-header collapsed" data-group="group-io">
         <span class="admin-nav-icon">📦</span> 資料匯出入
         <span class="nav-group-arrow">▼</span>
@@ -559,6 +562,50 @@
         </div>
 
         <div id="transferResultBox" style="display:none;margin-top:16px"></div>
+      </div>
+
+      <!-- ── 📋 客戶池 ── -->
+      <div class="admin-section" id="sec-pool">
+        <div class="section-title">📋 客戶池</div>
+        <div class="section-sub">尚未指派業務的客戶（owner = _pool），由 Manager 分配給實際業務</div>
+
+        <div class="admin-card" style="margin-top:16px">
+          <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <span class="admin-card-title">池中客戶清單</span>
+            <span id="poolCount" style="font-size:12px;color:#6b7280">載入中…</span>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input id="poolSearchInput" type="text" placeholder="🔍 搜尋公司/姓名" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
+              <select id="poolAssignTarget" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px">
+                <option value="">— 選擇目標業務 —</option>
+              </select>
+              <button class="btn btn-primary" id="poolAssignBtn" disabled>分配選取項目</button>
+              <button class="btn" id="poolRefreshBtn">🔄 重新整理</button>
+            </div>
+          </div>
+          <div class="admin-card-hint" style="margin:6px 0 8px;font-size:12px;color:#6b7280">
+            勾選要分配的客戶，從右側選擇目標業務後按「分配選取項目」。<br>
+            分配時會把該客戶的「相關商機 / 拜訪 / 合約 / 應收帳款」全部一併轉移給目標業務（依公司名比對）。
+          </div>
+          <div style="overflow-x:auto">
+            <table class="admin-table" id="poolTable" style="min-width:900px">
+              <thead>
+                <tr>
+                  <th style="width:30px"><input type="checkbox" id="poolSelectAll"></th>
+                  <th>客戶</th>
+                  <th>公司</th>
+                  <th>職稱</th>
+                  <th>關聯資料</th>
+                  <th>產業</th>
+                  <th>匯入時間</th>
+                </tr>
+              </thead>
+              <tbody id="poolTbody">
+                <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="poolResultBox" style="display:none;margin-top:14px"></div>
+        </div>
       </div>
 
       <!-- ── 客戶名單匯入 ── -->
@@ -4676,6 +4723,129 @@
     document.getElementById('rpSaveBtn').addEventListener('click', saveRolePermissions);
     document.getElementById('rpResetBtn').addEventListener('click', resetRolePermissions);
     document.querySelector('[data-sec="role-permissions"]').addEventListener('click', loadRolePermissions);
+
+    // ════════════════════════════════════════════════════════
+    // 📋 客戶池
+    // ════════════════════════════════════════════════════════
+    let _poolData = { contacts: [], assignableTargets: [] };
+    let _poolFilter = '';
+
+    async function loadPoolView() {
+      const tbody = document.getElementById('poolTbody');
+      const countEl = document.getElementById('poolCount');
+      const targetSel = document.getElementById('poolAssignTarget');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>';
+      try {
+        const r = await fetch('/api/admin/pool/contacts');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        _poolData = await r.json();
+        renderPoolTable();
+        // 填入目標業務下拉
+        targetSel.innerHTML = '<option value="">— 選擇目標業務 —</option>' +
+          (_poolData.assignableTargets || []).map(u => {
+            const buTxt = (u.bu || []).join(',') || '全公司';
+            return `<option value="${u.username}">${u.displayName}（${u.role} / ${buTxt}）</option>`;
+          }).join('');
+        countEl.textContent = `共 ${_poolData.contacts.length} 位待分配`;
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#c5221f;padding:24px">載入失敗：${e.message}</td></tr>`;
+        countEl.textContent = '載入失敗';
+      }
+    }
+
+    function renderPoolTable() {
+      const tbody = document.getElementById('poolTbody');
+      const kw = _poolFilter.toLowerCase();
+      const list = (_poolData.contacts || []).filter(c =>
+        !kw ||
+        (c.name || '').toLowerCase().includes(kw) ||
+        (c.company || '').toLowerCase().includes(kw)
+      );
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">${_poolFilter ? '沒有符合搜尋條件的客戶' : '客戶池目前是空的'}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = list.map(c => {
+        const related = [];
+        if (c.oppCount) related.push(`📊 商機 ${c.oppCount}`);
+        if (c.visitCount) related.push(`📝 拜訪 ${c.visitCount}`);
+        if (c.contractCount) related.push(`📄 合約 ${c.contractCount}`);
+        const relatedHtml = related.length ? `<span style="font-size:11px;color:#6b7280">${related.join('・')}</span>` : '<span style="color:#9ca3af;font-size:11px">—</span>';
+        const importedDate = c.importedAt ? new Date(c.importedAt).toISOString().slice(0,10) : '—';
+        return `
+          <tr>
+            <td><input type="checkbox" class="pool-row-check" data-id="${c.id}"></td>
+            <td><strong>${escapeAttr(c.name)}</strong></td>
+            <td>${escapeAttr(c.company)}</td>
+            <td style="color:#6b7280;font-size:12px">${escapeAttr(c.title)}</td>
+            <td>${relatedHtml}</td>
+            <td style="font-size:12px">${escapeAttr(c.industry)}</td>
+            <td style="font-size:11px;color:#9ca3af">${importedDate}</td>
+          </tr>`;
+      }).join('');
+      _updatePoolAssignBtnState();
+      tbody.querySelectorAll('.pool-row-check').forEach(cb => {
+        cb.addEventListener('change', _updatePoolAssignBtnState);
+      });
+    }
+
+    function _updatePoolAssignBtnState() {
+      const checked = document.querySelectorAll('.pool-row-check:checked').length;
+      const target = document.getElementById('poolAssignTarget').value;
+      document.getElementById('poolAssignBtn').disabled = !(checked && target);
+    }
+
+    function escapeAttr(s) {
+      return String(s || '').replace(/[&<>"']/g, ch => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[ch]));
+    }
+
+    document.querySelector('[data-sec="pool"]').addEventListener('click', loadPoolView);
+    document.getElementById('poolRefreshBtn').addEventListener('click', loadPoolView);
+    document.getElementById('poolSearchInput').addEventListener('input', e => {
+      _poolFilter = e.target.value;
+      renderPoolTable();
+    });
+    document.getElementById('poolSelectAll').addEventListener('change', e => {
+      document.querySelectorAll('.pool-row-check').forEach(cb => cb.checked = e.target.checked);
+      _updatePoolAssignBtnState();
+    });
+    document.getElementById('poolAssignTarget').addEventListener('change', _updatePoolAssignBtnState);
+    document.getElementById('poolAssignBtn').addEventListener('click', async () => {
+      const targetSel = document.getElementById('poolAssignTarget');
+      const targetOwner = targetSel.value;
+      if (!targetOwner) return;
+      const ids = Array.from(document.querySelectorAll('.pool-row-check:checked')).map(cb => cb.dataset.id);
+      if (!ids.length) return;
+      const targetText = targetSel.options[targetSel.selectedIndex].text;
+      if (!confirm(`將 ${ids.length} 位客戶分配給「${targetText}」？\n\n此操作會把該客戶的關聯商機 / 拜訪 / 合約 / 帳款一併轉移。`)) return;
+      const btn = document.getElementById('poolAssignBtn');
+      const resultEl = document.getElementById('poolResultBox');
+      btn.disabled = true; btn.textContent = '分配中…';
+      try {
+        const r = await fetch('/api/admin/pool/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contactIds: ids, targetOwner })
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || 'HTTP ' + r.status);
+        }
+        const result = await r.json();
+        resultEl.style.display = '';
+        resultEl.innerHTML = `<div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:14px;color:#166534">
+          ✅ 分配完成：客戶 ${result.contactCount} 位｜商機 ${result.oppCount}｜拜訪 ${result.visitCount}｜合約 ${result.contractCount}｜帳款 ${result.recvCount} 筆
+        </div>`;
+        await loadPoolView();
+      } catch (e) {
+        resultEl.style.display = '';
+        resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:14px;color:#c5221f">❌ ${e.message}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '分配選取項目';
+      }
+    });
 
     // ── 資料修復：同公司 customerType 一致性 ──
     document.getElementById('repairCustomerTypeBtn').addEventListener('click', async () => {

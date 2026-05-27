@@ -369,12 +369,55 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// 客戶池虛擬使用者：客戶可暫存於此，Manager 再分配給實際業務
+// - 不可登入（password: null）
+// - 不參與業務 KPI 計算
+// - 系統自動維護（首次 loadAuth() 時補建）
+const POOL_USERNAME = '_pool';
+const POOL_USER = {
+  username: POOL_USERNAME,
+  displayName: '📋 客戶池',
+  role: 'pool',
+  bu: [],
+  active: true,
+  accessMode: 'view',
+  password: null,
+  isSystemAccount: true,
+  canDownloadContacts: false,
+  canSetTargets: false,
+  createdAt: '2026-01-01T00:00:00.000Z'
+};
+
+function _ensurePoolUser(auth) {
+  if (!auth || !Array.isArray(auth.users)) return auth;
+  const existing = auth.users.find(u => u.username === POOL_USERNAME);
+  if (!existing) {
+    auth.users.push({ ...POOL_USER });
+    // 寫回（保存 _pool 為持久使用者）
+    try {
+      if (_USE_DB_FOR_META) {
+        const d = db.load();
+        d._auth = auth;
+        db.save(d);
+      } else {
+        fs.writeFileSync(path.join(__dirname, 'auth.json'), JSON.stringify(auth, null, 2), 'utf8');
+      }
+    } catch (e) {
+      console.error('[ensurePoolUser] save failed:', e);
+    }
+  }
+  return auth;
+}
+
 function loadAuth() {
+  let auth;
   if (_USE_DB_FOR_META) {
     const d = db.load();
-    return d._auth || { users: [] };
+    auth = d._auth || { users: [] };
+  } else {
+    auth = JSON.parse(fs.readFileSync(path.join(__dirname, 'auth.json'), 'utf8'));
   }
-  return JSON.parse(fs.readFileSync(path.join(__dirname, 'auth.json'), 'utf8'));
+  return _ensurePoolUser(auth);
 }
 
 function saveAuth(data) {
@@ -1483,6 +1526,9 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
 
 // ── Admin: delete user ───────────────────────────────────
 app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
+  if (req.params.username === POOL_USERNAME) {
+    return res.status(400).json({ error: '系統帳號（客戶池）不可刪除' });
+  }
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
@@ -1707,8 +1753,9 @@ function getViewableOwners(req, dataType) {
   const myBus = normalizeBu(me?.bu);
 
   // 跨 BU 全看（系統管理員、董事長/總經理、會計主管、財務主管）
+  // 排除 _pool 虛擬使用者（客戶池資料不混入業務報表，需專用 endpoint 查）
   if (CROSS_BU_ROLES.includes(role)) {
-    return auth.users.map(u => u.username);
+    return auth.users.filter(u => u.username !== POOL_USERNAME).map(u => u.username);
   }
 
   // 集團PM（唯讀）：只能看設定的 viewOwnerScope 那位 owner 的資料
@@ -5610,6 +5657,124 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
     `移轉 ${contactCount} 位客戶（拜訪 ${visitCount} 筆、商機 ${oppCount} 筆、帳款 ${recvCount} 筆）`, req);
 
   res.json({ success: true, contactCount, visitCount, oppCount, recvCount });
+});
+
+// ════════════════════════════════════════════════════════════
+// 📋 客戶池（Pool）：歷史客戶 / 尚未指派業務的客戶暫存區
+// ════════════════════════════════════════════════════════════
+
+// 列出池中所有客戶（admin / manager1 / manager2 可看）
+app.get('/api/admin/pool/contacts', requireAuth, (req, res) => {
+  const { role } = req.session.user;
+  if (!['admin','manager1','manager2','executive'].includes(role)) {
+    return res.status(403).json({ error: '無客戶池查看權限' });
+  }
+  const data = db.load();
+  const auth = loadAuth();
+  const list = (data.contacts || []).filter(c => c.owner === POOL_USERNAME && !c.deleted);
+
+  // 每筆 contact 附加：商機數、拜訪數、合約數、應收筆數
+  const result = list.map(c => {
+    const oppCount  = (data.opportunities || []).filter(o => o.owner === POOL_USERNAME && (o.contactId === c.id || (c.company && o.company === c.company))).length;
+    const visitCount = (data.visits || []).filter(v => v.owner === POOL_USERNAME && v.contactId === c.id).length;
+    const contractCount = (data.contracts || []).filter(x => x.owner === POOL_USERNAME && c.company && x.company === c.company).length;
+    return {
+      id: c.id,
+      name: c.name || '',
+      company: c.company || '',
+      title: c.title || '',
+      phone: c.phone || '',
+      email: c.email || '',
+      industry: c.industry || '',
+      productLine: c.productLine || '',
+      customerType: c.customerType || '',
+      createdAt: c.createdAt || '',
+      importedAt: c.importedAt || c.createdAt || '',
+      bu: Array.isArray(c.bu) ? c.bu : (c.bu ? [c.bu] : []),
+      oppCount, visitCount, contractCount
+    };
+  });
+  // 列出可分配的目標業務（依操作者角色決定範圍）
+  const transferViewable = new Set(getViewableOwners(req, 'contacts'));
+  const assignableTargets = (auth.users || [])
+    .filter(u => transferViewable.has(u.username) && u.role !== 'pool' && u.active !== false)
+    .filter(u => ['user','manager2','manager1'].includes(u.role))
+    .map(u => ({ username: u.username, displayName: u.displayName || u.username, role: u.role, bu: u.bu || [] }));
+  res.json({ contacts: result, assignableTargets });
+});
+
+// Manager 分配：把多筆池中客戶（含相關 opps/visits/contracts/receivables）轉給指定業務
+app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
+  const { username, role } = req.session.user;
+  if (!['admin','manager1','manager2','executive'].includes(role)) {
+    return res.status(403).json({ error: '無客戶池分配權限' });
+  }
+  const { contactIds, targetOwner } = req.body || {};
+  if (!Array.isArray(contactIds) || !contactIds.length) {
+    return res.status(400).json({ error: '請提供要分配的客戶 ID 陣列' });
+  }
+  if (!targetOwner || targetOwner === POOL_USERNAME) {
+    return res.status(400).json({ error: '請指定有效的目標業務' });
+  }
+  const auth = loadAuth();
+  const toUser = auth.users.find(u => u.username === targetOwner);
+  if (!toUser) return res.status(400).json({ error: '目標業務不存在' });
+  if (toUser.role === 'pool') return res.status(400).json({ error: '不能分配給客戶池本身' });
+
+  // 確認 targetOwner 在操作者的 BU 可視範圍內
+  const viewable = new Set(getViewableOwners(req, 'contacts'));
+  if (!viewable.has(targetOwner)) {
+    return res.status(403).json({ error: '目標業務超出您的可視範圍' });
+  }
+
+  const data = db.load();
+  const idSet = new Set(contactIds);
+
+  // 只處理池中的客戶（不含已被分配出去的）
+  const toTransfer = (data.contacts || []).filter(c => c.owner === POOL_USERNAME && idSet.has(c.id) && !c.deleted);
+  if (!toTransfer.length) {
+    return res.status(400).json({ error: '所選客戶都不在池中' });
+  }
+
+  const transferredIds       = new Set(toTransfer.map(c => c.id));
+  const transferredCompanies = new Set(toTransfer.map(c => c.company).filter(Boolean));
+
+  let contactCount = 0, visitCount = 0, oppCount = 0, recvCount = 0, contractCount = 0;
+
+  (data.contacts || []).forEach(c => {
+    if (transferredIds.has(c.id)) { c.owner = targetOwner; contactCount++; }
+  });
+  // 拜訪：池中 owner 且關聯到該 contact 的
+  (data.visits || []).forEach(v => {
+    if (v.owner === POOL_USERNAME && (transferredIds.has(v.contactId) ||
+        (v.company && transferredCompanies.has(v.company)))) {
+      v.owner = targetOwner; visitCount++;
+    }
+  });
+  // 商機：池中 owner 且 contactId 或 company 比對到的
+  (data.opportunities || []).forEach(o => {
+    if (o.owner === POOL_USERNAME && (transferredIds.has(o.contactId) ||
+        (o.company && transferredCompanies.has(o.company)))) {
+      o.owner = targetOwner; oppCount++;
+    }
+  });
+  // 合約
+  (data.contracts || []).forEach(x => {
+    if (x.owner === POOL_USERNAME && x.company && transferredCompanies.has(x.company)) {
+      x.owner = targetOwner; contractCount++;
+    }
+  });
+  // 應收
+  (data.receivables || []).forEach(r => {
+    if (r.owner === POOL_USERNAME && r.company && transferredCompanies.has(r.company)) {
+      r.owner = targetOwner; recvCount++;
+    }
+  });
+
+  db.save(data);
+  writeLog('POOL_ASSIGN', username, `${POOL_USERNAME}→${targetOwner}`,
+    `分配 ${contactCount} 位客戶（拜訪 ${visitCount}、商機 ${oppCount}、合約 ${contractCount}、帳款 ${recvCount} 筆）`, req);
+  res.json({ success: true, contactCount, visitCount, oppCount, contractCount, recvCount });
 });
 
 // ── 客戶名單匯入：下載範本 ────────────────────────────────────
