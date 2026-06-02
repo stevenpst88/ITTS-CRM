@@ -597,10 +597,11 @@
                   <th>關聯資料</th>
                   <th>產業</th>
                   <th>匯入時間</th>
+                  <th style="width:80px">操作</th>
                 </tr>
               </thead>
               <tbody id="poolTbody">
-                <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>
               </tbody>
             </table>
           </div>
@@ -3038,10 +3039,21 @@
     }
 
     async function permanentDelete(id, name) {
-      if (!confirm(`⚠️ 永久刪除「${name}」？\n\n此操作【無法復原】，名片圖片也將一併刪除。\n確定繼續？`)) return;
+      // 防誤觸：要求輸入名片姓名才能永久刪除
+      const typed = prompt(
+        `⚠️ 永久刪除「${name}」\n\n` +
+        `此操作【無法復原】，名片連同圖片將從資料庫完全移除，\n` +
+        `日後無法從「已刪除名單」還原。\n\n` +
+        `如果確定要繼續，請完整輸入名片姓名 「${name}」 來確認：`
+      );
+      if (typed == null) return;             // 取消
+      if (typed.trim() !== name) {
+        alert('❌ 輸入的姓名不符，已取消永久刪除');
+        return;
+      }
       try {
         await adminFetch(`${API}/admin/contacts/${id}/permanent`, { method: 'DELETE' });
-        alert('已永久刪除');
+        alert('✅ 已永久刪除');
         loadDeletedContacts();
       } catch (e) { alert('刪除失敗：' + e.message); }
     }
@@ -4789,7 +4801,7 @@
         (c.company || '').toLowerCase().includes(kw)
       );
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">${_poolFilter ? '沒有符合搜尋條件的客戶' : '客戶池目前是空的'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">${_poolFilter ? '沒有符合搜尋條件的客戶' : '客戶池目前是空的'}</td></tr>`;
         return;
       }
       tbody.innerHTML = list.map(c => {
@@ -4808,11 +4820,41 @@
             <td>${relatedHtml}</td>
             <td style="font-size:12px">${escapeAttr(c.industry)}</td>
             <td style="font-size:11px;color:#9ca3af">${importedDate}</td>
+            <td>
+              <button class="btn btn-sm pool-row-del" data-id="${c.id}" data-name="${escapeAttr(c.name)}" data-company="${escapeAttr(c.company)}" data-opp="${c.oppCount || 0}" data-visit="${c.visitCount || 0}" data-contract="${c.contractCount || 0}" style="background:#fde2e2;color:#b91c1c;font-size:12px;padding:4px 8px">🗑️ 刪除</button>
+            </td>
           </tr>`;
       }).join('');
       _updatePoolAssignBtnState();
       tbody.querySelectorAll('.pool-row-check').forEach(cb => {
         cb.addEventListener('change', _updatePoolAssignBtnState);
+      });
+      tbody.querySelectorAll('.pool-row-del').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const t = e.currentTarget;
+          const id   = t.dataset.id;
+          const name = t.dataset.name || '';
+          const co   = t.dataset.company || '';
+          const opp  = parseInt(t.dataset.opp || '0', 10);
+          const visit= parseInt(t.dataset.visit || '0', 10);
+          const ctr  = parseInt(t.dataset.contract || '0', 10);
+          const cascadeBits = [];
+          if (opp)   cascadeBits.push(`商機 ${opp} 筆`);
+          if (visit) cascadeBits.push(`拜訪 ${visit} 筆`);
+          if (ctr)   cascadeBits.push(`合約 ${ctr} 筆`);
+          const cascadeText = cascadeBits.length ? `\n\n⚠️ 連同以下池內資料一併刪除：\n　${cascadeBits.join('、')}` : '';
+          if (!confirm(`刪除客戶池名片「${name}」(${co})？${cascadeText}\n\n名片可從「已刪除名單」還原，商機可從「流失商機」查看。`)) return;
+          t.disabled = true; t.textContent = '刪除中…';
+          try {
+            const r = await fetch(`/api/admin/pool/contacts/${id}/delete`, { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || '刪除失敗');
+            loadPoolView();
+          } catch (err) {
+            alert('❌ ' + err.message);
+            t.disabled = false; t.textContent = '🗑️ 刪除';
+          }
+        });
       });
     }
 

@@ -3880,6 +3880,8 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       // 同步進 contactsByCompany 索引，讓後續同公司其他聯絡人也能查到本次新建的
       if (!contactsByCompany.has(company)) contactsByCompany.set(company, []);
       contactsByCompany.get(company).push(p);
+      // 寫名片稽核（CREATE）— 留下「placeholder 從哪來」追溯線
+      try { writeContactAudit('CREATE', req, p, []); } catch {}
       createdPoolContacts++;
       return p;
     };
@@ -5824,6 +5826,87 @@ app.get('/api/admin/pool/contacts', requireAuth, (req, res) => {
     .filter(u => ['user','manager2','manager1'].includes(u.role))
     .map(u => ({ username: u.username, displayName: u.displayName || u.username, role: u.role, bu: u.bu || [] }));
   res.json({ contacts: result, assignableTargets });
+});
+
+// Manager 軟刪除池中客戶：把該 placeholder 名片 + 相關池內 opps/visits/contracts 一併標記 deleted
+// （可從「已刪除名單」還原；對應的商機去 /api/lost-opportunities 看）
+app.post('/api/admin/pool/contacts/:id/delete', requireAuth, (req, res) => {
+  const { username, role } = req.session.user;
+  if (!['admin','manager1','manager2','executive'].includes(role)) {
+    return res.status(403).json({ error: '無客戶池操作權限' });
+  }
+  const data = db.load();
+  const contact = (data.contacts || []).find(c => c.id === req.params.id && c.owner === POOL_USERNAME && !c.deleted);
+  if (!contact) return res.status(404).json({ error: '找不到該客戶池名片' });
+
+  // 名片本身軟刪除
+  contact.deleted      = true;
+  contact.deletedAt    = new Date().toISOString();
+  contact.deletedBy    = username;
+  contact.deletedByName= req.session.user.displayName || username;
+
+  const company = (contact.company || '').trim();
+
+  // 判斷該公司還有沒有「其他未刪除的 placeholder」— 用來決定 company-fallback cascade 是否安全
+  const companyHasOtherPlaceholder = company && (data.contacts || []).some(c =>
+    c.id !== contact.id &&
+    c.owner === POOL_USERNAME &&
+    !c.deleted &&
+    (c.company || '').trim() === company
+  );
+
+  // Cascade opps：
+  //   - 精確比對：contactId === 該名片 → 一定拉走
+  //   - 孤兒 opp（owner=_pool 但 contactId 空）→ 用 company match 拉走，
+  //     除非公司還有其他未刪 placeholder（那讓那張 placeholder 接手）
+  let oppMoved = 0;
+  if (!data.lostOpportunities) data.lostOpportunities = [];
+  const keepOpps = [];
+  (data.opportunities || []).forEach(o => {
+    if (o.owner !== POOL_USERNAME) { keepOpps.push(o); return; }
+    const byContactId = o.contactId && o.contactId === contact.id;
+    const orphanByCompany = !o.contactId && company && (o.company || '').trim() === company && !companyHasOtherPlaceholder;
+    if (byContactId || orphanByCompany) {
+      data.lostOpportunities.push({
+        ...o,
+        deleteReason: '客戶池名片刪除（cascade）',
+        deletedAt:    new Date().toISOString(),
+        deletedBy:    username,
+        deletedByName:req.session.user.displayName || username,
+      });
+      oppMoved++;
+    } else {
+      keepOpps.push(o);
+    }
+  });
+  data.opportunities = keepOpps;
+
+  // Cascade visits：同樣 contactId 精確比對 + 孤兒 fallback
+  let visitDel = 0, contractDel = 0;
+  (data.visits || []).forEach(v => {
+    if (v.owner !== POOL_USERNAME || v.deleted) return;
+    const byContactId = v.contactId && v.contactId === contact.id;
+    const orphanByCompany = !v.contactId && company && (v.company || '').trim() === company && !companyHasOtherPlaceholder;
+    if (byContactId || orphanByCompany) {
+      v.deleted = true; v.deletedAt = new Date().toISOString(); v.deletedBy = username;
+      visitDel++;
+    }
+  });
+  // Cascade contracts：contracts 沒 contactId 欄，只能用 company。
+  // 若公司還有其他 placeholder 就不拉（保險）
+  (data.contracts || []).forEach(x => {
+    if (x.owner !== POOL_USERNAME || x.deleted) return;
+    if (company && (x.company || '').trim() === company && !companyHasOtherPlaceholder) {
+      x.deleted = true; x.deletedAt = new Date().toISOString(); x.deletedBy = username;
+      contractDel++;
+    }
+  });
+
+  db.save(data);
+  try { writeContactAudit('DELETE', req, contact, []); } catch {}
+  writeLog('POOL_DELETE_CONTACT', username, contact.name || contact.company || contact.id,
+    `刪除池中名片（連帶商機 ${oppMoved}、拜訪 ${visitDel}、合約 ${contractDel}）`, req);
+  res.json({ success: true, oppMoved, visitDel, contractDel });
 });
 
 // Manager 分配：把多筆池中客戶（含相關 opps/visits/contracts/receivables）轉給指定業務

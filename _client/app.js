@@ -2686,11 +2686,18 @@ $('confirmCancel').addEventListener('click', () => $('confirmOverlay').classList
 
 $('confirmDelete').addEventListener('click', async () => {
   try {
-    await fetch(`${API}/contacts/${currentViewId}`, { method: 'DELETE' });
-    showToast('已刪除聯絡人');
+    const r = await fetch(`${API}/contacts/${currentViewId}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      showToast(`刪除失敗：${e.error || ('HTTP ' + r.status)}`);
+      return;
+    }
+    showToast('已刪除聯絡人（可從管理員後台「已刪除名單」還原）');
     $('confirmOverlay').classList.remove('open');
     loadContacts($('searchInput').value.trim());
-  } catch { showToast('刪除失敗，請重試'); }
+  } catch (err) {
+    showToast('刪除失敗：' + (err.message || '請重試'));
+  }
 });
 
 // ── 匯出 Excel ───────────────────────────────────────────
