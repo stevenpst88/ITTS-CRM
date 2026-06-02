@@ -3843,8 +3843,46 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       return '';
     };
 
-    let created = 0, linkedContacts = 0;
+    let created = 0, linkedContacts = 0, createdPoolContacts = 0;
     const errors = [];
+
+    // 選項 A: owner=_pool 但 contacts 找不到對應公司 → 自動建 placeholder 名片
+    // 同次匯入「同公司+同聯絡人」共用一張（key 小寫去空白），避免一公司被建出多張
+    const placeholderByKey = new Map();
+    const ensurePoolPlaceholder = (company, contactName, createdAtISO) => {
+      const key = `${company.toLowerCase()}|${(contactName || '').toLowerCase()}`;
+      let p = placeholderByKey.get(key);
+      if (p) return p;
+      p = {
+        id: uuidv4(),
+        owner: POOL_USERNAME,
+        name: contactName || '（未指定聯絡人）',
+        nameEn: '',
+        company,
+        title: '',
+        phone: '',
+        mobile: '',
+        ext: '',
+        email: '',
+        address: '',
+        website: '',
+        taxId: '',
+        industry: '',
+        note: '從歷史商機匯入自動建立（可由 Manager 在客戶池分配給業務）',
+        bu: [],
+        isPlaceholder: true,
+        createdAt: createdAtISO || new Date().toISOString(),
+        importedAt: new Date().toISOString(),
+      };
+      placeholderByKey.set(key, p);
+      if (!data.contacts) data.contacts = [];
+      data.contacts.push(p);
+      // 同步進 contactsByCompany 索引，讓後續同公司其他聯絡人也能查到本次新建的
+      if (!contactsByCompany.has(company)) contactsByCompany.set(company, []);
+      contactsByCompany.get(company).push(p);
+      createdPoolContacts++;
+      return p;
+    };
 
     rows.slice(1).forEach((row, i) => {
       const rowNum = i + 2;
@@ -3873,20 +3911,38 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       const candidates = contactsByCompany.get(company) || [];
       if (candidates.length > 0) {
         let match = null;
+        let matchedPlaceholder = false;
         if (contactNameInput) {
+          // 完全相符 name 優先：含本次新建的 placeholder（同名重用）
           match = candidates.find(c => (c.name || '').trim() === contactNameInput);
+          if (match && match.isPlaceholder) matchedPlaceholder = true;
         }
-        if (!match) match = candidates.find(c => c.isPrimary) || candidates[0];
+        if (!match) {
+          // fallback 到 primary / 任一名片，但排除本次新建的 placeholder
+          // （避免「同公司不同聯絡人」被誤連到剛建的他人 placeholder）
+          const real = candidates.filter(c => !c.isPlaceholder);
+          match = real.find(c => c.isPrimary) || real[0] || null;
+        }
         if (match) {
           contactId = match.id;
           if (!resolvedContactName) resolvedContactName = match.name || '';
-          linkedContacts++;
+          if (!matchedPlaceholder) linkedContacts++;
         }
       }
 
       // Phase B: 日期欄解析
       const parsedCreatedAt = COL.createdAt >= 0 ? parseDate(row[COL.createdAt]) : '';
       const parsedAchievedDate = COL.achievedDate >= 0 ? parseDate(row[COL.achievedDate]) : '';
+
+      // 選項 A: 若 owner=_pool 且仍沒連到 contactId（contacts 內無對應公司）→ 自動建 placeholder
+      if (!contactId && owner === POOL_USERNAME && company) {
+        const createdAtISO = parsedCreatedAt
+          ? new Date(parsedCreatedAt + 'T00:00:00.000Z').toISOString()
+          : new Date().toISOString();
+        const placeholder = ensurePoolPlaceholder(company, contactNameInput, createdAtISO);
+        contactId = placeholder.id;
+        if (!resolvedContactName) resolvedContactName = placeholder.name;
+      }
 
       // Phase B: 歷史紀錄欄判定（Y/Yes/True/1/是 → kpiExcluded）
       const kpiRaw = COL.kpiExcluded >= 0 ? String(row[COL.kpiExcluded] ?? '').trim() : '';
@@ -3915,9 +3971,9 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       created++;
     });
 
-    if (created > 0) db.save(data);
+    if (created > 0 || createdPoolContacts > 0) db.save(data);
 
-    res.json({ success: true, created, linkedContacts, errors });
+    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors });
   } catch (err) {
     console.error('[import opp]', err);
     res.status(500).json({ error: '匯入失敗：' + err.message });

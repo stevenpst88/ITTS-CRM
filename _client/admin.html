@@ -3774,6 +3774,12 @@
         if (!r.ok) throw new Error(data.error || '匯入失敗');
 
         let html = `<div class="import-result success">✅ 成功匯入 ${data.created} 筆商機`;
+        const detailBits = [];
+        if (data.linkedContacts) detailBits.push(`🔗 連結既有名片：${data.linkedContacts} 筆`);
+        if (data.createdPoolContacts) detailBits.push(`📋 新建客戶池名片：${data.createdPoolContacts} 張（請至「客戶池」分配）`);
+        if (detailBits.length) {
+          html += `<div class="import-result-detail" style="color:#1a73e8">${detailBits.join('<br>')}</div>`;
+        }
         if (data.errors && data.errors.length) {
           html += `<div class="import-result-detail">⚠ ${data.errors.length} 列略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
         }
