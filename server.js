@@ -5858,6 +5858,45 @@ app.get('/api/admin/import-template', requireAdmin, (req, res) => {
   res.send(buf);
 });
 
+// ── 商機匯入：下載範本 ────────────────────────────────────────
+// 標頭與 /api/admin/opportunities/export 完全一致，老闆下載後可立刻填入並匯入
+app.get('/api/admin/opportunity-import-template', requireAdmin, (req, res) => {
+  const headers = [
+    '客戶名稱', '聯絡人', '銷售案名', 'BU(category)', '預定簽約日',
+    '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
+    '合約金額(K)', '預估毛利率(%)', '備註(description)',
+    '建立日期', '成交日期', '歷史紀錄(Y/N)',
+    '商機ID'
+  ];
+  // 示範列 1：歷史補登 + 暫放客戶池等 Manager 分配
+  const sample1 = [
+    '東捷資訊', '王大明', 'ERP 顧問導入 PE', 'ERP', '2024-08-15',
+    '_pool', '', 'Won', 1500, 30, '已驗收結案（歷史補登）',
+    '2024-01-10', '2024-08-15', 'Y', ''
+  ];
+  // 示範列 2：目前進行中的正常商機
+  const sample2 = [
+    '台積電股份有限公司', '李小美', 'CRM 二期擴充', 'CRM', '2026-09-30',
+    'Stevenlee', '', 'B', 800, 25, '報價中',
+    '', '', '', ''
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample1, sample2]);
+  ws['!cols'] = [
+    { wch: 28 }, { wch: 14 }, { wch: 30 }, { wch: 10 }, { wch: 14 },
+    { wch: 14 }, { wch: 12 }, { wch: 18 },
+    { wch: 14 }, { wch: 14 }, { wch: 30 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 },
+    { wch: 36 }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '商機匯入範本');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const fname = encodeURIComponent('商機匯入範本.xlsx');
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
 // ── 客戶名單匯入：上傳並匯入 ──────────────────────────────────
 const uploadImport = multer({
   storage: multer.memoryStorage(),
