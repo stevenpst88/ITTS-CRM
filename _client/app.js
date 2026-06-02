@@ -3430,19 +3430,113 @@ const KANBAN_STAGES = [
 
 let dragOppId = null;
 
+// 一筆商機歸屬哪一年：Won→成交日；其他→預計簽約日；兩者皆空→建立日 fallback
+function oppKanbanYear(o) {
+  const d = o.stage === 'Won' ? (o.achievedDate || o.createdAt) : (o.expectedDate || o.createdAt);
+  if (!d) return null;
+  const y = new Date(d).getFullYear();
+  return isNaN(y) ? null : y;
+}
+
+// 依現有資料動態填年份下拉（新到舊），保留先前選擇
+function populateKanbanYears() {
+  const sel = $('kanbanYearSel');
+  if (!sel) return;
+  const years = new Set();
+  allOpportunities.forEach(o => { const y = oppKanbanYear(o); if (y) years.add(y); });
+  const sorted = [...years].sort((a, b) => b - a);
+  sel.innerHTML = '<option value="">全部年份</option>' +
+    sorted.map(y => `<option value="${y}">${y} 年</option>`).join('');
+  // 若先前選的年份仍存在就保留，否則重置為「全部」
+  if (kanbanYearFilter && sorted.includes(parseInt(kanbanYearFilter))) {
+    sel.value = kanbanYearFilter;
+  } else {
+    sel.value = '';
+    kanbanYearFilter = '';
+  }
+}
+
+// 綁定搜尋框 + 清除鈕 + 年份下拉事件（用 dataset.bound 避免重複綁）
+function bindKanbanControls() {
+  const input = $('kanbanSearchInput');
+  const clear = $('kanbanSearchClear');
+  const yearSel = $('kanbanYearSel');
+  if (input && !input.dataset.bound) {
+    input.dataset.bound = '1';
+    input.addEventListener('input', e => {
+      kanbanSearchKw = e.target.value.trim();
+      if (clear) clear.style.display = kanbanSearchKw ? '' : 'none';
+      renderKanban();
+    });
+  }
+  if (clear && !clear.dataset.bound) {
+    clear.dataset.bound = '1';
+    clear.addEventListener('click', () => {
+      if (input) input.value = '';
+      kanbanSearchKw = '';
+      clear.style.display = 'none';
+      renderKanban();
+      if (input) input.focus();
+    });
+  }
+  if (yearSel && !yearSel.dataset.bound) {
+    yearSel.dataset.bound = '1';
+    yearSel.addEventListener('change', e => {
+      kanbanYearFilter = e.target.value;
+      renderKanban();
+    });
+  }
+}
+
+// 更新右上角結果提示
+function updateKanbanResultHint(count) {
+  const hint = $('kanbanResultHint');
+  if (!hint) return;
+  const bits = [];
+  if (kanbanSearchKw)   bits.push(`「${kanbanSearchKw}」`);
+  if (kanbanYearFilter) bits.push(`${kanbanYearFilter} 年`);
+  if (kanbanOwnerFilter) {
+    bits.push((_ownerMapCache && _ownerMapCache[kanbanOwnerFilter]) || kanbanOwnerFilter);
+  }
+  hint.innerHTML = bits.length
+    ? `篩選：${bits.map(escapeHtml).join('・')} → 共 <b style="color:#1a73e8">${count}</b> 筆`
+    : `共 <b style="color:#1a73e8">${count}</b> 筆商機`;
+}
+
 async function loadPipelineView() {
   await Promise.all([loadOpportunities(), loadOwnerMap(), loadKeyAccounts()]);
   buildOwnerSelect('kanbanOwnerSel', 'kanbanOwnerWrap', kanbanOwnerFilter, () => {
     kanbanOwnerFilter = $('kanbanOwnerSel').value;
     renderKanban();
   });
+  populateKanbanYears();
+  bindKanbanControls();
   renderKanban();
 }
 
 function renderKanban() {
-  const activeOpps = kanbanOwnerFilter
+  let activeOpps = kanbanOwnerFilter
     ? allOpportunities.filter(o => o.owner === kanbanOwnerFilter)
     : allOpportunities;
+
+  // 年份篩選（Won→成交日；其他→預計簽約日；皆空→建立日）
+  if (kanbanYearFilter) {
+    const yr = parseInt(kanbanYearFilter);
+    activeOpps = activeOpps.filter(o => oppKanbanYear(o) === yr);
+  }
+
+  // 名稱搜尋（公司 / 聯絡人 / 案名 / BU，大小寫不分、部分比對）
+  if (kanbanSearchKw) {
+    const kw = kanbanSearchKw.toLowerCase();
+    activeOpps = activeOpps.filter(o =>
+      (o.company || '').toLowerCase().includes(kw) ||
+      (o.contactName || '').toLowerCase().includes(kw) ||
+      (o.product || '').toLowerCase().includes(kw) ||
+      (o.category || '').toLowerCase().includes(kw)
+    );
+  }
+
+  updateKanbanResultHint(activeOpps.length);
 
   KANBAN_STAGES.forEach(({ key }) => {
     const stageOpps = activeOpps.filter(o => o.stage === key);
@@ -4185,6 +4279,8 @@ let allMonthlyBudgets  = []; // [{ owner, year, months:[12] }]
 let _userBuCache       = {}; // { username: bu | null } - 給 admin/executive 做 BU 拆分用
 let visitsOwnerFilter  = ''; // 業務日報篩選
 let kanbanOwnerFilter  = ''; // 商機推進進度篩選
+let kanbanSearchKw     = ''; // 看板名稱搜尋（公司/聯絡人/案名/BU）
+let kanbanYearFilter   = ''; // 看板年份篩選（Won→成交日；其他→預計簽約日）
 let _ownerMapCache     = null; // { username: displayName }
 let allGroups          = []; // 集團清單
 

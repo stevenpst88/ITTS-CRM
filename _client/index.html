@@ -458,11 +458,30 @@
 
         <!-- ── 商機推進進度（Kanban）── -->
         <div id="pipelineView" style="display:none">
-          <div id="kanbanOwnerWrap" style="display:none;align-items:center;gap:6px;padding:0 0 12px">
-            <label style="font-size:12px;color:#666;white-space:nowrap">業務人員</label>
-            <select id="kanbanOwnerSel" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
-              <option value="">全部</option>
-            </select>
+          <div class="kanban-controls" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:0 0 12px">
+            <!-- 名稱搜尋 -->
+            <div style="position:relative;display:flex;align-items:center">
+              <span style="position:absolute;left:11px;font-size:13px;color:#9aa3af;pointer-events:none">🔍</span>
+              <input id="kanbanSearchInput" type="text" placeholder="搜尋公司 / 聯絡人 / 案名 / BU" autocomplete="off"
+                     style="padding:7px 12px 7px 32px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:240px">
+              <span id="kanbanSearchClear" title="清除" style="display:none;position:absolute;right:8px;cursor:pointer;color:#bbb;font-size:15px;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%">×</span>
+            </div>
+            <!-- 年份篩選 -->
+            <div style="display:flex;align-items:center;gap:6px">
+              <label style="font-size:12px;color:#666;white-space:nowrap">年份</label>
+              <select id="kanbanYearSel" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                <option value="">全部年份</option>
+              </select>
+            </div>
+            <!-- 業務人員（多業務時才顯示）-->
+            <div id="kanbanOwnerWrap" style="display:none;align-items:center;gap:6px">
+              <label style="font-size:12px;color:#666;white-space:nowrap">業務人員</label>
+              <select id="kanbanOwnerSel" style="padding:5px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+                <option value="">全部</option>
+              </select>
+            </div>
+            <!-- 結果提示 -->
+            <div id="kanbanResultHint" style="font-size:12px;color:#888;margin-left:auto;white-space:nowrap"></div>
           </div>
           <div class="kanban-board">
 
