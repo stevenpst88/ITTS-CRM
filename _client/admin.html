@@ -411,6 +411,9 @@
       <div class="admin-nav-item" data-sec="pool">
         <span class="admin-nav-icon">📋</span> 客戶池
       </div>
+      <div class="admin-nav-item" data-sec="companies">
+        <span class="admin-nav-icon">🏢</span> 企業主檔
+      </div>
       <div class="admin-nav-group-header collapsed" data-group="group-io">
         <span class="admin-nav-icon">📦</span> 資料匯出入
         <span class="nav-group-arrow">▼</span>
@@ -562,6 +565,43 @@
         </div>
 
         <div id="transferResultBox" style="display:none;margin-top:16px"></div>
+      </div>
+
+      <!-- ── 🏢 企業主檔 ── -->
+      <div class="admin-section" id="sec-companies">
+        <div class="section-title">🏢 企業主檔</div>
+        <div class="section-sub">以統一編號為唯一辨識的公司主檔（一統編一主檔）。所有名片會自動掛勾到對應主檔；無統編者以公司名為辨識。</div>
+
+        <div class="admin-card" style="margin-top:16px">
+          <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <span class="admin-card-title">企業主檔清單</span>
+            <span id="companiesCount" style="font-size:12px;color:#6b7280">—</span>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input id="companySearchInput" type="text" placeholder="🔍 搜尋公司/統編" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
+              <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
+              <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin:6px 0 4px">「建立/更新」會掃描所有名片，依統編歸併出主檔並掛勾名片。可重複執行，不會產生重複主檔。</div>
+          <div id="companyBuildResult" style="margin:10px 0;font-size:13px"></div>
+          <div style="overflow-x:auto">
+            <table class="admin-table" id="companyTable" style="min-width:820px">
+              <thead>
+                <tr>
+                  <th>公司正式名稱</th>
+                  <th>統一編號</th>
+                  <th>名片數</th>
+                  <th>資本額</th>
+                  <th>產業</th>
+                  <th>GCIS補全</th>
+                </tr>
+              </thead>
+              <tbody id="companiesTbody">
+                <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- ── 📋 客戶池 ── -->
@@ -1906,6 +1946,7 @@
         if (this.dataset.sec === 'logs') loadLogs();
         if (this.dataset.sec === 'contact-audit') initContactAudit();
         if (this.dataset.sec === 'deleted-contacts') loadDeletedContacts();
+        if (this.dataset.sec === 'companies') loadCompaniesView();
         if (this.dataset.sec === 'storage') loadStorageInfo();
         if (this.dataset.sec === 'data-completeness') loadCompleteness();
         if (this.dataset.sec === 'monthly-budget') initMonthlyBudgetAdmin();
@@ -4913,6 +4954,80 @@
         resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:14px;color:#c5221f">❌ ${e.message}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '分配選取項目';
+      }
+    });
+
+    // ── 🏢 企業主檔 ──
+    let _companiesData = [];
+    let _companyFilter = '';
+
+    async function loadCompaniesView() {
+      const tbody = document.getElementById('companiesTbody');
+      try {
+        const r = await fetch('/api/admin/companies');
+        if (!r.ok) throw new Error('載入失敗 (HTTP ' + r.status + ')');
+        _companiesData = await r.json();
+        renderCompaniesTable();
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#e74c3c;padding:24px">${e.message}</td></tr>`;
+      }
+    }
+
+    function renderCompaniesTable() {
+      const tbody = document.getElementById('companiesTbody');
+      const countEl = document.getElementById('companiesCount');
+      const kw = _companyFilter.toLowerCase();
+      const list = (_companiesData || []).filter(c =>
+        !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw)
+      );
+      countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
+      if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">${_companyFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = list.map(c => {
+        const cap = (c.capital != null && c.capital !== '') ? Number(c.capital).toLocaleString() : '<span style="color:#cbd5e1">—</span>';
+        const tax = c.taxId ? escapeAttr(c.taxId) : '<span style="color:#cbd5e1">無</span>';
+        const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
+        return `<tr>
+          <td><strong>${escapeAttr(c.name)}</strong></td>
+          <td>${tax}</td>
+          <td>${c.contactCount || 0}</td>
+          <td>${cap}</td>
+          <td style="font-size:12px">${escapeAttr(c.industry || '')}</td>
+          <td style="font-size:12px">${gcis}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.querySelector('[data-sec="companies"]').addEventListener('click', loadCompaniesView);
+    document.getElementById('companyRefreshBtn').addEventListener('click', loadCompaniesView);
+    document.getElementById('companySearchInput').addEventListener('input', e => { _companyFilter = e.target.value; renderCompaniesTable(); });
+    document.getElementById('companyBuildBtn').addEventListener('click', async () => {
+      if (!confirm('將掃描所有名片，以統一編號為主鍵建立/更新企業主檔。\n\n此操作可重複執行，不會產生重複主檔。確定執行？')) return;
+      const btn = document.getElementById('companyBuildBtn');
+      const resultEl = document.getElementById('companyBuildResult');
+      btn.disabled = true; btn.textContent = '建立中…';
+      try {
+        const r = await fetch('/api/admin/companies/build', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '建立失敗');
+        let html = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
+          + `✅ 完成：新建主檔 <b>${d.created}</b> 筆、掛勾名片 <b>${d.linked}</b> 張、共 <b>${d.totalCompanies}</b> 家公司`;
+        if (d.skipped) html += `、略過 ${d.skipped} 張（無統編且無公司名）`;
+        html += `</div>`;
+        if (d.conflicts && d.conflicts.length) {
+          html += `<div style="background:#fff3e0;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-top:8px;color:#9a3412">`
+            + `🔴 <b>${d.conflicts.length}</b> 筆「同統編但公司名不一致」建議人工確認：<br>`
+            + d.conflicts.slice(0, 10).map(c => `　統編 ${escapeAttr(c.taxId)}：主檔「${escapeAttr(c.masterName)}」 vs 名片「${escapeAttr(c.contactCompany)}」`).join('<br>')
+            + (d.conflicts.length > 10 ? '<br>…' : '') + `</div>`;
+        }
+        resultEl.innerHTML = html;
+        loadCompaniesView();
+      } catch (e) {
+        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '🏗️ 建立/更新企業主檔';
       }
     });
 

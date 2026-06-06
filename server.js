@@ -532,6 +532,55 @@ function syncCompanyFields(data, contact) {
   });
 }
 
+// ════════════════════════════════════════════════════════════
+// 🏢 企業主檔（Company Master）— Phase 1 地基
+//   一統編一主檔：統編優先當唯一鍵，無統編用「正規化公司名」fallback
+//   主檔為「附加參照層」，不影響既有 company 字串 / contactId 連結邏輯
+// ════════════════════════════════════════════════════════════
+// 正規化公司名（fallback 比對鍵）：去全形/一般空白、去頭尾、轉小寫
+function normalizeCompanyName(s) {
+  return String(s || '')
+    .replace(/　/g, '')   // 全形空白
+    .replace(/\s+/g, '')      // 一般空白
+    .trim()
+    .toLowerCase();
+}
+// 計算主檔比對鍵：有統編→tax:統編；否則→name:正規化公司名；都沒有→''（無法建檔）
+function companyMatchKey(taxId, company) {
+  const t = String(taxId || '').trim();
+  if (t) return 'tax:' + t;
+  const n = normalizeCompanyName(company);
+  return n ? 'name:' + n : '';
+}
+// find-or-create 企業主檔（唯一的主檔比對邏輯，migration / 新增名片 / 未來匯入共用）
+// 回傳 master 物件；無統編且無公司名時回 null（無法建檔）
+function ensureCompanyMaster(data, src) {
+  if (!data.companies) data.companies = [];
+  const key = companyMatchKey(src.taxId, src.company);
+  if (!key) return null;
+  let m = data.companies.find(c => c.matchKey === key);
+  if (m) return m;
+  m = {
+    id: uuidv4(),
+    taxId: String(src.taxId || '').trim(),
+    matchKey: key,
+    name: String(src.company || '').trim(),
+    shortName: '',
+    capital: null,
+    industry: String(src.industry || '').trim(),
+    address: String(src.address || '').trim(),
+    phone: String(src.phone || '').trim(),
+    website: String(src.website || '').trim(),
+    groupId: null,
+    gcisEnriched: false,
+    source: src._source || 'manual',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  data.companies.push(m);
+  return m;
+}
+
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
 // Static assets：圖片快取 1 天；HTML/JS/CSS 不快取（確保部署後立即生效）
 const STATIC_CACHE      = { maxAge: '1d' };
@@ -2215,6 +2264,9 @@ app.post('/api/contacts', requireAuth, (req, res) => {
       if (!c.deleted && c.owner === owner && c.company === contact.company) c.isPrimary = false;
     });
   }
+  // 企業主檔：自動掛勾（找不到對應主檔則自動建立），維持主檔不過期
+  const _master = ensureCompanyMaster(data, contact);
+  if (_master) contact.companyId = _master.id;
   data.contacts.push(contact);
   syncCompanyFields(data, contact);  // 同步公司層級欄位到同公司其他空白名片
   db.save(data);
@@ -2259,6 +2311,9 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
       if (i !== idx && !c.deleted && c.owner === owner && c.company === updated.company) c.isPrimary = false;
     });
   }
+  // 企業主檔：公司/統編可能變動 → 重新掛勾（找不到則自動建立）
+  const _master = ensureCompanyMaster(data, updated);
+  updated.companyId = _master ? _master.id : (updated.companyId || '');
   // 計算變更 diff
   const changes = CONTACT_FIELDS
     .filter(f => String(old[f] ?? '') !== String(updated[f] ?? ''))
@@ -5791,6 +5846,49 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
     `移轉 ${contactCount} 位客戶（拜訪 ${visitCount} 筆、商機 ${oppCount} 筆、帳款 ${recvCount} 筆）`, req);
 
   res.json({ success: true, contactCount, visitCount, oppCount, recvCount });
+});
+
+// ════════════════════════════════════════════════════════════
+// 🏢 企業主檔（Company Master）API — Phase 1
+// ════════════════════════════════════════════════════════════
+// 從現有名片建立企業主檔（一次性 migration，可重複執行、idempotent）
+app.post('/api/admin/companies/build', requireAdmin, (req, res) => {
+  const data = db.load();
+  if (!data.companies) data.companies = [];
+  const before = data.companies.length;
+  let linked = 0, skipped = 0;
+  const conflicts = []; // 同主檔但名片公司名與主檔正式名不一致
+  (data.contacts || []).forEach(c => {
+    if (c.deleted) return;
+    const master = ensureCompanyMaster(data, c);
+    if (!master) { skipped++; return; }   // 無統編且無公司名 → 無法掛勾
+    if (master.taxId && (c.company || '').trim() && (c.company || '').trim() !== master.name) {
+      conflicts.push({
+        taxId: master.taxId, masterName: master.name,
+        contactCompany: (c.company || '').trim(), contactId: c.id, contactName: c.name || ''
+      });
+    }
+    c.companyId = master.id;
+    linked++;
+  });
+  const created = data.companies.length - before;
+  db.save(data);
+  writeLog('BUILD_COMPANIES', req.session.user.username, 'system',
+    `建立企業主檔 ${created} 筆、掛勾名片 ${linked} 張、衝突 ${conflicts.length} 筆`, req);
+  res.json({ success: true, created, totalCompanies: data.companies.length, linked, skipped, conflicts });
+});
+
+// 企業主檔列表（含每家掛勾名片數）
+app.get('/api/admin/companies', requireAdmin, (req, res) => {
+  const data = db.load();
+  const countById = {};
+  (data.contacts || []).forEach(c => {
+    if (!c.deleted && c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1;
+  });
+  const list = (data.companies || [])
+    .map(c => ({ ...c, contactCount: countById[c.id] || 0 }))
+    .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
+  res.json(list);
 });
 
 // ════════════════════════════════════════════════════════════
