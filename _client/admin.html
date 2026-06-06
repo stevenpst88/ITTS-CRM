@@ -2808,6 +2808,7 @@
         if (result.success) {
           box.className = 'import-result success';
           box.innerHTML = `✅ 匯入完成！成功 <strong>${result.imported}</strong> 筆，略過 <strong>${result.skipped}</strong> 筆，錯誤 <strong>${result.errors}</strong> 筆
+            ${result.companiesCreated ? `<div class="import-result-detail" style="color:#1a73e8">🏢 新建企業主檔 ${result.companiesCreated} 家</div>` : ''}
             ${result.errorDetails && result.errorDetails.length ? `<div class="import-result-detail">${result.errorDetails.join('<br>')}</div>` : ''}`;
           showToast(`✅ 匯入成功 ${result.imported} 筆`);
         } else {
@@ -2927,7 +2928,7 @@
         const box = $('ocrResultBox');
         box.style.display = 'block';
         if (result.success) {
-          box.innerHTML = `<div class="transfer-result success">✅ 匯入完成！成功 <strong>${result.imported}</strong> 筆，略過 <strong>${result.skipped}</strong> 筆</div>`;
+          box.innerHTML = `<div class="transfer-result success">✅ 匯入完成！成功 <strong>${result.imported}</strong> 筆，略過 <strong>${result.skipped}</strong> 筆${result.companiesCreated ? `，🏢 新建主檔 <strong>${result.companiesCreated}</strong> 家` : ''}</div>`;
           ocrParsedRows = [];
           $('ocrJsonInput').value = '';
           $('ocrPreviewSection').style.display = 'none';
@@ -3713,6 +3714,7 @@
         if (!r.ok) throw new Error(data.error || '匯入失敗');
 
         let html = `<div class="import-result success">✅ 成功匯入 ${data.imported} 筆，略過 ${data.skipped} 筆`;
+        if (data.companiesCreated) html += `<div class="import-result-detail" style="color:#1a73e8">🏢 新建企業主檔 ${data.companiesCreated} 家</div>`;
         if (data.errors && data.errors.length) {
           html += `<div class="import-result-detail">⚠ ${data.errors.length} 列有問題：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
         }

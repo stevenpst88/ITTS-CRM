@@ -581,6 +581,19 @@ function ensureCompanyMaster(data, src) {
   return m;
 }
 
+// 統編感知去重：有統編用「業務+姓名+統編」；無統編退回「業務+姓名+公司名」
+// （抓出「同一人同公司、但公司名打法不同」的重複）
+function findDuplicateContact(data, owner, name, company, taxId) {
+  const t = String(taxId || '').trim();
+  const nm = String(name || '').trim();
+  return (data.contacts || []).find(c => {
+    if (c.deleted || c.owner !== owner) return false;
+    if (String(c.name || '').trim() !== nm) return false;
+    if (t) return String(c.taxId || '').trim() === t;
+    return String(c.company || '').trim() === String(company || '').trim();
+  });
+}
+
 // ── 公開路由（不需驗證，必須在 requireAuth 之前）─────────
 // Static assets：圖片快取 1 天；HTML/JS/CSS 不快取（確保部署後立即生效）
 const STATIC_CACHE      = { maxAge: '1d' };
@@ -3775,6 +3788,7 @@ app.post('/api/admin/contacts/import', requireAdmin,
 
       const data = db.load();
       if (!data.contacts) data.contacts = [];
+      const _companiesBefore = (data.companies || []).length;
 
       let imported = 0, skipped = 0;
       const errors = [];
@@ -3803,19 +3817,16 @@ app.post('/api/admin/contacts/import', requireAdmin,
           }
         }
 
-        // 重複檢查（同 owner、同公司、同姓名）
+        // 重複檢查（統編感知：有統編用 業務+姓名+統編，否則 業務+姓名+公司名）
         if (skipDuplicates === 'true') {
-          const dup = data.contacts.find(c =>
-            !c.deleted && c.owner === owner &&
-            c.name === name && c.company === company
-          );
+          const dup = findDuplicateContact(data, owner, name, company, get(COL.taxId));
           if (dup) { skipped++; return; }
         }
 
         let website = get(COL.website);
         if (website && !/^https?:\/\//i.test(website)) website = '';
 
-        data.contacts.push({
+        const contact = {
           id: uuidv4(), owner, createdAt: new Date().toISOString(),
           name, nameEn: get(COL.nameEn), company, title: get(COL.title),
           phone: get(COL.phone), ext: get(COL.ext), mobile: get(COL.mobile),
@@ -3825,15 +3836,20 @@ app.post('/api/admin/contacts/import', requireAdmin,
           systemVendor: get(COL.systemVendor), systemProduct: get(COL.systemProduct),
           note: get(COL.note), isPrimary: false, cardImage: '',
           deleted: false
-        });
+        };
+        // 企業主檔：自動掛勾（統編沒見過則自動建立主檔）
+        const _m = ensureCompanyMaster(data, contact);
+        if (_m) contact.companyId = _m.id;
+        data.contacts.push(contact);
         imported++;
       });
 
+      const companiesCreated = (data.companies || []).length - _companiesBefore;
       db.save(data);
       writeLog('IMPORT_CONTACTS_ADMIN', req.session.user.username, 'admin',
-        `Admin 批次匯入客戶：${imported} 筆成功，${skipped} 筆略過，${errors.length} 筆錯誤`, req);
+        `Admin 批次匯入客戶：${imported} 筆成功，${skipped} 筆略過，${errors.length} 筆錯誤、新建主檔 ${companiesCreated} 家`, req);
 
-      res.json({ success: true, imported, skipped, errors });
+      res.json({ success: true, imported, skipped, errors, companiesCreated });
     } catch (e) {
       console.error('[import-contacts]', e);
       res.status(500).json({ error: '匯入失敗：' + e.message });
@@ -3940,6 +3956,9 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       };
       placeholderByKey.set(key, p);
       if (!data.contacts) data.contacts = [];
+      // 企業主檔：placeholder 也掛主檔（無統編 → 以公司名為鍵）
+      const _pm = ensureCompanyMaster(data, p);
+      if (_pm) p.companyId = _pm.id;
       data.contacts.push(p);
       // 同步進 contactsByCompany 索引，讓後續同公司其他聯絡人也能查到本次新建的
       if (!contactsByCompany.has(company)) contactsByCompany.set(company, []);
@@ -6248,6 +6267,7 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
 
   const data = db.load();
   if (!data.contacts) data.contacts = [];
+  const _companiesBefore = (data.companies || []).length;
 
   let imported = 0, skipped = 0, errors = 0;
   const errorDetails = [];
@@ -6268,13 +6288,15 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
       // 驗證網址
       if (contact.website && !/^https?:\/\//i.test(contact.website)) contact.website = '';
 
-      // 重複檢查（同 owner、同公司、同姓名，已刪除不算重複）
+      // 重複檢查（統編感知：有統編用 業務+姓名+統編，否則 業務+姓名+公司名）
       if (skipDuplicates === 'true') {
-        const dup = data.contacts.find(c => !c.deleted && c.owner === targetOwner
-          && c.name === contact.name && c.company === contact.company);
+        const dup = findDuplicateContact(data, targetOwner, contact.name, contact.company, contact.taxId);
         if (dup) { skipped++; return; }
       }
 
+      // 企業主檔：自動掛勾（統編沒見過則自動建立主檔）
+      const _m = ensureCompanyMaster(data, contact);
+      if (_m) contact.companyId = _m.id;
       data.contacts.push(contact);
       imported++;
     } catch (e) {
@@ -6283,11 +6305,12 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
     }
   });
 
+  const companiesCreated = (data.companies || []).length - _companiesBefore;
   db.save(data);
   writeLog('IMPORT_CONTACTS', req.session.user.username, targetOwner,
-    `批次匯入客戶名單：${imported} 筆成功，${skipped} 筆略過，${errors} 筆錯誤`, req);
+    `批次匯入客戶名單：${imported} 筆成功，${skipped} 筆略過，${errors} 筆錯誤、新建主檔 ${companiesCreated} 家`, req);
 
-  res.json({ success: true, imported, skipped, errors, errorDetails });
+  res.json({ success: true, imported, skipped, errors, errorDetails, companiesCreated });
 });
 
 // ── 名片辨識 JSON 批次匯入 ────────────────────────────────────
@@ -6302,16 +6325,16 @@ app.post('/api/admin/import-contacts-json', requireAdmin, (req, res) => {
 
   const data = db.load();
   if (!data.contacts) data.contacts = [];
+  const _companiesBefore = (data.companies || []).length;
 
   let imported = 0, skipped = 0;
   rows.forEach(row => {
     if (!row.name && !row.company) { skipped++; return; }
     if (skipDuplicates) {
-      const dup = data.contacts.find(c => !c.deleted && c.owner === targetOwner
-        && c.name === (row.name||'') && c.company === (row.company||''));
+      const dup = findDuplicateContact(data, targetOwner, row.name || '', row.company || '', row.taxId || '');
       if (dup) { skipped++; return; }
     }
-    data.contacts.push({
+    const contact = {
       id: uuidv4(), owner: targetOwner, createdAt: new Date().toISOString(),
       name: row.name||'', nameEn: row.nameEn||'', company: row.company||'',
       title: row.title||'', phone: row.phone||'', ext: row.ext||'',
@@ -6319,14 +6342,19 @@ app.post('/api/admin/import-contacts-json', requireAdmin, (req, res) => {
       website: row.website||'', taxId: row.taxId||'', industry: row.industry||'',
       note: row.note||'', isPrimary: false, systemVendor:'', systemProduct:'',
       cardImage:'', customerType:'', productLine:'', isResigned: false
-    });
+    };
+    // 企業主檔：自動掛勾（統編沒見過則自動建立主檔）
+    const _m = ensureCompanyMaster(data, contact);
+    if (_m) contact.companyId = _m.id;
+    data.contacts.push(contact);
     imported++;
   });
 
+  const companiesCreated = (data.companies || []).length - _companiesBefore;
   db.save(data);
   writeLog('IMPORT_JSON', req.session.user.username, targetOwner,
-    `名片辨識匯入：${imported} 筆成功，${skipped} 筆略過`, req);
-  res.json({ success: true, imported, skipped });
+    `名片辨識匯入：${imported} 筆成功，${skipped} 筆略過、新建主檔 ${companiesCreated} 家`, req);
+  res.json({ success: true, imported, skipped, companiesCreated });
 });
 
 // ── 資料遷移：為舊資料加上 owner ────────────────────────────
