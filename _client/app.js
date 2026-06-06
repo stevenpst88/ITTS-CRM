@@ -738,11 +738,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navManagerHome','navProspects','navContacts','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
+  ['navHome','navManagerHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
+  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -759,7 +759,7 @@ function showDashboard() {
   localStorage.setItem('lastSection', 'dashboard');
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
-  ['prospectsView','contactsView','keyAccountView','visitsView','targetsView','pipelineView',
+  ['prospectsView','contactsView','companyMasterView','keyAccountView','visitsView','targetsView','pipelineView',
    'forecastView','lostOppView','execDashView','managerHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
@@ -960,6 +960,7 @@ document.addEventListener('DOMContentLoaded', () => {
 $('navHome').addEventListener('click', showDashboard);
 $('navProspects').addEventListener('click', () => showSection('prospects'));
 $('navContacts').addEventListener('click',  () => showSection('contacts'));
+if ($('navCompanyMaster')) $('navCompanyMaster').addEventListener('click', () => showSection('companyMaster'));
 if ($('navKeyAccount')) $('navKeyAccount').addEventListener('click', () => showSection('keyAccount'));
 // 「我的客戶」頁面的 KA 篩選下拉
 if ($('contactsKaFilter')) {
