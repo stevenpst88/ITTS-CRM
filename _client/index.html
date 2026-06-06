@@ -71,6 +71,10 @@
           <span class="nav-icon">&#127942;</span>
           <span class="nav-label">我的客戶</span>
         </div>
+        <div class="sidebar-nav-item" id="navCompanyMaster" data-section="companyMaster">
+          <span class="nav-icon">&#127970;</span>
+          <span class="nav-label">企業主檔</span>
+        </div>
         <div class="sidebar-nav-item" id="navKeyAccount" data-section="keyAccount">
           <span class="nav-icon">&#11088;</span>
           <span class="nav-label">Key Account</span>
@@ -454,6 +458,36 @@
             </table>
           </div>
           <div class="ka-tip">💡 點任一列展開該 KA 在手商機明細｜在「我的客戶」卡片右上角點 ⭐ 即可標記為 Key Account</div>
+        </div>
+
+        <!-- ── 🏢 企業主檔（使用者端，依權限只看自己客戶）── -->
+        <div id="companyMasterView" style="display:none">
+          <div id="cmListWrap">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+              <h2 style="margin:0;font-size:20px">🏢 企業主檔</h2>
+              <span id="cmCount" style="font-size:13px;color:#888">—</span>
+              <input id="cmSearchInput" type="text" placeholder="🔍 搜尋公司 / 統編" autocomplete="off"
+                     style="margin-left:auto;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;min-width:240px">
+            </div>
+            <div style="font-size:13px;color:#888;margin-bottom:10px">只顯示你（及轄下業務）名下客戶所屬的公司。點任一列查看該公司彙整。</div>
+            <div style="overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+              <table style="width:100%;border-collapse:collapse;min-width:680px" id="cmTable">
+                <thead>
+                  <tr style="background:#f8f9fb;text-align:left">
+                    <th style="padding:12px 14px;font-size:13px;color:#555">公司正式名稱</th>
+                    <th style="padding:12px 14px;font-size:13px;color:#555">統一編號</th>
+                    <th style="padding:12px 14px;font-size:13px;color:#555">名片數</th>
+                    <th style="padding:12px 14px;font-size:13px;color:#555">資本額</th>
+                    <th style="padding:12px 14px;font-size:13px;color:#555">產業</th>
+                  </tr>
+                </thead>
+                <tbody id="cmTbody">
+                  <tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">載入中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div id="cmDetailWrap" style="display:none"></div>
         </div>
 
         <!-- ── 商機推進進度（Kanban）── -->

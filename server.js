@@ -272,6 +272,7 @@ const FEATURE_REGISTRY = [
   { key: 'execDash',        label: 'Executive Dashboard',   icon: '📈', navId: 'navExecDash' },
   { key: 'prospects',       label: '潛在客戶',              icon: '🌱', navId: 'navProspects' },
   { key: 'contacts',        label: '聯絡人',                icon: '👤', navId: 'navContacts' },
+  { key: 'companyMaster',   label: '企業主檔',              icon: '🏢', navId: 'navCompanyMaster' },
   { key: 'visits',          label: '拜訪記錄',              icon: '📋', navId: 'navVisits' },
   { key: 'targets',         label: '業績目標',              icon: '🎯', navId: 'navTargets' },
   { key: 'forecast',        label: '銷售預測報表',          icon: '📊', navId: 'navForecast' },
@@ -294,13 +295,13 @@ const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
 const DEFAULT_ROLE_PERMISSIONS = {
   admin:              ALL_FEATURES,
-  executive:          ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
-  manager1:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  manager2:           ['home','managerHome','execDash','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
+  executive:          ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
+  manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
+  manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   secretary:          ['home','targets','forecast','accountingGroup','callin'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads'],
-  user:               ['home','prospects','contacts','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
+  user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
   finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
 };
@@ -6080,6 +6081,90 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
     })),
     opps: opps.map(o => ({
       id: o.id, company: o.company, product: o.product || o.category || '', amount: parseFloat(o.amount) || 0,
+      stage: o.stage, expectedDate: o.expectedDate || '', achievedDate: o.achievedDate || '', ownerDisplay: od(o),
+    })),
+    contracts: contracts.map(x => ({
+      id: x.id, product: x.product || '', amount: parseFloat(x.amount) || 0,
+      startDate: x.startDate || '', endDate: x.endDate || '', ownerDisplay: od(x),
+    })),
+    receivables: receivables.map(r => ({
+      id: r.id, invoiceNo: r.invoiceNo || '', amount: parseFloat(r.amount) || 0,
+      dueDate: r.dueDate || '', status: r.status || '', ownerDisplay: od(r),
+    })),
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 🏢 企業主檔（使用者端）— 依權限只看「自己轄下客戶」的公司
+//   可見規則完全沿用 getViewableOwners + filterByBu，與聯絡人清單一致
+// ════════════════════════════════════════════════════════════
+// 我的企業主檔清單（有可見名片的公司才出現，contactCount 為可見名片數）
+app.get('/api/companies', requireAuth, (req, res) => {
+  const data = db.load();
+  const owners = new Set(getViewableOwners(req, 'contacts'));
+  let contacts = (data.contacts || []).filter(c => !c.deleted && owners.has(c.owner));
+  contacts = filterByBu(req, contacts);
+
+  const countById = {};
+  contacts.forEach(c => { if (c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
+
+  const companies = (data.companies || [])
+    .filter(m => countById[m.id])
+    .map(m => ({
+      id: m.id, name: m.name, taxId: m.taxId || '', capital: m.capital,
+      industry: m.industry || '', address: m.address || '', website: m.website || '',
+      representative: m.representative || '', gcisEnriched: !!m.gcisEnriched,
+      contactCount: countById[m.id] || 0,
+    }))
+    .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
+  res.json(companies);
+});
+
+// 單一公司彙整明細（明細內容亦過濾到可見範圍，避免跨 BU 外洩）
+app.get('/api/companies/:id', requireAuth, (req, res) => {
+  const data = db.load();
+  const company = (data.companies || []).find(c => c.id === req.params.id);
+  if (!company) return res.status(404).json({ error: '找不到此企業主檔' });
+
+  const owners = new Set(getViewableOwners(req, 'contacts'));
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  const od = o => userMap[o.owner] || o.owner || '';
+
+  // 可見名片（依擁有者 + BU）
+  let contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id && owners.has(c.owner));
+  contacts = filterByBu(req, contacts);
+  // 權限閘門：至少要有一張可見名片才看得到此公司
+  if (contacts.length === 0) return res.status(403).json({ error: '無權檢視此企業主檔' });
+
+  const contactIds = new Set(contacts.map(c => c.id));
+  const names = new Set();
+  if ((company.name || '').trim()) names.add((company.name || '').trim());
+  contacts.forEach(c => { const n = (c.company || '').trim(); if (n) names.add(n); });
+
+  const matchByCo = co => names.has((co || '').trim());
+  let opps = (data.opportunities || []).filter(o => owners.has(o.owner) &&
+    ((o.contactId && contactIds.has(o.contactId)) || matchByCo(o.company)));
+  opps = filterByBu(req, opps);
+  let contracts = (data.contracts || []).filter(x => !x.deleted && owners.has(x.owner) && matchByCo(x.company));
+  contracts = filterByBu(req, contracts);
+  let receivables = (data.receivables || []).filter(r => owners.has(r.owner) && matchByCo(r.company));
+  receivables = filterByBu(req, receivables);
+
+  res.json({
+    company: {
+      id: company.id, name: company.name, taxId: company.taxId || '', capital: company.capital,
+      industry: company.industry || '', address: company.address || '', website: company.website || '',
+      representative: company.representative || '', gcisEnriched: !!company.gcisEnriched,
+    },
+    contacts: contacts.map(c => ({
+      id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
+      ownerDisplay: od(c), isPrimary: !!c.isPrimary,
+      employmentStatus: c.employmentStatus || (c.isResigned ? 'resigned' : 'active'),
+    })),
+    opps: opps.map(o => ({
+      id: o.id, product: o.product || o.category || '', amount: parseFloat(o.amount) || 0,
       stage: o.stage, expectedDate: o.expectedDate || '', achievedDate: o.achievedDate || '', ownerDisplay: od(o),
     })),
     contracts: contracts.map(x => ({

@@ -177,6 +177,7 @@ function applyPermissions() {
     execDash: 'navExecDash',
     prospects: 'navProspects',
     contacts: 'navContacts',
+    companyMaster: 'navCompanyMaster',
     visits: 'navVisits',
     targets: 'navTargets',
     forecast: 'navForecast',
@@ -784,6 +785,7 @@ function showSection(section) {
   $('dashboardView').style.display    = 'none';
   $('prospectsView').style.display    = section === 'prospects'   ? '' : 'none';
   $('contactsView').style.display     = section === 'contacts'    ? '' : 'none';
+  if ($('companyMasterView')) $('companyMasterView').style.display = section === 'companyMaster' ? '' : 'none';
   if ($('keyAccountView')) $('keyAccountView').style.display = section === 'keyAccount' ? '' : 'none';
   $('visitsView').style.display       = section === 'visits'      ? '' : 'none';
   $('targetsView').style.display      = section === 'targets'     ? '' : 'none';
@@ -809,6 +811,7 @@ function showSection(section) {
   if (section === 'prospects')   { loadContacts(); loadGroups(); }
   if (section === 'contacts')    { loadContacts(); loadGroups(); loadKeyAccounts(); }
   if (section === 'keyAccount')  loadKeyAccountView();
+  if (section === 'companyMaster') loadCompanyMasterView();
   if (section === 'visits')      { loadVisits(); if (allContacts.length === 0) loadContacts(); }
   if (section === 'targets')     loadTargetsView();
   if (section === 'pipeline')    loadPipelineView();
@@ -827,6 +830,132 @@ function showSection(section) {
   if (section === 'callin')      loadCallinView();
   if (section === 'transfer')    loadTransferView();
 }
+
+// ════════════════════════════════════════════════════════════
+// 🏢 企業主檔（使用者端，依權限只看自己客戶）
+// ════════════════════════════════════════════════════════════
+let _cmData = [];
+let _cmFilter = '';
+const CM_STAGE_LABEL = { D:'D 靜止', C:'C Pipeline', B:'B Upside', A:'A Commit', Won:'🏆 Won' };
+const CM_EMP_LABEL = { active:'在職', pending:'❓待確認', resigned:'🚫已離職' };
+function cmFmtCap(n) {
+  const num = parseInt(n);
+  if (!num || isNaN(num)) return '—';
+  if (num >= 100000000) return 'NT$ ' + (num / 100000000).toFixed(1) + ' 億';
+  if (num >= 10000) return 'NT$ ' + Math.round(num / 10000) + ' 萬';
+  return 'NT$ ' + num.toLocaleString();
+}
+
+async function loadCompanyMasterView() {
+  const wrap = $('cmDetailWrap'), listWrap = $('cmListWrap');
+  if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
+  if (listWrap) listWrap.style.display = '';
+  const tbody = $('cmTbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">載入中…</td></tr>';
+  try {
+    const r = await fetch(`${API}/companies`);
+    if (!r.ok) throw new Error('載入失敗 (' + r.status + ')');
+    _cmData = await r.json();
+    renderCompanyMasterList();
+  } catch (e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#e74c3c;padding:28px">${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function renderCompanyMasterList() {
+  const tbody = $('cmTbody'), countEl = $('cmCount');
+  const kw = _cmFilter.toLowerCase();
+  const list = (_cmData || []).filter(c =>
+    !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw));
+  if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (kw ? `（顯示 ${list.length}）` : '');
+  if (!tbody) return;
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(c => `
+    <tr class="cm-row" data-id="${escapeHtml(c.id)}" style="cursor:pointer;border-top:1px solid #f0f2f5">
+      <td style="padding:11px 14px"><strong>${escapeHtml(c.name)}</strong> <span style="color:#9ca3af;font-size:11px">›</span></td>
+      <td style="padding:11px 14px">${c.taxId ? escapeHtml(c.taxId) : '<span style="color:#cbd5e1">無</span>'}</td>
+      <td style="padding:11px 14px">${c.contactCount || 0}</td>
+      <td style="padding:11px 14px">${cmFmtCap(c.capital)}</td>
+      <td style="padding:11px 14px;font-size:13px">${escapeHtml(c.industry || '')}</td>
+    </tr>`).join('');
+  tbody.querySelectorAll('.cm-row').forEach(tr =>
+    tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
+}
+
+async function openCompanyMasterDetail(id) {
+  const wrap = $('cmDetailWrap'), listWrap = $('cmListWrap');
+  wrap.innerHTML = '<div style="padding:24px;color:#9ca3af">載入中…</div>';
+  listWrap.style.display = 'none'; wrap.style.display = '';
+  try {
+    const r = await fetch(`${API}/companies/${encodeURIComponent(id)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '載入失敗');
+    wrap.innerHTML = renderCompanyMasterDetail(d);
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:16px;color:#c62828">❌ ${escapeHtml(e.message)} <button class="btn-back-cm" style="margin-left:8px">返回</button></div>`;
+  }
+  wrap.querySelectorAll('.btn-back-cm').forEach(b => b.addEventListener('click', () => {
+    wrap.style.display = 'none'; wrap.innerHTML = ''; listWrap.style.display = '';
+  }));
+}
+
+function renderCompanyMasterDetail(d) {
+  const c = d.company;
+  const fmtK = n => '$' + (Number(n) || 0).toLocaleString() + ' K';
+  const card = (inner) => `<div style="background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:16px 18px;margin-top:14px">${inner}</div>`;
+  const info = [
+    ['統一編號', c.taxId || '無'],
+    ['資本額', cmFmtCap(c.capital)],
+    ['產業', c.industry || '—'],
+    ['負責人', c.representative || '—'],
+    ['地址', c.address || '—'],
+    ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],
+  ].map(([k, v]) => `<div style="min-width:190px"><span style="color:#9ca3af;font-size:12px">${k}</span><br><span style="font-size:14px">${v}</span></div>`).join('');
+
+  const tbl = (title, headers, rows) => card(`
+    <div style="font-weight:700;margin-bottom:8px">${title}（${rows.length}）</div>
+    ${rows.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f8f9fb;text-align:left">${headers.map(h => `<th style="padding:8px 12px;font-size:12px;color:#555">${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : '<div style="color:#9ca3af;font-size:13px;padding:6px 0">無資料</div>'}`);
+
+  const td = (v, extra = '') => `<td style="padding:8px 12px;font-size:13px;border-top:1px solid #f0f2f5;${extra}">${v}</td>`;
+  const contactRows = d.contacts.map(c => `<tr>
+    ${td((c.isPrimary ? '⭐ ' : '') + escapeHtml(c.name))}${td(escapeHtml(c.title || ''))}
+    ${td(escapeHtml(c.phone || c.mobile || ''))}${td(escapeHtml(c.email || ''))}
+    ${td(CM_EMP_LABEL[c.employmentStatus] || '在職')}${td(escapeHtml(c.ownerDisplay || ''))}</tr>`);
+  const oppRows = d.opps.map(o => `<tr>
+    ${td(escapeHtml(o.product || ''))}${td(CM_STAGE_LABEL[o.stage] || o.stage || '')}
+    ${td(fmtK(o.amount), 'text-align:right')}${td(escapeHtml(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || '')))}
+    ${td(escapeHtml(o.ownerDisplay || ''))}</tr>`);
+  const ctrRows = d.contracts.map(x => `<tr>
+    ${td(escapeHtml(x.product || ''))}${td(fmtK(x.amount), 'text-align:right')}
+    ${td(escapeHtml((x.startDate || '') + ' ~ ' + (x.endDate || '')))}${td(escapeHtml(x.ownerDisplay || ''))}</tr>`);
+  const recvRows = d.receivables.map(r => `<tr>
+    ${td(escapeHtml(r.invoiceNo || ''))}${td(fmtK(r.amount), 'text-align:right')}
+    ${td(escapeHtml(r.dueDate || ''))}${td(escapeHtml(r.status || ''))}${td(escapeHtml(r.ownerDisplay || ''))}</tr>`);
+
+  return `
+    ${card(`
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="btn-back-cm" style="background:#f0f2f5;color:#333;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px">← 返回清單</button>
+        <span style="font-size:19px;font-weight:700">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeHtml(c.name)}</span>
+        ${c.gcisEnriched ? '<span style="font-size:11px;color:#0b8043;background:#e6f4ea;border-radius:999px;padding:2px 8px">GCIS 已補全</span>' : ''}
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px">${info}</div>`)}
+    ${tbl('📇 聯絡人', ['姓名', '職稱', '電話', 'Email', '人員狀態', '業務'], contactRows)}
+    ${tbl('📊 商機', ['銷售案名', '把握度', '金額', '日期', '業務'], oppRows)}
+    ${tbl('📄 合約', ['產品', '金額', '期間', '業務'], ctrRows)}
+    ${tbl('💰 帳款', ['發票號', '金額', '到期日', '狀態', '業務'], recvRows)}
+  `;
+}
+
+// 企業主檔搜尋框（DOMContentLoaded 後綁定一次）
+document.addEventListener('DOMContentLoaded', () => {
+  const cmSearch = document.getElementById('cmSearchInput');
+  if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
+});
 
 $('navHome').addEventListener('click', showDashboard);
 $('navProspects').addEventListener('click', () => showSection('prospects'));
