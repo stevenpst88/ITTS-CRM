@@ -5891,6 +5891,70 @@ app.get('/api/admin/companies', requireAdmin, (req, res) => {
   res.json(list);
 });
 
+// 企業主檔：資料一致性檢查報告（唯讀，匯入前的資料品質檢視）
+app.get('/api/admin/companies/report', requireAdmin, (req, res) => {
+  const data = db.load();
+  const companies = data.companies || [];
+  const contacts = (data.contacts || []).filter(c => !c.deleted);
+
+  // 每主檔下的名片
+  const byCompanyId = {};
+  contacts.forEach(c => {
+    if (!c.companyId) return;
+    (byCompanyId[c.companyId] = byCompanyId[c.companyId] || []).push(c);
+  });
+
+  // 🔴 公司名不一致：同主檔下名片公司名出現 >1 種寫法，或唯一寫法與主檔正式名不同
+  const nameConflicts = [];
+  companies.forEach(m => {
+    const cs = byCompanyId[m.id] || [];
+    const variants = {};
+    cs.forEach(c => {
+      const nm = (c.company || '').trim();
+      if (nm) variants[nm] = (variants[nm] || 0) + 1;
+    });
+    const distinct = Object.keys(variants);
+    const masterName = (m.name || '').trim();
+    const differsFromMaster = distinct.some(n => n !== masterName);
+    if (distinct.length > 1 || (distinct.length === 1 && differsFromMaster)) {
+      nameConflicts.push({
+        companyId: m.id, taxId: m.taxId || '', masterName,
+        variants: distinct.map(n => ({ name: n, count: variants[n] })).sort((a, b) => b.count - a.count),
+        contactCount: cs.length,
+      });
+    }
+  });
+
+  // 🟡 無統編主檔（只能靠公司名比對，匯入前建議補統編）
+  const noTaxId = companies
+    .filter(m => !m.taxId)
+    .map(m => ({ companyId: m.id, masterName: m.name, contactCount: (byCompanyId[m.id] || []).length }))
+    .sort((a, b) => b.contactCount - a.contactCount);
+
+  // ⚪ 缺資本額（GCIS 補全候選）
+  const missingCapital = companies
+    .filter(m => m.capital == null || m.capital === '')
+    .map(m => ({ companyId: m.id, taxId: m.taxId || '', masterName: m.name, gcisEnriched: !!m.gcisEnriched }));
+
+  // 🟠 名片未掛主檔（理論上 build 後應為 0；若有代表無統編且無公司名）
+  const unlinked = contacts.filter(c => !c.companyId).length;
+
+  res.json({
+    summary: {
+      totalCompanies: companies.length,
+      totalContacts: contacts.length,
+      withTaxId: companies.filter(m => m.taxId).length,
+      withoutTaxId: noTaxId.length,
+      capitalFilled: companies.filter(m => m.capital != null && m.capital !== '').length,
+      nameConflicts: nameConflicts.length,
+      unlinked,
+    },
+    nameConflicts,
+    noTaxId,
+    missingCapital,
+  });
+});
+
 // ════════════════════════════════════════════════════════════
 // 📋 客戶池（Pool）：歷史客戶 / 尚未指派業務的客戶暫存區
 // ════════════════════════════════════════════════════════════

@@ -602,6 +602,17 @@
             </table>
           </div>
         </div>
+
+        <!-- 資料一致性檢查（1B）-->
+        <div class="admin-card" style="margin-top:18px">
+          <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <span class="admin-card-title">📋 資料一致性檢查</span>
+            <span style="font-size:12px;color:#6b7280">匯入歷史資料前，先檢視主檔資料品質</span>
+            <button class="btn btn-sm btn-primary" id="companyReportBtn" style="margin-left:auto">🔍 執行檢查</button>
+          </div>
+          <div id="companyReportSummary" style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
+          <div id="companyReportBody"></div>
+        </div>
       </div>
 
       <!-- ── 📋 客戶池 ── -->
@@ -5028,6 +5039,66 @@
         resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🏗️ 建立/更新企業主檔';
+      }
+    });
+
+    // ── 🏢 企業主檔：資料一致性檢查（1B）──
+    document.getElementById('companyReportBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('companyReportBtn');
+      const sumEl = document.getElementById('companyReportSummary');
+      const bodyEl = document.getElementById('companyReportBody');
+      btn.disabled = true; btn.textContent = '檢查中…';
+      try {
+        const r = await fetch('/api/admin/companies/report');
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '檢查失敗');
+        const s = d.summary;
+        const chip = (label, val, color) =>
+          `<span style="background:${color}1a;border:1px solid ${color}55;color:${color};border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600">${label} ${val}</span>`;
+        sumEl.innerHTML =
+          chip('公司', s.totalCompanies, '#1a73e8') +
+          chip('有統編', s.withTaxId, '#1e8e3e') +
+          chip('無統編', s.withoutTaxId, '#b45309') +
+          chip('已填資本額', s.capitalFilled, '#1e8e3e') +
+          chip('名稱不一致', s.nameConflicts, s.nameConflicts ? '#c62828' : '#1e8e3e') +
+          (s.unlinked ? chip('未掛主檔', s.unlinked, '#c62828') : '');
+
+        const section = (title, color, rowsHtml, emptyMsg) =>
+          `<div style="margin-top:14px">
+            <div style="font-weight:700;color:${color};font-size:13px;margin-bottom:6px">${title}</div>
+            ${rowsHtml || `<div style="color:#9ca3af;font-size:12px;padding:4px 0">${emptyMsg}</div>`}
+          </div>`;
+
+        // 🔴 名稱不一致
+        const conflictRows = (d.nameConflicts || []).map(c => {
+          const variants = c.variants.map(v => `「${escH(v.name)}」×${v.count}`).join('、');
+          return `<div style="border:1px solid #fed7aa;background:#fff7ed;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12px">
+            <b>統編 ${escH(c.taxId || '(無)')}</b>　主檔：「${escH(c.masterName)}」<br>
+            <span style="color:#9a3412">名片寫法：${variants}</span>　<span style="color:#6b7280">(${c.contactCount} 張名片)</span>
+          </div>`;
+        }).join('');
+
+        // 🟡 無統編主檔
+        const noTaxRows = (d.noTaxId || []).length
+          ? `<div style="font-size:12px;color:#444;line-height:1.8">` +
+            d.noTaxId.map(m => `・${escH(m.masterName)}（${m.contactCount} 張）`).join('<br>') + `</div>`
+          : '';
+
+        // ⚪ 缺資本額
+        const capRows = (d.missingCapital || []).length
+          ? `<div style="font-size:12px;color:#6b7280">共 ${d.missingCapital.length} 家缺資本額，待未來 GCIS 一鍵補全：<br>` +
+            d.missingCapital.slice(0, 30).map(m => escH(m.masterName)).join('、') +
+            (d.missingCapital.length > 30 ? ' …' : '') + `</div>`
+          : '';
+
+        bodyEl.innerHTML =
+          section(`🔴 公司名不一致（${d.nameConflicts.length}）`, '#c62828', conflictRows, '✅ 無不一致，資料乾淨') +
+          section(`🟡 無統編主檔（${d.noTaxId.length}）`, '#b45309', noTaxRows, '✅ 全部主檔都有統編') +
+          section(`⚪ 缺資本額（${d.missingCapital.length}）`, '#6b7280', capRows, '✅ 資本額皆已填');
+      } catch (e) {
+        bodyEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '🔍 執行檢查';
       }
     });
 
