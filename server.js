@@ -516,7 +516,9 @@ function sanitizeUrl(url) {
 }
 
 // ── 公司層級欄位同步（新增/更新名片時自動補齊同公司空白欄位）──
-const COMPANY_SYNC_FIELDS = ['phone', 'industry', 'address', 'website', 'systemVendor'];
+// taxId 也納入：補了一張名片的統編，存檔後同步給同公司其他空白名片，
+// 再跑「建立/更新企業主檔」即可收成單一統編主檔。
+const COMPANY_SYNC_FIELDS = ['phone', 'industry', 'address', 'website', 'systemVendor', 'taxId'];
 function syncCompanyFields(data, contact) {
   if (!contact.company) return;
   const siblings = data.contacts.filter(c =>
@@ -5919,10 +5921,19 @@ app.post('/api/admin/companies/build', requireAdmin, (req, res) => {
     linked++;
   });
   const created = data.companies.length - before;
+
+  // 清理孤兒主檔：relink 後沒有任何有效名片指向的主檔
+  // （例如名片補上統編、改用統編鍵後，原本的「公司名鍵」主檔變空殼）
+  const liveIds = new Set();
+  (data.contacts || []).forEach(c => { if (!c.deleted && c.companyId) liveIds.add(c.companyId); });
+  const beforePrune = data.companies.length;
+  data.companies = data.companies.filter(m => liveIds.has(m.id));
+  const pruned = beforePrune - data.companies.length;
+
   db.save(data);
   writeLog('BUILD_COMPANIES', req.session.user.username, 'system',
-    `建立企業主檔 ${created} 筆、掛勾名片 ${linked} 張、衝突 ${conflicts.length} 筆`, req);
-  res.json({ success: true, created, totalCompanies: data.companies.length, linked, skipped, conflicts });
+    `建立企業主檔 ${created} 筆、掛勾名片 ${linked} 張、衝突 ${conflicts.length} 筆、清理空殼 ${pruned} 筆`, req);
+  res.json({ success: true, created, totalCompanies: data.companies.length, linked, skipped, conflicts, pruned });
 });
 
 // 企業主檔列表（含每家掛勾名片數）

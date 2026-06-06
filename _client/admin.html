@@ -5140,6 +5140,7 @@
         let html = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
           + `✅ 完成：新建主檔 <b>${d.created}</b> 筆、掛勾名片 <b>${d.linked}</b> 張、共 <b>${d.totalCompanies}</b> 家公司`;
         if (d.skipped) html += `、略過 ${d.skipped} 張（無統編且無公司名）`;
+        if (d.pruned) html += `、清理空殼主檔 ${d.pruned} 筆`;
         html += `</div>`;
         if (d.conflicts && d.conflicts.length) {
           html += `<div style="background:#fff3e0;border:1px solid #fb923c;border-radius:8px;padding:10px 14px;margin-top:8px;color:#9a3412">`
