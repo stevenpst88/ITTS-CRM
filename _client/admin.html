@@ -570,8 +570,9 @@
       <!-- ── 🏢 企業主檔 ── -->
       <div class="admin-section" id="sec-companies">
         <div class="section-title">🏢 企業主檔</div>
-        <div class="section-sub">以統一編號為唯一辨識的公司主檔（一統編一主檔）。所有名片會自動掛勾到對應主檔；無統編者以公司名為辨識。</div>
+        <div class="section-sub">以統一編號為唯一辨識的公司主檔（一統編一主檔）。所有名片會自動掛勾到對應主檔；無統編者以公司名為辨識。點任一列可展開該公司彙整。</div>
 
+        <div id="companyListWrap">
         <div class="admin-card" style="margin-top:16px">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">企業主檔清單</span>
@@ -614,6 +615,10 @@
           <div id="companyReportSummary" style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
           <div id="companyReportBody"></div>
         </div>
+        </div><!-- /companyListWrap -->
+
+        <!-- 公司彙整明細（Phase 3，點主檔列展開）-->
+        <div id="companyDetailWrap" style="display:none"></div>
       </div>
 
       <!-- ── 📋 客戶池 ── -->
@@ -5010,8 +5015,8 @@
         const cap = fmtCap(c.capital);
         const tax = c.taxId ? escapeAttr(c.taxId) : '<span style="color:#cbd5e1">無</span>';
         const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
-        return `<tr>
-          <td><strong>${escapeAttr(c.name)}</strong></td>
+        return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer">
+          <td><strong>${escapeAttr(c.name)}</strong> <span style="color:#9ca3af;font-size:11px">›</span></td>
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
           <td>${cap}</td>
@@ -5019,6 +5024,105 @@
           <td style="font-size:12px">${gcis}</td>
         </tr>`;
       }).join('');
+      tbody.querySelectorAll('.company-row').forEach(tr => {
+        tr.addEventListener('click', () => openCompanyDetail(tr.dataset.id));
+      });
+    }
+
+    // ── 公司彙整明細（Phase 3）──
+    const STAGE_LABEL_MAP = { D:'D 靜止', C:'C Pipeline', B:'B Upside', A:'A Commit', Won:'🏆 Won' };
+    const EMP_LABEL_MAP = { active:'在職', pending:'❓待確認', resigned:'🚫已離職' };
+    async function openCompanyDetail(id) {
+      const wrap = document.getElementById('companyDetailWrap');
+      const listWrap = document.getElementById('companyListWrap');
+      wrap.innerHTML = '<div style="padding:24px;color:#9ca3af">載入中…</div>';
+      listWrap.style.display = 'none';
+      wrap.style.display = '';
+      try {
+        const r = await fetch(`/api/admin/companies/${encodeURIComponent(id)}/detail`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '載入失敗');
+        wrap.innerHTML = renderCompanyDetail(d);
+        document.getElementById('companyDetailBack').addEventListener('click', () => {
+          wrap.style.display = 'none'; wrap.innerHTML = ''; listWrap.style.display = '';
+        });
+      } catch (e) {
+        wrap.innerHTML = `<div style="padding:16px;color:#c62828">❌ ${e.message} <button class="btn btn-sm" id="companyDetailBack">返回</button></div>`;
+        document.getElementById('companyDetailBack').addEventListener('click', () => {
+          wrap.style.display = 'none'; wrap.innerHTML = ''; listWrap.style.display = '';
+        });
+      }
+    }
+
+    function renderCompanyDetail(d) {
+      const c = d.company;
+      const fmtK = n => '$' + (Number(n) || 0).toLocaleString() + ' K';
+      const fmtCap2 = (n) => {
+        const num = parseInt(n);
+        if (!num || isNaN(num)) return '—';
+        if (num >= 100000000) return 'NT$ ' + (num / 100000000).toFixed(1) + ' 億';
+        if (num >= 10000) return 'NT$ ' + Math.round(num / 10000) + ' 萬';
+        return 'NT$ ' + num.toLocaleString();
+      };
+      const info = [
+        ['統一編號', c.taxId || '無'],
+        ['資本額', fmtCap2(c.capital)],
+        ['產業', c.industry || '—'],
+        ['負責人', c.representative || '—'],
+        ['地址', c.address || '—'],
+        ['官網', c.website ? `<a href="${escapeAttr(c.website)}" target="_blank" rel="noopener">${escapeAttr(c.website)}</a>` : '—'],
+      ].map(([k, v]) => `<div style="min-width:200px"><span style="color:#9ca3af;font-size:12px">${k}</span><br><span style="font-size:13px">${v}</span></div>`).join('');
+
+      const tbl = (title, headers, rows) => `
+        <div class="admin-card" style="margin-top:14px">
+          <div class="admin-card-title" style="margin-bottom:8px">${title}（${rows.length}）</div>
+          ${rows.length ? `<div style="overflow-x:auto"><table class="admin-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+            : '<div style="color:#9ca3af;font-size:13px;padding:8px 0">無資料</div>'}
+        </div>`;
+
+      const contactRows = d.contacts.map(c => `<tr>
+        <td>${c.isPrimary ? '⭐ ' : ''}${escapeAttr(c.name)}</td>
+        <td style="font-size:12px">${escapeAttr(c.title || '')}</td>
+        <td style="font-size:12px">${escapeAttr(c.phone || c.mobile || '')}</td>
+        <td style="font-size:12px">${escapeAttr(c.email || '')}</td>
+        <td style="font-size:12px">${EMP_LABEL_MAP[c.employmentStatus] || '在職'}</td>
+        <td style="font-size:12px">${escapeAttr(c.ownerDisplay || '')}</td>
+      </tr>`);
+      const oppRows = d.opps.map(o => `<tr>
+        <td style="font-size:12px">${escapeAttr(o.product || '')}</td>
+        <td style="font-size:12px">${STAGE_LABEL_MAP[o.stage] || o.stage || ''}</td>
+        <td style="text-align:right">${fmtK(o.amount)}</td>
+        <td style="font-size:12px">${escapeAttr(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || ''))}</td>
+        <td style="font-size:12px">${escapeAttr(o.ownerDisplay || '')}</td>
+      </tr>`);
+      const ctrRows = d.contracts.map(x => `<tr>
+        <td style="font-size:12px">${escapeAttr(x.product || '')}</td>
+        <td style="text-align:right">${fmtK(x.amount)}</td>
+        <td style="font-size:12px">${escapeAttr(x.startDate || '')} ~ ${escapeAttr(x.endDate || '')}</td>
+        <td style="font-size:12px">${escapeAttr(x.ownerDisplay || '')}</td>
+      </tr>`);
+      const recvRows = d.receivables.map(r => `<tr>
+        <td style="font-size:12px">${escapeAttr(r.invoiceNo || '')}</td>
+        <td style="text-align:right">${fmtK(r.amount)}</td>
+        <td style="font-size:12px">${escapeAttr(r.dueDate || '')}</td>
+        <td style="font-size:12px">${escapeAttr(r.status || '')}</td>
+        <td style="font-size:12px">${escapeAttr(r.ownerDisplay || '')}</td>
+      </tr>`);
+
+      return `
+        <div class="admin-card" style="margin-top:16px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn btn-sm" id="companyDetailBack" style="background:#f0f2f5;color:#333">← 返回清單</button>
+            <span style="font-size:18px;font-weight:700">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeAttr(c.name)}</span>
+            ${c.gcisEnriched ? '<span style="font-size:11px;color:#0b8043;background:#e6f4ea;border-radius:999px;padding:2px 8px">GCIS 已補全</span>' : ''}
+          </div>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px">${info}</div>
+        </div>
+        ${tbl('📇 聯絡人', ['姓名', '職稱', '電話', 'Email', '人員狀態', '業務'], contactRows)}
+        ${tbl('📊 商機', ['銷售案名', '把握度', '金額', '日期', '業務'], oppRows)}
+        ${tbl('📄 合約', ['產品', '金額', '期間', '業務'], ctrRows)}
+        ${tbl('💰 帳款', ['發票號', '金額', '到期日', '狀態', '業務'], recvRows)}
+      `;
     }
 
     document.querySelector('[data-sec="companies"]').addEventListener('click', loadCompaniesView);

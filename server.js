@@ -6044,6 +6044,55 @@ app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
   res.json({ success: true, enriched, failed, total, offset, nextOffset: offset + BATCH, hasMore, samples });
 });
 
+// 企業主檔：單一公司彙整明細（聯絡人 + 商機 + 合約 + 帳款）
+app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
+  const data = db.load();
+  const company = (data.companies || []).find(c => c.id === req.params.id);
+  if (!company) return res.status(404).json({ error: '找不到此企業主檔' });
+
+  const auth = loadAuth();
+  const userMap = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  const od = o => userMap[o.owner] || o.owner || '';
+
+  // 掛在此主檔的名片
+  const contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id);
+  const contactIds = new Set(contacts.map(c => c.id));
+  // 比對用公司名集合（主檔正式名 + 名片上各種公司名寫法）
+  const names = new Set();
+  if ((company.name || '').trim()) names.add((company.name || '').trim());
+  contacts.forEach(c => { const n = (c.company || '').trim(); if (n) names.add(n); });
+
+  // 商機：contactId 命中 或 公司名命中
+  const opps = (data.opportunities || []).filter(o =>
+    (o.contactId && contactIds.has(o.contactId)) || names.has((o.company || '').trim())
+  );
+  // 合約 / 帳款：公司名命中
+  const contracts = (data.contracts || []).filter(x => !x.deleted && names.has((x.company || '').trim()));
+  const receivables = (data.receivables || []).filter(r => names.has((r.company || '').trim()));
+
+  res.json({
+    company,
+    contacts: contacts.map(c => ({
+      id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
+      ownerDisplay: od(c), isPrimary: !!c.isPrimary,
+      employmentStatus: c.employmentStatus || (c.isResigned ? 'resigned' : 'active'),
+    })),
+    opps: opps.map(o => ({
+      id: o.id, company: o.company, product: o.product || o.category || '', amount: parseFloat(o.amount) || 0,
+      stage: o.stage, expectedDate: o.expectedDate || '', achievedDate: o.achievedDate || '', ownerDisplay: od(o),
+    })),
+    contracts: contracts.map(x => ({
+      id: x.id, product: x.product || '', amount: parseFloat(x.amount) || 0,
+      startDate: x.startDate || '', endDate: x.endDate || '', ownerDisplay: od(x),
+    })),
+    receivables: receivables.map(r => ({
+      id: r.id, invoiceNo: r.invoiceNo || '', amount: parseFloat(r.amount) || 0,
+      dueDate: r.dueDate || '', status: r.status || '', ownerDisplay: od(r),
+    })),
+  });
+});
+
 // ════════════════════════════════════════════════════════════
 // 📋 客戶池（Pool）：歷史客戶 / 尚未指派業務的客戶暫存區
 // ════════════════════════════════════════════════════════════
