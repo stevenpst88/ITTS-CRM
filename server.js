@@ -465,7 +465,8 @@ const FIELD_LABELS = {
   phone:'電話', mobile:'手機', ext:'分機', email:'Email',
   address:'地址', website:'網站', taxId:'統一編號',
   industry:'產業屬性', opportunityStage:'商機分類',
-  isPrimary:'主要聯繫窗口', systemVendor:'系統廠商',
+  isPrimary:'主要聯繫窗口', isResigned:'離職狀態', employmentStatus:'人員狀態',
+  systemVendor:'系統廠商',
   systemProduct:'系統產品', note:'備註', jobFunction:'職能分類'
 };
 
@@ -494,7 +495,7 @@ function writeContactAudit(action, req, target, changes) {
 function pickFields(obj, fields) {
   return fields.reduce((acc, f) => { if (f in obj) acc[f] = obj[f]; return acc; }, {});
 }
-const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
+const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu'];
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
@@ -2200,6 +2201,8 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     industry: req.body.industry || '',
     opportunityStage: req.body.opportunityStage || '',
     isPrimary: req.body.isPrimary === true || req.body.isPrimary === 'true',
+    employmentStatus: ['active','pending','resigned'].includes(req.body.employmentStatus) ? req.body.employmentStatus : 'active',
+    isResigned: req.body.employmentStatus === 'resigned',
     systemVendor: req.body.systemVendor || '',
     systemProduct: req.body.systemProduct || '',
     note: req.body.note || '',
@@ -2244,6 +2247,12 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   }
   const updated = { ...old, ...safeBody, id: req.params.id, owner };
   updated.isPrimary = req.body.isPrimary === true || req.body.isPrimary === 'true';
+  // 人員狀態：只在前端有送 employmentStatus 時才正規化，並同步回寫 isResigned（向下相容）
+  if (safeBody.employmentStatus !== undefined) {
+    const effStatus = ['active','pending','resigned'].includes(safeBody.employmentStatus) ? safeBody.employmentStatus : 'active';
+    updated.employmentStatus = effStatus;
+    updated.isResigned = effStatus === 'resigned';
+  }
   // 若設為主要聯繫窗口，取消同公司（同擁有者）其他人的主要狀態
   if (updated.isPrimary && updated.company) {
     data.contacts.forEach((c, i) => {

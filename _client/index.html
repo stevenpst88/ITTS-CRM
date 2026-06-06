@@ -1691,10 +1691,20 @@
               </div>
               <div class="form-group full-width">
                 <label>人員狀態</label>
-                <label class="checkbox-label resigned-check-label">
-                  <input type="checkbox" id="isResigned">
-                  <span class="checkbox-text resigned-text">&#128683; 此人員已離職</span>
-                </label>
+                <div class="radio-group">
+                  <label class="radio-label">
+                    <input type="radio" name="employmentStatus" id="empStatusActive" value="active" checked>
+                    <span class="radio-text">在職</span>
+                  </label>
+                  <label class="radio-label">
+                    <input type="radio" name="employmentStatus" id="empStatusPending" value="pending">
+                    <span class="radio-text" style="color:#b45309;font-weight:600">&#10067; 待確認</span>
+                  </label>
+                  <label class="radio-label">
+                    <input type="radio" name="employmentStatus" id="empStatusResigned" value="resigned">
+                    <span class="radio-text resigned-text">&#128683; 已離職</span>
+                  </label>
+                </div>
               </div>
               <div class="form-group">
                 <label>公司</label>

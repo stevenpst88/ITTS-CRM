@@ -1202,7 +1202,13 @@ function buildContactCard(c, extraClass = '') {
     ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[c.opportunityStage]?.cls || ''}">${c.opportunityStage}｜${OPPORTUNITY_LABELS[c.opportunityStage]?.label.split('｜')[1] || ''}</span>`
     : '';
   const primaryMark = c.isPrimary ? `<span class="primary-badge">&#11088; 主要</span>` : '';
-  const resignedBadge = c.isResigned ? `<span class="resigned-badge">&#128683; 離職</span>` : '';
+  // 人員狀態 badge（向下相容：舊資料只有 isResigned）
+  const empStatus = c.employmentStatus || (c.isResigned ? 'resigned' : 'active');
+  const resignedBadge = empStatus === 'resigned'
+    ? `<span class="resigned-badge">&#128683; 離職</span>`
+    : empStatus === 'pending'
+    ? `<span class="pending-badge">&#10067; 待確認</span>`
+    : '';
   const relLabel = isCustomer ? `我的客戶${c.productLine ? '｜' + c.productLine : ''}` : '潛在客戶';
   const relClass = isCustomer ? 'rel-customer' : 'rel-prospect';
   const healthIcon = c.healthIcon || '';
@@ -2263,8 +2269,10 @@ function openModal(contact = null) {
     // 帶入主要聯繫窗口
     $('isPrimaryYes').checked = !!contact.isPrimary;
     $('isPrimaryNo').checked  = !contact.isPrimary;
-    // 帶入離職狀態
-    $('isResigned').checked = !!contact.isResigned;
+    // 帶入人員狀態（向下相容：舊資料只有 isResigned）
+    const empStatusVal = contact.employmentStatus || (contact.isResigned ? 'resigned' : 'active');
+    const empRadio = document.querySelector(`input[name="employmentStatus"][value="${empStatusVal}"]`);
+    if (empRadio) empRadio.checked = true;
     // 帶入個人資訊
     loadPersonalInfo(contact);
     if (contact.cardImage) {
@@ -2285,7 +2293,8 @@ function openModal(contact = null) {
     $('autoDetectBadge').style.display = 'none';
     if ($('opportunityStage')) $('opportunityStage').value = 'C'; // 預設 Pipeline
     $('isPrimaryNo').checked = true;
-    $('isResigned').checked = false;
+    const empActiveRadio = document.querySelector('input[name="employmentStatus"][value="active"]');
+    if (empActiveRadio) empActiveRadio.checked = true;
     loadPersonalInfo({});
     updateSystemProduct('');
     $('jobFunction').value = '';
@@ -2595,7 +2604,8 @@ $('saveBtn').addEventListener('click', async () => {
       : $('systemProduct').value,
     opportunityStage: $('opportunityStage') ? $('opportunityStage').value : '',
     isPrimary: $('isPrimaryYes').checked,
-    isResigned: $('isResigned').checked,
+    employmentStatus: (document.querySelector('input[name="employmentStatus"]:checked')?.value) || 'active',
+    isResigned: ((document.querySelector('input[name="employmentStatus"]:checked')?.value) || 'active') === 'resigned',
     note: $('note').value.trim(),
     cardImage: $('cardImageUrl').value,
     jobFunction: $('jobFunction').value,
