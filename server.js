@@ -4593,6 +4593,33 @@ function formatCapital(amount) {
   return `NT$ ${num.toLocaleString()}`;
 }
 
+// ── GCIS 公司基本資料查詢（給企業主檔補全用，回傳原始資本額數字）──
+// 來源：經濟部商業司 5F64D864（公司基本資料）。查無或失敗回 null。
+async function fetchGcisCompany(taxId) {
+  const t = String(taxId || '').trim();
+  if (!/^\d{8}$/.test(t)) return null;
+  try {
+    const r = await fetch(
+      `https://data.gcis.nat.gov.tw/od/data/api/5F64D864-61CB-4D0D-8AD9-492047CC1EA6?$format=json&$filter=Business_Accounting_NO eq ${t}&$skip=0&$top=1`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    const row = data && data[0];
+    if (!row) return null;
+    const capRaw = row.Capital_Stock_Amount;
+    return {
+      name: row.Company_Name || '',
+      capital: (capRaw != null && capRaw !== '' && !isNaN(parseInt(capRaw))) ? parseInt(capRaw) : null,
+      address: row.Company_Location || '',
+      representative: row.Responsible_Name || '',
+      status: row.Company_Status_Desc || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── 取得 TWSE + TPEX 損益表快取 ─────────────────────────────
 async function getFinancialLists() {
   const now = Date.now();
@@ -5972,6 +5999,49 @@ app.get('/api/admin/companies/report', requireAdmin, (req, res) => {
     noTaxId,
     missingCapital,
   });
+});
+
+// 企業主檔：GCIS 一鍵補全（正式名稱 + 資本額 + 地址）
+// batch + offset 分批，避免 Vercel timeout；只處理「有統編且未補全」的主檔
+app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
+  const BATCH = 10;
+  const offset = parseInt(req.body?.offset ?? req.query?.offset ?? 0) || 0;
+  const data = db.load();
+  const companies = data.companies || [];
+
+  // 目標：有 8 碼統編 且 尚未 GCIS 補全
+  const targets = companies.filter(m => /^\d{8}$/.test(String(m.taxId || '').trim()) && !m.gcisEnriched);
+  const total = targets.length;
+  const batch = targets.slice(offset, offset + BATCH);
+  const hasMore = offset + BATCH < total;
+
+  if (batch.length === 0) {
+    return res.json({ success: true, enriched: 0, failed: 0, total, offset, hasMore: false, samples: [] });
+  }
+
+  const results = await Promise.allSettled(batch.map(async m => ({ m, info: await fetchGcisCompany(m.taxId) })));
+
+  let enriched = 0, failed = 0;
+  const samples = [];
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || !r.value.info) { failed++; continue; }
+    const { m, info } = r.value;
+    if (info.name) m.name = info.name;                 // 正式名稱（權威覆蓋）
+    if (info.capital != null) m.capital = info.capital; // 資本額（原始數字）
+    if (info.address && !m.address) m.address = info.address; // 地址只補空白
+    if (info.representative && !m.representative) m.representative = info.representative;
+    m.gcisEnriched = true;
+    m.updatedAt = new Date().toISOString();
+    enriched++;
+    if (samples.length < 5) samples.push({ name: m.name, taxId: m.taxId, capital: m.capital });
+  }
+
+  db.save(data);
+  if (!hasMore) {
+    writeLog('ENRICH_GCIS', req.session.user.username, 'system',
+      `GCIS 補全企業主檔（最後一批 offset ${offset}）`, req);
+  }
+  res.json({ success: true, enriched, failed, total, offset, nextOffset: offset + BATCH, hasMore, samples });
 });
 
 // ════════════════════════════════════════════════════════════

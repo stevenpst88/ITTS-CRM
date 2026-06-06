@@ -580,9 +580,10 @@
               <input id="companySearchInput" type="text" placeholder="🔍 搜尋公司/統編" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
               <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
+              <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
             </div>
           </div>
-          <div style="font-size:12px;color:#6b7280;margin:6px 0 4px">「建立/更新」會掃描所有名片，依統編歸併出主檔並掛勾名片。可重複執行，不會產生重複主檔。</div>
+          <div style="font-size:12px;color:#6b7280;margin:6px 0 4px">「建立/更新」會掃描所有名片，依統編歸併出主檔並掛勾名片。可重複執行，不會產生重複主檔。「GCIS 補全」會向經濟部查詢有統編主檔的正式名稱與資本額（分批進行，需稍候）。</div>
           <div id="companyBuildResult" style="margin:10px 0;font-size:13px"></div>
           <div style="overflow-x:auto">
             <table class="admin-table" id="companyTable" style="min-width:820px">
@@ -4998,8 +4999,15 @@
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">${_companyFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
+      const fmtCap = (n) => {
+        const num = parseInt(n);
+        if (!num || isNaN(num)) return '<span style="color:#cbd5e1">—</span>';
+        if (num >= 100000000) return 'NT$ ' + (num / 100000000).toFixed(1) + ' 億';
+        if (num >= 10000) return 'NT$ ' + Math.round(num / 10000) + ' 萬';
+        return 'NT$ ' + num.toLocaleString();
+      };
       tbody.innerHTML = list.map(c => {
-        const cap = (c.capital != null && c.capital !== '') ? Number(c.capital).toLocaleString() : '<span style="color:#cbd5e1">—</span>';
+        const cap = fmtCap(c.capital);
         const tax = c.taxId ? escapeAttr(c.taxId) : '<span style="color:#cbd5e1">無</span>';
         const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
         return `<tr>
@@ -5041,6 +5049,45 @@
         resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🏗️ 建立/更新企業主檔';
+      }
+    });
+
+    // GCIS 一鍵補全（batch + offset 連續呼叫直到 hasMore=false）
+    document.getElementById('companyEnrichBtn').addEventListener('click', async () => {
+      if (!confirm('將向經濟部商業司查詢「有統編但尚未補全」的企業主檔，補入正式名稱與資本額。\n\n分批進行、需稍候，已補全的不會重複查詢。確定執行？')) return;
+      const btn = document.getElementById('companyEnrichBtn');
+      const resultEl = document.getElementById('companyBuildResult');
+      btn.disabled = true;
+      let offset = 0, totalEnriched = 0, totalFailed = 0, grandTotal = 0, guard = 0;
+      try {
+        while (true) {
+          if (++guard > 200) throw new Error('批次過多，已中止（請重試）');
+          btn.textContent = `補全中… ${Math.min(offset, grandTotal || offset)}/${grandTotal || '?'}`;
+          const r = await fetch('/api/admin/companies/enrich-gcis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offset })
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || '補全失敗');
+          grandTotal = d.total || grandTotal;
+          totalEnriched += d.enriched || 0;
+          totalFailed += d.failed || 0;
+          resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
+            + `🏛️ GCIS 補全中… 已補 <b>${totalEnriched}</b>／共 ${grandTotal} 家`
+            + (totalFailed ? `（查無 ${totalFailed}）` : '') + `</div>`;
+          if (!d.hasMore) break;
+          offset = d.nextOffset != null ? d.nextOffset : (offset + 10);
+        }
+        resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
+          + `✅ GCIS 補全完成：成功 <b>${totalEnriched}</b> 家`
+          + (totalFailed ? `、查無 <b>${totalFailed}</b> 家（可能為商號/已歇業/非公司組織）` : '')
+          + (grandTotal === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
+        loadCompaniesView();
+      } catch (e) {
+        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '🏛️ GCIS 一鍵補全';
       }
     });
 
