@@ -870,16 +870,16 @@ function renderCompanyMasterList() {
   if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (kw ? `（顯示 ${list.length}）` : '');
   if (!tbody) return;
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="cm-empty">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(c => `
-    <tr class="cm-row" data-id="${escapeHtml(c.id)}" style="cursor:pointer;border-top:1px solid #f0f2f5">
-      <td style="padding:11px 14px"><strong>${escapeHtml(c.name)}</strong> <span style="color:#9ca3af;font-size:11px">›</span></td>
-      <td style="padding:11px 14px">${c.taxId ? escapeHtml(c.taxId) : '<span style="color:#cbd5e1">無</span>'}</td>
-      <td style="padding:11px 14px">${c.contactCount || 0}</td>
-      <td style="padding:11px 14px">${cmFmtCap(c.capital)}</td>
-      <td style="padding:11px 14px;font-size:13px">${escapeHtml(c.industry || '')}</td>
+    <tr class="cm-row" data-id="${escapeHtml(c.id)}">
+      <td><strong>${escapeHtml(c.name)}</strong> <span class="cm-label">›</span></td>
+      <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
+      <td>${c.contactCount || 0}</td>
+      <td>${cmFmtCap(c.capital)}</td>
+      <td>${escapeHtml(c.industry || '')}</td>
     </tr>`).join('');
   tbody.querySelectorAll('.cm-row').forEach(tr =>
     tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
@@ -905,7 +905,7 @@ async function openCompanyMasterDetail(id) {
 function renderCompanyMasterDetail(d) {
   const c = d.company;
   const fmtK = n => '$' + (Number(n) || 0).toLocaleString() + ' K';
-  const card = (inner) => `<div style="background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);padding:16px 18px;margin-top:14px">${inner}</div>`;
+  const card = (inner) => `<div class="cm-card">${inner}</div>`;
   const info = [
     ['統一編號', c.taxId || '無'],
     ['資本額', cmFmtCap(c.capital)],
@@ -913,14 +913,14 @@ function renderCompanyMasterDetail(d) {
     ['負責人', c.representative || '—'],
     ['地址', c.address || '—'],
     ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],
-  ].map(([k, v]) => `<div style="min-width:190px"><span style="color:#9ca3af;font-size:12px">${k}</span><br><span style="font-size:14px">${v}</span></div>`).join('');
+  ].map(([k, v]) => `<div style="min-width:190px"><span class="cm-label">${k}</span><br><span style="font-size:14px">${v}</span></div>`).join('');
 
   const tbl = (title, headers, rows) => card(`
-    <div style="font-weight:700;margin-bottom:8px">${title}（${rows.length}）</div>
-    ${rows.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f8f9fb;text-align:left">${headers.map(h => `<th style="padding:8px 12px;font-size:12px;color:#555">${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-      : '<div style="color:#9ca3af;font-size:13px;padding:6px 0">無資料</div>'}`);
+    <div class="cm-card-title">${title}（${rows.length}）</div>
+    ${rows.length ? `<div style="overflow-x:auto"><table class="cm-table" style="min-width:auto"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : '<div class="cm-label" style="padding:6px 0">無資料</div>'}`);
 
-  const td = (v, extra = '') => `<td style="padding:8px 12px;font-size:13px;border-top:1px solid #f0f2f5;${extra}">${v}</td>`;
+  const td = (v, extra = '') => `<td style="${extra}">${v}</td>`;
   const contactRows = d.contacts.map(c => `<tr>
     ${td((c.isPrimary ? '⭐ ' : '') + escapeHtml(c.name))}${td(escapeHtml(c.title || ''))}
     ${td(escapeHtml(c.phone || c.mobile || ''))}${td(escapeHtml(c.email || ''))}
@@ -939,9 +939,9 @@ function renderCompanyMasterDetail(d) {
   return `
     ${card(`
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <button class="btn-back-cm" style="background:#f0f2f5;color:#333;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px">← 返回清單</button>
-        <span style="font-size:19px;font-weight:700">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeHtml(c.name)}</span>
-        ${c.gcisEnriched ? '<span style="font-size:11px;color:#0b8043;background:#e6f4ea;border-radius:999px;padding:2px 8px">GCIS 已補全</span>' : ''}
+        <button class="btn-back-cm cm-back-btn">← 返回清單</button>
+        <span class="cm-co-name">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeHtml(c.name)}</span>
+        ${c.gcisEnriched ? '<span class="cm-gcis-badge">GCIS 已補全</span>' : ''}
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px">${info}</div>`)}
     ${tbl('📇 聯絡人', ['姓名', '職稱', '電話', 'Email', '人員狀態', '業務'], contactRows)}

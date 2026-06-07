@@ -4532,3 +4532,38 @@ body.dark .biz-drill-tbl th { background: #21262d; color: #c9d1d9; border-bottom
 body.dark .biz-drill-tbl td { border-bottom-color: #21262d; color: #c9d1d9; }
 body.dark .biz-drill-tbl tr:hover td { background: #1c2128; }
 body.dark .biz-empty { color: #636e7b; }
+
+/* ── 🏢 企業主檔（使用者端）含深色模式 ── */
+.cm-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.cm-title { margin: 0; font-size: 20px; }
+.cm-count { font-size: 13px; color: #888; }
+.cm-search { margin-left: auto; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; min-width: 240px; }
+.cm-hint { font-size: 13px; color: #888; margin-bottom: 10px; }
+.cm-table-wrap { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.cm-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+.cm-table thead tr { background: #f8f9fb; text-align: left; }
+.cm-table th { padding: 12px 14px; font-size: 13px; color: #555; }
+.cm-table td { padding: 11px 14px; font-size: 13px; color: #222; }
+.cm-table tbody tr { border-top: 1px solid #f0f2f5; }
+.cm-row { cursor: pointer; }
+.cm-row:hover td { background: #f8f9fb; }
+.cm-empty { text-align: center; color: #9ca3af; padding: 28px; }
+.cm-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); padding: 16px 18px; margin-top: 14px; }
+.cm-card-title { font-weight: 700; margin-bottom: 8px; }
+.cm-label { color: #9ca3af; font-size: 12px; }
+.cm-co-name { font-size: 19px; font-weight: 700; }
+.cm-back-btn { background: #f0f2f5; color: #333; border: none; border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+.cm-gcis-badge { font-size: 11px; color: #0b8043; background: #e6f4ea; border-radius: 999px; padding: 2px 8px; }
+
+body.dark .cm-count, body.dark .cm-hint { color: #8b949e; }
+body.dark .cm-search { background: #0d1117; border-color: #30363d; color: #e6edf3; }
+body.dark .cm-table-wrap, body.dark .cm-card { background: #161b22; box-shadow: 0 1px 4px rgba(0,0,0,.4); color: #c9d1d9; }
+body.dark .cm-table thead tr { background: #1c2128; }
+body.dark .cm-table th { color: #8ecfff; }
+body.dark .cm-table td { color: #c9d1d9; }
+body.dark .cm-table tbody tr { border-top-color: #21262d; }
+body.dark .cm-row:hover td { background: #1c2128; }
+body.dark .cm-empty, body.dark .cm-label { color: #636e7b; }
+body.dark .cm-back-btn { background: #21262d; color: #c9d1d9; }
+body.dark .cm-gcis-badge { background: #0a1f10; color: #3fb950; }
+body.dark .cm-co-name { color: #e6edf3; }
