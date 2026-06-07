@@ -1690,13 +1690,6 @@
             <input type="hidden" id="contactId">
             <input type="hidden" id="cardImageUrl">
             <div class="form-grid">
-              <div class="form-group full-width taxid-top">
-                <label>統一編號 <span class="auto-tag" id="taxIdLoadingBadge" style="display:none">查詢中...</span><span class="auto-tag taxid-ok" id="taxIdOkBadge" style="display:none">✓ 已帶入</span></label>
-                <div class="input-with-mic">
-                  <input type="text" id="taxId" placeholder="輸入 8 碼統編，自動帶入公司資料" maxlength="8">
-                  <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
-                </div>
-              </div>
               <div class="form-group full-width" id="contactBuGroup" style="display:none">
                 <label>所屬 BU <span style="font-size:11px;color:#888;font-weight:normal">（決定哪些主管能看到此名片）</span></label>
                 <select id="contactBu">
@@ -1744,6 +1737,13 @@
                 <label>公司</label>
                 <input type="text" id="company" placeholder="請輸入公司名稱" list="companyList" autocomplete="off">
                 <datalist id="companyList"></datalist>
+              </div>
+              <div class="form-group full-width taxid-top">
+                <label>統一編號 <span style="font-size:11px;color:#888;font-weight:normal">（輸入 8 碼自動帶入公司名/地址；約需數秒）</span> <span class="auto-tag" id="taxIdLoadingBadge" style="display:none">查詢中...</span><span class="auto-tag taxid-ok" id="taxIdOkBadge" style="display:none">✓ 已帶入</span></label>
+                <div class="input-with-mic">
+                  <input type="text" id="taxId" placeholder="輸入 8 碼統編，自動帶入公司資料" maxlength="8" inputmode="numeric">
+                  <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
+                </div>
               </div>
               <div class="form-group">
                 <label>職稱</label>
