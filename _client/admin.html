@@ -5013,7 +5013,9 @@
       };
       tbody.innerHTML = list.map(c => {
         const cap = fmtCap(c.capital);
-        const tax = c.taxId ? escapeAttr(c.taxId) : '<span style="color:#cbd5e1">無</span>';
+        const tax = c.taxId
+          ? escapeAttr(c.taxId)
+          : `<button class="company-settax" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fff3e0;color:#9a3412;border:1px solid #fb923c;border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer">＋設定統編</button>`;
         const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer">
           <td><strong>${escapeAttr(c.name)}</strong> <span style="color:#9ca3af;font-size:11px">›</span></td>
@@ -5026,6 +5028,31 @@
       }).join('');
       tbody.querySelectorAll('.company-row').forEach(tr => {
         tr.addEventListener('click', () => openCompanyDetail(tr.dataset.id));
+      });
+      // 「設定統編」按鈕（阻止冒泡，不觸發開明細）
+      tbody.querySelectorAll('.company-settax').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id, name = btn.dataset.name || '';
+          const t = prompt(`為「${name}」設定統一編號（8 碼數字）：\n\n設定後會同步到該公司底下所有名片，之後可按「GCIS 一鍵補全」帶入正式名稱與資本額。`);
+          if (t == null) return;
+          const taxId = t.trim();
+          if (!/^\d{8}$/.test(taxId)) { alert('統一編號需為 8 碼數字'); return; }
+          btn.disabled = true; btn.textContent = '設定中…';
+          try {
+            const r = await fetch(`/api/admin/companies/${encodeURIComponent(id)}/set-taxid`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taxId })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || '設定失敗');
+            alert(`✅ 已設定統編 ${taxId}，同步 ${d.updatedContacts} 張名片${d.merged ? '（已合併至既有統編主檔）' : ''}。\n\n建議接著按「🏛️ GCIS 一鍵補全」帶入正式名稱與資本額。`);
+            loadCompaniesView();
+          } catch (err) {
+            alert('❌ ' + err.message);
+            btn.disabled = false; btn.textContent = '＋設定統編';
+          }
+        });
       });
     }
 

@@ -5936,6 +5936,41 @@ app.post('/api/admin/companies/build', requireAdmin, (req, res) => {
   res.json({ success: true, created, totalCompanies: data.companies.length, linked, skipped, conflicts, pruned });
 });
 
+// 企業主檔：直接設定/修正統一編號（確定性，不依賴名片同步/重建時序）
+// 同步把該主檔底下所有名片的 taxId 設為此值；若已有同統編主檔則合併過去
+app.post('/api/admin/companies/:id/set-taxid', requireAdmin, (req, res) => {
+  const t = String(req.body?.taxId || '').trim();
+  if (!/^\d{8}$/.test(t)) return res.status(400).json({ error: '統一編號需為 8 碼數字' });
+  const data = db.load();
+  const master = (data.companies || []).find(c => c.id === req.params.id);
+  if (!master) return res.status(404).json({ error: '找不到此企業主檔' });
+
+  // 此主檔底下所有名片：統編一律設為 t
+  let updatedContacts = 0;
+  (data.contacts || []).forEach(c => {
+    if (c.companyId === master.id) { c.taxId = t; updatedContacts++; }
+  });
+
+  // 是否已有別的主檔用此統編 → 合併（一統編一主檔）
+  const existingTax = (data.companies || []).find(c => c.id !== master.id && c.matchKey === 'tax:' + t);
+  let merged = false;
+  if (existingTax) {
+    (data.contacts || []).forEach(c => { if (c.companyId === master.id) c.companyId = existingTax.id; });
+    data.companies = data.companies.filter(c => c.id !== master.id);
+    merged = true;
+  } else {
+    master.taxId = t;
+    master.matchKey = 'tax:' + t;
+    master.gcisEnriched = false;      // 改鍵後允許重新 GCIS 補全
+    master.updatedAt = new Date().toISOString();
+  }
+
+  db.save(data);
+  writeLog('SET_COMPANY_TAXID', req.session.user.username, master.name || master.id,
+    `設定統編 ${t}（同步名片 ${updatedContacts} 張${merged ? '、合併至既有統編主檔' : ''}）`, req);
+  res.json({ success: true, taxId: t, updatedContacts, merged, mergedInto: merged ? existingTax.id : null });
+});
+
 // 企業主檔列表（含每家掛勾名片數）
 app.get('/api/admin/companies', requireAdmin, (req, res) => {
   const data = db.load();
