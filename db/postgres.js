@@ -149,8 +149,11 @@ let _auditCache        = null;
 let _auditWriteQueue   = Promise.resolve();
 let _auditLoadPromise  = null; // 同時間只有一次 lazy load 進行
 
-// 30s → 300s：cache 命中率大幅提升，省 80-90% Supabase egress
-const REFRESH_TTL = 5 * 60 * 1000;
+// REFRESH_TTL=0：每次 API 請求都先做輕量 stale check（只抓 updated_at，~80 bytes），
+// 確認 DB 沒被其他 Vercel 實例改過才用快取，有改才完整重抓。
+// 這修正「多實例快取分歧」造成的存了又跳回 / 一下有一下沒有 / 互相蓋資料。
+// egress 仍低：stale check 只 80 bytes，150KB 完整重抓僅在資料真有變動時發生。
+const REFRESH_TTL = 0;
 
 function load() {
   if (_cache === null) {

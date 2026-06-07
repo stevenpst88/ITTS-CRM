@@ -29,9 +29,11 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// ── Postgres backend：每次請求都呼叫 ready()（TTL 內會直接命中快取）──
+// ── Postgres backend：每個 API 請求前 ready()（會做輕量 stale check 確保跨實例新鮮）──
+// 只套用在 /api/：靜態檔（JS/CSS/圖）不需要 DB，跳過以免每個資產都打一次 DB 拖慢載入。
 if (process.env.DB_BACKEND === 'postgres') {
   app.use(async (req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
     try {
       await db.ready();
       next();
