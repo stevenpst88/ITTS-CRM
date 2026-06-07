@@ -5190,31 +5190,30 @@
       const btn = document.getElementById('companyEnrichBtn');
       const resultEl = document.getElementById('companyBuildResult');
       btn.disabled = true;
-      let offset = 0, totalEnriched = 0, totalFailed = 0, grandTotal = 0, guard = 0;
+      let totalEnriched = 0, totalNoData = 0, lastRemaining = 0, guard = 0;
       try {
-        while (true) {
-          if (++guard > 200) throw new Error('批次過多，已中止（請重試）');
-          btn.textContent = `補全中… ${Math.min(offset, grandTotal || offset)}/${grandTotal || '?'}`;
+        while (++guard <= 300) {
+          btn.textContent = `補全中… 已補 ${totalEnriched}`;
           const r = await fetch('/api/admin/companies/enrich-gcis', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ offset })
+            body: JSON.stringify({})
           });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || '補全失敗');
-          grandTotal = d.total || grandTotal;
           totalEnriched += d.enriched || 0;
-          totalFailed += d.failed || 0;
+          totalNoData += d.noData || 0;
+          lastRemaining = d.remaining || 0;
           resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
-            + `🏛️ GCIS 補全中… 已補 <b>${totalEnriched}</b>／共 ${grandTotal} 家`
-            + (totalFailed ? `（查無 ${totalFailed}）` : '') + `</div>`;
-          if (!d.hasMore) break;
-          offset = d.nextOffset != null ? d.nextOffset : (offset + 10);
+            + `🏛️ GCIS 補全中… 已補 <b>${totalEnriched}</b> 家，剩 ${lastRemaining} 家</div>`;
+          if (d.remaining === 0) break;                       // 全部處理完
+          if ((d.enriched || 0) + (d.noData || 0) === 0) break; // 這輪純逾時無進展（GCIS 忙碌）→ 停，可稍後重按
         }
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
           + `✅ GCIS 補全完成：成功 <b>${totalEnriched}</b> 家`
-          + (totalFailed ? `、查無 <b>${totalFailed}</b> 家（可能為商號/已歇業/非公司組織）` : '')
-          + (grandTotal === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
+          + (totalNoData ? `、查無 <b>${totalNoData}</b> 家（商號/已歇業/非公司組織）` : '')
+          + (lastRemaining ? `、<b>${lastRemaining}</b> 家暫時逾時（GCIS 忙碌，可稍後再按一次重試）` : '')
+          + (totalEnriched === 0 && totalNoData === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
         loadCompaniesView();
       } catch (e) {
         resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
