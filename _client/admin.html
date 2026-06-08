@@ -588,6 +588,10 @@
               <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
               <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
+              <button class="btn btn-sm" id="companyExportBtn" style="background:#f0f2f5;color:#333">⬇ 匯出</button>
+              <button class="btn btn-sm" id="companyImportBtn" style="background:#f0f2f5;color:#333">⬆ 匯入</button>
+              <button class="btn btn-sm" id="companyIndustryBtn" style="background:#f0f2f5;color:#333">🏷️ 產業分類</button>
+              <input type="file" id="companyImportFile" accept=".xlsx,.xls" style="display:none">
             </div>
           </div>
           <div style="font-size:12px;color:#6b7280;margin:6px 0 4px">「建立/更新」會掃描所有名片，依統編歸併出主檔並掛勾名片。可重複執行，不會產生重複主檔。「GCIS 補全」會向經濟部查詢有統編主檔的正式名稱與資本額（分批進行，需稍候）。</div>
@@ -625,6 +629,22 @@
 
         <!-- 公司彙整明細（Phase 3，點主檔列展開）-->
         <div id="companyDetailWrap" style="display:none"></div>
+
+        <!-- 產業分類管理 modal -->
+        <div id="industryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;align-items:center;justify-content:center">
+          <div style="background:#fff;border-radius:12px;width:420px;max-width:92vw;padding:18px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <strong style="font-size:16px">🏷️ 產業分類管理</strong>
+              <button id="industryModalCloseAdm" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input id="newIndustryInputAdm" type="text" placeholder="新增分類名稱" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
+              <button id="addIndustryBtnAdm" class="btn btn-sm btn-primary">新增</button>
+            </div>
+            <div id="industryListBoxAdm" style="max-height:340px;overflow-y:auto"></div>
+            <div style="font-size:12px;color:#888;margin-top:10px">行銷與管理員皆可增刪；匯入時出現的新分類也會自動加入。</div>
+          </div>
+        </div>
       </div>
 
       <!-- ── 📋 客戶池 ── -->
@@ -5227,6 +5247,59 @@
         btn.disabled = false; btn.textContent = '🏛️ GCIS 一鍵補全';
       }
     });
+
+    // ── 🏢 企業主檔：匯出 / 匯入 / 產業分類管理（admin）──
+    let _admIndustries = [];
+    document.getElementById('companyExportBtn').addEventListener('click', () => {
+      window.location.href = '/api/companies/export';
+    });
+    document.getElementById('companyImportBtn').addEventListener('click', () => document.getElementById('companyImportFile').click());
+    document.getElementById('companyImportFile').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const resultEl = document.getElementById('companyBuildResult');
+      resultEl.innerHTML = '<div style="color:#1a73e8">匯入中…</div>';
+      try {
+        const fd = new FormData(); fd.append('file', file);
+        const r = await fetch('/api/companies/import', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '匯入失敗');
+        resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
+          + `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>、略過 ${d.skipped}`
+          + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '') + `</div>`;
+        loadCompaniesView();
+      } catch (err) {
+        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${err.message}</div>`;
+      } finally { document.getElementById('companyImportFile').value = ''; }
+    });
+    // 產業分類管理
+    function renderAdmIndustryList() {
+      const box = document.getElementById('industryListBoxAdm');
+      if (!_admIndustries.length) { box.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:10px 0">尚無分類，請新增（或匯入時自動建立）。</div>'; return; }
+      box.innerHTML = _admIndustries.map(n => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f2f5">
+          <span>${escapeAttr(n)}</span>
+          <button class="adm-ind-del" data-name="${escapeAttr(n)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:3px 8px;cursor:pointer">刪除</button>
+        </div>`).join('');
+      box.querySelectorAll('.adm-ind-del').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm(`刪除分類「${b.dataset.name}」？`)) return;
+        const r = await fetch(`/api/industries/${encodeURIComponent(b.dataset.name)}`, { method: 'DELETE' });
+        if (r.ok) { _admIndustries = await r.json(); renderAdmIndustryList(); }
+      }));
+    }
+    document.getElementById('companyIndustryBtn').addEventListener('click', async () => {
+      const r = await fetch('/api/industries'); _admIndustries = r.ok ? await r.json() : [];
+      renderAdmIndustryList();
+      document.getElementById('industryModal').style.display = 'flex';
+    });
+    document.getElementById('industryModalCloseAdm').addEventListener('click', () => document.getElementById('industryModal').style.display = 'none');
+    const admAddInd = async () => {
+      const inp = document.getElementById('newIndustryInputAdm'); const name = (inp.value || '').trim(); if (!name) return;
+      const r = await fetch('/api/industries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const d = await r.json();
+      if (r.ok) { _admIndustries = d.industries; inp.value = ''; renderAdmIndustryList(); } else alert(d.error || '新增失敗');
+    };
+    document.getElementById('addIndustryBtnAdm').addEventListener('click', admAddInd);
+    document.getElementById('newIndustryInputAdm').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); admAddInd(); } });
 
     // ── 🏢 企業主檔：資料一致性檢查（1B）──
     document.getElementById('companyReportBtn').addEventListener('click', async () => {
