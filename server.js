@@ -1505,6 +1505,29 @@ ${pageText}
   }
 });
 
+// 公用/免費信箱網域（非公司官網，需排除）
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  'gmail.com','googlemail.com','yahoo.com','yahoo.com.tw','kimo.com','hotmail.com','hotmail.com.tw',
+  'outlook.com','msn.com','live.com','live.com.tw','icloud.com','me.com','aol.com','mail.com',
+  'qq.com','163.com','126.com','sina.com','sina.com.tw','foxmail.com','pchome.com.tw','xuite.net',
+]);
+// ISP 信箱網域字尾（如 name@ms21.hinet.net），非公司官網，需排除
+const PUBLIC_EMAIL_SUFFIXES = ['hinet.net','seed.net.tw','so-net.net.tw','giga.net.tw','url.com.tw','tcts.com.tw'];
+// 從名片 email 推得公司官網（B2B 最可靠來源，且系統已有資料）：排除公用/ISP 信箱與郵件子網域
+function websiteFromContactEmails(contacts) {
+  for (const c of contacts || []) {
+    const email = String(c.email || '').trim().toLowerCase();
+    const at = email.lastIndexOf('@');
+    if (at < 1) continue;
+    let dom = email.slice(at + 1).trim().replace(/^(mail|email|smtp|mx|webmail|pop|imap|mailgw)\./, '');
+    if (!dom || /\s/.test(dom) || !dom.includes('.') || dom.length < 4) continue;
+    if (PUBLIC_EMAIL_DOMAINS.has(dom)) continue;
+    if (PUBLIC_EMAIL_SUFFIXES.some(s => dom === s || dom.endsWith('.' + s))) continue;
+    return 'https://www.' + dom;
+  }
+  return '';
+}
+
 // ── Admin: 批次填入官網（分批分頁，避免 Vercel timeout）──
 app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
   const BATCH = 15; // 每批處理幾家公司（並行）
@@ -1549,6 +1572,12 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
   // 並行查詢這批公司的官網
   const results = await Promise.allSettled(
     batch.map(async task => {
+      // 優先：名片 email 網域（最可靠的 B2B 官網來源，系統已有資料、免外部查詢）
+      const emailWeb = websiteFromContactEmails(task.group);
+      if (emailWeb) {
+        return { task, website: emailWeb, debug: 'Email網域 ✓', stockCode: '', listedType: '' };
+      }
+      // 備援：上市櫃 OpenAPI / DDG 等外部來源（GCIS 通訊資料 API 已失效）
       let stockCode = '', listedType = '';
       if (task.taxId) {
         const twseM = (lists.twse || []).find(c => c['營利事業統一編號'] === task.taxId);
@@ -1557,7 +1586,7 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
         else if (tpexM) { stockCode = tpexM.SecuritiesCompanyCode || ''; listedType = '上櫃'; }
       }
       const { website, debug } = await fetchWebsiteOnly(task.taxId, task.companyName, stockCode, listedType);
-      return { task, website: website || '', debug, stockCode, listedType };
+      return { task, website: website || '', debug: 'Email網域✗ → ' + debug, stockCode, listedType };
     })
   );
 
