@@ -311,18 +311,22 @@ const DEFAULT_ROLE_PERMISSIONS = {
 function getRolePermissions() {
   const data = db.load();
   const stored = data.rolePermissions || {};
-
-  // 偵測「程式新增、但 DB 未儲存過」的 feature
-  // 邏輯：把所有角色 stored 的 features 加起來成全集；不在這個全集裡的 ALL_FEATURES key
-  // 就視為「新加入的功能」，自動補進有自訂設定的角色（依該角色 DEFAULT）
-  // 這保證新功能上線後，已自訂過的 admin 不會「閃退」看不到新 nav
-  const everUsedFeatures = new Set();
-  Object.values(stored).forEach(arr => {
-    if (Array.isArray(arr)) arr.forEach(k => everUsedFeatures.add(k));
-  });
   const hasAnyStored = Object.keys(stored).length > 0;
+
+  // 偵測「程式新增、admin 還沒設定過」的 feature，依 DEFAULT 自動補上（避免新 nav 看不到）。
+  // 關鍵：用「上次儲存權限時記錄的已知功能集合」(rolePermissionsKnownFeatures) 來判斷，
+  //   才能區分 (a) 真的程式新加的功能 vs (b) admin 故意從所有角色移除的功能。
+  //   若只看「有沒有出現在任何角色」，會把「被刻意停用的功能」誤判成新功能而自動加回（bug）。
+  // 向下相容：舊資料沒有 knownFeatures 紀錄時，退回「曾出現過的功能」當已知集合。
+  let knownFeatures;
+  if (Array.isArray(data.rolePermissionsKnownFeatures)) {
+    knownFeatures = new Set(data.rolePermissionsKnownFeatures);
+  } else {
+    knownFeatures = new Set();
+    Object.values(stored).forEach(arr => { if (Array.isArray(arr)) arr.forEach(k => knownFeatures.add(k)); });
+  }
   const brandNewFeatures = hasAnyStored
-    ? ALL_FEATURES.filter(k => !everUsedFeatures.has(k))
+    ? ALL_FEATURES.filter(k => !knownFeatures.has(k))
     : [];
 
   const result = {};
@@ -353,6 +357,9 @@ function saveRolePermissions(matrix) {
       data.rolePermissions[role] = matrix[role].filter(k => ALL_FEATURES.includes(k));
     }
   });
+  // 記錄「此次設定時已知的所有功能」→ 之後只有「比這更新的功能」才算 brand-new（自動補回）；
+  // 被 admin 從所有角色移除的功能仍在已知集合內，不會被誤判成新功能加回。
+  data.rolePermissionsKnownFeatures = ALL_FEATURES.slice();
   db.save(data);
 }
 
@@ -1936,8 +1943,9 @@ app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
 // 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
 app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
   const data = db.load();
-  if (data.rolePermissions) {
+  if (data.rolePermissions || data.rolePermissionsKnownFeatures) {
     delete data.rolePermissions;
+    delete data.rolePermissionsKnownFeatures;
     db.save(data);
   }
   writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', '重置角色功能權限為系統預設', req);
