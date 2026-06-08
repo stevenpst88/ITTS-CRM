@@ -5067,14 +5067,15 @@
         if (num >= 10000) return 'NT$ ' + Math.round(num / 10000) + ' 萬';
         return 'NT$ ' + num.toLocaleString();
       };
-      tbody.innerHTML = list.map(c => {
+      const rowHtml = (c, isNew) => {
         const cap = fmtCap(c.capital);
         const tax = c.taxId
           ? escapeAttr(c.taxId)
           : `<button class="company-settax" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fff3e0;color:#9a3412;border:1px solid #fb923c;border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer">＋設定統編</button>`;
         const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
-        return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer">
-          <td><strong>${escapeAttr(c.name)}</strong> <span style="color:#9ca3af;font-size:11px">›</span></td>
+        const tag = isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : '';
+        return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
+          <td><strong>${escapeAttr(c.name)}</strong>${tag} <span style="color:#9ca3af;font-size:11px">›</span></td>
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
           <td>${cap}</td>
@@ -5082,7 +5083,21 @@
           <td style="font-size:12px">${gcis}</td>
           <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
-      }).join('');
+      };
+      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="7" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
+      // 區隔：新匯入（尚無真實名片）排上方、歷史資料（已有名片）排下方
+      const newImports = list.filter(c => c.isNewImport).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      const historical = list.filter(c => !c.isNewImport);
+      let html = '';
+      if (newImports.length) {
+        html += groupHeader('🆕', '新匯入（待補名片 / 待分配，尚無真實名片）', newImports.length, 'rgba(37,99,235,0.13)');
+        html += newImports.map(c => rowHtml(c, true)).join('');
+      }
+      if (historical.length) {
+        html += groupHeader('📚', '歷史資料（已有名片）', historical.length, 'rgba(100,116,139,0.12)');
+        html += historical.map(c => rowHtml(c, false)).join('');
+      }
+      tbody.innerHTML = html;
       tbody.querySelectorAll('.company-row').forEach(tr => {
         tr.addEventListener('click', () => openCompanyDetail(tr.dataset.id));
       });

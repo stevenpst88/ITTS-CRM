@@ -883,15 +883,30 @@ function renderCompanyMasterList() {
     tbody.innerHTML = `<tr><td colspan="${canManage ? 6 : 5}" class="cm-empty">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
     return;
   }
-  tbody.innerHTML = list.map(c => `
-    <tr class="cm-row" data-id="${escapeHtml(c.id)}">
-      <td><strong>${escapeHtml(c.name)}</strong> <span class="cm-label">›</span></td>
+  const colspan = canManage ? 6 : 5;
+  const rowHtml = (c, isNew) => `
+    <tr class="cm-row" data-id="${escapeHtml(c.id)}"${isNew ? ' style="background:rgba(59,130,246,0.07)"' : ''}>
+      <td><strong>${escapeHtml(c.name)}</strong>${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
       <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
       <td>${c.contactCount || 0}</td>
       <td>${cmFmtCap(c.capital)}</td>
       <td>${cmIndustryCell(c)}</td>
       ${canManage ? `<td><button class="cm-del" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️</button></td>` : ''}
-    </tr>`).join('');
+    </tr>`;
+  const groupHeader = (icon, text, n, bg) => `<tr class="cm-group-hd"><td colspan="${colspan}" style="background:${bg};font-weight:700;font-size:13px;padding:8px 10px">${icon} ${text} · ${n} 家</td></tr>`;
+  // 區隔：新匯入（尚無真實名片）排上方、歷史資料（已有名片）排下方
+  const newImports = list.filter(c => c.isNewImport).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const historical = list.filter(c => !c.isNewImport);
+  let html = '';
+  if (newImports.length) {
+    html += groupHeader('🆕', '新匯入（待補名片 / 待分配）', newImports.length, 'rgba(37,99,235,0.13)');
+    html += newImports.map(c => rowHtml(c, true)).join('');
+  }
+  if (historical.length) {
+    html += groupHeader('📚', '歷史資料（已有名片）', historical.length, 'rgba(100,116,139,0.12)');
+    html += historical.map(c => rowHtml(c, false)).join('');
+  }
+  tbody.innerHTML = html;
   tbody.querySelectorAll('.cm-row').forEach(tr =>
     tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
   // 刪除主檔（admin/行銷；阻止冒泡，不觸發開明細）

@@ -6217,11 +6217,14 @@ app.post('/api/admin/companies/set-industry-batch', requireAdmin, (req, res) => 
 app.get('/api/admin/companies', requireAdmin, (req, res) => {
   const data = db.load();
   const countById = {};
+  const realCompanyIds = new Set();   // 有「真實名片」(非 placeholder) 的公司 → 歷史資料
   (data.contacts || []).forEach(c => {
-    if (!c.deleted && c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1;
+    if (c.deleted || !c.companyId) return;
+    countById[c.companyId] = (countById[c.companyId] || 0) + 1;
+    if (!c.isPlaceholder) realCompanyIds.add(c.companyId);
   });
   const list = (data.companies || [])
-    .map(c => ({ ...c, contactCount: countById[c.id] || 0 }))
+    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id) }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(list);
 });
@@ -6398,6 +6401,10 @@ app.get('/api/companies', requireAuth, (req, res) => {
   const countById = {};
   contacts.forEach(c => { if (c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
 
+  // 全域：哪些公司有「真實名片」(非 placeholder) → 區分歷史資料 vs 新匯入（與後台一致）
+  const realCompanyIds = new Set();
+  (data.contacts || []).forEach(c => { if (!c.deleted && !c.isPlaceholder && c.companyId) realCompanyIds.add(c.companyId); });
+
   // 行銷/admin 是企業主檔的維護者 → 連「尚無名片」的主檔（如剛匯入）也要看得到，
   // 數字才會與後台一致；一般業務維持只看「自己客戶所屬」的公司（有名片者）。
   const seeAll = isAdminOrMarketing(req);
@@ -6408,6 +6415,8 @@ app.get('/api/companies', requireAuth, (req, res) => {
       industry: m.industry || '', address: m.address || '', website: m.website || '',
       representative: m.representative || '', gcisEnriched: !!m.gcisEnriched,
       contactCount: countById[m.id] || 0,
+      isNewImport: !realCompanyIds.has(m.id),
+      createdAt: m.createdAt || '',
     }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(companies);
