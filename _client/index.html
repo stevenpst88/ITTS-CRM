@@ -467,7 +467,14 @@
               <h2 class="cm-title">🏢 企業主檔</h2>
               <span id="cmCount" class="cm-count">—</span>
               <input id="cmSearchInput" type="text" placeholder="🔍 搜尋公司 / 統編" autocomplete="off" class="cm-search">
+              <span id="cmAdminTools" style="display:none;gap:8px;align-items:center">
+                <button id="cmIndustryBtn" class="cm-back-btn" title="管理產業分類">🏷️ 產業分類</button>
+                <button id="cmExportBtn" class="cm-back-btn" title="匯出 Excel">⬇ 匯出</button>
+                <button id="cmImportBtn" class="cm-back-btn" title="匯入 Excel">⬆ 匯入</button>
+                <input type="file" id="cmImportFile" accept=".xlsx,.xls" style="display:none">
+              </span>
             </div>
+            <div id="cmImportResult" style="font-size:13px;margin-bottom:8px"></div>
             <div class="cm-hint">只顯示你（及轄下業務）名下客戶所屬的公司。點任一列查看該公司彙整。</div>
             <div class="cm-table-wrap">
               <table class="cm-table" id="cmTable">
@@ -487,6 +494,24 @@
             </div>
           </div>
           <div id="cmDetailWrap" style="display:none"></div>
+        </div>
+
+        <!-- 產業分類管理 modal（admin + 行銷）-->
+        <div class="modal-overlay" id="industryModalOverlay">
+          <div class="modal" style="max-width:420px">
+            <div class="modal-header">
+              <h2>🏷️ 產業分類管理</h2>
+              <button class="modal-close" id="industryModalClose">&#10005;</button>
+            </div>
+            <div class="modal-body" style="padding:16px 20px">
+              <div style="display:flex;gap:8px;margin-bottom:12px">
+                <input id="newIndustryInput" type="text" placeholder="新增分類名稱" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
+                <button id="addIndustryBtn" class="btn btn-primary">新增</button>
+              </div>
+              <div id="industryListBox" style="max-height:340px;overflow-y:auto"></div>
+              <div style="font-size:12px;color:#888;margin-top:10px">行銷可自行新增/刪除分類；匯入時出現的新分類也會自動加入。</div>
+            </div>
+          </div>
         </div>
 
         <!-- ── 商機推進進度（Kanban）── -->

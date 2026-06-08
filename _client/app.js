@@ -850,6 +850,8 @@ async function loadCompanyMasterView() {
   const wrap = $('cmDetailWrap'), listWrap = $('cmListWrap');
   if (wrap) { wrap.style.display = 'none'; wrap.innerHTML = ''; }
   if (listWrap) listWrap.style.display = '';
+  const tools = $('cmAdminTools');
+  if (tools) tools.style.display = cmCanManage() ? 'inline-flex' : 'none';
   const tbody = $('cmTbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">載入中…</td></tr>';
   try {
@@ -951,10 +953,101 @@ function renderCompanyMasterDetail(d) {
   `;
 }
 
-// 企業主檔搜尋框（DOMContentLoaded 後綁定一次）
+// ── 產業分類清單（動態）──
+let _industryList = [];
+async function loadIndustryOptions() {
+  try {
+    const r = await fetch(`${API}/industries`);
+    if (!r.ok) return;
+    _industryList = await r.json();
+  } catch { return; }
+  rebuildIndustrySelect();
+}
+function rebuildIndustrySelect(currentVal) {
+  const sel = $('industry');
+  if (!sel) return;
+  const cur = currentVal !== undefined ? currentVal : sel.value;
+  const list = _industryList.slice();
+  if (cur && !list.includes(cur)) list.push(cur); // 舊值不在清單也要顯示
+  sel.innerHTML = '<option value="">-- 請選擇 --</option>'
+    + list.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  sel.value = cur || '';
+}
+
+// ── 企業主檔：匯入/匯出 + 產業分類管理（admin + 行銷）──
+function cmCanManage() { return ['admin', 'marketing'].includes(userPermissions.role); }
+
+function renderIndustryList() {
+  const box = $('industryListBox');
+  if (!box) return;
+  if (!_industryList.length) {
+    box.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:10px 0">尚無分類，請於上方新增（或匯入時自動建立）。</div>';
+    return;
+  }
+  box.innerHTML = _industryList.slice().map(n => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f2f5">
+      <span>${escapeHtml(n)}</span>
+      <button class="ind-del" data-name="${escapeHtml(n)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:3px 8px;cursor:pointer">刪除</button>
+    </div>`).join('');
+  box.querySelectorAll('.ind-del').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm(`刪除分類「${b.dataset.name}」？（已套用此分類的公司不會被清空，只是清單移除）`)) return;
+    const r = await fetch(`${API}/industries/${encodeURIComponent(b.dataset.name)}`, { method: 'DELETE' });
+    if (r.ok) { _industryList = await r.json(); renderIndustryList(); rebuildIndustrySelect(); }
+  }));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const cmSearch = document.getElementById('cmSearchInput');
   if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
+
+  // 匯出
+  const expBtn = document.getElementById('cmExportBtn');
+  if (expBtn) expBtn.addEventListener('click', () => { window.location.href = `${API}/companies/export`; });
+
+  // 匯入
+  const impBtn = document.getElementById('cmImportBtn');
+  const impFile = document.getElementById('cmImportFile');
+  if (impBtn && impFile) {
+    impBtn.addEventListener('click', () => impFile.click());
+    impFile.addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const resEl = document.getElementById('cmImportResult');
+      resEl.textContent = '匯入中…'; resEl.style.color = '#1a73e8';
+      try {
+        const fd = new FormData(); fd.append('file', file);
+        const r = await fetch(`${API}/companies/import`, { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || '匯入失敗');
+        resEl.style.color = '#1e8e3e';
+        resEl.innerHTML = `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>、略過 ${d.skipped}`
+          + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個（${d.industriesAdded.map(escapeHtml).join('、')}）` : '');
+        await loadIndustryOptions();
+        loadCompanyMasterView();
+      } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; }
+      finally { impFile.value = ''; }
+    });
+  }
+
+  // 產業分類管理 modal
+  const indBtn = document.getElementById('cmIndustryBtn');
+  if (indBtn) indBtn.addEventListener('click', async () => {
+    await loadIndustryOptions();
+    renderIndustryList();
+    document.getElementById('industryModalOverlay').classList.add('open');
+  });
+  const indClose = document.getElementById('industryModalClose');
+  if (indClose) indClose.addEventListener('click', () => document.getElementById('industryModalOverlay').classList.remove('open'));
+  const addInd = document.getElementById('addIndustryBtn');
+  const newInd = document.getElementById('newIndustryInput');
+  const doAdd = async () => {
+    const name = (newInd.value || '').trim(); if (!name) return;
+    const r = await fetch(`${API}/industries`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const d = await r.json();
+    if (r.ok) { _industryList = d.industries; newInd.value = ''; renderIndustryList(); rebuildIndustrySelect(); }
+    else alert(d.error || '新增失敗');
+  };
+  if (addInd) addInd.addEventListener('click', doAdd);
+  if (newInd) newInd.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
 });
 
 $('navHome').addEventListener('click', showDashboard);
@@ -2389,7 +2482,7 @@ function openModal(contact = null) {
     $('address').value = contact.address || '';
     $('website').value = contact.website || '';
     $('taxId').value = contact.taxId || '';
-    $('industry').value = contact.industry || '';
+    rebuildIndustrySelect(contact.industry || '');
     $('industry').dataset.manual = contact.industry ? 'true' : 'false';
     $('autoDetectBadge').style.display = 'none';
     $('systemVendor').value = contact.systemVendor || '';
@@ -2418,7 +2511,7 @@ function openModal(contact = null) {
     renderJfSelector(jfKey);
   } else {
     $('modalTitle').textContent = currentSection === 'prospects' ? '新增潛在客戶' : '新增名片';
-    $('industry').value = '';
+    rebuildIndustrySelect('');
     $('industry').dataset.manual = 'false';
     $('autoDetectBadge').style.display = 'none';
     if ($('opportunityStage')) $('opportunityStage').value = 'C'; // 預設 Pipeline
@@ -7427,6 +7520,7 @@ function toggleDarkMode() {
 initUser();
 loadPermissions();
 loadContacts(); // 背景載入聯絡人，供圖表與拜訪記錄使用
+loadIndustryOptions(); // 載入動態產業分類，建立名片表單下拉
 
 // ── 側邊欄拖動排序 ─────────────────────────────────────────
 (function initSidebarDrag() {
