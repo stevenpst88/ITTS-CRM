@@ -855,6 +855,7 @@ async function loadCompanyMasterView() {
   const tbody = $('cmTbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">載入中…</td></tr>';
   try {
+    if (cmCanManage() && !_industryList.length) { try { await loadIndustryOptions(); } catch {} }
     const r = await fetch(`${API}/companies`);
     if (!r.ok) throw new Error('載入失敗 (' + r.status + ')');
     _cmData = await r.json();
@@ -881,10 +882,39 @@ function renderCompanyMasterList() {
       <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
       <td>${c.contactCount || 0}</td>
       <td>${cmFmtCap(c.capital)}</td>
-      <td>${escapeHtml(c.industry || '')}</td>
+      <td>${cmIndustryCell(c)}</td>
     </tr>`).join('');
   tbody.querySelectorAll('.cm-row').forEach(tr =>
     tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
+  // 產業下拉：admin/行銷 可直接選取即存
+  tbody.querySelectorAll('.cm-ind-sel').forEach(sel => {
+    sel.addEventListener('click', e => e.stopPropagation());
+    sel.addEventListener('change', async e => {
+      e.stopPropagation();
+      const id = sel.dataset.id, industry = sel.value;
+      sel.disabled = true;
+      try {
+        const r = await fetch(`${API}/companies/${encodeURIComponent(id)}/set-industry`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industry })
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || '儲存失敗'); }
+        const comp = _cmData.find(x => x.id === id); if (comp) comp.industry = industry;
+        if (industry && !_industryList.includes(industry)) { _industryList.push(industry); rebuildIndustrySelect(); }
+      } catch (err) { alert('❌ ' + err.message); }
+      finally { sel.disabled = false; }
+    });
+  });
+}
+
+// 企業主檔列表的產業欄：admin/行銷 → 下拉可選；其他角色 → 純文字
+function cmIndustryCell(c) {
+  const cur = c.industry || '';
+  if (!cmCanManage()) return escapeHtml(cur);
+  const arr = _industryList.slice();
+  if (cur && !arr.includes(cur)) arr.unshift(cur);
+  const opts = '<option value="">—</option>'
+    + arr.map(n => `<option value="${escapeHtml(n)}" ${n === cur ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  return `<select class="cm-ind-sel" data-id="${escapeHtml(c.id)}" style="font-size:13px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px;max-width:150px">${opts}</select>`;
 }
 
 async function openCompanyMasterDetail(id) {

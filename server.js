@@ -6375,6 +6375,26 @@ app.get('/api/companies/import-template', requireAuth, (req, res) => {
   res.send(buf);
 });
 
+// ── 單筆設定企業主檔產業（清單內直接下拉選取，admin + 行銷）──
+app.post('/api/companies/:id/set-industry', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.id === req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+  const industry = String(req.body && req.body.industry || '').trim();
+  m.industry = industry;
+  m.industrySource = '手動';
+  m.updatedAt = new Date().toISOString();
+  // 新分類自動加入清單
+  if (industry) {
+    if (!data.industries) data.industries = [];
+    if (!data.industries.includes(industry)) data.industries.push(industry);
+  }
+  db.save(data);
+  writeLog('SET_COMPANY_INDUSTRY', req.session.user.username, m.name || m.id, `產業=${industry || '(清空)'}`, req);
+  res.json({ success: true, industry });
+});
+
 // 單一公司彙整明細（明細內容亦過濾到可見範圍，避免跨 BU 外洩）
 app.get('/api/companies/:id', requireAuth, (req, res) => {
   const data = db.load();

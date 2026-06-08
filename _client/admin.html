@@ -5010,13 +5010,23 @@
     async function loadCompaniesView() {
       const tbody = document.getElementById('companiesTbody');
       try {
-        const r = await fetch('/api/admin/companies');
+        const [r, ri] = await Promise.all([fetch('/api/admin/companies'), fetch('/api/industries')]);
         if (!r.ok) throw new Error('載入失敗 (HTTP ' + r.status + ')');
         _companiesData = await r.json();
+        _admIndustries = ri.ok ? await ri.json() : [];
         renderCompaniesTable();
       } catch (e) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#e74c3c;padding:24px">${e.message}</td></tr>`;
       }
+    }
+    // 產業下拉 cell（清單內直接選）
+    function companyIndustryCell(c) {
+      const cur = c.industry || '';
+      let opts = '<option value="">—</option>';
+      const list = _admIndustries.slice();
+      if (cur && !list.includes(cur)) list.unshift(cur);  // 舊值不在清單也顯示
+      opts += list.map(n => `<option value="${escapeAttr(n)}" ${n === cur ? 'selected' : ''}>${escapeAttr(n)}</option>`).join('');
+      return `<select class="company-ind-sel" data-id="${escapeAttr(c.id)}" style="font-size:12px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px;max-width:150px">${opts}</select>`;
     }
 
     function renderCompaniesTable() {
@@ -5049,12 +5059,29 @@
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
           <td>${cap}</td>
-          <td style="font-size:12px">${escapeAttr(c.industry || '')}</td>
+          <td>${companyIndustryCell(c)}</td>
           <td style="font-size:12px">${gcis}</td>
         </tr>`;
       }).join('');
       tbody.querySelectorAll('.company-row').forEach(tr => {
         tr.addEventListener('click', () => openCompanyDetail(tr.dataset.id));
+      });
+      // 產業下拉：直接選取即存（阻止冒泡，不觸發開明細）
+      tbody.querySelectorAll('.company-ind-sel').forEach(sel => {
+        sel.addEventListener('click', e => e.stopPropagation());
+        sel.addEventListener('change', async (e) => {
+          e.stopPropagation();
+          const id = sel.dataset.id, industry = sel.value;
+          sel.disabled = true;
+          try {
+            const r = await fetch(`/api/companies/${encodeURIComponent(id)}/set-industry`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industry })
+            });
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || '儲存失敗'); }
+            const comp = _companiesData.find(x => x.id === id); if (comp) comp.industry = industry;
+          } catch (err) { alert('❌ ' + err.message); loadCompaniesView(); }
+          finally { sel.disabled = false; }
+        });
       });
       // 「設定統編」按鈕（阻止冒泡，不觸發開明細）
       tbody.querySelectorAll('.company-settax').forEach(btn => {
