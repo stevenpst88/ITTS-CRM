@@ -609,6 +609,7 @@ function runCompanyImport(working, rows, COL) {
   let created = 0, updated = 0, skipped = 0, duplicates = 0;
   const addedInd = new Set();
   const dupList = [], updateList = [];
+  const touchedById = new Map(); // 本次處理到的主檔（去重，供客戶池 placeholder 候選判斷）
 
   rows.forEach((r, idx) => {
     const rowNum = idx + 2; // 檔案第 1 列為標頭
@@ -622,6 +623,7 @@ function runCompanyImport(working, rows, COL) {
     const before = working.companies.length;
     const m = ensureCompanyMaster(working, { taxId, company: name });
     if (!m) { skipped++; return; }
+    touchedById.set(m.id, m);
     const isCreate = working.companies.length > before;
 
     if (isCreate) {
@@ -661,7 +663,57 @@ function runCompanyImport(working, rows, COL) {
     m.updatedAt = new Date().toISOString();
   });
 
-  return { created, updated, duplicates, skipped, industriesAdded: [...addedInd], dupList, updateList };
+  const touched = [...touchedById.values()].map(m => ({ id: m.id, name: m.name, taxId: m.taxId || '' }));
+  return { created, updated, duplicates, skipped, industriesAdded: [...addedInd], dupList, updateList, touched };
+}
+
+// 建立「客戶池待補名片」placeholder（企業主檔匯入用）：owner=_pool，待 Manager 分配給業務。
+// 欄位比照商機匯入的 ensurePoolPlaceholder；companyId 由呼叫端帶入（已知主檔 id）。
+function createPoolPlaceholder(data, { company, taxId, companyId }, req) {
+  if (!data.contacts) data.contacts = [];
+  const now = new Date().toISOString();
+  const p = {
+    id: uuidv4(),
+    owner: POOL_USERNAME,
+    name: '（待補名片）',
+    nameEn: '',
+    company: company || '',
+    title: '', phone: '', mobile: '', ext: '', email: '', address: '', website: '',
+    taxId: taxId || '',
+    industry: '',
+    note: '企業主檔匯入自動建立（待 Manager 在客戶池分配給業務）',
+    bu: [],
+    isPlaceholder: true,
+    companyId: companyId || null,
+    createdAt: now,
+    importedAt: now,
+  };
+  data.contacts.push(p);
+  try { writeContactAudit('CREATE', req, p, []); } catch {}
+  return p;
+}
+
+// 業務替「已有待補名片」的公司新增真名片後，自動軟刪除同公司同 owner 的舊 placeholder。
+// 回傳清掉張數。excludeId 用來排除剛建立的那張本體（避免誤刪自己）。
+function cleanupOwnerPlaceholder(data, owner, companyId, req, excludeId) {
+  if (!owner || !companyId || !Array.isArray(data.contacts)) return 0;
+  const operator = (req && req.session && req.session.user && req.session.user.username) || 'system';
+  let n = 0;
+  for (const c of data.contacts) {
+    if (c.deleted || !c.isPlaceholder) continue;
+    if (c.owner !== owner || c.companyId !== companyId) continue;
+    if (excludeId && c.id === excludeId) continue;
+    c.deleted = true;
+    c.deletedAt = new Date().toISOString();
+    c.deletedBy = operator;
+    c.deletedReason = '業務補真名片，自動清除待補名片';
+    try { writeContactAudit('DELETE', req, c, []); } catch {}
+    n++;
+  }
+  if (n) {
+    try { writeLog('CLEANUP_PLACEHOLDER', operator, companyId, `補真名片後自動清除待補名片 ${n} 張`, req); } catch {}
+  }
+  return n;
 }
 
 // 統編感知去重：有統編用「業務+姓名+統編」；無統編退回「業務+姓名+公司名」
@@ -2371,6 +2423,10 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   if (_master) contact.companyId = _master.id;
   data.contacts.push(contact);
   syncCompanyFields(data, contact);  // 同步公司層級欄位到同公司其他空白名片
+  // 補真名片後，自動清除同公司同 owner 的「待補名片」placeholder（企業主檔匯入分配而來）
+  if (!contact.isPlaceholder && contact.companyId) {
+    cleanupOwnerPlaceholder(data, owner, contact.companyId, req, contact.id);
+  }
   db.save(data);
   writeContactAudit('CREATE', req, contact, []);
   res.status(201).json(contact);
@@ -2435,6 +2491,11 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   // 企業主檔：公司/統編可能變動 → 重新掛勾（找不到則自動建立）
   const _master = ensureCompanyMaster(data, updated);
   updated.companyId = _master ? _master.id : (updated.companyId || '');
+  // 待補名片被業務編輯成真名片（填了真實姓名）→ 轉正、清掉 placeholder 旗標，
+  // 避免日後新增別張卡時被自動清理而誤刪
+  if (old.isPlaceholder && updated.name && updated.name.trim() && updated.name.trim() !== '（待補名片）') {
+    updated.isPlaceholder = false;
+  }
   // 計算變更 diff
   const changes = CONTACT_FIELDS
     .filter(f => String(old[f] ?? '') !== String(updated[f] ?? ''))
@@ -6428,6 +6489,7 @@ app.post('/api/companies/import', requireAuth,
     if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
 
     const dryRun = req.query.dryRun === '1';
+    const toPool = req.query.toPool === '1';   // 匯入後把「無名片主檔」建成客戶池待補名片
     const dataRows = rows.slice(1);
     const data = db.load();
     // 乾跑：在 companies/industries 的 clone 上跑，丟棄不落地；正式：直接在 data 上跑
@@ -6435,6 +6497,12 @@ app.post('/api/companies/import', requireAuth,
       ? { companies: JSON.parse(JSON.stringify(data.companies || [])), industries: [...(data.industries || [])] }
       : data;
     const out = runCompanyImport(working, dataRows, COL);
+
+    // 客戶池候選：本次處理到、但「目前沒有任何名片」的主檔（用真實 data.contacts 判斷；
+    // 已含上次建的 placeholder，重匯不會重複）。dryRun/commit 一致。
+    const contactCompanyIds = new Set();
+    (data.contacts || []).forEach(c => { if (!c.deleted && c.companyId) contactCompanyIds.add(c.companyId); });
+    const poolCandidates = (out.touched || []).filter(t => !contactCompanyIds.has(t.id));
 
     if (dryRun) {
       return res.json({
@@ -6444,13 +6512,23 @@ app.post('/api/companies/import', requireAuth,
         industriesAdded: out.industriesAdded,
         duplicateSamples: out.dupList.slice(0, 50),
         updateSamples: out.updateList.slice(0, 50),
+        poolPlaceholders: poolCandidates.length,   // 勾選放入池時，將建立的待補名片數
       });
+    }
+
+    let poolCreated = 0;
+    if (toPool) {
+      for (const t of poolCandidates) {
+        createPoolPlaceholder(data, { company: t.name, taxId: t.taxId, companyId: t.id }, req);
+        poolCreated++;
+      }
     }
 
     db.save(data);
     writeLog('IMPORT_COMPANIES', req.session.user.username, 'system',
-      `企業主檔匯入：新增 ${out.created}、更新 ${out.updated}、疑似重複 ${out.duplicates}、略過 ${out.skipped}、新產業 ${out.industriesAdded.length}`, req);
-    res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded });
+      `企業主檔匯入：新增 ${out.created}、更新 ${out.updated}、疑似重複 ${out.duplicates}、略過 ${out.skipped}、新產業 ${out.industriesAdded.length}` +
+      (toPool ? `、客戶池待補名片 ${poolCreated}` : ''), req);
+    res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded, poolCreated });
   });
 
 // ── 企業主檔匯入範本下載（admin + 行銷）──
@@ -6579,6 +6657,8 @@ app.get('/api/admin/pool/contacts', requireAuth, (req, res) => {
       createdAt: c.createdAt || '',
       importedAt: c.importedAt || c.createdAt || '',
       bu: Array.isArray(c.bu) ? c.bu : (c.bu ? [c.bu] : []),
+      isPlaceholder: !!c.isPlaceholder,
+      note: c.note || '',
       oppCount, visitCount, contractCount
     };
   });

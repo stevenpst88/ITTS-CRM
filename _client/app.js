@@ -1032,6 +1032,7 @@ function renderIndustryList() {
 
 // ── 企業主檔匯入：乾跑預覽 → 確認寫入 ──
 let _cmImportFile = null;
+let _cmImportToPool = true;
 function cmDupReasonText(reason) {
   if (reason === 'import-has-taxid-existing-none') return '現有同名主檔無統編、此列帶統編 → 會各自獨立成兩筆（建議先為現有主檔設定統編）';
   if (reason === 'import-no-taxid-existing-has')   return '此列未填統編、現有同名主檔已有統編 → 會新增一筆無統編重複（建議補上統編）';
@@ -1045,11 +1046,13 @@ function cmChangeText(c) {
 }
 async function cmImportPreview(file) {
   const resEl = document.getElementById('cmImportResult');
+  const toPoolEl = document.getElementById('cmImportToPool');
+  _cmImportToPool = toPoolEl ? toPoolEl.checked : true;
   resEl.style.color = '#1a73e8'; resEl.textContent = '分析中…';
   let d;
   try {
     const fd = new FormData(); fd.append('file', file);
-    const r = await fetch(`${API}/companies/import?dryRun=1`, { method: 'POST', body: fd });
+    const r = await fetch(`${API}/companies/import?dryRun=1${_cmImportToPool ? '&toPool=1' : ''}`, { method: 'POST', body: fd });
     d = await r.json();
     if (!r.ok) throw new Error(d.error || '分析失敗');
   } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; return; }
@@ -1064,7 +1067,12 @@ function cmShowImportPreview(d) {
     + chip('將更新', d.updated, '#1a73e8')
     + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
     + chip('略過', d.skipped, '#9ca3af')
+    + (_cmImportToPool && d.poolPlaceholders ? chip('客戶池待補', d.poolPlaceholders, '#7c3aed') : '')
     + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
+
+  if (_cmImportToPool && d.poolPlaceholders > 0) {
+    html += `<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#5b21b6;font-size:13px">📋 將建立 <b>${d.poolPlaceholders}</b> 筆「待補名片」放入客戶池（無名片的公司），供 Manager 分配給業務後再補真實名片。</div>`;
+  }
 
   if (d.duplicates > 0) {
     html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#92400e;font-size:13px">⚠️ 偵測到 <b>${d.duplicates}</b> 筆疑似與現有歷史資料重複。寫入後會「新增」成另一筆主檔（<b>不會覆蓋</b>現有資料）。建議取消後補上統編再匯入，或確認後再手動合併。</div>`;
@@ -1102,13 +1110,14 @@ async function cmCommitImport() {
   resEl.style.color = '#1a73e8'; resEl.textContent = '寫入中…';
   try {
     const fd = new FormData(); fd.append('file', file);
-    const r = await fetch(`${API}/companies/import`, { method: 'POST', body: fd });
+    const r = await fetch(`${API}/companies/import${_cmImportToPool ? '?toPool=1' : ''}`, { method: 'POST', body: fd });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '匯入失敗');
     resEl.style.color = '#1e8e3e';
     resEl.innerHTML = `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>`
       + (d.duplicates ? `、<span style="color:#d97706">疑似重複 <b>${d.duplicates}</b></span>` : '')
       + `、略過 ${d.skipped}`
+      + (d.poolCreated ? `、<span style="color:#7c3aed">📋 客戶池待補名片 <b>${d.poolCreated}</b></span>` : '')
       + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個` : '');
     await loadIndustryOptions();
     loadCompanyMasterView();

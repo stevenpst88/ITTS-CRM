@@ -591,6 +591,9 @@
               <button class="btn btn-sm" id="companyTemplateBtn" style="background:#fff7ed;color:#9a3412">⬇ 範本</button>
               <button class="btn btn-sm" id="companyExportBtn" style="background:#f0f2f5;color:#333">⬇ 匯出</button>
               <button class="btn btn-sm" id="companyImportBtn" style="background:#f0f2f5;color:#333">⬆ 匯入</button>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;cursor:pointer" title="勾選後，匯入的無名片公司會建成『待補名片』放入客戶池，供 Manager 分配給業務">
+                <input type="checkbox" id="companyImportToPool" checked> 匯入後放入客戶池
+              </label>
               <button class="btn btn-sm" id="companyIndustryBtn" style="background:#f0f2f5;color:#333">🏷️ 產業分類</button>
               <input type="file" id="companyImportFile" accept=".xlsx,.xls" style="display:none">
             </div>
@@ -4916,7 +4919,7 @@
         return `
           <tr>
             <td><input type="checkbox" class="pool-row-check" data-id="${c.id}"></td>
-            <td><strong>${escapeAttr(c.name)}</strong></td>
+            <td><strong>${escapeAttr(c.name)}</strong>${c.isPlaceholder ? ' <span title="企業主檔匯入建立，待補真實名片" style="display:inline-block;background:#ede9fe;color:#6d28d9;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">待補名片</span>' : ''}</td>
             <td>${escapeAttr(c.company)}</td>
             <td style="color:#6b7280;font-size:12px">${escapeAttr(c.title)}</td>
             <td>${relatedHtml}</td>
@@ -5301,6 +5304,7 @@
     });
     // 企業主檔匯入：乾跑預覽 → 確認寫入
     let _companyImportFile = null;
+    let _companyImportToPool = true;
     document.getElementById('companyImportBtn').addEventListener('click', () => document.getElementById('companyImportFile').click());
     document.getElementById('companyImportFile').addEventListener('change', e => {
       const file = e.target.files[0];
@@ -5320,11 +5324,13 @@
     }
     async function companyImportPreview(file) {
       const resultEl = document.getElementById('companyBuildResult');
+      const toPool = document.getElementById('companyImportToPool').checked;
+      _companyImportToPool = toPool;
       resultEl.innerHTML = '<div style="color:#1a73e8">分析中…</div>';
       let d;
       try {
         const fd = new FormData(); fd.append('file', file);
-        const r = await fetch('/api/companies/import?dryRun=1', { method: 'POST', body: fd });
+        const r = await fetch('/api/companies/import?dryRun=1' + (toPool ? '&toPool=1' : ''), { method: 'POST', body: fd });
         d = await r.json();
         if (!r.ok) throw new Error(d.error || '分析失敗');
       } catch (err) {
@@ -5343,7 +5349,11 @@
         + chip('將更新', d.updated, '#1a73e8')
         + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
         + chip('略過', d.skipped, '#9ca3af')
+        + (_companyImportToPool && d.poolPlaceholders ? chip('客戶池待補', d.poolPlaceholders, '#7c3aed') : '')
         + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
+      if (_companyImportToPool && d.poolPlaceholders > 0) {
+        html += `<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#5b21b6;font-size:13px">📋 將建立 <b>${d.poolPlaceholders}</b> 筆「待補名片」放入客戶池（無名片的公司），供 Manager 分配給業務後再補真實名片。</div>`;
+      }
       if (d.duplicates > 0) {
         html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#92400e;font-size:13px">⚠️ 偵測到 <b>${d.duplicates}</b> 筆疑似與現有歷史資料重複。寫入後會「新增」成另一筆主檔（<b>不會覆蓋</b>現有資料）。建議取消後補上統編再匯入，或確認後再手動合併。</div>`;
         html += `<div style="overflow:auto;max-height:260px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#faf5eb"><th style="padding:6px 8px;text-align:left">列</th><th style="padding:6px 8px;text-align:left">匯入公司</th><th style="padding:6px 8px;text-align:left">統編</th><th style="padding:6px 8px;text-align:left">原因 / 對應現有主檔</th></tr></thead><tbody>`;
@@ -5376,13 +5386,14 @@
       resultEl.innerHTML = '<div style="color:#1a73e8">寫入中…</div>';
       try {
         const fd = new FormData(); fd.append('file', file);
-        const r = await fetch('/api/companies/import', { method: 'POST', body: fd });
+        const r = await fetch('/api/companies/import' + (_companyImportToPool ? '?toPool=1' : ''), { method: 'POST', body: fd });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || '匯入失敗');
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
           + `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>`
           + (d.duplicates ? `、疑似重複 <b>${d.duplicates}</b>` : '')
           + `、略過 ${d.skipped}`
+          + (d.poolCreated ? `、📋 客戶池待補名片 <b>${d.poolCreated}</b>` : '')
           + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '') + `</div>`;
         loadCompaniesView();
       } catch (err) {
