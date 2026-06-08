@@ -6256,6 +6256,109 @@ app.get('/api/companies', requireAuth, (req, res) => {
   res.json(companies);
 });
 
+// ── 權限：admin 或 marketing（企業主檔匯入匯出、產業分類管理）──
+function isAdminOrMarketing(req) {
+  return ['admin', 'marketing'].includes(req.session && req.session.user && req.session.user.role);
+}
+const sortZh = (a, b) => String(a).localeCompare(String(b), 'zh-TW');
+
+// ── 產業分類清單（動態，初始空白，行銷/admin 可增刪）──
+app.get('/api/industries', requireAuth, (req, res) => {
+  const data = db.load();
+  res.json((data.industries || []).slice().sort(sortZh));
+});
+app.post('/api/industries', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const name = String(req.body && req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: '請輸入分類名稱' });
+  const data = db.load();
+  if (!data.industries) data.industries = [];
+  if (!data.industries.includes(name)) {
+    data.industries.push(name);
+    db.save(data);
+    writeLog('ADD_INDUSTRY', req.session.user.username, name, '新增產業分類', req);
+  }
+  res.json({ success: true, industries: data.industries.slice().sort(sortZh) });
+});
+app.delete('/api/industries/:name', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const name = decodeURIComponent(req.params.name || '');
+  const data = db.load();
+  data.industries = (data.industries || []).filter(x => x !== name);
+  db.save(data);
+  writeLog('DEL_INDUSTRY', req.session.user.username, name, '刪除產業分類', req);
+  res.json({ success: true, industries: (data.industries || []).slice().sort(sortZh) });
+});
+
+// ── 企業主檔匯出（admin + 行銷）──
+app.get('/api/companies/export', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const countById = {};
+  (data.contacts || []).forEach(c => { if (!c.deleted && c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
+  const headers = ['公司名稱', '統一編號', '產業', '資本額', '名片數', '資料來源'];
+  const rows = (data.companies || []).map(m => [
+    m.name || '', m.taxId || '', m.industry || '',
+    (m.capital != null && m.capital !== '') ? m.capital : '',
+    countById[m.id] || 0, m.industrySource || ''
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '企業主檔');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('企業主檔.xlsx')}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
+// ── 企業主檔匯入（admin + 行銷）──
+// 最基本：公司名稱 + 統一編號（可含產業）；upsert by 統編；新產業自動加入清單
+app.post('/api/companies/import', requireAuth,
+  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res) => {
+    if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+    if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+    let rows;
+    try {
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+    } catch (e) { return res.status(400).json({ error: '檔案解析失敗，請確認格式' }); }
+    if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
+    const header = rows[0].map(h => String(h).trim());
+    const find = (...keys) => { for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; } return -1; };
+    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業') };
+    if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
+
+    const data = db.load();
+    if (!data.companies) data.companies = [];
+    if (!data.industries) data.industries = [];
+    let created = 0, updated = 0, skipped = 0;
+    const addedInd = new Set();
+    rows.slice(1).forEach(r => {
+      const name = COL.name >= 0 ? String(r[COL.name] ?? '').trim() : '';
+      const taxId = COL.taxId >= 0 ? String(r[COL.taxId] ?? '').trim() : '';
+      const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
+      if (!name && !taxId) { skipped++; return; }
+      const before = data.companies.length;
+      const m = ensureCompanyMaster(data, { taxId, company: name });
+      if (!m) { skipped++; return; }
+      (data.companies.length > before) ? created++ : updated++;
+      if (name) m.name = name;                                  // 有提供就更新公司名
+      if (taxId && !m.taxId) { m.taxId = taxId; m.matchKey = 'tax:' + taxId; }
+      if (industry) {
+        m.industry = industry;
+        m.industrySource = '行銷匯入';
+        if (!data.industries.includes(industry)) { data.industries.push(industry); addedInd.add(industry); }
+      }
+      m.updatedAt = new Date().toISOString();
+    });
+    db.save(data);
+    writeLog('IMPORT_COMPANIES', req.session.user.username, 'system',
+      `企業主檔匯入：新增 ${created}、更新 ${updated}、略過 ${skipped}、新產業 ${addedInd.size}`, req);
+    res.json({ success: true, created, updated, skipped, industriesAdded: [...addedInd] });
+  });
+
 // 單一公司彙整明細（明細內容亦過濾到可見範圍，避免跨 BU 外洩）
 app.get('/api/companies/:id', requireAuth, (req, res) => {
   const data = db.load();
