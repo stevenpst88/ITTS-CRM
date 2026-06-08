@@ -2447,8 +2447,11 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     });
   }
   // 企業主檔：自動掛勾（找不到對應主檔則自動建立），維持主檔不過期
+  const _before = (data.companies || []).length;
   const _master = ensureCompanyMaster(data, contact);
   if (_master) contact.companyId = _master.id;
+  // 全新客戶判斷：依公司名/統編比對，這張名片「新建」了一筆主檔（系統首次出現此公司）
+  const _isNewCompany = !!_master && data.companies.length > _before;
   data.contacts.push(contact);
   syncCompanyFields(data, contact);  // 同步公司層級欄位到同公司其他空白名片
   // 補真名片後，自動清除同公司同 owner 的「待補名片」placeholder（企業主檔匯入分配而來）
@@ -2457,7 +2460,12 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   }
   db.save(data);
   writeContactAudit('CREATE', req, contact, []);
-  res.status(201).json(contact);
+  // 全新客戶 → 通知行銷補產業屬性（行銷自己建的不重複通知）。pushNotification 自帶 load/save，故在 db.save 後呼叫
+  let notifiedMarketing = 0;
+  if (_isNewCompany && req.session.user.role !== 'marketing') {
+    notifiedMarketing = notifyMarketingNewCompany(req, _master, owner);
+  }
+  res.status(201).json({ ...contact, newCompany: _isNewCompany, notifiedMarketing });
 });
 
 // ── 更新聯絡人 ──────────────────────────────────────────
@@ -5301,6 +5309,22 @@ function notificationUrlFor(type, refId) {
     default:
       return '/';
   }
+}
+
+// 業務建立「全新客戶」（首次出現的公司、剛新建主檔）→ 通知所有行銷補產業屬性。
+// 回傳通知到的行銷人數。
+function notifyMarketingNewCompany(req, master, ownerUsername) {
+  const auth = loadAuth();
+  const ownerName = (auth.users.find(u => u.username === ownerUsername) || {}).displayName || ownerUsername;
+  const mkts = (auth.users || []).filter(u => u.role === 'marketing' && u.active !== false);
+  if (!mkts.length) return 0;
+  const co = master.name || '(未命名公司)';
+  const tax = master.taxId ? `（統編 ${master.taxId}）` : '（無統編）';
+  const indNote = master.industry ? `，業務暫填產業：${master.industry}` : '（尚無產業）';
+  const title = '🏢 新客戶待補產業屬性';
+  const body = `業務 ${ownerName} 新增了全新客戶「${co}」${tax}${indNote}，請至企業主檔確認/設定產業屬性。`;
+  mkts.forEach(u => { try { pushNotification(u.username, 'new_company_industry', title, body, master.id); } catch {} });
+  return mkts.length;
 }
 
 // ── 合約到期提醒 API ────────────────────────────────────

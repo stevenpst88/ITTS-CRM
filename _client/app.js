@@ -3048,7 +3048,15 @@ $('saveBtn').addEventListener('click', async () => {
       const err = await r.json().catch(() => ({}));
       throw new Error(err.error || `HTTP ${r.status}`);
     }
-    showToast(id ? '已更新聯絡人' : '已新增聯絡人');
+    const d = await r.json().catch(() => ({}));
+    if (!id && d && d.newCompany) {
+      // 全新客戶（系統首次出現此公司）→ 已自動通知行銷補產業屬性
+      showToast(d.notifiedMarketing > 0
+        ? `🏢 全新客戶「${d.company || ''}」已建立，已通知行銷（${d.notifiedMarketing} 位）補產業屬性`
+        : '🏢 全新客戶已建立', 4000);
+    } else {
+      showToast(id ? '已更新聯絡人' : '已新增聯絡人');
+    }
     closeModal();
     loadContacts($('searchInput').value.trim());
   } catch(e) { showToast('儲存失敗：' + e.message); }
