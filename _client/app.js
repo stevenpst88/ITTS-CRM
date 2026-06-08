@@ -2435,8 +2435,31 @@ function openModal(contact = null) {
   $('companyInsightResult').style.display = 'none';
   $('companyInsightResult').innerHTML     = '';
 
+  const ro = applyContactFormReadonly(contact);
   $('modalOverlay').classList.add('open');
-  $('name').focus();
+  (ro ? $('industry') : $('name')).focus();
+}
+
+// 行銷編輯「非自己擁有」的名片時：只開放「產業屬性」，其餘反灰唯讀
+// 回傳 true 表示套用了唯讀模式
+function applyContactFormReadonly(contact) {
+  const form = $('contactForm');
+  if (!form) return false;
+  const all = form.querySelectorAll('input, select, textarea, button');
+  all.forEach(el => { el.disabled = false; });            // 先全部還原可編輯
+  form.classList.remove('mkt-readonly');
+  if ($('mktReadonlyHint')) $('mktReadonlyHint').style.display = 'none';
+
+  const ro = userPermissions.role === 'marketing'
+    && contact && contact.owner && contact.owner !== window._myUsername;
+  if (!ro) return false;
+
+  all.forEach(el => { if (el.id !== 'industry') el.disabled = true; }); // 只留產業
+  // 存檔/取消/關閉 維持可用（要能存產業、能關閉）
+  ['saveBtn', 'cancelBtn', 'modalClose'].forEach(id => { if ($(id)) $(id).disabled = false; });
+  form.classList.add('mkt-readonly');
+  if ($('mktReadonlyHint')) $('mktReadonlyHint').style.display = 'block';
+  return true;
 }
 
 function closeModal() {

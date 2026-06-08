@@ -4574,3 +4574,16 @@ body.dark .cm-empty, body.dark .cm-label { color: #636e7b; }
 body.dark .cm-back-btn { background: #21262d; color: #c9d1d9; }
 body.dark .cm-gcis-badge { background: #0a1f10; color: #3fb950; }
 body.dark .cm-co-name { color: #e6edf3; }
+
+/* ── 行銷唯讀模式：編輯非自己名片時，僅「產業屬性」可改，其餘反灰 ── */
+.mkt-readonly input:disabled,
+.mkt-readonly select:disabled,
+.mkt-readonly textarea:disabled,
+.mkt-readonly button:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; opacity: .75; }
+.mkt-readonly .radio-group { opacity: .5; pointer-events: none; }
+.mkt-readonly #industry { background: #fffbeb !important; border-color: #f59e0b !important; color: #111 !important; cursor: text; box-shadow: 0 0 0 2px rgba(245,158,11,.18); }
+body.dark .mkt-readonly input:disabled,
+body.dark .mkt-readonly select:disabled,
+body.dark .mkt-readonly textarea:disabled,
+body.dark .mkt-readonly button:disabled { background: #161b22; color: #636e7b; }
+body.dark .mkt-readonly #industry { background: #1f1a08 !important; border-color: #f59e0b !important; color: #e6edf3 !important; }
