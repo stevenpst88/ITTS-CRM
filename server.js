@@ -302,7 +302,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   secretary:          ['home','targets','forecast','accountingGroup','callin'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
-  marketing:          ['campaigns','leads'],
+  marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
   user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
   finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
@@ -1865,9 +1865,13 @@ function getViewableOwners(req, dataType) {
     return []; // 聯絡人、拜訪記錄、合約、年度目標秘書看不到
   }
   if (role === 'marketing') {
-    // 行銷只看自己的活動與 Lead，不看業務資料
+    // 活動與 Lead：只看自己的
     if (dataType === 'campaigns' || dataType === 'leads') return [username];
-    return [];
+    // 客戶 / 商機 / 企業主檔：可「檢視」全部業務（編輯仍受 owner 檢查 → 只能改自己建立的）
+    if (dataType === 'contacts' || dataType === 'opportunities') {
+      return auth.users.filter(u => u.username !== POOL_USERNAME).map(u => u.username);
+    }
+    return []; // 其他（合約/帳款/年度目標等）不開放
   }
   return [username]; // 一般業務只看自己
 }
@@ -1896,6 +1900,8 @@ function inferItemBu(item, authOrUsersArr) {
 function filterByBu(req, items) {
   const role = req.session.user.role;
   if (CROSS_BU_ROLES.includes(role)) return items;
+  // 行銷非 BU 制：可見範圍已由 getViewableOwners 控管（客戶/商機=全部），不再走 BU 過濾
+  if (role === 'marketing') return items;
   // 唯讀角色（tecopm）不走 BU 過濾，後續會由 filterByViewGroup() 用集團 memberCompanies 做公司過濾
   if (READONLY_ROLES.includes(role)) return items;
   const myBus = getMyBus(req);
