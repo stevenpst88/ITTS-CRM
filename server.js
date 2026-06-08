@@ -2301,8 +2301,27 @@ app.post('/api/contacts', requireAuth, (req, res) => {
 // ── 更新聯絡人 ──────────────────────────────────────────
 app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const role = req.session.user.role;
   const data = db.load();
   const idx = data.contacts.findIndex(c => c.id === req.params.id && c.owner === owner && !c.deleted);
+
+  // 行銷例外：可修改「任何」名片的「產業屬性」，但僅此一欄（其他欄位一律忽略）
+  if (idx === -1 && role === 'marketing' && req.body.industry !== undefined) {
+    const mIdx = data.contacts.findIndex(c => c.id === req.params.id && !c.deleted);
+    if (mIdx !== -1) {
+      const c = data.contacts[mIdx];
+      const oldInd = c.industry || '';
+      const newInd = String(req.body.industry || '').trim();
+      if (newInd !== oldInd) {
+        c.industry = newInd;
+        c.updatedAt = new Date().toISOString();
+        db.save(data);
+        writeContactAudit('UPDATE', req, c, [{ field: 'industry', fieldLabel: '產業屬性', oldValue: oldInd, newValue: newInd }]);
+      }
+      return res.json(c);
+    }
+  }
+
   if (idx === -1) return res.status(404).json({ error: '找不到此聯絡人' });
   const old = data.contacts[idx];
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
