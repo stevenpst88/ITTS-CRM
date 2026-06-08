@@ -3005,13 +3005,15 @@ $('removeImage').addEventListener('click', () => {
 $('saveBtn').addEventListener('click', async () => {
   const name = $('name').value.trim();
   if (!name) { showToast('請輸入姓名'); $('name').focus(); return; }
+  const company = $('company').value.trim();
+  if (!company) { showToast('請輸入公司名稱'); $('company').focus(); return; }
   const email = $('email').value.trim();
   if (!email) { showToast('請輸入 Email'); $('email').focus(); return; }
 
   const payload = {
     name,
     nameEn: $('nameEn').value.trim(),
-    company: $('company').value.trim(),
+    company,
     title: $('title').value.trim(),
     phone: $('phone').value.trim(),
     mobile: $('mobile').value.trim(),

@@ -2411,6 +2411,10 @@ app.get('/api/contacts', requireAuth, (req, res) => {
 // ── 新增聯絡人 ──────────────────────────────────────────
 app.post('/api/contacts', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  // 公司名稱為必填（新增名片/新客戶一律要有公司，才能掛企業主檔）
+  if (!String(req.body.company || '').trim()) {
+    return res.status(400).json({ error: '公司名稱為必填' });
+  }
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const data = db.load();
