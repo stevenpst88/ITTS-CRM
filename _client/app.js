@@ -852,6 +852,10 @@ async function loadCompanyMasterView() {
   if (listWrap) listWrap.style.display = '';
   const tools = $('cmAdminTools');
   if (tools) tools.style.display = cmCanManage() ? 'inline-flex' : 'none';
+  const hint = $('cmHint');
+  if (hint) hint.textContent = cmCanManage()
+    ? '顯示全部企業主檔（含尚無名片的公司，例如剛匯入者）。點任一列查看該公司彙整。'
+    : '只顯示你（及轄下業務）名下客戶所屬的公司。點任一列查看該公司彙整。';
   const tbody = $('cmTbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:28px">載入中…</td></tr>';
   try {

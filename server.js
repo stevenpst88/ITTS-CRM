@@ -6322,8 +6322,11 @@ app.get('/api/companies', requireAuth, (req, res) => {
   const countById = {};
   contacts.forEach(c => { if (c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
 
+  // 行銷/admin 是企業主檔的維護者 → 連「尚無名片」的主檔（如剛匯入）也要看得到，
+  // 數字才會與後台一致；一般業務維持只看「自己客戶所屬」的公司（有名片者）。
+  const seeAll = isAdminOrMarketing(req);
   const companies = (data.companies || [])
-    .filter(m => countById[m.id])
+    .filter(m => seeAll || countById[m.id])
     .map(m => ({
       id: m.id, name: m.name, taxId: m.taxId || '', capital: m.capital,
       industry: m.industry || '', address: m.address || '', website: m.website || '',
