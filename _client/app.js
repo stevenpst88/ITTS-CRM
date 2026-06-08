@@ -1000,6 +1000,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const cmSearch = document.getElementById('cmSearchInput');
   if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
 
+  // 下載匯入範本
+  const tplBtn = document.getElementById('cmTemplateBtn');
+  if (tplBtn) tplBtn.addEventListener('click', () => { window.location.href = `${API}/companies/import-template`; });
+
   // 匯出
   const expBtn = document.getElementById('cmExportBtn');
   if (expBtn) expBtn.addEventListener('click', () => { window.location.href = `${API}/companies/export`; });

@@ -588,6 +588,7 @@
               <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
               <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
+              <button class="btn btn-sm" id="companyTemplateBtn" style="background:#fff7ed;color:#9a3412">⬇ 範本</button>
               <button class="btn btn-sm" id="companyExportBtn" style="background:#f0f2f5;color:#333">⬇ 匯出</button>
               <button class="btn btn-sm" id="companyImportBtn" style="background:#f0f2f5;color:#333">⬆ 匯入</button>
               <button class="btn btn-sm" id="companyIndustryBtn" style="background:#f0f2f5;color:#333">🏷️ 產業分類</button>
@@ -5250,6 +5251,9 @@
 
     // ── 🏢 企業主檔：匯出 / 匯入 / 產業分類管理（admin）──
     let _admIndustries = [];
+    document.getElementById('companyTemplateBtn').addEventListener('click', () => {
+      window.location.href = '/api/companies/import-template';
+    });
     document.getElementById('companyExportBtn').addEventListener('click', () => {
       window.location.href = '/api/companies/export';
     });

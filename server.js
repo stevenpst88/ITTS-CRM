@@ -6359,6 +6359,22 @@ app.post('/api/companies/import', requireAuth,
     res.json({ success: true, created, updated, skipped, industriesAdded: [...addedInd] });
   });
 
+// ── 企業主檔匯入範本下載（admin + 行銷）──
+app.get('/api/companies/import-template', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const headers = ['公司名稱', '統一編號', '產業'];
+  const sample1 = ['台灣積體電路製造股份有限公司', '22099131', '半導體'];
+  const sample2 = ['中國砂輪企業股份有限公司', '03089008', '製造業'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample1, sample2]);
+  ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '企業主檔匯入範本');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('企業主檔匯入範本.xlsx')}`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
 // 單一公司彙整明細（明細內容亦過濾到可見範圍，避免跨 BU 外洩）
 app.get('/api/companies/:id', requireAuth, (req, res) => {
   const data = db.load();
