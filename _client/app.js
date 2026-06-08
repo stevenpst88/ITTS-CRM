@@ -936,9 +936,11 @@ function renderCompanyMasterList() {
         const r = await fetch(`${API}/companies/${encodeURIComponent(id)}/set-industry`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industry })
         });
-        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || '儲存失敗'); }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || '儲存失敗');
         const comp = _cmData.find(x => x.id === id); if (comp) comp.industry = industry;
         if (industry && !_industryList.includes(industry)) { _industryList.push(industry); rebuildIndustrySelect(); }
+        if (d.synced > 0 && typeof showToast === 'function') showToast(`✓ 產業已更新，覆蓋同步該公司 ${d.synced} 張名片`);
       } catch (err) { alert('❌ ' + err.message); }
       finally { sel.disabled = false; }
     });

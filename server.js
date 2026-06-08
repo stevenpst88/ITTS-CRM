@@ -537,6 +537,21 @@ function syncCompanyFields(data, contact) {
   });
 }
 
+// 主檔產業屬性「覆蓋式」下放到該公司所有名片（依 companyId）：不只補空白、不限 owner，
+// 已有值也覆蓋。回傳實際變更的名片數。（不逐張寫稽核以免效能問題；由呼叫端寫一筆摘要 log。）
+function overwriteContactsIndustryByCompany(data, companyId, industry) {
+  if (!companyId) return 0;
+  const ind = String(industry || '');
+  let n = 0;
+  (data.contacts || []).forEach(c => {
+    if (c.deleted || c.companyId !== companyId) return;
+    if ((c.industry || '') === ind) return;   // 已相同則略過
+    c.industry = ind;
+    n++;
+  });
+  return n;
+}
+
 // ════════════════════════════════════════════════════════════
 // 🏢 企業主檔（Company Master）— Phase 1 地基
 //   一統編一主檔：統編優先當唯一鍵，無統編用「正規化公司名」fallback
@@ -6578,9 +6593,12 @@ app.post('/api/companies/:id/set-industry', requireAuth, (req, res) => {
     if (!data.industries) data.industries = [];
     if (!data.industries.includes(industry)) data.industries.push(industry);
   }
+  // 覆蓋式同步：主檔產業 → 該公司底下所有名片（含歷史資料，不一一手動調整）
+  const synced = overwriteContactsIndustryByCompany(data, m.id, industry);
   db.save(data);
-  writeLog('SET_COMPANY_INDUSTRY', req.session.user.username, m.name || m.id, `產業=${industry || '(清空)'}`, req);
-  res.json({ success: true, industry });
+  writeLog('SET_COMPANY_INDUSTRY', req.session.user.username, m.name || m.id,
+    `產業=${industry || '(清空)'}` + (synced ? `，覆蓋同步名片 ${synced} 張` : ''), req);
+  res.json({ success: true, industry, synced });
 });
 
 // ── 刪除企業主檔（admin + 行銷）──
