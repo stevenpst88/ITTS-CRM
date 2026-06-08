@@ -606,9 +606,9 @@ function runCompanyImport(working, rows, COL) {
   };
   working.companies.forEach(addNorm);
 
-  let created = 0, updated = 0, skipped = 0, duplicates = 0;
+  let created = 0, updated = 0, skipped = 0, duplicates = 0, noTaxId = 0;
   const addedInd = new Set();
-  const dupList = [], updateList = [];
+  const dupList = [], updateList = [], noTaxIdList = [];
   const touchedById = new Map(); // 本次處理到的主檔（去重，供客戶池 placeholder 候選判斷）
 
   rows.forEach((r, idx) => {
@@ -639,6 +639,11 @@ function runCompanyImport(working, rows, COL) {
         }
       } else {
         created++;
+        // 無統編的新公司（如國外客戶）→ 列入警示（仍可匯入，只是改以公司名比對、無法用統編去重）
+        if (!taxId) {
+          noTaxId++;
+          if (noTaxIdList.length < 200) noTaxIdList.push({ rowNum, name });
+        }
       }
       addNorm(m); // 納入索引，讓檔案內後續同名列也能偵測
     } else {
@@ -664,7 +669,7 @@ function runCompanyImport(working, rows, COL) {
   });
 
   const touched = [...touchedById.values()].map(m => ({ id: m.id, name: m.name, taxId: m.taxId || '' }));
-  return { created, updated, duplicates, skipped, industriesAdded: [...addedInd], dupList, updateList, touched };
+  return { created, updated, duplicates, skipped, noTaxId, industriesAdded: [...addedInd], dupList, updateList, noTaxIdList, touched };
 }
 
 // 建立「客戶池待補名片」placeholder（企業主檔匯入用）：owner=_pool，待 Manager 分配給業務。
@@ -6518,9 +6523,11 @@ app.post('/api/companies/import', requireAuth,
         dryRun: true,
         totalRows: dataRows.length,
         created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped,
+        noTaxId: out.noTaxId,                      // 無統編的新公司數（如國外客戶）→ 警示
         industriesAdded: out.industriesAdded,
         duplicateSamples: out.dupList.slice(0, 50),
         updateSamples: out.updateList.slice(0, 50),
+        noTaxIdSamples: out.noTaxIdList.slice(0, 50),
         poolPlaceholders: poolCandidates.length,   // 勾選放入池時，將建立的待補名片數
       });
     }

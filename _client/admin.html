@@ -5384,9 +5384,17 @@
         + chip('將新增', d.created, '#1e8e3e')
         + chip('將更新', d.updated, '#1a73e8')
         + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
+        + (d.noTaxId ? chip('無統編', d.noTaxId, '#ea580c') : '')
         + chip('略過', d.skipped, '#9ca3af')
         + (_companyImportToPool && d.poolPlaceholders ? chip('客戶池待補', d.poolPlaceholders, '#7c3aed') : '')
         + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
+      if (d.noTaxId > 0) {
+        html += `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#9a3412;font-size:13px">🌐 偵測到 <b>${d.noTaxId}</b> 筆<b>無統一編號</b>的新公司（如國外客戶）。將以<b>公司名</b>比對（無法用統編去重，日後同名易產生重複）。確認後仍會照常匯入。</div>`;
+        html += `<div style="overflow:auto;max-height:160px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#fff7ed"><th style="padding:6px 8px;text-align:left;width:60px">列</th><th style="padding:6px 8px;text-align:left">公司名稱（無統編）</th></tr></thead><tbody>`;
+        html += (d.noTaxIdSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;color:#6b7280">${s.rowNum}</td><td style="padding:6px 8px">${escapeAttr(s.name || '(空白公司名)')}</td></tr>`).join('');
+        html += `</tbody></table></div>`;
+        if (d.noTaxId > (d.noTaxIdSamples || []).length) html += `<div style="font-size:12px;color:#9ca3af;margin:-6px 0 12px">（僅顯示前 ${d.noTaxIdSamples.length} 筆，共 ${d.noTaxId} 筆）</div>`;
+      }
       if (_companyImportToPool && d.poolPlaceholders > 0) {
         html += `<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#5b21b6;font-size:13px">📋 將建立 <b>${d.poolPlaceholders}</b> 筆「待補名片」放入客戶池（無名片的公司），供 Manager 分配給業務後再補真實名片。</div>`;
       }
