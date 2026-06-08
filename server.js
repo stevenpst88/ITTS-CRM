@@ -586,6 +586,84 @@ function ensureCompanyMaster(data, src) {
   return m;
 }
 
+// 跑一遍企業主檔匯入（在傳入的 working 物件上操作）
+//   - 正式寫入：working = db.load() 的真實物件，呼叫端負責 db.save()
+//   - 乾跑/預覽：working = { companies, industries } 的 clone，丟棄即可不落地
+//   比對/建檔沿用 ensureCompanyMaster（唯一主檔邏輯），確保預覽數字 == 實際結果。
+//   額外偵測「疑似重複」：某列會新建主檔，但已存在同名（正規化）卻比對鍵不同的主檔
+//   （= 一邊有統編、一邊沒有，最典型的歷史資料重複來源）。
+function runCompanyImport(working, rows, COL) {
+  if (!working.companies) working.companies = [];
+  if (!working.industries) working.industries = [];
+  const existingInd = new Set(working.industries);
+  // 既有主檔索引：正規化公司名 → [主檔...]（偵測同名但不同鍵的疑似重複）
+  const byNorm = new Map();
+  const addNorm = (c) => {
+    const nn = normalizeCompanyName(c.name);
+    if (!nn) return;
+    if (!byNorm.has(nn)) byNorm.set(nn, []);
+    byNorm.get(nn).push(c);
+  };
+  working.companies.forEach(addNorm);
+
+  let created = 0, updated = 0, skipped = 0, duplicates = 0;
+  const addedInd = new Set();
+  const dupList = [], updateList = [];
+
+  rows.forEach((r, idx) => {
+    const rowNum = idx + 2; // 檔案第 1 列為標頭
+    const name = COL.name >= 0 ? String(r[COL.name] ?? '').trim() : '';
+    const taxId = COL.taxId >= 0 ? String(r[COL.taxId] ?? '').trim() : '';
+    const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
+    if (!name && !taxId) { skipped++; return; }
+    const key = companyMatchKey(taxId, name);
+    if (!key) { skipped++; return; }
+
+    const before = working.companies.length;
+    const m = ensureCompanyMaster(working, { taxId, company: name });
+    if (!m) { skipped++; return; }
+    const isCreate = working.companies.length > before;
+
+    if (isCreate) {
+      const nn = normalizeCompanyName(name);
+      const twins = nn ? (byNorm.get(nn) || []).filter(c => c !== m && c.matchKey !== key) : [];
+      if (twins.length) {
+        duplicates++;
+        const t = twins[0];
+        const reason = taxId && !t.taxId ? 'import-has-taxid-existing-none'
+                     : (!taxId && t.taxId ? 'import-no-taxid-existing-has' : 'different-key');
+        if (dupList.length < 200) {
+          dupList.push({ rowNum, name, taxId, industry, existingName: t.name || '', existingTaxId: t.taxId || '', reason });
+        }
+      } else {
+        created++;
+      }
+      addNorm(m); // 納入索引，讓檔案內後續同名列也能偵測
+    } else {
+      updated++;
+      const changes = [];
+      if (name && (m.name || '') !== name) changes.push({ field: 'name', from: m.name || '', to: name });
+      if (taxId && !m.taxId) changes.push({ field: 'taxId', from: '', to: taxId });
+      if (industry && (m.industry || '') !== industry) changes.push({ field: 'industry', from: m.industry || '', to: industry });
+      if (updateList.length < 200) {
+        updateList.push({ rowNum, name: m.name || name, taxId: m.taxId || taxId, changes });
+      }
+    }
+
+    // 套用欄位更新（與既有匯入邏輯一致）
+    if (name) m.name = name;
+    if (taxId && !m.taxId) { m.taxId = taxId; m.matchKey = 'tax:' + taxId; }
+    if (industry) {
+      m.industry = industry;
+      m.industrySource = '行銷匯入';
+      if (!existingInd.has(industry)) { working.industries.push(industry); existingInd.add(industry); addedInd.add(industry); }
+    }
+    m.updatedAt = new Date().toISOString();
+  });
+
+  return { created, updated, duplicates, skipped, industriesAdded: [...addedInd], dupList, updateList };
+}
+
 // 統編感知去重：有統編用「業務+姓名+統編」；無統編退回「業務+姓名+公司名」
 // （抓出「同一人同公司、但公司名打法不同」的重複）
 function findDuplicateContact(data, owner, name, company, taxId) {
@@ -6314,6 +6392,7 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
 
 // ── 企業主檔匯入（admin + 行銷）──
 // 最基本：公司名稱 + 統一編號（可含產業）；upsert by 統編；新產業自動加入清單
+// ?dryRun=1：只試算不寫入，回傳將新增/更新/疑似重複的明細供前端預覽確認
 app.post('/api/companies/import', requireAuth,
   (req, res, next) => uploadImport.single('file')(req, res, next),
   (req, res) => {
@@ -6330,33 +6409,30 @@ app.post('/api/companies/import', requireAuth,
     const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業') };
     if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
 
+    const dryRun = req.query.dryRun === '1';
+    const dataRows = rows.slice(1);
     const data = db.load();
-    if (!data.companies) data.companies = [];
-    if (!data.industries) data.industries = [];
-    let created = 0, updated = 0, skipped = 0;
-    const addedInd = new Set();
-    rows.slice(1).forEach(r => {
-      const name = COL.name >= 0 ? String(r[COL.name] ?? '').trim() : '';
-      const taxId = COL.taxId >= 0 ? String(r[COL.taxId] ?? '').trim() : '';
-      const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
-      if (!name && !taxId) { skipped++; return; }
-      const before = data.companies.length;
-      const m = ensureCompanyMaster(data, { taxId, company: name });
-      if (!m) { skipped++; return; }
-      (data.companies.length > before) ? created++ : updated++;
-      if (name) m.name = name;                                  // 有提供就更新公司名
-      if (taxId && !m.taxId) { m.taxId = taxId; m.matchKey = 'tax:' + taxId; }
-      if (industry) {
-        m.industry = industry;
-        m.industrySource = '行銷匯入';
-        if (!data.industries.includes(industry)) { data.industries.push(industry); addedInd.add(industry); }
-      }
-      m.updatedAt = new Date().toISOString();
-    });
+    // 乾跑：在 companies/industries 的 clone 上跑，丟棄不落地；正式：直接在 data 上跑
+    const working = dryRun
+      ? { companies: JSON.parse(JSON.stringify(data.companies || [])), industries: [...(data.industries || [])] }
+      : data;
+    const out = runCompanyImport(working, dataRows, COL);
+
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        totalRows: dataRows.length,
+        created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped,
+        industriesAdded: out.industriesAdded,
+        duplicateSamples: out.dupList.slice(0, 50),
+        updateSamples: out.updateList.slice(0, 50),
+      });
+    }
+
     db.save(data);
     writeLog('IMPORT_COMPANIES', req.session.user.username, 'system',
-      `企業主檔匯入：新增 ${created}、更新 ${updated}、略過 ${skipped}、新產業 ${addedInd.size}`, req);
-    res.json({ success: true, created, updated, skipped, industriesAdded: [...addedInd] });
+      `企業主檔匯入：新增 ${out.created}、更新 ${out.updated}、疑似重複 ${out.duplicates}、略過 ${out.skipped}、新產業 ${out.industriesAdded.length}`, req);
+    res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded });
   });
 
 // ── 企業主檔匯入範本下載（admin + 行銷）──
@@ -8314,3 +8390,5 @@ if (require.main === module) {
 }
 
 module.exports = app;
+// 測試掛鉤（僅供單元測試 require，不經 HTTP 暴露）
+module.exports._test = { normalizeCompanyName, companyMatchKey, ensureCompanyMaster, runCompanyImport };

@@ -646,6 +646,21 @@
             <div style="font-size:12px;color:#888;margin-top:10px">行銷與管理員皆可增刪；匯入時出現的新分類也會自動加入。</div>
           </div>
         </div>
+
+        <!-- 企業主檔匯入預覽 modal -->
+        <div id="companyImportPreviewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:600;align-items:center;justify-content:center">
+          <div style="background:#fff;border-radius:12px;width:680px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eee">
+              <strong style="font-size:16px">🔍 匯入預覽</strong>
+              <button id="companyImportPreviewClose" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888">✕</button>
+            </div>
+            <div id="companyImportPreviewBody" style="padding:16px 20px;overflow:auto"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #eee">
+              <button class="btn btn-sm" id="companyImportPreviewCancel" style="background:#eef0f3;color:#333">取消</button>
+              <button class="btn btn-sm btn-primary" id="companyImportPreviewConfirm">✅ 確認寫入</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ── 📋 客戶池 ── -->
@@ -5284,24 +5299,99 @@
     document.getElementById('companyExportBtn').addEventListener('click', () => {
       window.location.href = '/api/companies/export';
     });
+    // 企業主檔匯入：乾跑預覽 → 確認寫入
+    let _companyImportFile = null;
     document.getElementById('companyImportBtn').addEventListener('click', () => document.getElementById('companyImportFile').click());
-    document.getElementById('companyImportFile').addEventListener('change', async e => {
-      const file = e.target.files[0]; if (!file) return;
+    document.getElementById('companyImportFile').addEventListener('change', e => {
+      const file = e.target.files[0];
+      e.target.value = '';           // 先清空，保留 file 參照供乾跑 + 寫入兩次上傳
+      if (file) companyImportPreview(file);
+    });
+    function companyDupReasonText(reason) {
+      if (reason === 'import-has-taxid-existing-none') return '現有同名主檔無統編、此列帶統編 → 會各自獨立成兩筆（建議先為現有主檔設定統編）';
+      if (reason === 'import-no-taxid-existing-has')   return '此列未填統編、現有同名主檔已有統編 → 會新增一筆無統編重複（建議補上統編）';
+      return '與現有同名主檔比對鍵不同，可能重複';
+    }
+    function companyChangeText(c) {
+      if (c.field === 'name')     return '公司名：「' + (c.from || '(空)') + '」→「' + c.to + '」';
+      if (c.field === 'taxId')    return '補統編：' + c.to;
+      if (c.field === 'industry') return '產業：「' + (c.from || '(空)') + '」→「' + c.to + '」';
+      return '';
+    }
+    async function companyImportPreview(file) {
       const resultEl = document.getElementById('companyBuildResult');
-      resultEl.innerHTML = '<div style="color:#1a73e8">匯入中…</div>';
+      resultEl.innerHTML = '<div style="color:#1a73e8">分析中…</div>';
+      let d;
+      try {
+        const fd = new FormData(); fd.append('file', file);
+        const r = await fetch('/api/companies/import?dryRun=1', { method: 'POST', body: fd });
+        d = await r.json();
+        if (!r.ok) throw new Error(d.error || '分析失敗');
+      } catch (err) {
+        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${escapeAttr(err.message)}</div>`;
+        return;
+      }
+      resultEl.innerHTML = '';
+      _companyImportFile = file;
+      renderCompanyImportPreview(d);
+      document.getElementById('companyImportPreviewModal').style.display = 'flex';
+    }
+    function renderCompanyImportPreview(d) {
+      const chip = (label, val, color) => `<span style="display:inline-block;background:${color}1a;color:${color};border:1px solid ${color}55;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600;margin:2px 4px 2px 0">${label} <b>${val}</b></span>`;
+      let html = `<div style="margin-bottom:12px">`
+        + chip('將新增', d.created, '#1e8e3e')
+        + chip('將更新', d.updated, '#1a73e8')
+        + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
+        + chip('略過', d.skipped, '#9ca3af')
+        + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
+      if (d.duplicates > 0) {
+        html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#92400e;font-size:13px">⚠️ 偵測到 <b>${d.duplicates}</b> 筆疑似與現有歷史資料重複。寫入後會「新增」成另一筆主檔（<b>不會覆蓋</b>現有資料）。建議取消後補上統編再匯入，或確認後再手動合併。</div>`;
+        html += `<div style="overflow:auto;max-height:260px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#faf5eb"><th style="padding:6px 8px;text-align:left">列</th><th style="padding:6px 8px;text-align:left">匯入公司</th><th style="padding:6px 8px;text-align:left">統編</th><th style="padding:6px 8px;text-align:left">原因 / 對應現有主檔</th></tr></thead><tbody>`;
+        html += (d.duplicateSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px">${s.rowNum}</td><td style="padding:6px 8px">${escapeAttr(s.name)}</td><td style="padding:6px 8px">${escapeAttr(s.taxId || '—')}</td><td style="padding:6px 8px;color:#92400e">${escapeAttr(companyDupReasonText(s.reason))}<br><span style="color:#6b7280">現有：${escapeAttr(s.existingName || '—')}${s.existingTaxId ? '（' + escapeAttr(s.existingTaxId) + '）' : ''}</span></td></tr>`).join('');
+        html += `</tbody></table></div>`;
+        if (d.duplicates > (d.duplicateSamples || []).length) html += `<div style="font-size:12px;color:#9ca3af;margin:-6px 0 12px">（僅顯示前 ${d.duplicateSamples.length} 筆，共 ${d.duplicates} 筆）</div>`;
+      }
+      if (d.updated > 0) {
+        const withChanges = (d.updateSamples || []).filter(u => u.changes && u.changes.length);
+        if (withChanges.length) {
+          html += `<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:13px;color:#1a73e8">將更新 ${d.updated} 筆既有主檔（點開看覆蓋內容）</summary><div style="overflow:auto;max-height:200px;border:1px solid #eee;border-radius:8px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>`;
+          html += withChanges.map(u => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;white-space:nowrap;color:#6b7280">列 ${u.rowNum}</td><td style="padding:6px 8px"><b>${escapeAttr(u.name)}</b><br>${u.changes.map(c => escapeAttr(companyChangeText(c))).join('<br>')}</td></tr>`).join('');
+          html += `</tbody></table></div></details>`;
+        } else {
+          html += `<div style="font-size:13px;color:#6b7280;margin-bottom:8px">將更新 ${d.updated} 筆既有主檔（內容相同，僅更新時間）。</div>`;
+        }
+      }
+      if (d.industriesAdded && d.industriesAdded.length) {
+        html += `<div style="font-size:13px;color:#6b7280">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeAttr).join('、')}</div>`;
+      }
+      document.getElementById('companyImportPreviewBody').innerHTML = html;
+      const btn = document.getElementById('companyImportPreviewConfirm');
+      btn.textContent = d.duplicates > 0 ? `仍要寫入（含 ${d.duplicates} 筆疑似重複）` : '✅ 確認寫入';
+      btn.style.cssText = d.duplicates > 0 ? 'background:#d97706;color:#fff' : '';
+    }
+    async function companyCommitImport() {
+      const file = _companyImportFile; if (!file) return;
+      document.getElementById('companyImportPreviewModal').style.display = 'none';
+      const resultEl = document.getElementById('companyBuildResult');
+      resultEl.innerHTML = '<div style="color:#1a73e8">寫入中…</div>';
       try {
         const fd = new FormData(); fd.append('file', file);
         const r = await fetch('/api/companies/import', { method: 'POST', body: fd });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || '匯入失敗');
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
-          + `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>、略過 ${d.skipped}`
+          + `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>`
+          + (d.duplicates ? `、疑似重複 <b>${d.duplicates}</b>` : '')
+          + `、略過 ${d.skipped}`
           + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '') + `</div>`;
         loadCompaniesView();
       } catch (err) {
-        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${err.message}</div>`;
-      } finally { document.getElementById('companyImportFile').value = ''; }
-    });
+        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${escapeAttr(err.message)}</div>`;
+      } finally { _companyImportFile = null; }
+    }
+    document.getElementById('companyImportPreviewClose').addEventListener('click', () => { document.getElementById('companyImportPreviewModal').style.display = 'none'; });
+    document.getElementById('companyImportPreviewCancel').addEventListener('click', () => { document.getElementById('companyImportPreviewModal').style.display = 'none'; });
+    document.getElementById('companyImportPreviewConfirm').addEventListener('click', companyCommitImport);
     // 產業分類管理
     function renderAdmIndustryList() {
       const box = document.getElementById('industryListBoxAdm');

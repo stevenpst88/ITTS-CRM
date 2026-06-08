@@ -1026,6 +1026,92 @@ function renderIndustryList() {
   }));
 }
 
+// ── 企業主檔匯入：乾跑預覽 → 確認寫入 ──
+let _cmImportFile = null;
+function cmDupReasonText(reason) {
+  if (reason === 'import-has-taxid-existing-none') return '現有同名主檔無統編、此列帶統編 → 會各自獨立成兩筆（建議先為現有主檔設定統編）';
+  if (reason === 'import-no-taxid-existing-has')   return '此列未填統編、現有同名主檔已有統編 → 會新增一筆無統編重複（建議補上統編）';
+  return '與現有同名主檔比對鍵不同，可能重複';
+}
+function cmChangeText(c) {
+  if (c.field === 'name')     return `公司名：「${c.from || '(空)'}」→「${c.to}」`;
+  if (c.field === 'taxId')    return `補統編：${c.to}`;
+  if (c.field === 'industry') return `產業：「${c.from || '(空)'}」→「${c.to}」`;
+  return '';
+}
+async function cmImportPreview(file) {
+  const resEl = document.getElementById('cmImportResult');
+  resEl.style.color = '#1a73e8'; resEl.textContent = '分析中…';
+  let d;
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch(`${API}/companies/import?dryRun=1`, { method: 'POST', body: fd });
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || '分析失敗');
+  } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; return; }
+  resEl.textContent = '';
+  _cmImportFile = file;
+  cmShowImportPreview(d);
+}
+function cmShowImportPreview(d) {
+  const chip = (label, val, color) => `<span style="display:inline-block;background:${color}1a;color:${color};border:1px solid ${color}55;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600;margin:2px 4px 2px 0">${label} <b>${val}</b></span>`;
+  let html = `<div style="margin-bottom:12px">`
+    + chip('將新增', d.created, '#1e8e3e')
+    + chip('將更新', d.updated, '#1a73e8')
+    + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
+    + chip('略過', d.skipped, '#9ca3af')
+    + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
+
+  if (d.duplicates > 0) {
+    html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#92400e;font-size:13px">⚠️ 偵測到 <b>${d.duplicates}</b> 筆疑似與現有歷史資料重複。寫入後會「新增」成另一筆主檔（<b>不會覆蓋</b>現有資料）。建議取消後補上統編再匯入，或確認後再手動合併。</div>`;
+    html += `<div style="overflow:auto;max-height:240px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#faf5eb"><th style="padding:6px 8px;text-align:left">列</th><th style="padding:6px 8px;text-align:left">匯入公司</th><th style="padding:6px 8px;text-align:left">統編</th><th style="padding:6px 8px;text-align:left">原因 / 對應現有主檔</th></tr></thead><tbody>`;
+    html += (d.duplicateSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px">${s.rowNum}</td><td style="padding:6px 8px">${escapeHtml(s.name)}</td><td style="padding:6px 8px">${escapeHtml(s.taxId || '—')}</td><td style="padding:6px 8px;color:#92400e">${escapeHtml(cmDupReasonText(s.reason))}<br><span style="color:#6b7280">現有：${escapeHtml(s.existingName || '—')}${s.existingTaxId ? '（' + escapeHtml(s.existingTaxId) + '）' : ''}</span></td></tr>`).join('');
+    html += `</tbody></table></div>`;
+    if (d.duplicates > (d.duplicateSamples || []).length) html += `<div style="font-size:12px;color:#9ca3af;margin:-6px 0 12px">（僅顯示前 ${d.duplicateSamples.length} 筆，共 ${d.duplicates} 筆）</div>`;
+  }
+
+  if (d.updated > 0) {
+    const withChanges = (d.updateSamples || []).filter(u => u.changes && u.changes.length);
+    if (withChanges.length) {
+      html += `<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:13px;color:#1a73e8">將更新 ${d.updated} 筆既有主檔（點開看覆蓋內容）</summary><div style="overflow:auto;max-height:200px;border:1px solid #eee;border-radius:8px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>`;
+      html += withChanges.map(u => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;white-space:nowrap;color:#6b7280">列 ${u.rowNum}</td><td style="padding:6px 8px"><b>${escapeHtml(u.name)}</b><br>${u.changes.map(c => escapeHtml(cmChangeText(c))).join('<br>')}</td></tr>`).join('');
+      html += `</tbody></table></div></details>`;
+    } else {
+      html += `<div style="font-size:13px;color:#6b7280;margin-bottom:8px">將更新 ${d.updated} 筆既有主檔（內容相同，僅更新時間）。</div>`;
+    }
+  }
+
+  if (d.industriesAdded && d.industriesAdded.length) {
+    html += `<div style="font-size:13px;color:#6b7280">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeHtml).join('、')}</div>`;
+  }
+
+  document.getElementById('cmPreviewBody').innerHTML = html;
+  const confirmBtn = document.getElementById('cmPreviewConfirm');
+  confirmBtn.textContent = d.duplicates > 0 ? `仍要寫入（含 ${d.duplicates} 筆疑似重複）` : '✅ 確認寫入';
+  confirmBtn.style.cssText = d.duplicates > 0 ? 'background:#d97706;color:#fff' : '';
+  document.getElementById('cmPreviewOverlay').classList.add('open');
+}
+async function cmCommitImport() {
+  const file = _cmImportFile; if (!file) return;
+  document.getElementById('cmPreviewOverlay').classList.remove('open');
+  const resEl = document.getElementById('cmImportResult');
+  resEl.style.color = '#1a73e8'; resEl.textContent = '寫入中…';
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const r = await fetch(`${API}/companies/import`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '匯入失敗');
+    resEl.style.color = '#1e8e3e';
+    resEl.innerHTML = `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>`
+      + (d.duplicates ? `、<span style="color:#d97706">疑似重複 <b>${d.duplicates}</b></span>` : '')
+      + `、略過 ${d.skipped}`
+      + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個` : '');
+    await loadIndustryOptions();
+    loadCompanyMasterView();
+  } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; }
+  finally { _cmImportFile = null; }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const cmSearch = document.getElementById('cmSearchInput');
   if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
@@ -1043,23 +1129,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const impFile = document.getElementById('cmImportFile');
   if (impBtn && impFile) {
     impBtn.addEventListener('click', () => impFile.click());
-    impFile.addEventListener('change', async e => {
-      const file = e.target.files[0]; if (!file) return;
-      const resEl = document.getElementById('cmImportResult');
-      resEl.textContent = '匯入中…'; resEl.style.color = '#1a73e8';
-      try {
-        const fd = new FormData(); fd.append('file', file);
-        const r = await fetch(`${API}/companies/import`, { method: 'POST', body: fd });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error || '匯入失敗');
-        resEl.style.color = '#1e8e3e';
-        resEl.innerHTML = `✅ 匯入完成：新增 <b>${d.created}</b>、更新 <b>${d.updated}</b>、略過 ${d.skipped}`
-          + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個（${d.industriesAdded.map(escapeHtml).join('、')}）` : '');
-        await loadIndustryOptions();
-        loadCompanyMasterView();
-      } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; }
-      finally { impFile.value = ''; }
+    impFile.addEventListener('change', e => {
+      const file = e.target.files[0];
+      impFile.value = '';            // 先清空，保留 file 參照供乾跑 + 寫入兩次上傳
+      if (file) cmImportPreview(file);
     });
+    // 匯入預覽 modal：關閉 / 取消 / 確認
+    const cmPvOverlay = document.getElementById('cmPreviewOverlay');
+    const cmPvClose = document.getElementById('cmPreviewClose');
+    const cmPvCancel = document.getElementById('cmPreviewCancel');
+    const cmPvConfirm = document.getElementById('cmPreviewConfirm');
+    if (cmPvClose) cmPvClose.addEventListener('click', () => cmPvOverlay.classList.remove('open'));
+    if (cmPvCancel) cmPvCancel.addEventListener('click', () => cmPvOverlay.classList.remove('open'));
+    if (cmPvOverlay) cmPvOverlay.addEventListener('click', ev => { if (ev.target === cmPvOverlay) cmPvOverlay.classList.remove('open'); });
+    if (cmPvConfirm) cmPvConfirm.addEventListener('click', cmCommitImport);
   }
 
   // 產業分類管理 modal

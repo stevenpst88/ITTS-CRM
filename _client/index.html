@@ -515,6 +515,21 @@
           </div>
         </div>
 
+        <!-- 企業主檔匯入預覽 modal（admin + 行銷）-->
+        <div class="modal-overlay" id="cmPreviewOverlay">
+          <div class="modal" style="max-width:640px">
+            <div class="modal-header">
+              <h2>🔍 匯入預覽</h2>
+              <button class="modal-close" id="cmPreviewClose">&#10005;</button>
+            </div>
+            <div class="modal-body" id="cmPreviewBody" style="padding:16px 20px"></div>
+            <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px">
+              <button class="btn" id="cmPreviewCancel" style="background:#eef0f3;color:#333">取消</button>
+              <button class="btn btn-primary" id="cmPreviewConfirm">✅ 確認寫入</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ── 商機推進進度（Kanban）── -->
         <div id="pipelineView" style="display:none">
           <div class="kanban-controls" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:0 0 12px">
