@@ -5009,6 +5009,21 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     }
   } catch { /* ignore */ }
 
+  // ── 基本模式（統編輸入自動帶入用）──────────────────────────
+  // 只需 GCIS 的公司名/地址/官網，跳過慢速的上市櫃清單與財務查詢。
+  // 完整資料（上市櫃/財務/官網爬取）保留給「公司資訊」分頁的查詢按鈕（使用者主動等待）。
+  // 避免冷啟動時 getCompanyLists() 抓 TWSE/TPEX 大清單耗時 → 超過 Vercel maxDuration 逾時。
+  if (req.query.basic === '1') {
+    if (!result.website && result._emailDomain) result.website = result._emailDomain;
+    delete result._emailDomain;
+    apiMonitor.recordCompanyLookup({
+      gcisSuccess: result.companyName ? 1 : 0,
+      gcisError:   result.companyName ? 0 : 1,
+      twseTpexSuccess: 0, ddgSuccess: 0, ddgError: 0,
+    });
+    return res.json(result);
+  }
+
   // 2. 上市/上櫃判斷
   try {
     const lists = await getCompanyLists();

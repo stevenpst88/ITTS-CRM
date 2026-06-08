@@ -2253,7 +2253,8 @@ $('taxId').addEventListener('input', function () {
   $('taxIdLoadingBadge').style.display = 'inline';
   taxIdTimer = setTimeout(async () => {
     try {
-      const res = await fetch(`/api/company-lookup?taxId=${tid}`);
+      // basic=1：只取 GCIS 公司名/地址（快），不等上市櫃/財務查詢，避免冷啟動逾時
+      const res = await fetch(`/api/company-lookup?taxId=${tid}&basic=1`);
       if (!res.ok) return;
       const d = await res.json();
 
