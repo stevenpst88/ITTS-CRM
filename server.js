@@ -5974,6 +5974,66 @@ app.post('/api/admin/companies/:id/set-taxid', requireAdmin, (req, res) => {
   res.json({ success: true, taxId: t, updatedContacts, merged, mergedInto: merged ? existingTax.id : null });
 });
 
+// 行業代號（財政部稅籍/主計總處中類前 2 碼）→ 官方 19 大類名稱（第11次修訂）
+function chapterFromIndustryCode(code) {
+  const z = String(code || '').replace(/\D/g, '');
+  if (z.length < 2) return '';
+  const m = parseInt(z.slice(0, 2), 10);
+  if (m >= 1 && m <= 3)   return '農、林、漁、牧業';
+  if (m >= 5 && m <= 6)   return '礦業及土石採取業';
+  if (m >= 8 && m <= 34)  return '製造業';
+  if (m === 35)           return '電力及燃氣供應業';
+  if (m >= 36 && m <= 39) return '用水供應及污染整治業';
+  if (m >= 41 && m <= 43) return '營建工程業';
+  if (m >= 45 && m <= 48) return '批發及零售業';
+  if (m >= 49 && m <= 54) return '運輸及倉儲業';
+  if (m >= 55 && m <= 56) return '住宿及餐飲業';
+  if (m >= 58 && m <= 63) return '出版影音及資通訊業';
+  if (m >= 64 && m <= 66) return '金融及保險業';
+  if (m >= 67 && m <= 68) return '不動產業';
+  if (m >= 69 && m <= 76) return '專業、科學及技術服務業';
+  if (m >= 77 && m <= 82) return '支援服務業';
+  if (m >= 83 && m <= 84) return '公共行政及國防';
+  if (m === 85)           return '教育業';
+  if (m >= 86 && m <= 88) return '醫療保健及社會工作服務業';
+  if (m >= 90 && m <= 93) return '藝術、娛樂及休閒服務業';
+  if (m >= 94 && m <= 96) return '其他服務業';
+  return '';
+}
+
+// 官方行業批次補全（本地腳本爬財政部稅籍後回寫）：以統編對應，後端換算大類
+app.post('/api/admin/companies/set-industry-batch', requireAdmin, (req, res) => {
+  const items = Array.isArray(req.body && req.body.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: '無資料（items 為空）' });
+  const data = db.load();
+  const byTax = {};
+  (data.companies || []).forEach(c => {
+    const t = String(c.taxId || '').trim();
+    if (t) (byTax[t] = byTax[t] || []).push(c);
+  });
+  let updated = 0, matched = 0, unmatched = 0;
+  items.forEach(it => {
+    const t = String(it.taxId || '').trim();
+    const code = String(it.industryCode || '').trim();
+    const list = byTax[t];
+    if (!list) { unmatched++; return; }
+    const chapter = chapterFromIndustryCode(code);
+    if (!chapter) return;
+    matched++;
+    list.forEach(m => {
+      m.industry = chapter;
+      m.industryCode = code;
+      m.industrySource = '財政部稅籍';
+      m.updatedAt = new Date().toISOString();
+      updated++;
+    });
+  });
+  db.save(data);
+  writeLog('SET_INDUSTRY_BATCH', req.session.user.username, 'system',
+    `官方行業批次補全：對到 ${matched} 統編、更新 ${updated} 主檔、查無 ${unmatched}`, req);
+  res.json({ success: true, received: items.length, matched, updated, unmatched });
+});
+
 // 企業主檔列表（含每家掛勾名片數）
 app.get('/api/admin/companies', requireAdmin, (req, res) => {
   const data = db.load();
