@@ -6567,6 +6567,42 @@ app.post('/api/companies/:id/set-industry', requireAuth, (req, res) => {
   res.json({ success: true, industry });
 });
 
+// ── 刪除企業主檔（admin + 行銷）──
+// 主檔是衍生參照層：底下尚有「真實名片」時一律擋下（會在「建立/更新」時依名片重建，硬刪無意義且危險）。
+// 只剩「待補名片」(客戶池 placeholder) 或完全無名片時才可刪，並連帶軟刪除那些待補名片。
+app.delete('/api/companies/:id', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const id = req.params.id;
+  const idx = (data.companies || []).findIndex(c => c.id === id);
+  if (idx === -1) return res.status(404).json({ error: '找不到此企業主檔' });
+  const master = data.companies[idx];
+  const linked = (data.contacts || []).filter(c => c.companyId === id && !c.deleted);
+  const real = linked.filter(c => !c.isPlaceholder);
+  if (real.length) {
+    return res.status(409).json({
+      error: `此公司底下尚有 ${real.length} 張名片，無法刪除主檔。請先移轉或刪除這些名片（主檔會在「建立/更新企業主檔」時依名片自動重建）。`,
+      realContacts: real.length,
+    });
+  }
+  // 連帶軟刪除待補名片（客戶池 placeholder）
+  let placeholderRemoved = 0;
+  linked.filter(c => c.isPlaceholder).forEach(c => {
+    c.deleted = true;
+    c.deletedAt = new Date().toISOString();
+    c.deletedBy = req.session.user.username;
+    c.deletedReason = '企業主檔刪除（連帶待補名片）';
+    try { writeContactAudit('DELETE', req, c, []); } catch {}
+    placeholderRemoved++;
+  });
+  // 硬刪除主檔（衍生層，可由「建立/更新」依名片重建）
+  data.companies.splice(idx, 1);
+  db.save(data);
+  writeLog('DELETE_COMPANY', req.session.user.username, master.name || master.taxId || id,
+    `刪除企業主檔${placeholderRemoved ? `（連帶待補名片 ${placeholderRemoved} 張）` : ''}`, req);
+  res.json({ success: true, name: master.name || '', placeholderRemoved });
+});
+
 // 單一公司彙整明細（明細內容亦過濾到可見範圍，避免跨 BU 外洩）
 app.get('/api/companies/:id', requireAuth, (req, res) => {
   const data = db.load();

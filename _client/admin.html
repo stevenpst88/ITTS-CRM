@@ -610,10 +610,11 @@
                   <th>資本額</th>
                   <th>產業</th>
                   <th>GCIS補全</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody id="companiesTbody">
-                <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
+                <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
               </tbody>
             </table>
           </div>
@@ -5056,7 +5057,7 @@
       );
       countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">${_companyFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">${_companyFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
       const fmtCap = (n) => {
@@ -5079,10 +5080,30 @@
           <td>${cap}</td>
           <td>${companyIndustryCell(c)}</td>
           <td style="font-size:12px">${gcis}</td>
+          <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
       }).join('');
       tbody.querySelectorAll('.company-row').forEach(tr => {
         tr.addEventListener('click', () => openCompanyDetail(tr.dataset.id));
+      });
+      // 刪除主檔（阻止冒泡，不觸發開明細）
+      tbody.querySelectorAll('.company-del').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id, name = btn.dataset.name || '';
+          if (!confirm(`確定刪除企業主檔「${name}」？\n\n・底下若還有「真實名片」會被擋下（請先移轉/刪除名片）\n・若只有客戶池「待補名片」會一併移除\n此動作無法復原。`)) return;
+          btn.disabled = true; btn.textContent = '刪除中…';
+          try {
+            const r = await fetch(`/api/companies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || '刪除失敗');
+            showToast(`🗑️ 已刪除「${name}」` + (d.placeholderRemoved ? `（連帶待補名片 ${d.placeholderRemoved} 張）` : ''));
+            loadCompaniesView();
+          } catch (err) {
+            alert('❌ ' + err.message);
+            btn.disabled = false; btn.textContent = '🗑️ 刪除';
+          }
+        });
       });
       // 產業下拉：直接選取即存（阻止冒泡，不觸發開明細）
       tbody.querySelectorAll('.company-ind-sel').forEach(sel => {

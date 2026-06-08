@@ -852,6 +852,8 @@ async function loadCompanyMasterView() {
   if (listWrap) listWrap.style.display = '';
   const tools = $('cmAdminTools');
   if (tools) tools.style.display = cmCanManage() ? 'inline-flex' : 'none';
+  const actTh = $('cmActionTh');
+  if (actTh) actTh.style.display = cmCanManage() ? '' : 'none';
   const hint = $('cmHint');
   if (hint) hint.textContent = cmCanManage()
     ? '顯示全部企業主檔（含尚無名片的公司，例如剛匯入者）。點任一列查看該公司彙整。'
@@ -876,8 +878,9 @@ function renderCompanyMasterList() {
     !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw));
   if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (kw ? `（顯示 ${list.length}）` : '');
   if (!tbody) return;
+  const canManage = cmCanManage();
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="cm-empty">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${canManage ? 6 : 5}" class="cm-empty">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(c => `
@@ -887,9 +890,26 @@ function renderCompanyMasterList() {
       <td>${c.contactCount || 0}</td>
       <td>${cmFmtCap(c.capital)}</td>
       <td>${cmIndustryCell(c)}</td>
+      ${canManage ? `<td><button class="cm-del" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️</button></td>` : ''}
     </tr>`).join('');
   tbody.querySelectorAll('.cm-row').forEach(tr =>
     tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
+  // 刪除主檔（admin/行銷；阻止冒泡，不觸發開明細）
+  tbody.querySelectorAll('.cm-del').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const id = btn.dataset.id, name = btn.dataset.name || '';
+      if (!confirm(`確定刪除企業主檔「${name}」？\n\n・底下若還有「真實名片」會被擋下\n・若只有客戶池「待補名片」會一併移除\n此動作無法復原。`)) return;
+      btn.disabled = true;
+      try {
+        const r = await fetch(`${API}/companies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || '刪除失敗');
+        if (typeof showToast === 'function') showToast(`🗑️ 已刪除「${name}」` + (d.placeholderRemoved ? `（連帶待補名片 ${d.placeholderRemoved} 張）` : ''));
+        loadCompanyMasterView();
+      } catch (err) { alert('❌ ' + err.message); btn.disabled = false; }
+    });
+  });
   // 產業下拉：admin/行銷 可直接選取即存
   tbody.querySelectorAll('.cm-ind-sel').forEach(sel => {
     sel.addEventListener('click', e => e.stopPropagation());
