@@ -1548,6 +1548,7 @@ function renderKeyAccountView() {
     const pipelineTr = document.createElement('tr');
     pipelineTr.className = 'ka-pipeline-row';
     pipelineTr.style.display = 'none';
+    let pipelineBody;
     if (s.inHandOpps.length > 0) {
       const rows = s.inHandOpps
         .sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''))
@@ -1562,11 +1563,27 @@ function renderKeyAccountView() {
             <td style="text-align:right;font-weight:600">${fmt(amt)} K</td>
           </tr>`;
         }).join('');
-      pipelineTr.innerHTML = `<td colspan="9" style="padding:0">
-        <table class="ka-pipeline-table">${rows}</table>
-      </td>`;
+      pipelineBody = `<table class="ka-pipeline-table">${rows}</table>`;
     } else {
-      pipelineTr.innerHTML = `<td colspan="9" style="padding:14px;text-align:center;color:#9ca3af;font-size:12px">無在手商機</td>`;
+      pipelineBody = `<div style="padding:14px;text-align:center;color:#9ca3af;font-size:12px">無在手商機</div>`;
+    }
+    // 只有業務／主管可建立商機（秘書/董總/行銷唯讀；tecopm 進不來此頁）
+    const canAddOpp = ['user', 'manager1', 'manager2'].includes(myRole);
+    const addOppFooter = canAddOpp
+      ? `<div style="padding:10px 14px;text-align:right;border-top:1px solid #f1f3f5;background:#fafbfc">
+           <button class="ka-add-opp-btn" type="button" style="background:#1a73e8;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">➕ 新增商機</button>
+         </div>`
+      : '';
+    pipelineTr.innerHTML = `<td colspan="9" style="padding:0">
+      ${pipelineBody}
+      ${addOppFooter}
+    </td>`;
+    const addOppBtn = pipelineTr.querySelector('.ka-add-opp-btn');
+    if (addOppBtn) {
+      addOppBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openOppCreate(s.ka.company);
+      });
     }
     tr.addEventListener('click', e => {
       if (e.target.closest('.ka-remove-btn')) return; // 點 X 不展開
@@ -4236,9 +4253,109 @@ function buildKanbanCard(o) {
 }
 
 // ── 商機編輯 Modal ────────────────────────────────────────
+// ⭐ 商機 modal 在「新增 / 編輯」兩種模式間切換（同一個 oppEditOverlay 共用）
+function _setOppModalMode(mode) {
+  const isCreate = mode === 'create';
+  const title = $('oppEditTitle'); if (title) title.textContent = isCreate ? '新增商機' : '編輯商機';
+  // 聯絡人：新增用下拉挑選、編輯維持唯讀文字
+  const cText = $('oppEditContact');       if (cText) cText.style.display = isCreate ? 'none' : '';
+  const cSel  = $('oppEditContactSelect'); if (cSel)  cSel.style.display  = isCreate ? '' : 'none';
+  // 以下欄位／按鈕只在「既有案件」才有意義 → 新增模式隱藏
+  const hideOnCreate = (el) => { const g = el && el.closest('.form-group'); if (g) g.style.display = isCreate ? 'none' : ''; };
+  hideOnCreate($('oppEditStage'));
+  hideOnCreate($('oppEditBusinessType'));   // 後端建立時自動分類，避免誤以為手動設定有效
+  if ($('oppEditAchievedDateGroup')) $('oppEditAchievedDateGroup').style.display = 'none';
+  if ($('oppEditDelete')) $('oppEditDelete').style.display = isCreate ? 'none' : '';
+  if ($('oppWinRateBtn')) $('oppWinRateBtn').style.display = isCreate ? 'none' : '';
+  const panel = $('oppWinRatePanel'); if (panel) panel.style.display = 'none';
+}
+
+// ⭐ 從「Key Account」頁直接為某客戶新增商機（點客戶 → 新增商機）
+function openOppCreate(company) {
+  setOppEditReadonly(false);                       // 清掉上次跨部門檢視留下的唯讀狀態
+  const bar = $('oppKaBar'); if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+  _setOppModalMode('create');
+
+  $('oppEditId').value      = '';                  // 空 id = 新增模式
+  $('oppEditCompany').value = company || '';
+  $('oppEditStage').value   = 'C';                 // 後端建立時固定 C，這裡同步
+
+  // 聯絡人下拉：填入該公司名片（可不指定）
+  const sel = $('oppEditContactSelect');
+  if (sel) {
+    const contacts = allContacts
+      .filter(c => c.company === company && !c.isPlaceholder && !c.deleted)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));
+    sel.innerHTML = '<option value="">（不指定聯絡人）</option>';
+    contacts.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name + (c.title ? `（${c.title}）` : '');
+      sel.appendChild(opt);
+    });
+    const primary = contacts.find(c => c.isPrimary);
+    if (primary) sel.value = primary.id;
+    else if (contacts.length === 1) sel.value = contacts[0].id;
+  }
+
+  // BU：預設為建立者自己的部門（業績歸建立者；跨部門路由靠「商機類別」）
+  setupBuSelector('oppEditBu', 'oppEditBuGroup', undefined);
+
+  // 清空其餘欄位
+  $('oppEditCategory').value     = '';
+  $('oppEditAmount').value       = '';
+  $('oppEditGrossMargin').value  = '';
+  $('oppEditExpectedDate').value = '';
+  $('oppEditAchievedDate').value = '';
+  if ($('oppEditBusinessType')) $('oppEditBusinessType').value = '';
+  $('oppEditDescription').value  = '';
+  populateOppEditProduct('', '');                  // 清空商品下拉
+
+  $('oppEditOverlay').classList.add('open');
+}
+
+// ⭐ 新增模式：送出建立商機（POST），與編輯模式（PUT）區分
+async function _createOppFromModal() {
+  const company  = $('oppEditCompany').value.trim();
+  const category = $('oppEditCategory').value;
+  if (!category) { showToast('請選擇商機類別'); return; }
+  const sel       = $('oppEditContactSelect');
+  const contactId = sel ? sel.value : '';
+  const contact   = contactId ? allContacts.find(c => c.id === contactId) : null;
+  const gmRaw     = $('oppEditGrossMargin').value;
+  const payload = {
+    company,
+    contactId:       contactId || '',
+    contactName:     contact ? contact.name : '',
+    category,
+    product:         getProductValue('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub'),
+    amount:          $('oppEditAmount').value,
+    grossMarginRate: gmRaw !== '' ? parseFloat(gmRaw) : '',
+    expectedDate:    $('oppEditExpectedDate').value,
+    description:     $('oppEditDescription').value.trim(),
+    bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
+  };
+  try {
+    const r = await fetch(`${API}/opportunities`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const saved = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(saved.error || '建立失敗，請重試'); return; }
+    closeOppEdit();
+    await loadOpportunities();
+    updateStatCards();
+    renderDashboardCharts();
+    if (currentSection === 'keyAccount') renderKeyAccountView();
+    showToast(saved.kaNotified ? '✅ 商機已建立，已通知跨部門協作夥伴' : '✅ 商機已建立');
+  } catch { showToast('建立失敗，請重試'); }
+}
+
 function openOppEdit(id) {
   const o = allOpportunities.find(x => x.id === id);
   if (!o) return;
+  _setOppModalMode('edit');
 
   $('oppEditId').value             = o.id;
   $('oppEditCompany').value        = o.company         || '';
@@ -4446,6 +4563,7 @@ $('oppDeleteConfirm').addEventListener('click', async () => {
 
 $('oppEditSave').addEventListener('click', async () => {
   const id = $('oppEditId').value;
+  if (!id) { await _createOppFromModal(); return; }   // ⭐ 新增模式（從 KA 頁建立商機）
   const newStage = $('oppEditStage').value;
   const gmRaw = $('oppEditGrossMargin').value;
   const payload = {

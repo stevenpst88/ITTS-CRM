@@ -2241,7 +2241,7 @@
   <div class="modal-overlay" id="oppEditOverlay">
     <div class="modal modal-sm" style="width:480px">
       <div class="modal-header">
-        <h2>編輯商機</h2>
+        <h2 id="oppEditTitle">編輯商機</h2>
         <button class="modal-close" id="oppEditClose">&#10005;</button>
       </div>
       <div class="modal-body">
@@ -2255,6 +2255,7 @@
           <div class="form-group full-width">
             <label>聯絡人</label>
             <input type="text" id="oppEditContact" class="input-readonly" readonly>
+            <select id="oppEditContactSelect" style="display:none"></select>
           </div>
           <div class="form-group full-width" id="oppEditBuGroup" style="display:none">
             <label>所屬 BU</label>
