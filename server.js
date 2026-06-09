@@ -506,7 +506,7 @@ function pickFields(obj, fields) {
   return fields.reduce((acc, f) => { if (f in obj) acc[f] = obj[f]; return acc; }, {});
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
-const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu'];
+const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
@@ -2438,6 +2438,23 @@ function notifyKaCrossDeptOpp(req, data, opp, ownerUsername) {
     return recipients.length;
   } catch (e) { console.warn('[notifyKaCrossDeptOpp]', e.message); return 0; }
 }
+// viewer 是否能「跨部門協作」某 KA 商機（能看到 → 可確認接手 / 寫商機日報）：
+//   公司是 KA + viewer 在該商機「類別」部門 + 類別≠建立者部門 + viewer≠建立者 + 為業務/主管角色
+function viewerCanCrossDeptOpp(req, data, auth, opp) {
+  if (!opp || !opp.company || !opp.owner) return false;
+  const me = req.session.user.username;
+  if (opp.owner === me) return false;
+  if (!['user', 'manager1', 'manager2'].includes(req.session.user.role)) return false;
+  if (!kaCompanySet(data).has((opp.company || '').trim())) return false;
+  const cat = opp.category;
+  if (!cat || !VALID_BUS.includes(cat)) return false;
+  const ownerBus = normalizeBu((auth.users.find(u => u.username === opp.owner) || {}).bu);
+  if (ownerBus.includes(cat)) return false;            // 非跨部門
+  return getMyBus(req).includes(cat);                   // viewer 在該類別部門
+}
+function isKaConfirmed(opp, username) {
+  return (opp.kaParticipants || []).some(p => p.user === username);
+}
 
 app.get('/api/contacts', requireAuth, (req, res) => {
   const { search } = req.query;
@@ -2835,6 +2852,23 @@ app.post('/api/visits', requireAuth, (req, res) => {
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const data = db.load();
   if (!data.visits) data.visits = [];
+  // ⭐ 商機日報：拜訪可綁定商機(oppId)。若綁的是 KA 跨部門商機 → 須為建立者或「已確認接手者」
+  const oppId = String(req.body.oppId || '').trim();
+  let _notifyOppOwner = '';
+  if (oppId) {
+    const opp = (data.opportunities || []).find(o => o.id === oppId);
+    if (!opp) return res.status(404).json({ error: '找不到此商機' });
+    if (opp.owner !== owner) {
+      const auth = loadAuth();
+      if (!viewerCanCrossDeptOpp(req, data, auth, opp)) {
+        return res.status(403).json({ error: '無權針對此商機填寫日報' });
+      }
+      if (!isKaConfirmed(opp, owner)) {
+        return res.status(403).json({ error: '請先「確認接手」此商機，才能填寫商機日報' });
+      }
+      _notifyOppOwner = opp.owner;   // 跨部門協作者寫日報 → 通知建立者
+    }
+  }
   const visit = {
     id: uuidv4(),
     owner,
@@ -2846,12 +2880,22 @@ app.post('/api/visits', requireAuth, (req, res) => {
     topic:       req.body.topic       || '',
     content:     req.body.content     || '',
     nextAction:  req.body.nextAction  || '',
+    oppId:       oppId,
     createdAt:   new Date().toISOString()
   };
   data.visits.push(visit);
   db.save(data);
   writeLog('CREATE_VISIT', owner, visit.contactName || visit.id,
     `${visit.visitType} ${visit.visitDate} 主題:${visit.topic}`, req);
+  // 商機日報 → 通知建立者（協作者填的）
+  if (_notifyOppOwner) {
+    const auth = loadAuth();
+    const meName = (auth.users.find(u => u.username === owner) || {}).displayName || owner;
+    try {
+      pushNotification(_notifyOppOwner, 'ka_opp_report', '⭐ KA 商機新增日報',
+        `${meName} 針對你的 KA 商機填了一筆日報：${visit.topic || visit.content || visit.visitType}`, oppId);
+    } catch {}
+  }
   res.status(201).json(visit);
 });
 
@@ -3325,6 +3369,16 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
   filtered = filterByViewGroup(req, filtered, o => o.company);    // tecopm: 限定 group memberCompanies
   // ⭐ KA 跨部門共享：該商機「類別」部門看得到 KA 公司的商機（類別≠建立者部門時）
   mergeKaVisible(filtered, req, data, _auth, data.opportunities || [], 'opportunities');
+  // 標記跨部門 KA 商機（給前端顯示「確認接手 / 填商機日報」）
+  const _me = req.session.user.username;
+  const _kaSet = kaCompanySet(data);
+  if (_kaSet.size) {
+    filtered = filtered.map(o => {
+      if (!_kaSet.has((o.company || '').trim()) || !viewerCanCrossDeptOpp(req, data, _auth, o)) return o;
+      const ownerU = (_auth.users || []).find(u => u.username === o.owner);
+      return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: (ownerU && ownerU.displayName) || o.owner };
+    });
+  }
   res.json(filtered);
 });
 
@@ -3366,6 +3420,37 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   // ⭐ KA 公司 + 跨部門商機（類別部門≠建立者部門）→ 通知該類別部門的業務+主管（pushNotification 自帶 load/save，於 db.save 後呼叫）
   const _kaNotified = notifyKaCrossDeptOpp(req, data, opp, owner);
   res.status(201).json({ ...opp, kaNotified: _kaNotified });
+});
+
+// ⭐ KA 跨部門「確認接手」：該商機所屬部門的跨部門業務確認後，才能寫商機日報。不能取消。
+//    通知：商機建立者 + 確認者的部門主管。
+app.post('/api/opportunities/:id/ka-confirm', requireAuth, (req, res) => {
+  const data = db.load();
+  const auth = loadAuth();
+  const opp = (data.opportunities || []).find(o => o.id === req.params.id);
+  if (!opp) return res.status(404).json({ error: '找不到此商機' });
+  if (!viewerCanCrossDeptOpp(req, data, auth, opp)) {
+    return res.status(403).json({ error: '只有該商機所屬部門的跨部門業務可確認接手' });
+  }
+  const me = req.session.user.username;
+  if (!Array.isArray(opp.kaParticipants)) opp.kaParticipants = [];
+  if (isKaConfirmed(opp, me)) {
+    return res.json({ success: true, already: true, kaParticipants: opp.kaParticipants });
+  }
+  const meUser = (auth.users || []).find(u => u.username === me) || {};
+  const myBu = (getMyBus(req) || [])[0] || '';
+  const meName = meUser.displayName || me;
+  opp.kaParticipants.push({ user: me, displayName: meName, bu: myBu, confirmedAt: new Date().toISOString() });
+  db.save(data);
+  writeLog('KA_OPP_CONFIRM', me, opp.company, `確認接手 KA 商機（${opp.category}）`, req);
+  // 通知建立者 + 確認者的部門主管（pushNotification 自帶 load/save，於 db.save 後）
+  const title = '⭐ KA 商機已被接手';
+  const body = `${meName}（${myBu}）已確認接手 KA「${opp.company}」的 ${opp.category} 商機，將協同經營。`;
+  try { pushNotification(opp.owner, 'ka_opp_confirmed', title, body, opp.id); } catch {}
+  (auth.users || [])
+    .filter(u => u.username !== me && u.active !== false && ['manager1', 'manager2'].includes(u.role) && normalizeBu(u.bu).includes(myBu))
+    .forEach(u => { try { pushNotification(u.username, 'ka_opp_confirmed', title, body, opp.id); } catch {} });
+  res.json({ success: true, kaParticipants: opp.kaParticipants });
 });
 
 app.put('/api/opportunities/:id', requireAuth, (req, res) => {

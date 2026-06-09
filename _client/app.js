@@ -3723,6 +3723,7 @@ function resetVisitModalTabs() {
 
 // 開啟新增/編輯 Modal
 function openVisitModal(visit = null) {
+  _visitOppId = '';   // 一般拜訪不綁商機（商機日報走 openOppReport）
   $v('visitForm').reset();
   $v('visitId').value = '';
   $v('visitDate').value = new Date().toISOString().slice(0, 10);
@@ -3771,6 +3772,7 @@ $v('visitSaveBtn').addEventListener('click', async () => {
     content: $v('visitContent').value.trim(),
     nextAction: $v('visitNextAction').value.trim(),
     bu: ($v('oppBu') && $v('oppBu').value) || undefined,
+    oppId: _visitOppId || undefined,   // ⭐ 商機日報：綁定該商機
   };
 
   const id = $v('visitId').value;
@@ -3780,12 +3782,13 @@ $v('visitSaveBtn').addEventListener('click', async () => {
       await fetch(`${API}/visits/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitPayload) });
     } else {
       const r = await fetch(`${API}/visits`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitPayload) });
-      const saved = await r.json();
+      const saved = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast(saved.error || '儲存失敗，請重試'); return; }
       visitId = saved.id;
     }
 
-    // 若商機類別有填 → 同步建立商機
-    const oppCat = $v('oppCategory').value;
+    // ⭐ 商機日報模式（綁了既有商機）→ 不再同步建立新商機
+    const oppCat = _visitOppId ? '' : $v('oppCategory').value;
     if (oppCat) {
       const oppPayload = {
         contactId,
@@ -3804,11 +3807,14 @@ $v('visitSaveBtn').addEventListener('click', async () => {
       updateStatCards();
       showToast(id ? '已更新拜訪記錄' : '已新增拜訪記錄 及 商機（Pipeline）');
     } else {
-      showToast(id ? '已更新拜訪記錄' : '已新增拜訪記錄');
+      showToast(_visitOppId ? '✅ 已新增商機日報' : (id ? '已更新拜訪記錄' : '已新增拜訪記錄'));
     }
 
+    const wasOppReport = !!_visitOppId;
+    _visitOppId = '';
     closeVisitModal();
     loadVisits();
+    if (wasOppReport) loadOpportunities();
     if (currentSection === null) renderDashboardCharts();
   } catch { showToast('儲存失敗，請重試'); }
 });
@@ -4269,6 +4275,9 @@ function openOppEdit(id) {
   const _panel = $('oppWinRatePanel');
   if (_panel) _panel.style.display = 'none';
 
+  // ⭐ 跨部門 KA 商機：唯讀 + 確認接手/商機日報 操作列
+  renderOppKaBar(o);
+
   $('oppEditOverlay').classList.add('open');
 }
 
@@ -4341,6 +4350,59 @@ $('oppEditCategory').addEventListener('change', function () {
 });
 
 function closeOppEdit() { $('oppEditOverlay').classList.remove('open'); }
+
+// ⭐ 跨部門 KA 商機：唯讀切換 + 確認接手 + 商機日報
+function setOppEditReadonly(ro) {
+  const modal = $('oppEditOverlay');
+  if (!modal) return;
+  modal.querySelectorAll('.modal-body input, .modal-body select, .modal-body textarea').forEach(el => {
+    if (el.id === 'oppEditId') return;
+    el.disabled = ro;
+  });
+  const save = $('oppEditSave'); if (save) save.style.display = ro ? 'none' : '';
+}
+function renderOppKaBar(o) {
+  const bar = $('oppKaBar');
+  if (!bar) return;
+  if (!o || !o._kaShared) { bar.style.display = 'none'; bar.innerHTML = ''; setOppEditReadonly(false); return; }
+  setOppEditReadonly(true);   // 他部門商機 → 唯讀
+  bar.style.display = '';
+  const ownerName = o.ownerDisplayName || o.owner || '';
+  const actions = o._kaConfirmed
+    ? `<span style="color:#1e8e3e;font-weight:700">✓ 已接手</span><button id="oppKaReportBtn" class="btn btn-primary" style="margin-left:10px;padding:5px 12px;font-size:13px">📝 填寫商機日報</button>`
+    : `<button id="oppKaConfirmBtn" class="btn btn-primary" style="padding:5px 12px;font-size:13px">✋ 確認接手</button><span style="color:#888;font-size:12px;margin-left:8px">確認後才能填寫商機日報</span>`;
+  bar.innerHTML = `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px">
+    <div style="color:#3730a3;font-weight:700;margin-bottom:4px">⭐ 跨部門 Key Account 商機（${escapeHtml(o.category || '')}）</div>
+    <div style="color:#555;margin-bottom:8px">他部門商機，僅供協同經營（唯讀）。建立者：${escapeHtml(ownerName)}</div>
+    <div>${actions}</div></div>`;
+  const cb = $('oppKaConfirmBtn'); if (cb) cb.addEventListener('click', () => kaConfirmOpp(o.id));
+  const rb = $('oppKaReportBtn'); if (rb) rb.addEventListener('click', () => openOppReport(o));
+}
+async function kaConfirmOpp(id) {
+  const btn = $('oppKaConfirmBtn'); if (btn) { btn.disabled = true; btn.textContent = '處理中…'; }
+  try {
+    const r = await fetch(`${API}/opportunities/${encodeURIComponent(id)}/ka-confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '確認失敗');
+    if (typeof showToast === 'function') showToast('✅ 已確認接手，可填寫商機日報');
+    const o = allOpportunities.find(x => x.id === id);
+    if (o) { o._kaConfirmed = true; renderOppKaBar(o); }
+  } catch (e) { alert('❌ ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '✋ 確認接手'; } }
+}
+let _visitOppId = '';
+function openOppReport(o) {
+  closeOppEdit();
+  _visitOppId = o.id;
+  $v('visitForm').reset();
+  $v('visitId').value = '';
+  $v('visitDate').value = new Date().toISOString().slice(0, 10);
+  resetVisitModalTabs();
+  setupBuSelector('oppBu', 'oppBuGroup', undefined);
+  populateCompanySelect(o.company);
+  populateContactSelect(o.company, o.contactId || '');
+  $v('visitModalTitle').textContent = '填寫商機日報 — ' + (o.company || '');
+  $v('visitModalOverlay').classList.add('open');
+}
 $('oppEditClose').addEventListener('click', closeOppEdit);
 $('oppEditCancel').addEventListener('click', closeOppEdit);
 
