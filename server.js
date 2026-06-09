@@ -2351,15 +2351,108 @@ app.post('/api/admin/repair-customer-type', requireAdmin, (req, res) => {
 });
 
 // ── 取得所有聯絡人 ──────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// ⭐ Key Account 跨部門協作：共用 helper
+//   原則：KA 公司的資料「只往跨部門打開」，同部門照舊各看各的（ERP A 不看 ERP B）。
+// ════════════════════════════════════════════════════════════
+function kaCompanySet(data) {
+  const s = new Set();
+  (data.keyAccounts || []).forEach(ka => { const c = (ka.company || '').trim(); if (c) s.add(c); });
+  return s;
+}
+// 回傳 viewer 因「KA 跨部門共享」而『額外』看得到的資料（不含自己本來就看得到的）。
+//   - type='opportunities'：只開放給「該商機類別部門」，且類別 ≠ 建立者部門（跨部門）才加
+//   - type='contacts'/'visits'：跨部門（viewer 部門 ∩ owner 部門為空）才加
+//   - secretary：支援角色，KA 公司資料全看得到（不分部門）
+//   僅 BU 制角色（user/manager1/manager2/secretary）適用；cross-BU/唯讀角色另有規則，不在此加。
+function crossDeptKaVisible(req, data, auth, items, type) {
+  const role = req.session && req.session.user && req.session.user.role;
+  if (!['user', 'manager1', 'manager2', 'secretary'].includes(role)) return [];
+  const kaSet = kaCompanySet(data);
+  if (!kaSet.size) return [];
+  const me = req.session.user.username;
+  const isSecretary = role === 'secretary';
+  const myBus = getMyBus(req);
+  if (!isSecretary && !myBus.length) return [];
+  const buCache = new Map();
+  const buOf = (username) => {
+    if (buCache.has(username)) return buCache.get(username);
+    const u = (auth.users || []).find(x => x.username === username);
+    const bus = normalizeBu(u && u.bu);
+    buCache.set(username, bus);
+    return bus;
+  };
+  const companyOf = type === 'visits'
+    ? (it) => { const c = (data.contacts || []).find(x => x.id === it.contactId); return (((c && c.company) || it.company) || '').trim(); }
+    : (it) => (it.company || '').trim();
+  const out = [];
+  for (const it of items) {
+    if (it.deleted) continue;
+    const co = companyOf(it);
+    if (!co || !kaSet.has(co)) continue;
+    if (it.owner === me) continue;                 // 自己的本來就看得到
+    if (isSecretary) { out.push(it); continue; }   // 秘書：KA 全看
+    const ownerBus = buOf(it.owner);
+    if (type === 'opportunities') {
+      const cat = it.category;
+      if (!cat || !VALID_BUS.includes(cat)) continue;  // 類別不是有效部門
+      if (ownerBus.includes(cat)) continue;            // 類別=建立者部門 → 非跨部門
+      if (!myBus.includes(cat)) continue;              // viewer 不在類別部門
+    } else {
+      if (!ownerBus.length) continue;
+      if (ownerBus.some(b => myBus.includes(b))) continue;  // 同部門 → 不加
+    }
+    out.push(it);
+  }
+  return out;
+}
+// 合併 KA 跨部門資料進既有清單（依 id 去重）
+function mergeKaVisible(baseList, req, data, auth, allItems, type) {
+  const have = new Set(baseList.map(x => x.id));
+  crossDeptKaVisible(req, data, auth, allItems, type).forEach(x => {
+    if (!have.has(x.id)) { baseList.push(x); have.add(x.id); }
+  });
+  return baseList;
+}
+// KA 公司有「跨部門商機」建立（類別部門 ≠ 建立者部門）→ 通知該類別部門的業務+主管
+function notifyKaCrossDeptOpp(req, data, opp, ownerUsername) {
+  try {
+    if (!opp.company || !kaCompanySet(data).has((opp.company || '').trim())) return 0;
+    const cat = opp.category;
+    if (!cat || !VALID_BUS.includes(cat)) return 0;
+    const auth = loadAuth();
+    const ownerUser = (auth.users || []).find(u => u.username === ownerUsername);
+    const ownerBus = normalizeBu(ownerUser && ownerUser.bu);
+    if (ownerBus.includes(cat)) return 0;   // 類別=建立者部門 → 非跨部門，不通知
+    const ownerName = (ownerUser && ownerUser.displayName) || ownerUsername;
+    const recipients = (auth.users || []).filter(u =>
+      u.username !== ownerUsername && u.active !== false &&
+      ['user', 'manager1', 'manager2'].includes(u.role) &&
+      normalizeBu(u.bu).includes(cat)
+    );
+    const title = '⭐ Key Account 新商機';
+    const prod = opp.product || '(未指定商品)';
+    const amt = opp.amount ? `，金額 ${opp.amount}` : '';
+    const body = `KA「${opp.company}」有新的 ${cat} 商機：${prod}${amt}（由 ${ownerName} 建立），請協同經營。`;
+    recipients.forEach(u => { try { pushNotification(u.username, 'ka_opp_created', title, body, opp.id); } catch {} });
+    return recipients.length;
+  } catch (e) { console.warn('[notifyKaCrossDeptOpp]', e.message); return 0; }
+}
+
 app.get('/api/contacts', requireAuth, (req, res) => {
   const { search } = req.query;
   const data = db.load();
   const role = req.session.user.role;
-  if (role === 'secretary') return res.json([]);
-  const owners = getViewableOwners(req, 'contacts');
-  let contacts = (data.contacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
-  contacts = filterByBu(req, contacts);
-  contacts = filterByViewGroup(req, contacts, c => c.company);   // tecopm: 限定 group memberCompanies
+  const _auth = loadAuth();
+  let contacts = [];
+  if (role !== 'secretary') {
+    const owners = getViewableOwners(req, 'contacts');
+    contacts = (data.contacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
+    contacts = filterByBu(req, contacts);
+    contacts = filterByViewGroup(req, contacts, c => c.company);   // tecopm: 限定 group memberCompanies
+  }
+  // ⭐ KA 跨部門共享：其他部門（+秘書）看得到 KA 公司的聯絡人；同部門不加
+  mergeKaVisible(contacts, req, data, _auth, data.contacts || [], 'contacts');
   if (search) {
     const kw = search.toLowerCase();
     contacts = contacts.filter(c =>
@@ -2719,15 +2812,20 @@ app.get('/api/export', requireAuth, (req, res, next) => {
 app.get('/api/visits', requireAuth, (req, res) => {
   const data = db.load();
   const role = req.session.user.role;
-  if (role === 'secretary') return res.json([]);
-  const owners = getViewableOwners(req, 'visits');
-  const items = (data.visits || []).filter(v => owners.includes(v.owner) && !v.deleted);
-  let filtered = filterByBu(req, items);
-  // tecopm: 拜訪本身無 company 欄位，要從 contactId join contacts 取公司名再用 group 過濾
-  filtered = filterByViewGroup(req, filtered, (v, d) => {
-    const c = (d.contacts || []).find(c => c.id === v.contactId);
-    return c?.company || v.company || '';
-  });
+  const _auth = loadAuth();
+  let filtered = [];
+  if (role !== 'secretary') {
+    const owners = getViewableOwners(req, 'visits');
+    const items = (data.visits || []).filter(v => owners.includes(v.owner) && !v.deleted);
+    filtered = filterByBu(req, items);
+    // tecopm: 拜訪本身無 company 欄位，要從 contactId join contacts 取公司名再用 group 過濾
+    filtered = filterByViewGroup(req, filtered, (v, d) => {
+      const c = (d.contacts || []).find(c => c.id === v.contactId);
+      return c?.company || v.company || '';
+    });
+  }
+  // ⭐ KA 跨部門共享：其他部門（+秘書）看得到 KA 公司的拜訪記錄；同部門不加
+  mergeKaVisible(filtered, req, data, _auth, data.visits || [], 'visits');
   res.json(filtered);
 });
 
@@ -3220,10 +3318,13 @@ app.put('/api/monthly-budget/actuals', requireAuth, (req, res) => {
 // ── 商機 CRUD ────────────────────────────────────────────
 app.get('/api/opportunities', requireAuth, (req, res) => {
   const data = db.load();
+  const _auth = loadAuth();
   const owners = getViewableOwners(req, 'opportunities');
   const items = (data.opportunities || []).filter(o => owners.includes(o.owner));
   let filtered = filterByBu(req, items);
   filtered = filterByViewGroup(req, filtered, o => o.company);    // tecopm: 限定 group memberCompanies
+  // ⭐ KA 跨部門共享：該商機「類別」部門看得到 KA 公司的商機（類別≠建立者部門時）
+  mergeKaVisible(filtered, req, data, _auth, data.opportunities || [], 'opportunities');
   res.json(filtered);
 });
 
@@ -3262,7 +3363,9 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   db.save(data);
   writeLog('CREATE_OPP', owner, opp.company || opp.contactName,
     `${opp.product} 階段:C 金額:${opp.amount}`, req);
-  res.status(201).json(opp);
+  // ⭐ KA 公司 + 跨部門商機（類別部門≠建立者部門）→ 通知該類別部門的業務+主管（pushNotification 自帶 load/save，於 db.save 後呼叫）
+  const _kaNotified = notifyKaCrossDeptOpp(req, data, opp, owner);
+  res.status(201).json({ ...opp, kaNotified: _kaNotified });
 });
 
 app.put('/api/opportunities/:id', requireAuth, (req, res) => {
