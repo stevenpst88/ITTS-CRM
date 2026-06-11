@@ -6882,18 +6882,33 @@ function parseYoyWorkbook(buffer) {
   return { years, warnings };
 }
 
-function yoyYearSummary(rows) {
-  const total = rows.reduce((s, r) => s + (r.total || 0), 0);
-  return {
-    rows: rows.length,
-    total,
-    customers: new Set(rows.map(r => r.customer).filter(Boolean)).size,
-    services:  new Set(rows.map(r => r.service).filter(Boolean)).size,
-    depts:     new Set(rows.map(r => r.dept).filter(Boolean)).size,
-  };
+const YOY_NO_DEPT = '（未分類）';
+// 計算匯入計畫：逐「年度×部門」列出 將取代/新增、列數、上次匯入時間（給乾跑預覽當卡控）
+function yoyImportPlan(parsedYears, existing) {
+  const exYears = (existing && existing.years) || {};
+  const meta    = (existing && existing.deptMeta) || {};
+  const plan = [];
+  for (const y of Object.keys(parsedYears).sort()) {
+    const byDept = {};
+    parsedYears[y].forEach(r => { const d = r.dept || YOY_NO_DEPT; (byDept[d] = byDept[d] || []).push(r); });
+    for (const d of Object.keys(byDept).sort()) {
+      const newRows = byDept[d];
+      const exRows  = (exYears[y] || []).filter(r => (r.dept || YOY_NO_DEPT) === d);
+      plan.push({
+        year: y, dept: d,
+        newRows: newRows.length,
+        newTotal: newRows.reduce((s, r) => s + (r.total || 0), 0),
+        existingRows: exRows.length,
+        action: exRows.length ? 'replace' : 'add',
+        lastImportedAt: (meta[y] && meta[y][d] && meta[y][d].importedAt) || null,
+      });
+    }
+  }
+  return plan;
 }
 
-// 匯入（admin）：?dryRun=1 乾跑預覽；否則寫入（以「年度」為單位整批取代）
+// 匯入（admin）：?dryRun=1 乾跑預覽；否則寫入。
+// 累計快照模式 → 以「年度×部門」為單位整批取代：只動檔案裡出現的部門×年度，其餘（其他部門/其他年度）原封不動。
 app.post('/api/yoy/import', requireAuth,
   (req, res, next) => uploadImport.single('file')(req, res, next),
   (req, res) => {
@@ -6904,19 +6919,37 @@ app.post('/api/yoy/import', requireAuth,
     catch (e) { return res.status(400).json({ error: '檔案解析失敗，請確認格式' }); }
     const yearKeys = Object.keys(parsed.years).sort();
     if (yearKeys.length === 0) return res.status(400).json({ error: '找不到任何「年份」工作表（工作表需以西元年命名，如 2024、2025）' });
-    const summary = yearKeys.map(y => ({ year: y, ...yoyYearSummary(parsed.years[y]) }));
-    if (req.query.dryRun === '1') return res.json({ dryRun: true, years: yearKeys, summary, warnings: parsed.warnings });
+
     const data = db.load();
-    if (!data.yoyRevenue || typeof data.yoyRevenue !== 'object') data.yoyRevenue = { years: {} };
-    if (!data.yoyRevenue.years) data.yoyRevenue.years = {};
-    yearKeys.forEach(y => { data.yoyRevenue.years[y] = parsed.years[y]; });   // 整批取代該年
-    data.yoyRevenue.updatedAt  = new Date().toISOString();
+    if (!data.yoyRevenue || typeof data.yoyRevenue !== 'object') data.yoyRevenue = { years: {}, deptMeta: {} };
+    if (!data.yoyRevenue.years)    data.yoyRevenue.years = {};
+    if (!data.yoyRevenue.deptMeta) data.yoyRevenue.deptMeta = {};
+
+    const plan = yoyImportPlan(parsed.years, data.yoyRevenue);
+    if (req.query.dryRun === '1') return res.json({ dryRun: true, plan, warnings: parsed.warnings });
+
+    const nowIso = new Date().toISOString();
+    for (const y of yearKeys) {
+      const newRows = parsed.years[y];
+      const deptsInFile = new Set(newRows.map(r => r.dept || YOY_NO_DEPT));
+      const existing = Array.isArray(data.yoyRevenue.years[y]) ? data.yoyRevenue.years[y] : [];
+      const kept = existing.filter(r => !deptsInFile.has(r.dept || YOY_NO_DEPT));   // 保留「不在本檔部門」的既有列
+      data.yoyRevenue.years[y] = [...kept, ...newRows];                            // 取代「本檔部門」的列
+      if (!data.yoyRevenue.deptMeta[y]) data.yoyRevenue.deptMeta[y] = {};
+      deptsInFile.forEach(d => {
+        data.yoyRevenue.deptMeta[y][d] = {
+          importedAt: nowIso, importedBy: req.session.user.username,
+          rows: newRows.filter(r => (r.dept || YOY_NO_DEPT) === d).length,
+        };
+      });
+    }
+    data.yoyRevenue.updatedAt  = nowIso;
     data.yoyRevenue.updatedBy  = req.session.user.username;
     data.yoyRevenue.sourceFile = req.file.originalname || '';
     db.save(data);
     writeLog('IMPORT_YOY', req.session.user.username, yearKeys.join('、'),
-      summary.map(s => `${s.year}:${s.rows}列/${Math.round(s.total)}K`).join(' '), req);
-    res.json({ success: true, years: yearKeys, summary, warnings: parsed.warnings });
+      plan.map(p => `${p.year}/${p.dept}:${p.action === 'replace' ? '取代' : '新增'}${p.newRows}列`).join(' '), req);
+    res.json({ success: true, plan, warnings: parsed.warnings });
   });
 
 // 檢視報表（admin + executive）：回傳各年原始列，前端自行 pivot/繪圖
@@ -6928,6 +6961,7 @@ app.get('/api/yoy/report', requireAuth, (req, res) => {
     updatedBy:  yoy.updatedBy  || null,
     sourceFile: yoy.sourceFile || null,
     years:      yoy.years      || {},
+    deptMeta:   yoy.deptMeta   || {},
     canImport:  canImportYoy(req),
   });
 });

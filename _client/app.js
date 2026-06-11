@@ -10739,61 +10739,87 @@ function _yoyRows(year){
   if (dept) rows = rows.filter(r=>r.dept===dept);
   return rows;
 }
-function _yoySum(rows){
-  const months=Array(12).fill(0); let total=0, gpNum=0, gpDen=0;
-  rows.forEach(r=>{ (r.months||[]).forEach((v,i)=>{ if(i<12) months[i]+=(v||0); }); total+=(r.total||0); if(r.grossMargin!=null){ gpNum+=(r.total||0)*r.grossMargin; gpDen+=(r.total||0); } });
-  return { months, total, gm: gpDen ? gpNum/gpDen : null };
+const _ALL12=[0,1,2,3,4,5,6,7,8,9,10,11];
+// 月別加總 + 各月是否有資料（用於圖表 & 判斷「同期」到第幾月）
+function _yoyMonthly(rows){
+  const months=Array(12).fill(0), present=Array(12).fill(false);
+  rows.forEach(r=>{ (r.months||[]).forEach((v,i)=>{ if(i<12 && v!=null){ months[i]+=v; present[i]=true; } }); });
+  return { months, present };
 }
-function _yoyByKey(rows, keyFn){ const m=new Map(); rows.forEach(r=>{ const k=keyFn(r)||'（未指定）'; m.set(k,(m.get(k)||0)+(r.total||0)); }); return m; }
+// 在指定月份集合上彙總營收 + 毛利率（毛利率以該月份集合的營收加權）
+function _yoyAgg(rows, monthIdx){
+  const idx=monthIdx||_ALL12; let rev=0, gpNum=0, gpDen=0;
+  rows.forEach(r=>{ let rr=0; idx.forEach(i=>{ const v=r.months&&r.months[i]; if(v!=null) rr+=v; }); rev+=rr; if(r.grossMargin!=null){ gpNum+=rr*r.grossMargin; gpDen+=rr; } });
+  return { revenue: rev, gm: gpDen ? gpNum/gpDen : null };
+}
+// 在指定月份集合上，依 key 彙總營收
+function _yoyByKey(rows, keyFn, monthIdx){
+  const idx=monthIdx||_ALL12; const m=new Map();
+  rows.forEach(r=>{ const k=keyFn(r)||'（未指定）'; let v=0; idx.forEach(i=>{ const x=r.months&&r.months[i]; if(x!=null) v+=x; }); m.set(k,(m.get(k)||0)+v); });
+  return m;
+}
 
+let _yoyYtdIdx=_ALL12;   // 目前同期月份集合（給客戶搜尋重繪用）
 function renderYoyView(){
   if (!_yoyReport) return;
   const yA=$('yoyYearA').value, yB=$('yoyYearB').value;
   const rowsA=_yoyRows(yA), rowsB=_yoyRows(yB);
-  const sumA=_yoySum(rowsA), sumB=_yoySum(rowsB);
-  renderYoyKpis(yA,yB,sumA,sumB);
-  renderYoyMonthlyChart(yA,yB,sumA,sumB);
-  renderYoyCumChart(yA,yB,sumA,sumB);
-  renderYoyServiceTable(yA,yB,rowsA,rowsB);
-  renderYoyCustomerTable(yA,yB,rowsA,rowsB);
+  const monA=_yoyMonthly(rowsA), monB=_yoyMonthly(rowsB);
+  // 同期 YTD：以「較新年度 B」有資料的最後月份為界（B 到 3 月 → 兩年都只比 1–3 月）
+  let lastB=-1; for(let i=0;i<12;i++) if(monB.present[i]) lastB=i;
+  if(lastB<0) lastB=11;
+  const ytdIdx=[]; for(let i=0;i<=lastB;i++) ytdIdx.push(i);
+  _yoyYtdIdx=ytdIdx;
+  renderYoyKpis(yA,yB,rowsA,rowsB,ytdIdx,lastB);
+  renderYoyMonthlyChart(yA,yB,monA,monB);
+  renderYoyCumChart(yA,yB,monA,monB,lastB);
+  renderYoyServiceTable(yA,yB,rowsA,rowsB,ytdIdx);
+  renderYoyCustomerTable(yA,yB,rowsA,rowsB,ytdIdx);
 }
 
-function renderYoyKpis(yA,yB,sumA,sumB){
-  const growth=yoyPct(sumB.total,sumA.total), dAbs=sumB.total-sumA.total;
-  const gmA=sumA.gm!=null?sumA.gm*100:null, gmB=sumB.gm!=null?sumB.gm*100:null;
+function renderYoyKpis(yA,yB,rowsA,rowsB,ytdIdx,lastB){
+  const aS=_yoyAgg(rowsA,ytdIdx), bS=_yoyAgg(rowsB,ytdIdx);   // 同期
+  const aFull=_yoyAgg(rowsA,null);                            // 去年全年（脈絡）
+  const isFull = ytdIdx.length>=12;
+  const period = isFull ? '全年' : `1–${lastB+1}月`;
+  const growth=yoyPct(bS.revenue,aS.revenue), dAbs=bS.revenue-aS.revenue;
+  const gmA=aS.gm!=null?aS.gm*100:null, gmB=bS.gm!=null?bS.gm*100:null;
   const gCls=dAbs>=0?'yoy-up':'yoy-down';
   let gmVal='—', gmSub='';
   if (gmA!=null&&gmB!=null){ gmVal=`${gmA.toFixed(1)}% → ${gmB.toFixed(1)}%`; const dd=gmB-gmA, c=dd>=0?'yoy-up':'yoy-down'; gmSub=`<span class="${c}">${dd>=0?'+':''}${dd.toFixed(1)} pp</span>`; }
   const kpis=[
-    {label:`${yA} 全年營收（千元）`, value:yoyFmt(sumA.total), sub:`平均毛利 ${gmA!=null?gmA.toFixed(1)+'%':'—'}`},
-    {label:`${yB} 全年營收（千元）`, value:yoyFmt(sumB.total), sub:`平均毛利 ${gmB!=null?gmB.toFixed(1)+'%':'—'}`},
-    {label:`YoY 成長（${yB} vs ${yA}）`, value:`<span class="${gCls}">${dAbs>=0?'+':''}${growth}%</span>`, sub:`Δ ${dAbs>=0?'+':''}${yoyFmt(dAbs)} 千元`},
-    {label:`平均毛利率對比`, value:gmVal, sub:gmSub},
+    {label:`${yA} 同期（${period}）`, value:yoyFmt(aS.revenue), sub: isFull ? `平均毛利 ${gmA!=null?gmA.toFixed(1)+'%':'—'}` : `全年 ${yoyFmt(aFull.revenue)}`},
+    {label:`${yB} ${isFull?'全年':'YTD'}（${period}）`, value:yoyFmt(bS.revenue), sub:`平均毛利 ${gmB!=null?gmB.toFixed(1)+'%':'—'}`},
+    {label:`同期 YoY 成長`, value:`<span class="${gCls}">${dAbs>=0?'+':''}${growth}%</span>`, sub:`Δ ${dAbs>=0?'+':''}${yoyFmt(dAbs)} 千元`},
+    {label:`毛利率對比（同期）`, value:gmVal, sub:gmSub},
   ];
   $('yoyKpiRow').innerHTML = kpis.map(k=>`<div class="yoy-kpi"><div class="yoy-kpi-label">${escapeHtml(k.label)}</div><div class="yoy-kpi-value">${k.value}</div><div class="yoy-kpi-sub">${k.sub}</div></div>`).join('');
 }
 
 function _yoyDestroy(key){ if(_yoyCharts[key]){ try{_yoyCharts[key].destroy();}catch{} delete _yoyCharts[key]; } }
-function renderYoyMonthlyChart(yA,yB,sumA,sumB){
+function renderYoyMonthlyChart(yA,yB,monA,monB){
   _yoyDestroy('monthly'); const ctx=$('yoyMonthlyChart'); if(!ctx||!window.Chart) return;
+  const dA=monA.months.map((v,i)=>monA.present[i]?Math.round(v):null);
+  const dB=monB.months.map((v,i)=>monB.present[i]?Math.round(v):null);
   _yoyCharts.monthly=new Chart(ctx,{ type:'bar',
     data:{ labels:YOY_MONTHS, datasets:[
-      {label:String(yA), data:sumA.months.map(v=>Math.round(v)), backgroundColor:'#94a3b8'},
-      {label:String(yB), data:sumB.months.map(v=>Math.round(v)), backgroundColor:'#1a73e8'} ]},
-    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${c.parsed.y.toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
+      {label:String(yA), data:dA, backgroundColor:'#94a3b8'},
+      {label:String(yB), data:dB, backgroundColor:'#1a73e8'} ]},
+    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${(c.parsed.y||0).toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
 }
 function _yoyCum(arr){ const out=[]; let s=0; arr.forEach(v=>{ s+=(v||0); out.push(Math.round(s)); }); return out; }
-function renderYoyCumChart(yA,yB,sumA,sumB){
+function renderYoyCumChart(yA,yB,monA,monB,lastB){
   _yoyDestroy('cum'); const ctx=$('yoyCumChart'); if(!ctx||!window.Chart) return;
+  const cumB=_yoyCum(monB.months).map((v,i)=> i<=lastB ? v : null);   // B 過了最後有資料月份就截斷
   _yoyCharts.cum=new Chart(ctx,{ type:'line',
     data:{ labels:YOY_MONTHS, datasets:[
-      {label:String(yA), data:_yoyCum(sumA.months), borderColor:'#94a3b8', backgroundColor:'transparent', tension:.3, borderWidth:2},
-      {label:String(yB), data:_yoyCum(sumB.months), borderColor:'#1a73e8', backgroundColor:'transparent', tension:.3, borderWidth:2} ]},
-    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${c.parsed.y.toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
+      {label:String(yA), data:_yoyCum(monA.months), borderColor:'#94a3b8', backgroundColor:'transparent', tension:.3, borderWidth:2},
+      {label:String(yB), data:cumB, borderColor:'#1a73e8', backgroundColor:'transparent', tension:.3, borderWidth:2, spanGaps:false} ]},
+    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${(c.parsed.y||0).toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
 }
 
-function renderYoyServiceTable(yA,yB,rowsA,rowsB){
-  const mA=_yoyByKey(rowsA,r=>r.service), mB=_yoyByKey(rowsB,r=>r.service);
+function renderYoyServiceTable(yA,yB,rowsA,rowsB,ytdIdx){
+  const mA=_yoyByKey(rowsA,r=>r.service,ytdIdx), mB=_yoyByKey(rowsB,r=>r.service,ytdIdx);
   const rows=[...new Set([...mA.keys(),...mB.keys()])].map(k=>({k,a:mA.get(k)||0,b:mB.get(k)||0})).sort((x,y)=>y.b-x.b);
   const totA=rows.reduce((s,r)=>s+r.a,0), totB=rows.reduce((s,r)=>s+r.b,0);
   let html=`<table class="yoy-tbl"><thead><tr><th>服務項目別</th><th>${yA}</th><th>${yB}</th><th>YoY Δ／%</th></tr></thead><tbody>`;
@@ -10802,8 +10828,8 @@ function renderYoyServiceTable(yA,yB,rowsA,rowsB){
   $('yoyServiceTable').innerHTML=html;
 }
 
-function renderYoyCustomerTable(yA,yB,rowsA,rowsB){
-  const mA=_yoyByKey(rowsA,r=>r.customer), mB=_yoyByKey(rowsB,r=>r.customer);
+function renderYoyCustomerTable(yA,yB,rowsA,rowsB,ytdIdx){
+  const mA=_yoyByKey(rowsA,r=>r.customer,ytdIdx), mB=_yoyByKey(rowsB,r=>r.customer,ytdIdx);
   let keys=[...new Set([...mA.keys(),...mB.keys()])];
   const f=_yoyCustFilter.trim(); if(f) keys=keys.filter(k=>k.includes(f));
   const rows=keys.map(k=>({k,a:mA.get(k)||0,b:mB.get(k)||0})).sort((x,y)=>y.b-x.b);
@@ -10812,12 +10838,12 @@ function renderYoyCustomerTable(yA,yB,rowsA,rowsB){
   html+=rows.map(r=>`<tr class="yoy-cust-row" data-cust="${escapeHtml(r.k)}"><td>▸ ${escapeHtml(r.k)}</td><td>${yoyFmt(r.a)}</td><td>${yoyFmt(r.b)}</td><td>${yoyDeltaHtml(r.b,r.a)}</td></tr>`).join('');
   html+=`</tbody><tfoot><tr><td>合計</td><td>${yoyFmt(totA)}</td><td>${yoyFmt(totB)}</td><td>${yoyDeltaHtml(totB,totA)}</td></tr></tfoot></table>`;
   const wrap=$('yoyCustomerTable'); wrap.innerHTML=html;
-  wrap.querySelectorAll('.yoy-cust-row').forEach(tr=>{ tr.addEventListener('click',()=>yoyToggleCustomer(tr,tr.dataset.cust,rowsA,rowsB)); });
+  wrap.querySelectorAll('.yoy-cust-row').forEach(tr=>{ tr.addEventListener('click',()=>yoyToggleCustomer(tr,tr.dataset.cust,rowsA,rowsB,ytdIdx)); });
 }
-function yoyToggleCustomer(tr, cust, rowsA, rowsB){
+function yoyToggleCustomer(tr, cust, rowsA, rowsB, ytdIdx){
   if (tr._expanded){ let n=tr.nextElementSibling; while(n&&n.classList.contains('yoy-sub')){ const x=n; n=n.nextElementSibling; x.remove(); } tr._expanded=false; tr.querySelector('td').innerHTML='▸ '+escapeHtml(cust); return; }
-  const subA=_yoyByKey(rowsA.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service);
-  const subB=_yoyByKey(rowsB.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service);
+  const subA=_yoyByKey(rowsA.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service, ytdIdx);
+  const subB=_yoyByKey(rowsB.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service, ytdIdx);
   const keys=[...new Set([...subA.keys(),...subB.keys()])].map(k=>({k,a:subA.get(k)||0,b:subB.get(k)||0})).sort((x,y)=>y.b-x.b);
   let after=tr;
   keys.forEach(s=>{ const el=document.createElement('tr'); el.className='yoy-sub'; el.innerHTML=`<td>${escapeHtml(s.k)}</td><td>${yoyFmt(s.a)}</td><td>${yoyFmt(s.b)}</td><td>${yoyDeltaHtml(s.b,s.a)}</td>`; after.after(el); after=el; });
@@ -10835,9 +10861,16 @@ async function yoyImportPreview(file){
   }catch(e){ showToast('❌ '+e.message); }
 }
 function yoyShowImportPreview(d){
-  let html=`<div style="margin-bottom:10px;color:#374151">將匯入 <b>${d.years.join('、')}</b> 年度（以年度為單位<b>整批取代</b>既有資料）：</div>`;
-  html+=`<table class="yoy-tbl"><thead><tr><th>年度</th><th>資料列</th><th>營收合計（千元）</th><th>客戶數</th><th>服務項目</th></tr></thead><tbody>`;
-  html+=d.summary.map(s=>`<tr><td>${s.year}</td><td>${s.rows}</td><td>${yoyFmt(s.total)}</td><td>${s.customers}</td><td>${s.services}</td></tr>`).join('');
+  const plan=d.plan||[];
+  let html=`<div style="margin-bottom:10px;color:#374151">只會異動下列 <b>${plan.length}</b> 組（年度×部門），其餘部門／年度的資料<b>原封不動</b>：</div>`;
+  html+=`<table class="yoy-tbl"><thead><tr><th>年度／部門</th><th>動作</th><th>新列數</th><th>營收（千元）</th><th>上次匯入</th></tr></thead><tbody>`;
+  html+=plan.map(p=>{
+    const act = p.action==='replace'
+      ? `<span style="color:#d97706;font-weight:700">取代</span> <span style="color:#9ca3af;font-size:12px">原 ${p.existingRows} 列</span>`
+      : `<span style="color:#1e8e3e;font-weight:700">新增</span>`;
+    const last = p.lastImportedAt ? new Date(p.lastImportedAt).toLocaleString('zh-TW') : '—';
+    return `<tr><td><b>${escapeHtml(p.year)}</b> ／ ${escapeHtml(p.dept)}</td><td>${act}</td><td>${p.newRows}</td><td>${yoyFmt(p.newTotal)}</td><td style="color:#9ca3af;font-size:12px">${last}</td></tr>`;
+  }).join('');
   html+=`</tbody></table>`;
   if(d.warnings&&d.warnings.length) html+=`<div style="margin-top:10px;color:#b45309;font-size:13px">⚠️ ${d.warnings.map(escapeHtml).join('<br>')}</div>`;
   $('yoyImportPreviewBody').innerHTML=html;
@@ -10850,7 +10883,7 @@ async function yoyCommitImport(){
     const fd=new FormData(); fd.append('file',file);
     const r=await fetch(`${API}/yoy/import`,{method:'POST',body:fd});
     const d=await r.json(); if(!r.ok) throw new Error(d.error||'匯入失敗');
-    showToast(`✅ 匯入完成：${d.years.join('、')} 年度`);
+    showToast(`✅ 匯入完成：已更新 ${(d.plan||[]).length} 組（年度×部門）`);
     await loadYoyView();
   }catch(e){ showToast('❌ '+e.message); }
   finally{ _yoyImportFile=null; }
@@ -10861,7 +10894,7 @@ async function yoyCommitImport(){
   if(sa) sa.addEventListener('change', renderYoyView);
   if(sb) sb.addEventListener('change', renderYoyView);
   if(sd) sd.addEventListener('change', renderYoyView);
-  const cs=$('yoyCustSearch'); if(cs) cs.addEventListener('input', e=>{ _yoyCustFilter=e.target.value; if(_yoyReport) renderYoyCustomerTable($('yoyYearA').value,$('yoyYearB').value,_yoyRows($('yoyYearA').value),_yoyRows($('yoyYearB').value)); });
+  const cs=$('yoyCustSearch'); if(cs) cs.addEventListener('input', e=>{ _yoyCustFilter=e.target.value; if(_yoyReport) renderYoyCustomerTable($('yoyYearA').value,$('yoyYearB').value,_yoyRows($('yoyYearA').value),_yoyRows($('yoyYearB').value),_yoyYtdIdx); });
   const ib=$('yoyImportBtn'), ifl=$('yoyImportFile');
   if(ib&&ifl){ ib.addEventListener('click',()=>ifl.click()); ifl.addEventListener('change', e=>{ const f=e.target.files[0]; ifl.value=''; if(f) yoyImportPreview(f); }); }
   ['yoyImportClose','yoyImportCancel'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('click',()=>$('yoyImportOverlay').classList.remove('open')); });
