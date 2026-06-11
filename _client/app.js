@@ -214,6 +214,7 @@ let allContacts = [];
 let allOpportunities = [];
 let allKeyAccounts = [];      // [{ id, owner, company, createdAt, note }]
 let contactsKaFilterMode = 'all'; // 'all' | 'ka' | 'non-ka'
+let _kaCompanyIndex = null;   // normalizedName → companyId；admin 進入 KA 頁時預載，供 YoY 串流用
 let currentViewId = null;
 
 // ── 職能分類 ─────────────────────────────────────────────
@@ -963,19 +964,25 @@ function cmIndustryCell(c) {
   return `<select class="cm-ind-sel" data-id="${escapeHtml(c.id)}" style="font-size:13px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px;max-width:150px">${opts}</select>`;
 }
 
+let _cmDetailSeq = 0;   // 公司詳情世代：攔截快速切換公司時晚到的非同步回應（YoY 卡）
 async function openCompanyMasterDetail(id) {
   const wrap = $('cmDetailWrap'), listWrap = $('cmListWrap');
+  const seq = ++_cmDetailSeq;
   wrap.innerHTML = '<div style="padding:24px;color:#9ca3af">載入中…</div>';
   listWrap.style.display = 'none'; wrap.style.display = '';
   try {
     const r = await fetch(`${API}/companies/${encodeURIComponent(id)}`);
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '載入失敗');
+    if (seq !== _cmDetailSeq) return;   // 期間已切換到別家公司 → 丟棄
     wrap.innerHTML = renderCompanyMasterDetail(d);
+    appendCompanyYoyCard(id, wrap, seq); // 有 YoY 檢視權限且命中才會附上「歷史 YoY 營收」卡
   } catch (e) {
+    if (seq !== _cmDetailSeq) return;
     wrap.innerHTML = `<div style="padding:16px;color:#c62828">❌ ${escapeHtml(e.message)} <button class="btn-back-cm" style="margin-left:8px">返回</button></div>`;
   }
   wrap.querySelectorAll('.btn-back-cm').forEach(b => b.addEventListener('click', () => {
+    _cmDetailSeq++;   // 返回後讓任何在途回應失效，避免孤兒卡塞回已清空的 wrap
     wrap.style.display = 'none'; wrap.innerHTML = ''; listWrap.style.display = '';
   }));
 }
@@ -1027,6 +1034,47 @@ function renderCompanyMasterDetail(d) {
     ${tbl('📄 合約', ['產品', '金額', '期間', '業務'], ctrRows)}
     ${tbl('💰 帳款', ['發票號', '金額', '到期日', '狀態', '業務'], recvRows)}
   `;
+}
+
+// 公司彙整頁附加「歷史 YoY 營收」卡（獨立 BI 對照層；無權限或未命中則靜默不顯示）
+async function appendCompanyYoyCard(id, wrap, seq) {
+  let d;
+  try {
+    const r = await fetch(`${API}/companies/${encodeURIComponent(id)}/yoy`);
+    if (!r.ok) return;                 // 403（無 YoY 權限）等 → 不顯示
+    d = await r.json();
+  } catch { return; }
+  if (seq !== undefined && seq !== _cmDetailSeq) return;   // 期間已切換公司／已返回 → 丟棄，避免張冠李戴
+  if (!d.yoy) return;
+  const years = Object.keys(d.yoy.years || {}).sort();
+  const pending = d.yoy.suffixPending || 0;
+  if (!years.length && !pending) return;
+  const fmtK = n => '$' + (Number(n) || 0).toLocaleString() + ' K';
+  let tableHtml = '', yoyHtml = '', custHtml = '';
+  if (years.length) {
+    const rowsHtml = years.map(y => {
+      const yy = d.yoy.years[y];
+      return `<tr><td>${y}</td><td style="text-align:right">${fmtK(yy.revenue)}</td><td style="text-align:right">${yy.gm != null ? (yy.gm * 100).toFixed(1) + '%' : '—'}</td></tr>`;
+    }).join('');
+    tableHtml = `<div style="overflow-x:auto"><table class="cm-table" style="min-width:auto"><thead><tr><th>年度</th><th style="text-align:right">營收（K）</th><th style="text-align:right">平均毛利率</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    if (years.length >= 2) {
+      const a = d.yoy.years[years[years.length - 2]].revenue, b = d.yoy.years[years[years.length - 1]].revenue;
+      const pct = a ? Math.round((b - a) / Math.abs(a) * 1000) / 10 : (b ? 100 : 0);
+      const col = (b - a) >= 0 ? '#1e8e3e' : '#d93025';
+      yoyHtml = `<div style="margin-top:8px;font-size:13px">YoY（${years[years.length - 2]} → ${years[years.length - 1]}）：<b style="color:${col}">${b - a >= 0 ? '+' : ''}${pct}%</b>　（${b - a >= 0 ? '+' : ''}${fmtK(b - a)}）</div>`;
+    }
+    const custTxt = (d.yoy.customers || []).map(c => escapeHtml(c.name) + (c.status === 'confirmed' ? '（已確認）' : '（名稱精確對應）')).join('、');
+    custHtml = `<div style="margin-top:8px;font-size:12px;color:#9ca3af">對應 YoY 客戶：${custTxt}　｜　獨立 BI 歷史資料，與上方商機／合約／帳款<b>不重複計算</b></div>`;
+  } else {
+    custHtml = `<div style="margin-top:4px;font-size:12px;color:#9ca3af">尚無已確認對應的 YoY 客戶。</div>`;
+  }
+  const pendingHtml = pending
+    ? `<div style="margin-top:8px;font-size:12px;color:#d97706">⚠️ 另有 <b>${pending}</b> 筆「疑似」客戶（去後綴比對）尚未確認、<b>暫不計入</b>；請至「YoY 營收同期比 → 客戶對照」確認後才會納入。</div>`
+    : '';
+  const div = document.createElement('div');
+  div.className = 'cm-card';
+  div.innerHTML = `<div class="cm-card-title">📊 歷史 YoY 營收（系統建置前）</div>${tableHtml}${yoyHtml}${pendingHtml}${custHtml}`;
+  wrap.appendChild(div);
 }
 
 // ── 產業分類清單（動態）──
@@ -1417,6 +1465,18 @@ async function loadKeyAccountView() {
     allOpportunities.length === 0 ? fetch(`${API}/opportunities`).then(r => r.json()).then(d => { allOpportunities = d; }) : Promise.resolve(),
     allContacts.length === 0 ? loadContacts() : Promise.resolve(),
   ]);
+  // 預載企業主檔名稱→ID 索引，供展開列 YoY 串流用（非 admin 403 → 靜默略過）
+  _kaCompanyIndex = null;
+  try {
+    const r = await fetch(`${API}/admin/companies`);
+    if (r.ok) {
+      const list = await r.json();
+      _kaCompanyIndex = {};
+      list.forEach(c => {
+        if (c.id && c.name) _kaCompanyIndex[c.name.replace(/\s+/g, '').toLowerCase()] = c.id;
+      });
+    }
+  } catch {}
   renderKeyAccountView();
 }
 
@@ -1583,6 +1643,7 @@ function renderKeyAccountView() {
     pipelineTr.innerHTML = `<td colspan="9" style="padding:0">
       ${pipelineBody}
       ${addOppFooter}
+      <div class="ka-yoy-wrap"></div>
     </td>`;
     const addOppBtn = pipelineTr.querySelector('.ka-add-opp-btn');
     if (addOppBtn) {
@@ -1596,6 +1657,18 @@ function renderKeyAccountView() {
       const isOpen = pipelineTr.style.display !== 'none';
       pipelineTr.style.display = isOpen ? 'none' : '';
       tr.classList.toggle('expanded', !isOpen);
+      // 首次展開：若有主檔對應則串流 YoY 歷史營收卡片
+      if (!isOpen && _kaCompanyIndex) {
+        const normName = s.ka.company.replace(/\s+/g, '').toLowerCase();
+        const cmId = _kaCompanyIndex[normName];
+        if (cmId) {
+          const yoyWrap = pipelineTr.querySelector('.ka-yoy-wrap');
+          if (yoyWrap && !yoyWrap.dataset.loaded) {
+            yoyWrap.dataset.loaded = '1';
+            appendCompanyYoyCard(cmId, yoyWrap, undefined);
+          }
+        }
+      }
     });
     const removeBtn = tr.querySelector('.ka-remove-btn');
     if (removeBtn) {
@@ -10889,6 +10962,62 @@ async function yoyCommitImport(){
   finally{ _yoyImportFile=null; }
 }
 
+// ── YoY 客戶對照（YoY 客戶 ↔ 企業主檔）──
+let _yoyLinksOpen=false, _yoyAllCompanies=null, _yoyBindKey=null;
+async function loadYoyLinks(){
+  const body=$('yoyLinksBody'), stat=$('yoyLinksStats'); if(!body) return;
+  body.innerHTML='<div style="color:#9ca3af;padding:10px">載入中…</div>';
+  try{ const r=await fetch(`${API}/yoy/links`); const d=await r.json(); if(!r.ok) throw new Error(d.error||'載入失敗'); renderYoyLinks(d); }
+  catch(e){ body.innerHTML=`<div style="color:#c62828;padding:10px">❌ ${escapeHtml(e.message)}</div>`; if(stat) stat.textContent=''; }
+}
+function _yoyLinkBadge(v){
+  if(v.status==='confirmed') return '<span style="color:#1e8e3e;font-weight:700">✓ 已確認</span>';
+  if(v.status==='auto') return v.matchType==='suffix'?'<span style="color:#d97706;font-weight:600">疑似（去後綴）</span>':'<span style="color:#1a73e8;font-weight:600">自動命中</span>';
+  if(v.status==='ambiguous') return `<span style="color:#d97706">多筆同名（${v.count}）</span>`;
+  if(v.status==='ignored') return '<span style="color:#9ca3af">已忽略</span>';
+  return '<span style="color:#d93025;font-weight:600">未對到</span>';
+}
+function renderYoyLinks(d){
+  const stat=$('yoyLinksStats'), s=d.stats||{};
+  if(stat) stat.innerHTML=`共 <b>${s.total||0}</b> 個 YoY 客戶　|　✓ 已確認 <b>${s.confirmed||0}</b>　|　自動命中 <b>${s.auto||0}</b>（疑似 ${s.suffix||0}）　|　<span style="color:#d93025">未對到 <b>${s.unmatched||0}</b></span>　|　多筆同名 ${s.ambiguous||0}　|　已忽略 ${s.ignored||0}`;
+  const canEdit=!!d.canEdit;
+  let html=`<table class="yoy-tbl"><thead><tr><th>YoY 客戶</th><th>營收（K）</th><th>狀態</th><th>對應企業主檔</th>${canEdit?'<th>操作</th>':''}</tr></thead><tbody>`;
+  html+=(d.links||[]).map(v=>{
+    const matched=v.matchName?escapeHtml(v.matchName):(v.status==='ambiguous'?'（需人工指定）':'—');
+    const ops=canEdit?`<td style="white-space:nowrap;text-align:left">
+      <button class="yoy-link-btn" data-act="bind" data-key="${escapeHtml(v.customerKey)}" data-raw="${escapeHtml(v.rawCustomer)}" style="font-size:12px;padding:3px 8px;margin-right:4px;border:1px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:6px;cursor:pointer">${v.status==='confirmed'?'改綁':'綁定'}</button>${v.status==='ignored'?`<button class="yoy-link-btn" data-act="clear" data-key="${escapeHtml(v.customerKey)}" style="font-size:12px;padding:3px 8px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer">還原</button>`:`<button class="yoy-link-btn" data-act="ignore" data-key="${escapeHtml(v.customerKey)}" style="font-size:12px;padding:3px 8px;border:1px solid #d1d5db;background:#fff;color:#6b7280;border-radius:6px;cursor:pointer">忽略</button>`}
+    </td>`:'';
+    return `<tr><td>${escapeHtml(v.rawCustomer)}</td><td>${yoyFmt(v.revenue)}</td><td>${_yoyLinkBadge(v)}</td><td>${matched}</td>${ops}</tr>`;
+  }).join('');
+  html+=`</tbody></table>`;
+  const body=$('yoyLinksBody'); body.innerHTML=html;
+  body.querySelectorAll('.yoy-link-btn').forEach(b=>b.addEventListener('click',()=>{
+    const act=b.dataset.act, key=b.dataset.key;
+    if(act==='bind') openYoyBind(key, b.dataset.raw); else yoyLinkPost({ customerKey:key, action:act });
+  }));
+}
+async function yoyLinkPost(bodyObj){
+  try{ const r=await fetch(`${API}/yoy/links`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyObj)}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'失敗'); showToast('✅ 已更新對照'); await loadYoyLinks(); if(_yoyReport) renderYoyView(); }
+  catch(e){ showToast('❌ '+e.message); }
+}
+async function openYoyBind(key, raw){
+  _yoyBindKey=key;
+  $('yoyBindCust').textContent=raw;
+  $('yoyBindSearch').value=''; $('yoyBindResults').innerHTML='<div style="color:#9ca3af;padding:8px">載入企業主檔…</div>';
+  $('yoyBindOverlay').classList.add('open');
+  try{ const r=await fetch(`${API}/admin/companies`); _yoyAllCompanies=r.ok?await r.json():[]; }catch{ _yoyAllCompanies=_yoyAllCompanies||[]; }   // 每次重抓，避免主檔在別處變更後清單陳舊
+  renderYoyBindResults('');
+  setTimeout(()=>{ const el=$('yoyBindSearch'); if(el) el.focus(); },50);
+}
+function renderYoyBindResults(q){
+  const list=(_yoyAllCompanies||[]).filter(c=>{ if(!q) return true; return ((c.name||'')+(c.taxId||'')).toLowerCase().includes(q.toLowerCase()); }).slice(0,40);
+  let html=`<table class="yoy-tbl"><tbody>`;
+  html+=list.map(c=>`<tr class="yoy-bind-row" data-id="${escapeHtml(c.id)}" style="cursor:pointer"><td>${escapeHtml(c.name||'')}</td><td style="color:#9ca3af">${escapeHtml(c.taxId||'無統編')}</td></tr>`).join('') || '<tr><td style="color:#9ca3af;padding:8px">無符合的企業主檔</td></tr>';
+  html+='</tbody></table>';
+  const wrap=$('yoyBindResults'); wrap.innerHTML=html;
+  wrap.querySelectorAll('.yoy-bind-row').forEach(tr=>tr.addEventListener('click',()=>{ $('yoyBindOverlay').classList.remove('open'); yoyLinkPost({ customerKey:_yoyBindKey, companyId:tr.dataset.id }); }));
+}
+
 (function initYoy(){
   const sa=$('yoyYearA'), sb=$('yoyYearB'), sd=$('yoyDeptSel');
   if(sa) sa.addEventListener('change', renderYoyView);
@@ -10900,4 +11029,8 @@ async function yoyCommitImport(){
   ['yoyImportClose','yoyImportCancel'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('click',()=>$('yoyImportOverlay').classList.remove('open')); });
   const ic=$('yoyImportConfirm'); if(ic) ic.addEventListener('click', yoyCommitImport);
   const pb=$('yoyPrintBtn'); if(pb) pb.addEventListener('click',()=>window.print());
+  // 客戶對照面板（折疊；展開才載入）+ 綁定 modal
+  const lt=$('yoyLinksToggle'); if(lt) lt.addEventListener('click',()=>{ _yoyLinksOpen=!_yoyLinksOpen; const w=$('yoyLinksWrap'); if(w) w.style.display=_yoyLinksOpen?'':'none'; const cr=$('yoyLinksCaret'); if(cr) cr.textContent=_yoyLinksOpen?'▾ 收合':'▸ 展開'; if(_yoyLinksOpen) loadYoyLinks(); });
+  const bsr=$('yoyBindSearch'); if(bsr) bsr.addEventListener('input', e=>renderYoyBindResults(e.target.value.trim()));
+  ['yoyBindClose','yoyBindCancel'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('click',()=>$('yoyBindOverlay').classList.remove('open')); });
 })();

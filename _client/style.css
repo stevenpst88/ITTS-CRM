@@ -3346,6 +3346,7 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 
 /* 展開的在手商機明細 */
 .ka-pipeline-row td { padding: 0; background: #fffef5 !important; }
+.ka-yoy-wrap { padding: 0 14px 14px; }
 .ka-pipeline-table { width: 100%; font-size: 12px; }
 .ka-pipeline-table td { padding: 8px 14px; border-bottom: 1px dashed #fef3c7; color: #555; }
 .ka-pipeline-table tr:last-child td { border-bottom: none; }
@@ -3412,6 +3413,7 @@ body.dark .ka-owner-chip { background: #0d2040; color: #8ecfff; }
 body.dark .ka-owner-chip.ka-owner-mine { background: #2a1f00; color: #fcd34d; border-color: #d97706; }
 
 body.dark .ka-pipeline-row td { background: #161914 !important; }
+body.dark .ka-yoy-wrap .cm-card { background: #161914; border-color: #2d333b; }
 body.dark .ka-pipeline-table td { border-bottom-color: #2a1f00; color: #8b949e; }
 body.dark .ka-stage-A { background: #0a1f10; color: #4ade80; }
 body.dark .ka-stage-B { background: #2a1a00; color: #d4a84e; }

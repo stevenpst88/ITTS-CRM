@@ -572,6 +572,14 @@ function normalizeCompanyName(s) {
     .trim()
     .toLowerCase();
 }
+// 更寬鬆的正規化（去公司後綴與標點）：只用於 YoY↔企業主檔 名稱「疑似」比對，不影響主檔比對鍵
+function normalizeCompanyLoose(s) {
+  let v = normalizeCompanyName(s);
+  v = v.replace(/股份有限公司|股份公司|有限公司|企業社|商行|\(股\)|（股）/g, '')
+       .replace(/companylimited|co\.?,?ltd\.?|limited|ltd\.?|inc\.?|corp\.?|corporation/g, '')
+       .replace(/[.,，、。·\-_/\\()（）「」【】]/g, '');
+  return v.trim();
+}
 // 計算主檔比對鍵：有統編→tax:統編；否則→name:正規化公司名；都沒有→''（無法建檔）
 function companyMatchKey(taxId, company) {
   const t = String(taxId || '').trim();
@@ -6977,6 +6985,153 @@ app.delete('/api/yoy/:year', requireAuth, (req, res) => {
     db.save(data);
     writeLog('DELETE_YOY', req.session.user.username, y, '清除 YoY 年度資料', req);
   }
+  res.json({ success: true });
+});
+
+// ════════════════════════════════════════════════════════════
+//  YoY 客戶 ↔ 企業主檔「對照層」(data.yoyLinks)
+//  原則：原始 yoyRevenue 不動；對照只是一座可拆的橋。
+//  客戶只有公司名（無統編）→ 名稱比對只能當「候選建議」，人工確認(confirmed)後才權威。
+//  穩定鍵：customerKey = normalizeCompanyName(YoY客戶名)。companyId 會變故另存 taxId 備用。
+// ════════════════════════════════════════════════════════════
+// 取 YoY 所有 distinct 客戶：Map<customerKey, 原始客戶名>
+function yoyDistinctCustomers(data) {
+  const m = new Map();
+  Object.values(((data.yoyRevenue || {}).years) || {}).forEach(rows =>
+    (rows || []).forEach(r => { const raw = (r.customer || '').trim(); if (raw) m.set(normalizeCompanyName(raw), raw); }));
+  return m;
+}
+// 主檔名稱索引（精確 + 去後綴鬆比對）
+function _yoyMasterIndex(companies) {
+  const exact = new Map(), loose = new Map();
+  (companies || []).forEach(mst => {
+    const ek = normalizeCompanyName(mst.name || '');
+    if (ek && !exact.has(ek)) exact.set(ek, mst);
+    const lk = normalizeCompanyLoose(mst.name || '');
+    if (lk && lk.length >= 2) { if (!loose.has(lk)) loose.set(lk, []); loose.get(lk).push(mst); }
+  });
+  return { exact, loose };
+}
+// 單一客戶名 → 主檔比對（exact 高信心、suffix 疑似、ambiguous 多筆需人工）
+function yoyMatchByName(rawCustomer, idx) {
+  const ek = normalizeCompanyName(rawCustomer);
+  if (!ek) return null;
+  if (idx.exact.has(ek)) { const m = idx.exact.get(ek); return { companyId: m.id, matchName: m.name, taxId: m.taxId || '', matchType: 'exact' }; }
+  const lk = normalizeCompanyLoose(rawCustomer);
+  if (lk && lk.length >= 2 && idx.loose.has(lk)) {
+    const arr = idx.loose.get(lk);
+    if (arr.length === 1) { const m = arr[0]; return { companyId: m.id, matchName: m.name, taxId: m.taxId || '', matchType: 'suffix' }; }
+    return { ambiguous: arr.length, matchType: 'ambiguous' };
+  }
+  return null;
+}
+// 解析 confirmed 綁定的「現存主檔」：companyId 仍在→用它；否則用 taxId 救回（合併後同統編主檔）；都不行→null（孤兒）
+function _yoyResolveConfirmed(link, companies) {
+  const byId = companies.find(c => c.id === link.companyId);
+  if (byId) return { companyId: byId.id, matchName: byId.name };
+  if (link.taxId) { const byTax = companies.find(c => (c.taxId || '') === link.taxId); if (byTax) return { companyId: byTax.id, matchName: byTax.name }; }
+  return null;   // 主檔已被合併/刪除且無法用 taxId 救回
+}
+// 聚合各年營收（給定要計入的 customerKey 集合）
+function _yoyAggYears(data, keySet) {
+  const years = {};
+  Object.entries(((data.yoyRevenue || {}).years) || {}).forEach(([y, rows]) => {
+    const mine = (rows || []).filter(r => keySet.has(normalizeCompanyName((r.customer || '').trim())));
+    if (!mine.length) return;
+    const rev = mine.reduce((s, r) => s + (r.total || 0), 0);
+    let gn = 0, gd = 0; mine.forEach(r => { if (r.grossMargin != null) { gn += (r.total || 0) * r.grossMargin; gd += (r.total || 0); } });
+    years[y] = { revenue: rev, gm: gd ? gn / gd : null };
+  });
+  return years;
+}
+// 合併「人工綁定 + 自動比對」→ Map<customerKey, {status, companyId, matchName, matchType, rawCustomer}>（給對照面板）
+function yoyResolveLinks(data) {
+  const links = data.yoyLinks || {};
+  const companies = data.companies || [];
+  const idx = _yoyMasterIndex(companies);
+  const out = new Map();
+  yoyDistinctCustomers(data).forEach((raw, key) => {
+    const link = links[key];
+    if (link && link.status === 'none') { out.set(key, { rawCustomer: raw, status: 'ignored' }); return; }
+    if (link && link.status === 'confirmed') {
+      const rc = _yoyResolveConfirmed(link, companies);
+      if (rc) { out.set(key, { rawCustomer: raw, status: 'confirmed', companyId: rc.companyId, matchName: rc.matchName, taxId: link.taxId || '', matchType: 'manual' }); return; }
+      // 孤兒：綁定的主檔已不存在 → 退回名稱自動比對救援，而非帶死 id 消失
+    }
+    const a = yoyMatchByName(raw, idx);
+    if (a && a.companyId) out.set(key, { rawCustomer: raw, status: 'auto', ...a });
+    else if (a && a.ambiguous) out.set(key, { rawCustomer: raw, status: 'ambiguous', count: a.ambiguous });
+    else out.set(key, { rawCustomer: raw, status: 'unmatched' });
+  });
+  return out;
+}
+// 某主檔的歷史 YoY 營收：只計入「人工確認 + 名稱精確自動命中」；suffix 疑似不自動計入（僅回報待確認數），避免短中文同名誤計
+function getCompanyYoy(data, company) {
+  const links = data.yoyLinks || {};
+  const companies = data.companies || [];
+  const idx = _yoyMasterIndex(companies);
+  const counted = new Set(); const customers = []; let suffixPending = 0;
+  yoyDistinctCustomers(data).forEach((raw, key) => {
+    const link = links[key];
+    if (link && link.status === 'none') return;
+    if (link && link.status === 'confirmed') {
+      const rc = _yoyResolveConfirmed(link, companies);
+      if (rc) { if (rc.companyId === company.id) { counted.add(key); customers.push({ name: raw, status: 'confirmed', matchType: 'manual' }); } return; }
+      // 孤兒 → 落到下方名稱自動比對救援
+    }
+    const a = yoyMatchByName(raw, idx);
+    if (!a || a.companyId !== company.id) return;
+    if (a.matchType === 'exact') { counted.add(key); customers.push({ name: raw, status: 'auto', matchType: 'exact' }); }
+    else if (a.matchType === 'suffix') { suffixPending++; }   // 疑似 → 不自動計入營收，待人工確認
+  });
+  if (!counted.size && !suffixPending) return null;
+  return { years: _yoyAggYears(data, counted), customers, suffixPending };
+}
+
+// 單一公司的歷史 YoY 營收（gate：canViewYoy；公司彙整頁的「歷史營收」卡用）
+app.get('/api/companies/:id/yoy', requireAuth, (req, res) => {
+  if (!canViewYoy(req)) return res.status(403).json({ error: '無權檢視 YoY 營收' });
+  const data = db.load();
+  const company = (data.companies || []).find(c => c.id === req.params.id);
+  if (!company) return res.status(404).json({ error: '找不到此企業主檔' });
+  res.json({ yoy: getCompanyYoy(data, company) });
+});
+
+// YoY 客戶 ↔ 主檔 對照表（coverage；給對照面板）
+app.get('/api/yoy/links', requireAuth, (req, res) => {
+  if (!canViewYoy(req)) return res.status(403).json({ error: '無權限' });
+  const data = db.load();
+  const revByKey = {};
+  Object.values(((data.yoyRevenue || {}).years) || {}).forEach(rows => (rows || []).forEach(r => {
+    const k = normalizeCompanyName((r.customer || '').trim()); if (k) revByKey[k] = (revByKey[k] || 0) + (r.total || 0);
+  }));
+  const out = [];
+  yoyResolveLinks(data).forEach((v, key) => out.push({ customerKey: key, ...v, revenue: revByKey[key] || 0 }));
+  out.sort((a, b) => b.revenue - a.revenue);
+  const cnt = s => out.filter(x => x.status === s).length;
+  res.json({
+    links: out, canEdit: canImportYoy(req),
+    stats: { total: out.length, confirmed: cnt('confirmed'), auto: cnt('auto'), suffix: out.filter(x => x.matchType === 'suffix').length, unmatched: cnt('unmatched'), ambiguous: cnt('ambiguous'), ignored: cnt('ignored') },
+  });
+});
+
+// 設定／確認／忽略 對照（admin）
+app.post('/api/yoy/links', requireAuth, (req, res) => {
+  if (!canImportYoy(req)) return res.status(403).json({ error: '無權限（限系統管理員）' });
+  const { customerKey, companyId, action } = req.body || {};
+  if (!customerKey) return res.status(400).json({ error: '缺少 customerKey' });
+  const data = db.load();
+  if (!data.yoyLinks) data.yoyLinks = {};
+  const now = new Date().toISOString(), by = req.session.user.username;
+  if (action === 'ignore') { data.yoyLinks[customerKey] = { status: 'none', updatedBy: by, updatedAt: now }; }
+  else if (action === 'clear') { delete data.yoyLinks[customerKey]; }
+  else {
+    const m = (data.companies || []).find(c => c.id === companyId);
+    if (!m) return res.status(400).json({ error: '找不到該企業主檔' });
+    data.yoyLinks[customerKey] = { status: 'confirmed', companyId: m.id, matchName: m.name, taxId: m.taxId || '', updatedBy: by, updatedAt: now };
+  }
+  db.save(data);
+  writeLog('YOY_LINK', by, customerKey, action || ('綁定→' + (companyId || '')), req);
   res.json({ success: true });
 });
 

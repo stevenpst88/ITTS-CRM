@@ -1267,6 +1267,29 @@
               <input id="yoyCustSearch" class="yoy-search" placeholder="🔍 搜尋客戶名稱">
               <div id="yoyCustomerTable" class="yoy-table-wrap"></div>
             </div>
+            <div class="yoy-card" id="yoyLinksCard">
+              <div class="yoy-card-title" id="yoyLinksToggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+                <span>🔗 客戶對照（YoY 客戶 ↔ 企業主檔）</span>
+                <span id="yoyLinksCaret" style="font-size:13px;color:#9ca3af;font-weight:400">▸ 展開</span>
+              </div>
+              <div id="yoyLinksWrap" style="display:none">
+                <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">把歷史 YoY 客戶對到企業主檔，公司彙整頁就能看到該公司的歷史營收。客戶只有公司名 → 系統用名稱比對給<b>候選建議</b>，請人工確認；對不上的可手動綁定或忽略。</div>
+                <div id="yoyLinksStats" style="font-size:13px;color:#6b7280;margin-bottom:8px"></div>
+                <div id="yoyLinksBody" class="yoy-table-wrap" style="max-height:420px"></div>
+              </div>
+            </div>
+          </div>
+          <!-- 對照綁定 modal -->
+          <div class="modal-overlay" id="yoyBindOverlay">
+            <div class="modal" style="width:520px">
+              <div class="modal-header"><h2>綁定企業主檔</h2><button class="modal-close" id="yoyBindClose">&#10005;</button></div>
+              <div class="modal-body">
+                <div style="font-size:13px;color:#6b7280;margin-bottom:8px">YoY 客戶：<b id="yoyBindCust"></b></div>
+                <input id="yoyBindSearch" class="yoy-search" style="width:100%" placeholder="🔍 搜尋企業主檔（公司名／統編）">
+                <div id="yoyBindResults" class="yoy-table-wrap" style="max-height:300px;margin-top:8px"></div>
+              </div>
+              <div class="modal-footer"><button class="btn btn-secondary" id="yoyBindCancel">取消</button></div>
+            </div>
           </div>
           <!-- 匯入預覽 modal -->
           <div class="modal-overlay" id="yoyImportOverlay">
