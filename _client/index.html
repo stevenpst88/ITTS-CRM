@@ -123,6 +123,12 @@
           <span class="nav-label">管理儀表板</span>
         </div>
 
+        <!-- YoY 營收同期比（長官 BI 報表，executive / admin） -->
+        <div class="sidebar-nav-item" id="navYoy" data-section="yoy" style="display:none">
+          <span class="nav-icon">&#128202;</span>
+          <span class="nav-label">YoY 營收同期比</span>
+        </div>
+
         <!-- 行銷活動（marketing / manager / admin） -->
         <div class="sidebar-nav-item" id="navCampaigns" data-section="campaigns" style="display:none">
           <span class="nav-icon">&#128226;</span>
@@ -1195,6 +1201,84 @@
           <div id="execTabTrend"        class="exec-tab-pane" style="display:none"></div>
           <div id="execTabProduct"      class="exec-tab-pane" style="display:none"></div>
           <div id="execTabBuComparison" class="exec-tab-pane" style="display:none"></div>
+        </div>
+
+        <!-- ── YoY 營收同期比（長官 BI 報表） ── -->
+        <div id="yoyView" style="display:none">
+          <style>
+            .yoy-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+            .yoy-title{font-size:22px;font-weight:800;color:#1f2937;margin:0}
+            .yoy-meta{font-size:12px;color:#9ca3af;margin-top:4px}
+            .yoy-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+            .yoy-vs{font-weight:700;color:#6b7280}
+            .yoy-empty{padding:60px 20px;text-align:center;color:#9ca3af;background:#fafbfc;border:1px dashed #e5e7eb;border-radius:12px}
+            .yoy-kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+            .yoy-kpi{background:#fff;border:1px solid #eef0f2;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+            .yoy-kpi-label{font-size:13px;color:#6b7280;margin-bottom:6px}
+            .yoy-kpi-value{font-size:26px;font-weight:800;color:#111827;line-height:1.15}
+            .yoy-kpi-sub{font-size:12px;margin-top:5px}
+            .yoy-up{color:#1e8e3e;font-weight:700}.yoy-down{color:#d93025;font-weight:700}.yoy-flat{color:#9ca3af}
+            .yoy-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+            @media(max-width:900px){.yoy-grid{grid-template-columns:1fr}}
+            .yoy-card{background:#fff;border:1px solid #eef0f2;border-radius:14px;padding:16px 18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+            .yoy-card-title{font-size:15px;font-weight:700;color:#374151;margin-bottom:12px}
+            .yoy-table-wrap{overflow:auto;max-height:460px}
+            table.yoy-tbl{width:100%;border-collapse:collapse;font-size:13px}
+            table.yoy-tbl th{position:sticky;top:0;background:#f8fafc;text-align:right;padding:9px 10px;font-weight:700;color:#475569;border-bottom:2px solid #e5e7eb;white-space:nowrap;cursor:pointer;user-select:none}
+            table.yoy-tbl th:first-child{text-align:left}
+            table.yoy-tbl td{padding:8px 10px;text-align:right;border-bottom:1px solid #f1f3f5;white-space:nowrap}
+            table.yoy-tbl td:first-child{text-align:left;font-weight:600;color:#1f2937}
+            table.yoy-tbl tr.yoy-cust-row{cursor:pointer}
+            table.yoy-tbl tr.yoy-cust-row:hover{background:#f9fafb}
+            table.yoy-tbl tr.yoy-sub td{background:#fbfcfe;color:#64748b;font-weight:400;font-size:12px}
+            table.yoy-tbl tr.yoy-sub td:first-child{padding-left:26px;font-weight:400;color:#64748b}
+            table.yoy-tbl tfoot td{font-weight:800;border-top:2px solid #e5e7eb;background:#f8fafc}
+            .yoy-search{width:240px;max-width:100%;padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;margin-bottom:10px}
+            @media print{.sidebar,.yoy-head-actions{display:none!important}.yoy-card{break-inside:avoid}}
+          </style>
+          <div class="yoy-head">
+            <div>
+              <h2 class="yoy-title">&#128202; YoY 營收同期比</h2>
+              <div id="yoyMeta" class="yoy-meta"></div>
+            </div>
+            <div class="yoy-head-actions">
+              <select id="yoyYearA" class="forecast-year-sel"></select>
+              <span class="yoy-vs">vs</span>
+              <select id="yoyYearB" class="forecast-year-sel"></select>
+              <select id="yoyDeptSel" class="forecast-year-sel"><option value="">全部部門</option></select>
+              <button id="yoyImportBtn" class="btn btn-primary btn-sm" style="display:none">&#11014;&#65039; 匯入資料</button>
+              <button id="yoyPrintBtn" class="btn btn-secondary btn-sm">&#128424;&#65039; 列印</button>
+              <input type="file" id="yoyImportFile" accept=".xlsx,.xls" style="display:none">
+            </div>
+          </div>
+          <div id="yoyEmpty" class="yoy-empty" style="display:none"></div>
+          <div id="yoyContent" style="display:none">
+            <div id="yoyKpiRow" class="yoy-kpi-row"></div>
+            <div class="yoy-grid">
+              <div class="yoy-card"><div class="yoy-card-title">月別營收同期比（千元）</div><canvas id="yoyMonthlyChart" height="130"></canvas></div>
+              <div class="yoy-card"><div class="yoy-card-title">累計營收趨勢（千元）</div><canvas id="yoyCumChart" height="130"></canvas></div>
+            </div>
+            <div class="yoy-card">
+              <div class="yoy-card-title">服務項目別 同期比（千元）</div>
+              <div id="yoyServiceTable" class="yoy-table-wrap"></div>
+            </div>
+            <div class="yoy-card">
+              <div class="yoy-card-title">客戶 同期比（點客戶列展開該客戶的服務項目）</div>
+              <input id="yoyCustSearch" class="yoy-search" placeholder="🔍 搜尋客戶名稱">
+              <div id="yoyCustomerTable" class="yoy-table-wrap"></div>
+            </div>
+          </div>
+          <!-- 匯入預覽 modal -->
+          <div class="modal-overlay" id="yoyImportOverlay">
+            <div class="modal" style="width:560px">
+              <div class="modal-header"><h2>YoY 資料匯入預覽</h2><button class="modal-close" id="yoyImportClose">&#10005;</button></div>
+              <div class="modal-body"><div id="yoyImportPreviewBody"></div></div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" id="yoyImportCancel">取消</button>
+                <button class="btn btn-primary" id="yoyImportConfirm">✅ 確認寫入</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ── 主管首頁 ── -->

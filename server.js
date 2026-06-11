@@ -6831,6 +6831,121 @@ app.get('/api/companies/import-template', requireAuth, (req, res) => {
   res.send(buf);
 });
 
+// ════════════════════════════════════════════════════════════
+//  YoY 營收同期比（BI 報表）— 與 CRM 名片/商機資料完全區隔
+//  資料存於 data.yoyRevenue（獨立命名空間），CRM 營運邏輯不會碰它。
+//  匯入：admin（日後加 'secretary' 即可開放秘書）；檢視：admin + executive（長官）。
+// ════════════════════════════════════════════════════════════
+// 先只開放 admin（檢視 + 匯入）；之後再依「功能權限表」開放其他角色（如 executive / secretary）
+const YOY_VIEW_ROLES   = ['admin'];
+const YOY_IMPORT_ROLES = ['admin'];
+function canViewYoy(req)   { return !!(req.session.user && YOY_VIEW_ROLES.includes(req.session.user.role)); }
+function canImportYoy(req) { return !!(req.session.user && YOY_IMPORT_ROLES.includes(req.session.user.role)); }
+
+// 解析 YoY 活頁簿：每個「四位數年份」工作表 → 該年資料列（依表頭文字定位欄位，容忍欄位順序不同）
+function parseYoyWorkbook(buffer) {
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  const years = {};
+  const warnings = [];
+  for (const sheetName of wb.SheetNames) {
+    const ym = String(sheetName).trim().match(/^(\d{4})$/);
+    if (!ym) continue;                          // 只處理「西元年」工作表；BP 客戶對照表等其他工作表一律忽略、不解析、不儲存
+    const year = ym[1];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, blankrows: false });
+    if (!rows.length) continue;
+    const header = (rows[0] || []).map(h => (h == null ? '' : String(h).trim()));
+    const find = (...keys) => { for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; } return -1; };
+    const colProject  = find('專案');
+    const colCustomer = find('客戶名稱', '客戶');
+    const colDept     = find('部門');
+    const colService  = find('服務項目', '項目別');
+    const colTotal    = find('合計');
+    const colMargin   = find('平均毛利', '毛利');
+    const monthCols = {};                        // 月份(1-12) → 欄索引（表頭含「N月」）
+    header.forEach((h, i) => { const m = h.match(/(\d{1,2})\s*月/); if (m) { const n = +m[1]; if (n >= 1 && n <= 12 && monthCols[n] === undefined) monthCols[n] = i; } });
+    if (Object.keys(monthCols).length === 0) { warnings.push(`工作表「${sheetName}」找不到月份欄（如「1月」），已略過`); continue; }
+    if (colService < 0) { warnings.push(`工作表「${sheetName}」找不到「服務項目別」欄，已略過`); continue; }
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const num = (i) => { if (i < 0) return null; const v = row[i]; if (v == null || v === '') return null; const f = parseFloat(String(v).replace(/[, ]/g, '')); return isNaN(f) ? null : f; };
+      const str = (i) => { if (i < 0) return ''; const v = row[i]; return v == null ? '' : String(v).trim(); };
+      const months = []; let hasMonth = false;
+      for (let mo = 1; mo <= 12; mo++) { const v = monthCols[mo] !== undefined ? num(monthCols[mo]) : null; months.push(v); if (v != null) hasMonth = true; }
+      const service = str(colService), dept = str(colDept), customer = str(colCustomer), project = str(colProject);
+      if (!hasMonth && !service && !dept && !customer && !project) continue;   // 略過完全空白列
+      const total = (colTotal >= 0 && num(colTotal) != null) ? num(colTotal) : months.reduce((s, v) => s + (v || 0), 0);
+      out.push({ project, customer, dept, service, months, total, grossMargin: num(colMargin) });
+    }
+    years[year] = out;
+  }
+  return { years, warnings };
+}
+
+function yoyYearSummary(rows) {
+  const total = rows.reduce((s, r) => s + (r.total || 0), 0);
+  return {
+    rows: rows.length,
+    total,
+    customers: new Set(rows.map(r => r.customer).filter(Boolean)).size,
+    services:  new Set(rows.map(r => r.service).filter(Boolean)).size,
+    depts:     new Set(rows.map(r => r.dept).filter(Boolean)).size,
+  };
+}
+
+// 匯入（admin）：?dryRun=1 乾跑預覽；否則寫入（以「年度」為單位整批取代）
+app.post('/api/yoy/import', requireAuth,
+  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res) => {
+    if (!canImportYoy(req)) return res.status(403).json({ error: '無權限（限系統管理員）' });
+    if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
+    let parsed;
+    try { parsed = parseYoyWorkbook(req.file.buffer); }
+    catch (e) { return res.status(400).json({ error: '檔案解析失敗，請確認格式' }); }
+    const yearKeys = Object.keys(parsed.years).sort();
+    if (yearKeys.length === 0) return res.status(400).json({ error: '找不到任何「年份」工作表（工作表需以西元年命名，如 2024、2025）' });
+    const summary = yearKeys.map(y => ({ year: y, ...yoyYearSummary(parsed.years[y]) }));
+    if (req.query.dryRun === '1') return res.json({ dryRun: true, years: yearKeys, summary, warnings: parsed.warnings });
+    const data = db.load();
+    if (!data.yoyRevenue || typeof data.yoyRevenue !== 'object') data.yoyRevenue = { years: {} };
+    if (!data.yoyRevenue.years) data.yoyRevenue.years = {};
+    yearKeys.forEach(y => { data.yoyRevenue.years[y] = parsed.years[y]; });   // 整批取代該年
+    data.yoyRevenue.updatedAt  = new Date().toISOString();
+    data.yoyRevenue.updatedBy  = req.session.user.username;
+    data.yoyRevenue.sourceFile = req.file.originalname || '';
+    db.save(data);
+    writeLog('IMPORT_YOY', req.session.user.username, yearKeys.join('、'),
+      summary.map(s => `${s.year}:${s.rows}列/${Math.round(s.total)}K`).join(' '), req);
+    res.json({ success: true, years: yearKeys, summary, warnings: parsed.warnings });
+  });
+
+// 檢視報表（admin + executive）：回傳各年原始列，前端自行 pivot/繪圖
+app.get('/api/yoy/report', requireAuth, (req, res) => {
+  if (!canViewYoy(req)) return res.status(403).json({ error: '無權限' });
+  const yoy = (db.load().yoyRevenue) || { years: {} };
+  res.json({
+    updatedAt:  yoy.updatedAt  || null,
+    updatedBy:  yoy.updatedBy  || null,
+    sourceFile: yoy.sourceFile || null,
+    years:      yoy.years      || {},
+    canImport:  canImportYoy(req),
+  });
+});
+
+// 清除某年度資料（admin）
+app.delete('/api/yoy/:year', requireAuth, (req, res) => {
+  if (!canImportYoy(req)) return res.status(403).json({ error: '無權限（限系統管理員）' });
+  const data = db.load();
+  const y = String(req.params.year);
+  if (data.yoyRevenue && data.yoyRevenue.years && data.yoyRevenue.years[y]) {
+    delete data.yoyRevenue.years[y];
+    data.yoyRevenue.updatedAt = new Date().toISOString();
+    db.save(data);
+    writeLog('DELETE_YOY', req.session.user.username, y, '清除 YoY 年度資料', req);
+  }
+  res.json({ success: true });
+});
+
 // ── 單筆設定企業主檔產業（清單內直接下拉選取，admin + 行銷）──
 app.post('/api/companies/:id/set-industry', requireAuth, (req, res) => {
   if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });

@@ -199,6 +199,9 @@ function applyPermissions() {
     const el = $(navId);
     if (el) el.style.display = allowedFeatures.has(key) ? '' : 'none';
   });
+  // YoY 營收同期比（BI 報表）：先只開放 admin（之後再依功能權限表開放其他角色）。伺服器端 /api/yoy 另有把關
+  const yoyNav = $('navYoy');
+  if (yoyNav) yoyNav.style.display = (userPermissions.role === 'admin') ? '' : 'none';
 
   // Pipeline 月度變動：嵌入商機動態報表下方（仍以角色硬編，未列入勾選表）
   const role = userPermissions.role;
@@ -738,11 +741,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navManagerHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
+  ['navHome','navManagerHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
+  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -760,7 +763,7 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','companyMasterView','keyAccountView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','execDashView','managerHomeView','campaignsView','leadsView',
+   'forecastView','lostOppView','execDashView','yoyView','managerHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
@@ -792,6 +795,7 @@ function showSection(section) {
   $('pipelineView').style.display     = section === 'pipeline'    ? '' : 'none';
   $('forecastView').style.display     = section === 'forecast'    ? '' : 'none';
   $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
+  if ($('yoyView')) $('yoyView').style.display = section === 'yoy' ? '' : 'none';
   $('managerHomeView').style.display  = section === 'managerHome' ? '' : 'none';
   $('campaignsView').style.display    = section === 'campaigns'   ? '' : 'none';
   $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
@@ -817,6 +821,7 @@ function showSection(section) {
   if (section === 'pipeline')    loadPipelineView();
   if (section === 'forecast')    loadForecastView();
   if (section === 'execDash')    loadExecDash();
+  if (section === 'yoy')         loadYoyView();
   if (section === 'managerHome') loadManagerHome();
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
@@ -1244,6 +1249,7 @@ $('navPipeline').addEventListener('click',  () => showSection('pipeline'));
 $('navForecast').addEventListener('click',  () => showSection('forecast'));
 $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
 $('navExecDash').addEventListener('click',        () => showSection('execDash'));
+if ($('navYoy')) $('navYoy').addEventListener('click', () => showSection('yoy'));
 $('navManagerHome').addEventListener('click',     () => showSection('managerHome'));
 $('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
 $('navLeads').addEventListener('click',           () => showSection('leads'));
@@ -1571,7 +1577,7 @@ function renderKeyAccountView() {
     const canAddOpp = ['user', 'manager1', 'manager2'].includes(myRole);
     const addOppFooter = canAddOpp
       ? `<div style="padding:10px 14px;text-align:right;border-top:1px solid #f1f3f5;background:#fafbfc">
-           <button class="ka-add-opp-btn" type="button" style="background:#1a73e8;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">➕ 新增商機</button>
+           <button class="ka-add-opp-btn btn btn-primary btn-sm" type="button">➕ 新增商機</button>
          </div>`
       : '';
     pipelineTr.innerHTML = `<td colspan="9" style="padding:0">
@@ -4335,6 +4341,9 @@ async function _createOppFromModal() {
     description:     $('oppEditDescription').value.trim(),
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
   };
+  // 防連點：送出期間禁用儲存鈕（disabled 的按鈕不觸發 click），避免重複建立商機
+  const saveBtn = $('oppEditSave');
+  if (saveBtn) saveBtn.disabled = true;
   try {
     const r = await fetch(`${API}/opportunities`, {
       method: 'POST',
@@ -4350,6 +4359,7 @@ async function _createOppFromModal() {
     if (currentSection === 'keyAccount') renderKeyAccountView();
     showToast(saved.kaNotified ? '✅ 商機已建立，已通知跨部門協作夥伴' : '✅ 商機已建立');
   } catch { showToast('建立失敗，請重試'); }
+  finally { if (saveBtn) saveBtn.disabled = false; }
 }
 
 function openOppEdit(id) {
@@ -10675,3 +10685,186 @@ function openBizDrilldown(type) {
   }
   $('bizDrillOverlay').classList.add('open');
 }
+
+// ════════════════════════════════════════════════════════════
+//  YoY 營收同期比（長官 BI 報表）— 與 CRM 營運資料完全區隔
+//  資料來源：GET /api/yoy/report（data.yoyRevenue 獨立命名空間）
+// ════════════════════════════════════════════════════════════
+let _yoyReport = null;
+let _yoyCharts = {};
+let _yoyCustFilter = '';
+const YOY_MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+function yoyFmt(n){ return Math.round(Number(n)||0).toLocaleString('zh-TW'); }
+function yoyPct(cur, base){ if(!base) return cur ? 100 : 0; return Math.round((cur-base)/Math.abs(base)*1000)/10; }
+function yoyDeltaHtml(cur, base){
+  const d = (cur||0)-(base||0), p = yoyPct(cur, base);
+  if (Math.abs(d) < 0.5 && p === 0) return '<span class="yoy-flat">—</span>';
+  const cls = d>=0 ? 'yoy-up' : 'yoy-down', arrow = d>=0 ? '▲' : '▼';
+  return `<span class="${cls}">${arrow} ${yoyFmt(Math.abs(d))}（${d>=0?'+':''}${p}%）</span>`;
+}
+
+async function loadYoyView(){
+  const empty=$('yoyEmpty'), content=$('yoyContent');
+  try {
+    const r = await fetch(`${API}/yoy/report`);
+    if (!r.ok){ const e=await r.json().catch(()=>({})); empty.style.display=''; content.style.display='none'; empty.textContent=e.error||'無法載入 YoY 報表'; return; }
+    _yoyReport = await r.json();
+  } catch { empty.style.display=''; content.style.display='none'; empty.textContent='載入失敗，請重試'; return; }
+  const impBtn=$('yoyImportBtn'); if(impBtn) impBtn.style.display = _yoyReport.canImport ? '' : 'none';
+  const yrs = Object.keys(_yoyReport.years||{}).sort();
+  const meta=$('yoyMeta');
+  if (meta) meta.textContent = _yoyReport.updatedAt
+    ? `資料更新：${new Date(_yoyReport.updatedAt).toLocaleString('zh-TW')}　|　來源：${_yoyReport.sourceFile||'—'}　|　年度：${yrs.join('、')}` : '';
+  if (yrs.length===0){
+    empty.style.display=''; content.style.display='none';
+    empty.innerHTML = _yoyReport.canImport
+      ? '尚無資料。請點右上角「⬆️ 匯入資料」上傳 Excel（工作表以西元年命名，如 <b>2024</b> / <b>2025</b>）。'
+      : '尚無 YoY 資料，請通知系統管理員匯入。';
+    return;
+  }
+  empty.style.display='none'; content.style.display='';
+  const selA=$('yoyYearA'), selB=$('yoyYearB'), selD=$('yoyDeptSel');
+  const opt = yrs.map(y=>`<option value="${y}">${y}</option>`).join('');
+  selA.innerHTML=opt; selB.innerHTML=opt;
+  selA.value = yrs[yrs.length-2] || yrs[0];
+  selB.value = yrs[yrs.length-1];
+  const depts=new Set(); yrs.forEach(y=>(_yoyReport.years[y]||[]).forEach(r=>{ if(r.dept) depts.add(r.dept); }));
+  selD.innerHTML = '<option value="">全部部門</option>' + [...depts].sort().map(d=>`<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
+  renderYoyView();
+}
+
+function _yoyRows(year){
+  const dept = $('yoyDeptSel') ? $('yoyDeptSel').value : '';
+  let rows = (_yoyReport.years[year]||[]);
+  if (dept) rows = rows.filter(r=>r.dept===dept);
+  return rows;
+}
+function _yoySum(rows){
+  const months=Array(12).fill(0); let total=0, gpNum=0, gpDen=0;
+  rows.forEach(r=>{ (r.months||[]).forEach((v,i)=>{ if(i<12) months[i]+=(v||0); }); total+=(r.total||0); if(r.grossMargin!=null){ gpNum+=(r.total||0)*r.grossMargin; gpDen+=(r.total||0); } });
+  return { months, total, gm: gpDen ? gpNum/gpDen : null };
+}
+function _yoyByKey(rows, keyFn){ const m=new Map(); rows.forEach(r=>{ const k=keyFn(r)||'（未指定）'; m.set(k,(m.get(k)||0)+(r.total||0)); }); return m; }
+
+function renderYoyView(){
+  if (!_yoyReport) return;
+  const yA=$('yoyYearA').value, yB=$('yoyYearB').value;
+  const rowsA=_yoyRows(yA), rowsB=_yoyRows(yB);
+  const sumA=_yoySum(rowsA), sumB=_yoySum(rowsB);
+  renderYoyKpis(yA,yB,sumA,sumB);
+  renderYoyMonthlyChart(yA,yB,sumA,sumB);
+  renderYoyCumChart(yA,yB,sumA,sumB);
+  renderYoyServiceTable(yA,yB,rowsA,rowsB);
+  renderYoyCustomerTable(yA,yB,rowsA,rowsB);
+}
+
+function renderYoyKpis(yA,yB,sumA,sumB){
+  const growth=yoyPct(sumB.total,sumA.total), dAbs=sumB.total-sumA.total;
+  const gmA=sumA.gm!=null?sumA.gm*100:null, gmB=sumB.gm!=null?sumB.gm*100:null;
+  const gCls=dAbs>=0?'yoy-up':'yoy-down';
+  let gmVal='—', gmSub='';
+  if (gmA!=null&&gmB!=null){ gmVal=`${gmA.toFixed(1)}% → ${gmB.toFixed(1)}%`; const dd=gmB-gmA, c=dd>=0?'yoy-up':'yoy-down'; gmSub=`<span class="${c}">${dd>=0?'+':''}${dd.toFixed(1)} pp</span>`; }
+  const kpis=[
+    {label:`${yA} 全年營收（千元）`, value:yoyFmt(sumA.total), sub:`平均毛利 ${gmA!=null?gmA.toFixed(1)+'%':'—'}`},
+    {label:`${yB} 全年營收（千元）`, value:yoyFmt(sumB.total), sub:`平均毛利 ${gmB!=null?gmB.toFixed(1)+'%':'—'}`},
+    {label:`YoY 成長（${yB} vs ${yA}）`, value:`<span class="${gCls}">${dAbs>=0?'+':''}${growth}%</span>`, sub:`Δ ${dAbs>=0?'+':''}${yoyFmt(dAbs)} 千元`},
+    {label:`平均毛利率對比`, value:gmVal, sub:gmSub},
+  ];
+  $('yoyKpiRow').innerHTML = kpis.map(k=>`<div class="yoy-kpi"><div class="yoy-kpi-label">${escapeHtml(k.label)}</div><div class="yoy-kpi-value">${k.value}</div><div class="yoy-kpi-sub">${k.sub}</div></div>`).join('');
+}
+
+function _yoyDestroy(key){ if(_yoyCharts[key]){ try{_yoyCharts[key].destroy();}catch{} delete _yoyCharts[key]; } }
+function renderYoyMonthlyChart(yA,yB,sumA,sumB){
+  _yoyDestroy('monthly'); const ctx=$('yoyMonthlyChart'); if(!ctx||!window.Chart) return;
+  _yoyCharts.monthly=new Chart(ctx,{ type:'bar',
+    data:{ labels:YOY_MONTHS, datasets:[
+      {label:String(yA), data:sumA.months.map(v=>Math.round(v)), backgroundColor:'#94a3b8'},
+      {label:String(yB), data:sumB.months.map(v=>Math.round(v)), backgroundColor:'#1a73e8'} ]},
+    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${c.parsed.y.toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
+}
+function _yoyCum(arr){ const out=[]; let s=0; arr.forEach(v=>{ s+=(v||0); out.push(Math.round(s)); }); return out; }
+function renderYoyCumChart(yA,yB,sumA,sumB){
+  _yoyDestroy('cum'); const ctx=$('yoyCumChart'); if(!ctx||!window.Chart) return;
+  _yoyCharts.cum=new Chart(ctx,{ type:'line',
+    data:{ labels:YOY_MONTHS, datasets:[
+      {label:String(yA), data:_yoyCum(sumA.months), borderColor:'#94a3b8', backgroundColor:'transparent', tension:.3, borderWidth:2},
+      {label:String(yB), data:_yoyCum(sumB.months), borderColor:'#1a73e8', backgroundColor:'transparent', tension:.3, borderWidth:2} ]},
+    options:{ responsive:true, maintainAspectRatio:true, aspectRatio:2.2, plugins:{legend:{position:'top'}, tooltip:{callbacks:{label:c=>`${c.dataset.label}：${c.parsed.y.toLocaleString()} K`}}}, scales:{y:{ticks:{callback:v=>v.toLocaleString()}}} } });
+}
+
+function renderYoyServiceTable(yA,yB,rowsA,rowsB){
+  const mA=_yoyByKey(rowsA,r=>r.service), mB=_yoyByKey(rowsB,r=>r.service);
+  const rows=[...new Set([...mA.keys(),...mB.keys()])].map(k=>({k,a:mA.get(k)||0,b:mB.get(k)||0})).sort((x,y)=>y.b-x.b);
+  const totA=rows.reduce((s,r)=>s+r.a,0), totB=rows.reduce((s,r)=>s+r.b,0);
+  let html=`<table class="yoy-tbl"><thead><tr><th>服務項目別</th><th>${yA}</th><th>${yB}</th><th>YoY Δ／%</th></tr></thead><tbody>`;
+  html+=rows.map(r=>`<tr><td>${escapeHtml(r.k)}</td><td>${yoyFmt(r.a)}</td><td>${yoyFmt(r.b)}</td><td>${yoyDeltaHtml(r.b,r.a)}</td></tr>`).join('');
+  html+=`</tbody><tfoot><tr><td>合計</td><td>${yoyFmt(totA)}</td><td>${yoyFmt(totB)}</td><td>${yoyDeltaHtml(totB,totA)}</td></tr></tfoot></table>`;
+  $('yoyServiceTable').innerHTML=html;
+}
+
+function renderYoyCustomerTable(yA,yB,rowsA,rowsB){
+  const mA=_yoyByKey(rowsA,r=>r.customer), mB=_yoyByKey(rowsB,r=>r.customer);
+  let keys=[...new Set([...mA.keys(),...mB.keys()])];
+  const f=_yoyCustFilter.trim(); if(f) keys=keys.filter(k=>k.includes(f));
+  const rows=keys.map(k=>({k,a:mA.get(k)||0,b:mB.get(k)||0})).sort((x,y)=>y.b-x.b);
+  const totA=rows.reduce((s,r)=>s+r.a,0), totB=rows.reduce((s,r)=>s+r.b,0);
+  let html=`<table class="yoy-tbl"><thead><tr><th>客戶（${rows.length}）</th><th>${yA}</th><th>${yB}</th><th>YoY Δ／%</th></tr></thead><tbody>`;
+  html+=rows.map(r=>`<tr class="yoy-cust-row" data-cust="${escapeHtml(r.k)}"><td>▸ ${escapeHtml(r.k)}</td><td>${yoyFmt(r.a)}</td><td>${yoyFmt(r.b)}</td><td>${yoyDeltaHtml(r.b,r.a)}</td></tr>`).join('');
+  html+=`</tbody><tfoot><tr><td>合計</td><td>${yoyFmt(totA)}</td><td>${yoyFmt(totB)}</td><td>${yoyDeltaHtml(totB,totA)}</td></tr></tfoot></table>`;
+  const wrap=$('yoyCustomerTable'); wrap.innerHTML=html;
+  wrap.querySelectorAll('.yoy-cust-row').forEach(tr=>{ tr.addEventListener('click',()=>yoyToggleCustomer(tr,tr.dataset.cust,rowsA,rowsB)); });
+}
+function yoyToggleCustomer(tr, cust, rowsA, rowsB){
+  if (tr._expanded){ let n=tr.nextElementSibling; while(n&&n.classList.contains('yoy-sub')){ const x=n; n=n.nextElementSibling; x.remove(); } tr._expanded=false; tr.querySelector('td').innerHTML='▸ '+escapeHtml(cust); return; }
+  const subA=_yoyByKey(rowsA.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service);
+  const subB=_yoyByKey(rowsB.filter(r=>(r.customer||'（未指定）')===cust), r=>r.service);
+  const keys=[...new Set([...subA.keys(),...subB.keys()])].map(k=>({k,a:subA.get(k)||0,b:subB.get(k)||0})).sort((x,y)=>y.b-x.b);
+  let after=tr;
+  keys.forEach(s=>{ const el=document.createElement('tr'); el.className='yoy-sub'; el.innerHTML=`<td>${escapeHtml(s.k)}</td><td>${yoyFmt(s.a)}</td><td>${yoyFmt(s.b)}</td><td>${yoyDeltaHtml(s.b,s.a)}</td>`; after.after(el); after=el; });
+  tr._expanded=true; tr.querySelector('td').innerHTML='▾ '+escapeHtml(cust);
+}
+
+// ── 匯入流程（admin）：乾跑預覽 → 確認寫入 ──
+let _yoyImportFile=null;
+async function yoyImportPreview(file){
+  try{
+    const fd=new FormData(); fd.append('file',file);
+    const r=await fetch(`${API}/yoy/import?dryRun=1`,{method:'POST',body:fd});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||'分析失敗');
+    _yoyImportFile=file; yoyShowImportPreview(d);
+  }catch(e){ showToast('❌ '+e.message); }
+}
+function yoyShowImportPreview(d){
+  let html=`<div style="margin-bottom:10px;color:#374151">將匯入 <b>${d.years.join('、')}</b> 年度（以年度為單位<b>整批取代</b>既有資料）：</div>`;
+  html+=`<table class="yoy-tbl"><thead><tr><th>年度</th><th>資料列</th><th>營收合計（千元）</th><th>客戶數</th><th>服務項目</th></tr></thead><tbody>`;
+  html+=d.summary.map(s=>`<tr><td>${s.year}</td><td>${s.rows}</td><td>${yoyFmt(s.total)}</td><td>${s.customers}</td><td>${s.services}</td></tr>`).join('');
+  html+=`</tbody></table>`;
+  if(d.warnings&&d.warnings.length) html+=`<div style="margin-top:10px;color:#b45309;font-size:13px">⚠️ ${d.warnings.map(escapeHtml).join('<br>')}</div>`;
+  $('yoyImportPreviewBody').innerHTML=html;
+  $('yoyImportOverlay').classList.add('open');
+}
+async function yoyCommitImport(){
+  const file=_yoyImportFile; if(!file) return;
+  $('yoyImportOverlay').classList.remove('open');
+  try{
+    const fd=new FormData(); fd.append('file',file);
+    const r=await fetch(`${API}/yoy/import`,{method:'POST',body:fd});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||'匯入失敗');
+    showToast(`✅ 匯入完成：${d.years.join('、')} 年度`);
+    await loadYoyView();
+  }catch(e){ showToast('❌ '+e.message); }
+  finally{ _yoyImportFile=null; }
+}
+
+(function initYoy(){
+  const sa=$('yoyYearA'), sb=$('yoyYearB'), sd=$('yoyDeptSel');
+  if(sa) sa.addEventListener('change', renderYoyView);
+  if(sb) sb.addEventListener('change', renderYoyView);
+  if(sd) sd.addEventListener('change', renderYoyView);
+  const cs=$('yoyCustSearch'); if(cs) cs.addEventListener('input', e=>{ _yoyCustFilter=e.target.value; if(_yoyReport) renderYoyCustomerTable($('yoyYearA').value,$('yoyYearB').value,_yoyRows($('yoyYearA').value),_yoyRows($('yoyYearB').value)); });
+  const ib=$('yoyImportBtn'), ifl=$('yoyImportFile');
+  if(ib&&ifl){ ib.addEventListener('click',()=>ifl.click()); ifl.addEventListener('change', e=>{ const f=e.target.files[0]; ifl.value=''; if(f) yoyImportPreview(f); }); }
+  ['yoyImportClose','yoyImportCancel'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('click',()=>$('yoyImportOverlay').classList.remove('open')); });
+  const ic=$('yoyImportConfirm'); if(ic) ic.addEventListener('click', yoyCommitImport);
+  const pb=$('yoyPrintBtn'); if(pb) pb.addEventListener('click',()=>window.print());
+})();
