@@ -10435,8 +10435,38 @@ function openForcePasswordModal(reason) {
   document.getElementById('forcePwdNew').value = '';
   document.getElementById('forcePwdConfirm').value = '';
   document.getElementById('forcePwdError').textContent = '';
+  updateForcePwdRules();   // 重置逐項打勾清單為「未達成」
   overlay.style.display = 'flex';
   setTimeout(() => document.getElementById('forcePwdCurrent').focus(), 100);
+}
+
+// ── 即時逐項打勾（規則與後端 validatePasswordStrength 完全對齊）──
+const FPW_WEAK = ['password', 'admin123', 'qwerty', 'letmein', '12345678'];
+function _fpwSetRule(id, ok) {
+  const row = document.getElementById(id);
+  if (!row) return;
+  const ico = row.querySelector('.fpw-ico');
+  if (ico) ico.textContent = ok ? '✅' : '⬜';
+  row.style.color = ok ? '#1e8e3e' : '#9ca3af';
+}
+function updateForcePwdRules() {
+  const cur  = (document.getElementById('forcePwdCurrent') || {}).value || '';
+  const np   = (document.getElementById('forcePwdNew')     || {}).value || '';
+  const conf = (document.getElementById('forcePwdConfirm') || {}).value || '';
+  let cats = 0;
+  if (/[a-z]/.test(np)) cats++;
+  if (/[A-Z]/.test(np)) cats++;
+  if (/[0-9]/.test(np)) cats++;
+  if (/[^a-zA-Z0-9]/.test(np)) cats++;
+  const lower = np.toLowerCase();
+  // 類型數即時顯示（目前 N 種）
+  const catTxt = document.querySelector('#fpwRuleCat .fpw-cat-txt');
+  if (catTxt) catTxt.textContent = `含大寫 / 小寫 / 數字 / 符號 至少 3 種（目前 ${cats} 種）`;
+  _fpwSetRule('fpwRuleLen',   np.length >= 12);
+  _fpwSetRule('fpwRuleCat',   cats >= 3);
+  _fpwSetRule('fpwRuleWeak',  np.length > 0 && !FPW_WEAK.some(w => lower.includes(w)));
+  _fpwSetRule('fpwRuleMatch', np.length > 0 && np === conf);
+  _fpwSetRule('fpwRuleDiff',  np.length > 0 && np !== cur);
 }
 
 async function submitForcePassword() {
@@ -10481,10 +10511,13 @@ async function submitForcePassword() {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
-  // Enter 鍵送出
+  // Enter 鍵送出 + 即時更新逐項打勾
   ['forcePwdCurrent','forcePwdNew','forcePwdConfirm'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitForcePassword(); });
+    if (el) {
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') submitForcePassword(); });
+      el.addEventListener('input', updateForcePwdRules);
+    }
   });
 })();
 
