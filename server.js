@@ -818,9 +818,13 @@ const TECOPM_ALLOWED_PATHS = new Set([
   '/api/groups',            // 載入 group → 取 memberCompanies
   '/api/usermap',           // 預測表業務員名稱對應
 ]);
+// 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
+// （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
+const TECOPM_WRITE_EXEMPT_PATHS = new Set(['/api/user/password', '/api/logout']);
 app.use((req, res, next) => {
   if (req.session?.user?.role !== 'tecopm') return next();
   if (!req.path.startsWith('/api/')) return next();
+  if (TECOPM_WRITE_EXEMPT_PATHS.has(req.path)) return next(); // 改密碼/登出放行（含強制改密碼流程）
   if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
   if (!TECOPM_ALLOWED_PATHS.has(req.path)) return res.status(403).json({ error: '無權存取此資源' });
   next();
