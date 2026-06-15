@@ -6586,41 +6586,51 @@ app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
   const data = db.load();
   const companies = data.companies || [];
 
-  // 目標：有 8 碼統編、未補到資料、且未被標記為「確定查無」
+  // 候選：有 8 碼統編、未補全、未查無、未標記統編錯誤
+  //  · 沒統編（或統編非 8 碼）→ 本來就不在候選內，自動跳過
+  //  · gcisTaxIdError（有統編但 GCIS 比對不到）→ 已知統編有誤，跳過不再重複查
   const targets = companies.filter(m =>
-    /^\d{8}$/.test(String(m.taxId || '').trim()) && !m.gcisEnriched && !m.gcisNoData);
+    /^\d{8}$/.test(String(m.taxId || '').trim()) && !m.gcisEnriched && !m.gcisNoData && !m.gcisTaxIdError);
   const totalRemaining = targets.length;
   const batch = targets.slice(0, BATCH);   // 永遠取最前面 N 家
 
   if (batch.length === 0) {
-    return res.json({ success: true, enriched: 0, noData: 0, failed: 0, remaining: 0, samples: [] });
+    return res.json({ success: true, enriched: 0, taxIdError: 0, failed: 0, remaining: 0, samples: [] });
   }
 
   const results = await Promise.allSettled(batch.map(async m => ({ m, info: await fetchGcisCompany(m.taxId) })));
 
-  let enriched = 0, noData = 0, failed = 0;
+  let enriched = 0, taxIdError = 0, failed = 0;
   const samples = [];
   for (const r of results) {
-    if (r.status !== 'fulfilled' || r.value.info === null) { failed++; continue; }  // 逾時 → 留著重試
+    if (r.status !== 'fulfilled' || r.value.info === null) { failed++; continue; }  // 逾時/5xx → 留著重試
     const { m, info } = r.value;
-    if (info.notFound) { m.gcisNoData = true; m.updatedAt = new Date().toISOString(); noData++; continue; } // 確定查無 → 標記不再重試
+    if (info.notFound) {
+      // 有統編但 GCIS 比對不到 → 標記「統編錯誤」並跳過（不再重複查；請至列表修正統編後重補）
+      m.gcisTaxIdError = true;
+      m.gcisTaxIdErrorAt = new Date().toISOString();
+      m.updatedAt = new Date().toISOString();
+      taxIdError++;
+      continue;
+    }
     if (info.name) m.name = info.name;                 // 正式名稱（權威覆蓋）
     if (info.capital != null) m.capital = info.capital; // 資本額（原始數字）
     if (info.address && !m.address) m.address = info.address; // 地址只補空白
     if (info.representative && !m.representative) m.representative = info.representative;
     m.gcisEnriched = true;
     m.gcisNoData = false;
+    m.gcisTaxIdError = false;   // 若先前誤判、改對統編後重補成功 → 清除錯誤標記
     m.updatedAt = new Date().toISOString();
     enriched++;
     if (samples.length < 5) samples.push({ name: m.name, taxId: m.taxId, capital: m.capital });
   }
 
   db.save(data);
-  const remaining = totalRemaining - enriched - noData;   // 只剩逾時待重試的
+  const remaining = totalRemaining - enriched - taxIdError;   // 只剩逾時待重試的
   if (remaining === 0) {
     writeLog('ENRICH_GCIS', req.session.user.username, 'system', `GCIS 補全完成`, req);
   }
-  res.json({ success: true, enriched, noData, failed, remaining, samples });
+  res.json({ success: true, enriched, taxIdError, failed, remaining, samples });
 });
 
 // 企業主檔：單一公司彙整明細（聯絡人 + 商機 + 合約 + 帳款）

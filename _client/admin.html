@@ -5073,7 +5073,9 @@
         const tax = c.taxId
           ? escapeAttr(c.taxId)
           : `<button class="company-settax" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fff3e0;color:#9a3412;border:1px solid #fb923c;border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer">＋設定統編</button>`;
-        const gcis = c.gcisEnriched ? '✅ 已補' : '<span style="color:#cbd5e1">未補</span>';
+        const gcis = c.gcisEnriched ? '✅ 已補'
+          : c.gcisTaxIdError ? '<span style="color:#c62828;font-weight:600" title="有統編但經濟部商業司查無此統編，已跳過；請確認/修正統編後再補">❌ 統編錯誤</span>'
+          : '<span style="color:#cbd5e1">未補</span>';
         const tag = isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : '';
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
           <td><strong>${escapeAttr(c.name)}</strong>${tag} <span style="color:#9ca3af;font-size:11px">›</span></td>
@@ -5305,15 +5307,15 @@
       _gcisEnrichStop = false;
       btn.disabled = true;
       if (stopBtn) stopBtn.style.display = '';
-      let totalEnriched = 0, totalNoData = 0, lastRemaining = 0, guard = 0, initialTotal = 0, stalls = 0;
+      let totalEnriched = 0, totalTaxIdError = 0, lastRemaining = 0, guard = 0, initialTotal = 0, stalls = 0;
       const paint = (headline, headColor = '#1b5e20') => {
-        const total = initialTotal || (totalEnriched + totalNoData + lastRemaining) || 1;
-        const pct = Math.min(100, Math.round((totalEnriched + totalNoData) / total * 100));
+        const total = initialTotal || (totalEnriched + totalTaxIdError + lastRemaining) || 1;
+        const pct = Math.min(100, Math.round((totalEnriched + totalTaxIdError) / total * 100));
         resultEl.innerHTML =
           `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:${headColor}">`
           + `<div style="margin-bottom:6px">${headline}</div>`
           + `<div style="height:10px;background:#c8e6c9;border-radius:5px;overflow:hidden;margin:2px 0 6px"><div style="height:100%;width:${pct}%;background:#0b8043;border-radius:5px;transition:width .3s"></div></div>`
-          + `<div style="font-size:12px;color:#33691e">已補 <b>${totalEnriched}</b>　·　查無 ${totalNoData}　·　逾時待重試 ${lastRemaining}　·　共 ${initialTotal || '—'} 家（${pct}%）</div>`
+          + `<div style="font-size:12px;color:#33691e">已補 <b>${totalEnriched}</b>　·　統編錯誤 ${totalTaxIdError}　·　逾時待重試 ${lastRemaining}　·　共 ${initialTotal || '—'} 家（${pct}%）</div>`
           + `</div>`;
       };
       try {
@@ -5328,12 +5330,12 @@
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || '補全失敗');
           totalEnriched += d.enriched || 0;
-          totalNoData += d.noData || 0;
+          totalTaxIdError += d.taxIdError || 0;
           lastRemaining = d.remaining || 0;
-          if (!initialTotal) initialTotal = lastRemaining + (d.enriched || 0) + (d.noData || 0);
+          if (!initialTotal) initialTotal = lastRemaining + (d.enriched || 0) + (d.taxIdError || 0);
           paint('🏛️ GCIS 補全中…（每批 8 家，可按右上「停止補全」中斷）');
           if (d.remaining === 0) break;                       // 全部處理完
-          const progressed = (d.enriched || 0) + (d.noData || 0) > 0;
+          const progressed = (d.enriched || 0) + (d.taxIdError || 0) > 0;
           if (!progressed) {
             // 這輪純逾時無進展（GCIS 忙碌）→ 多等一下重試，連續 3 次仍無進展才停
             if (++stalls >= 3) break;
@@ -5347,9 +5349,9 @@
         const stopped = _gcisEnrichStop;
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
           + `${stopped ? '⏸ 已停止' : '✅ GCIS 補全完成'}：成功 <b>${totalEnriched}</b> 家`
-          + (totalNoData ? `、查無 <b>${totalNoData}</b> 家（商號/已歇業/非公司組織）` : '')
+          + (totalTaxIdError ? `、<b style="color:#c62828">統編錯誤 ${totalTaxIdError}</b> 家（有統編但 GCIS 查無，已跳過；請至列表修正統編後重補）` : '')
           + (lastRemaining ? `、<b>${lastRemaining}</b> 家${stopped ? '尚未處理' : '暫時逾時（GCIS 忙碌'}，可再按一次繼續補${stopped ? '' : '）'}` : '')
-          + (totalEnriched === 0 && totalNoData === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
+          + (totalEnriched === 0 && totalTaxIdError === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
         loadCompaniesView();
       } catch (e) {
         resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
