@@ -5950,7 +5950,9 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
 }
 
 async function loadTargetsView() {
-  await Promise.all([loadTargets(), loadOpportunities(), loadUserQuarterRatios(), loadKeyAccounts()]);
+  // loadMonthlyBudget / loadUserBu：本頁 updateTargetCard → getMonthActualFinal 需要（手動認列 + BU 對應）。
+  // 主管落點為「主管首頁」、不經 showDashboard，若不在此補載，manager1 的季度「已達成」會是 0。
+  await Promise.all([loadTargets(), loadOpportunities(), loadUserQuarterRatios(), loadKeyAccounts(), loadMonthlyBudget(), loadUserBu()]);
   try {
     const res = await fetch(`${API}/lost-opportunities`);
     allLostOppsForTargets = res.ok ? await res.json() : [];
@@ -6300,7 +6302,12 @@ async function loadForecastView() {
   await Promise.all([
     loadOpportunities(),
     allVisits.length === 0 ? fetch(`${API}/visits`).then(r=>r.json()).then(d=>{ allVisits=d; }) : Promise.resolve(),
-    loadKeyAccounts()
+    loadKeyAccounts(),
+    // 季度「已達成」需要：① 秘書手動認列（月度預算 actuals）② BU 對應（認列的 BU 權限判斷）
+    // 一級/二級主管、董總登入落點是「主管首頁」，不經過 showDashboard，這兩份資料不會被載入，
+    // 導致 getMonthActualFinal 永遠讀到空陣列 → 已達成全 0。此處自行補載，讓本報表自給自足。
+    loadMonthlyBudget(),
+    loadUserBu()
   ]);
   if (!forecastSalesPerson) {
     try {
