@@ -5077,8 +5077,13 @@
           : c.gcisTaxIdError ? '<span style="color:#b45309;font-weight:600" title="經濟部商業司「公司登記」查無此統編，已跳過。可能是統編有誤，或為醫院/診所/企業社/分公司/法人/外國公司等非公司登記對象。若確定是統編打錯，改正後再按一次補全即可。">⚠️ GCIS查無</span>'
           : '<span style="color:#cbd5e1">未補</span>';
         const tag = isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : '';
+        // GCIS 公司狀態：解散/合併/撤銷/廢止 → 標紅，提醒此客戶已不存在
+        const dissolved = /解散|撤銷|廢止|破產|歇業/.test(c.gcisStatus || '');
+        const statusBadge = dissolved
+          ? ` <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle" title="GCIS 公司狀態：${escapeAttr(c.gcisStatus)}（此公司已不存在，建議清理或轉移）">🚫 ${escapeAttr(c.gcisStatus)}</span>`
+          : '';
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
-          <td><strong>${escapeAttr(c.name)}</strong>${tag} <span style="color:#9ca3af;font-size:11px">›</span></td>
+          <td><strong>${escapeAttr(c.name)}</strong>${tag}${statusBadge} <span style="color:#9ca3af;font-size:11px">›</span></td>
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
           <td>${cap}</td>

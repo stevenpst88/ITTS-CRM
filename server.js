@@ -6627,6 +6627,7 @@ app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
     if (info.capital != null) m.capital = info.capital; // 資本額（原始數字）
     if (info.address && !m.address) m.address = info.address; // 地址只補空白
     if (info.representative && !m.representative) m.representative = info.representative;
+    if (info.status) m.gcisStatus = info.status;       // 公司狀態（核准設立 / 合併解散 / 解散已清算…）
     m.gcisEnriched = true;
     m.gcisNoData = false;
     m.gcisTaxIdError = false;   // 若先前誤判、改對統編後重補成功 → 清除錯誤標記
