@@ -5069,6 +5069,29 @@ async function fetchGcisCompany(taxId) {
   }
 }
 
+// ── 證交所「上市公司基本資料」資本額對照（統編→名稱/實收資本額）──
+// GCIS「公司登記-應用二」不含資本額5億以上、商業發展署登記的大公司，
+// 這類上市公司會被誤標「GCIS查無」；以證交所清單做 fallback 補回。每日快取。
+let _twseCapCache = { ts: 0, map: {} };
+async function getTwseCapitalMap() {
+  if (_twseCapCache.ts && (Date.now() - _twseCapCache.ts) < 86400000 && Object.keys(_twseCapCache.map).length) {
+    return _twseCapCache.map;
+  }
+  const map = {};
+  try {
+    const arr = await fetchJsonWithHttps('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', 25000);
+    (arr || []).forEach(r => {
+      const id = String(r['營利事業統一編號'] || '').trim();
+      const cap = parseInt(r['實收資本額']);
+      if (/^\d{8}$/.test(id)) map[id] = { name: r['公司名稱'] || '', capital: (!isNaN(cap) && cap > 0) ? cap : null };
+    });
+    if (Object.keys(map).length) _twseCapCache = { ts: Date.now(), map };
+  } catch (e) {
+    console.error('[twseCapitalMap]', e.message);
+  }
+  return _twseCapCache.map;
+}
+
 // ── 取得 TWSE + TPEX 損益表快取 ─────────────────────────────
 async function getFinancialLists() {
   const now = Date.now();
@@ -6609,6 +6632,7 @@ app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
   }
 
   const results = await Promise.allSettled(batch.map(async m => ({ m, info: await fetchGcisCompany(m.taxId) })));
+  const twCapMap = await getTwseCapitalMap();   // 證交所 fallback（GCIS 漏掉的大型上市公司）
 
   let enriched = 0, taxIdError = 0, failed = 0;
   const samples = [];
@@ -6616,7 +6640,21 @@ app.post('/api/admin/companies/enrich-gcis', requireAdmin, async (req, res) => {
     if (r.status !== 'fulfilled' || r.value.info === null) { failed++; continue; }  // 逾時/5xx → 留著重試
     const { m, info } = r.value;
     if (info.notFound) {
-      // 有統編但 GCIS 比對不到 → 標記「統編錯誤」並跳過（不再重複查；請至列表修正統編後重補）
+      // GCIS 公司登記查無 → 先試證交所上市清單（GCIS 不含資本額5億以上、商業發展署登記的大公司）
+      const tw = twCapMap[String(m.taxId || '').trim()];
+      if (tw && (tw.capital || tw.name)) {
+        if (tw.name) m.name = tw.name;
+        if (tw.capital != null) m.capital = tw.capital;
+        m.gcisEnriched = true;
+        m.gcisNoData = false;
+        m.gcisTaxIdError = false;
+        if (!m.gcisStatus) m.gcisStatus = '上市（證交所）';
+        m.updatedAt = new Date().toISOString();
+        enriched++;
+        if (samples.length < 5) samples.push({ name: m.name, taxId: m.taxId, capital: m.capital });
+        continue;
+      }
+      // 證交所也無 → 標記「統編錯誤」並跳過（不再重複查；請至列表修正統編後重補）
       m.gcisTaxIdError = true;
       m.gcisTaxIdErrorAt = new Date().toISOString();
       m.updatedAt = new Date().toISOString();
