@@ -5043,9 +5043,14 @@ async function fetchGcisCompany(taxId) {
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
     );
     if (!r.ok) return null;                 // 5xx 等 → 視為暫時性，可重試
-    const data = await r.json();
+    // GCIS 對「非公司登記」統編（醫院/診所/企業社/分公司/法人/外國公司）或統編有誤者
+    // 會回 200 + 空 body。直接 r.json() 會丟例外被誤判成逾時 → 永遠重試卡住，故先取 text 安全解析。
+    const text = await r.text();
+    if (!text || !text.trim()) return { notFound: true };  // 200 + 空 body → 公司登記查無（非逾時）
+    let data;
+    try { data = JSON.parse(text); } catch { return { notFound: true }; } // 200 但非 JSON → 視為查無
     const row = data && data[0];
-    if (!row) return { notFound: true };    // 200 + 空 → 確定查無，不再重試
+    if (!row) return { notFound: true };    // 200 + 空陣列 → 確定查無，不再重試
     const capRaw = row.Capital_Stock_Amount;
     return {
       name: row.Company_Name || '',

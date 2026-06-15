@@ -5074,7 +5074,7 @@
           ? escapeAttr(c.taxId)
           : `<button class="company-settax" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fff3e0;color:#9a3412;border:1px solid #fb923c;border-radius:6px;font-size:11px;padding:3px 8px;cursor:pointer">＋設定統編</button>`;
         const gcis = c.gcisEnriched ? '✅ 已補'
-          : c.gcisTaxIdError ? '<span style="color:#c62828;font-weight:600" title="有統編但經濟部商業司查無此統編，已跳過；請確認/修正統編後再補">❌ 統編錯誤</span>'
+          : c.gcisTaxIdError ? '<span style="color:#b45309;font-weight:600" title="經濟部商業司「公司登記」查無此統編，已跳過。可能是統編有誤，或為醫院/診所/企業社/分公司/法人/外國公司等非公司登記對象。若確定是統編打錯，改正後再按一次補全即可。">⚠️ GCIS查無</span>'
           : '<span style="color:#cbd5e1">未補</span>';
         const tag = isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : '';
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
@@ -5315,7 +5315,7 @@
           `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:${headColor}">`
           + `<div style="margin-bottom:6px">${headline}</div>`
           + `<div style="height:10px;background:#c8e6c9;border-radius:5px;overflow:hidden;margin:2px 0 6px"><div style="height:100%;width:${pct}%;background:#0b8043;border-radius:5px;transition:width .3s"></div></div>`
-          + `<div style="font-size:12px;color:#33691e">已補 <b>${totalEnriched}</b>　·　統編錯誤 ${totalTaxIdError}　·　逾時待重試 ${lastRemaining}　·　共 ${initialTotal || '—'} 家（${pct}%）</div>`
+          + `<div style="font-size:12px;color:#33691e">已補 <b>${totalEnriched}</b>　·　GCIS查無 ${totalTaxIdError}　·　逾時待重試 ${lastRemaining}　·　共 ${initialTotal || '—'} 家（${pct}%）</div>`
           + `</div>`;
       };
       try {
@@ -5349,7 +5349,7 @@
         const stopped = _gcisEnrichStop;
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
           + `${stopped ? '⏸ 已停止' : '✅ GCIS 補全完成'}：成功 <b>${totalEnriched}</b> 家`
-          + (totalTaxIdError ? `、<b style="color:#c62828">統編錯誤 ${totalTaxIdError}</b> 家（有統編但 GCIS 查無，已跳過；請至列表修正統編後重補）` : '')
+          + (totalTaxIdError ? `、<b style="color:#b45309">GCIS查無 ${totalTaxIdError}</b> 家（非公司登記對象如醫院/診所/企業社/分公司/法人/外國公司，或統編有誤，已跳過）` : '')
           + (lastRemaining ? `、<b>${lastRemaining}</b> 家${stopped ? '尚未處理' : '暫時逾時（GCIS 忙碌'}，可再按一次繼續補${stopped ? '' : '）'}` : '')
           + (totalEnriched === 0 && totalTaxIdError === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
         loadCompaniesView();
