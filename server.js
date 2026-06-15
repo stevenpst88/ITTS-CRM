@@ -5051,10 +5051,15 @@ async function fetchGcisCompany(taxId) {
     try { data = JSON.parse(text); } catch { return { notFound: true }; } // 200 但非 JSON → 視為查無
     const row = data && data[0];
     if (!row) return { notFound: true };    // 200 + 空陣列 → 確定查無，不再重試
-    const capRaw = row.Capital_Stock_Amount;
+    // 資本額：優先登記資本額（Capital_Stock_Amount），為 0/空時改用實收資本額（Paid_In_Capital_Amount）。
+    // 有些公司登記資本額為 0、真正金額在實收資本，僅讀前者會變成 0。
+    const pickCapital = (...vals) => {
+      for (const v of vals) { const n = parseInt(v); if (!isNaN(n) && n > 0) return n; }
+      return null;
+    };
     return {
       name: row.Company_Name || '',
-      capital: (capRaw != null && capRaw !== '' && !isNaN(parseInt(capRaw))) ? parseInt(capRaw) : null,
+      capital: pickCapital(row.Capital_Stock_Amount, row.Paid_In_Capital_Amount),
       address: row.Company_Location || '',
       representative: row.Responsible_Name || '',
       status: row.Company_Status_Desc || '',

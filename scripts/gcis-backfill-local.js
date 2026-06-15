@@ -27,6 +27,7 @@ if (!process.env.DATABASE_URL) {
 const pg = require('../db/postgres');   // 直接用 _loadAsync / _saveAsync（不走快取）
 
 const APPLY = process.argv.includes('--apply');
+const RECAP = process.argv.includes('--recap');   // 只重補「已補但資本額 0/空」的公司（修登記資本額=0 漏實收的舊資料）
 const argLimit = (() => { const i = process.argv.indexOf('--limit'); return i >= 0 ? parseInt(process.argv[i + 1]) || 0 : 0; })();
 const BATCH = 6;            // 每批並行查幾家（本機 IP 對 GCIS 友善）
 const GAP_MS = 400;         // 批次間隔
@@ -50,18 +51,34 @@ async function fetchGcisCompany(taxId) {
     try { data = JSON.parse(text); } catch { return { notFound: true }; }  // 200 但非 JSON → 視為查無
     const row = data && data[0];
     if (!row) return { notFound: true };     // 200 + 空陣列 → 統編查無
-    const capRaw = row.Capital_Stock_Amount;
+    // 資本額：登記資本額為 0/空 → 改用實收資本額
+    const pickCapital = (...vals) => { for (const v of vals) { const n = parseInt(v); if (!isNaN(n) && n > 0) return n; } return null; };
     return {
       name: row.Company_Name || '',
-      capital: (capRaw != null && capRaw !== '' && !isNaN(parseInt(capRaw))) ? parseInt(capRaw) : null,
+      capital: pickCapital(row.Capital_Stock_Amount, row.Paid_In_Capital_Amount),
       address: row.Company_Location || '',
       representative: row.Responsible_Name || '',
     };
   } catch { return null; }                   // 逾時/網路錯 → 可重試
 }
 
+function has8(m) { return /^\d{8}$/.test(String(m.taxId || '').trim()); }
 function isTarget(m) {
-  return /^\d{8}$/.test(String(m.taxId || '').trim()) && !m.gcisEnriched && !m.gcisNoData && !m.gcisTaxIdError;
+  return has8(m) && !m.gcisEnriched && !m.gcisNoData && !m.gcisTaxIdError;
+}
+// --recap：已補全但資本額 0/空 → 重查以補回實收資本額
+function isRecapTarget(m) { return has8(m) && m.gcisEnriched && !m.capital; }
+
+// --recap 用：只在 GCIS 有資料時更新（保守，不把已補的降級成查無）
+function applyRecap(m, info) {
+  if (info === null || info.notFound) return 'skipped';   // 逾時或查無 → 完全不動
+  let changed = false;
+  if (info.capital != null && info.capital !== m.capital) { m.capital = info.capital; changed = true; }
+  if (info.name && info.name !== m.name) { m.name = info.name; changed = true; }
+  if (info.address && !m.address) { m.address = info.address; changed = true; }
+  if (info.representative && !m.representative) { m.representative = info.representative; changed = true; }
+  if (changed) m.updatedAt = new Date().toISOString();
+  return changed ? 'updated' : 'nochange';
 }
 
 // 只把 GCIS 結果套到「公司物件」的 GCIS 欄位（其餘欄位完全不動）
@@ -92,13 +109,17 @@ function maskDbHost() {
   console.log('連線目標（正式庫 host）：', maskDbHost());
   console.log('模式：', APPLY ? '🔴 正式執行（會寫回正式庫）' : '🟢 試跑 dry-run（只看不寫）');
 
+  if (RECAP) console.log('（--recap：只重補「已補全但資本額 0/空」的公司）');
   const data = await pg._loadAsync();
   const companies = data.companies || [];
-  const targets = companies.filter(isTarget);
+  const targets = companies.filter(RECAP ? isRecapTarget : isTarget);
   console.log(`\n企業主檔總數：${companies.length} 家`);
-  console.log(`待 GCIS 補全（有 8 碼統編、未補全/未標記）：${targets.length} 家`);
-  const noTaxId = companies.filter(m => !/^\d{8}$/.test(String(m.taxId || '').trim())).length;
-  console.log(`（沒統編/格式錯，自動跳過：${noTaxId} 家）`);
+  if (RECAP) {
+    console.log(`待重補資本額（已補全但資本額 0/空）：${targets.length} 家`);
+  } else {
+    console.log(`待 GCIS 補全（有 8 碼統編、未補全/未標記）：${targets.length} 家`);
+    console.log(`（沒統編/格式錯，自動跳過：${companies.filter(m => !has8(m)).length} 家）`);
+  }
 
   const work = argLimit > 0 ? targets.slice(0, argLimit) : targets;
 
@@ -107,20 +128,29 @@ function maskDbHost() {
     console.log(`\n── 試跑樣本（前 ${sample.length} 家實際查 GCIS，不寫入）──`);
     for (const m of sample) {
       const info = await fetchGcisCompany(m.taxId);
-      const verdict = info === null ? '逾時/錯誤（會留待重試）'
-        : info.notFound ? '⚠️ GCIS查無（非公司登記/統編誤 → 跳過）'
-        : `✓ 會補：「${info.name}」 資本額 ${info.capital ?? '—'}`;
+      let verdict;
+      if (RECAP) {
+        verdict = (info === null) ? '逾時/錯誤（略過）'
+          : info.notFound ? '查無（不動）'
+          : (info.capital != null && info.capital !== m.capital) ? `✓ 資本額 ${m.capital ?? '—'} → ${info.capital}`
+          : '無新資本額可補（GCIS 也是 0/空）';
+      } else {
+        verdict = (info === null) ? '逾時/錯誤（會留待重試）'
+          : info.notFound ? '⚠️ GCIS查無（非公司登記/統編誤 → 跳過）'
+          : `✓ 會補：「${info.name}」 資本額 ${info.capital ?? '—'}`;
+      }
       console.log(`  ${m.taxId}  ${(m.name || '').slice(0, 16).padEnd(16)} → ${verdict}`);
       await sleep(200);
     }
     console.log(`\n🟢 這是試跑、未寫入任何資料。確認無誤後執行：`);
-    console.log(`    node scripts/gcis-backfill-local.js --apply${argLimit ? ' --limit ' + argLimit : ''}`);
+    console.log(`    node scripts/gcis-backfill-local.js --apply${RECAP ? ' --recap' : ''}${argLimit ? ' --limit ' + argLimit : ''}`);
     await pg._poolEnd?.();
     process.exit(0);
   }
 
   // ── 正式執行 ──
-  let enriched = 0, taxIdError = 0, failed = 0, done = 0;
+  const tally = {};
+  let done = 0;
   const total = work.length;
   const ids = work.map(m => m.id);
 
@@ -137,26 +167,32 @@ function maskDbHost() {
     const freshById = new Map((fresh.companies || []).map(c => [c.id, c]));
     let batchTouched = false;
     for (const r of infos) {
-      if (r.status !== 'fulfilled') { failed++; done++; continue; }
+      if (r.status !== 'fulfilled') { tally.failed = (tally.failed || 0) + 1; done++; continue; }
       const { id, info } = r.value;
       const fm = freshById.get(id);
       if (!fm) { done++; continue; }          // 公司可能已被刪 → 略過
-      const res = applyInfo(fm, info);
-      if (res === 'enriched') enriched++;
-      else if (res === 'taxIdError') taxIdError++;
-      else failed++;
-      if (res !== 'failed') batchTouched = true;
+      const res = RECAP ? applyRecap(fm, info) : applyInfo(fm, info);
+      tally[res] = (tally[res] || 0) + 1;
+      if (res === 'enriched' || res === 'taxIdError' || res === 'updated') batchTouched = true;
       done++;
     }
     if (batchTouched) await pg._saveAsync(fresh);
 
     const pct = Math.round(done / total * 100);
-    process.stdout.write(`\r進度 ${done}/${total} (${pct}%)  ·  已補 ${enriched}  ·  GCIS查無 ${taxIdError}  ·  逾時 ${failed}   `);
+    if (RECAP) {
+      process.stdout.write(`\r進度 ${done}/${total} (${pct}%)  ·  補回資本額 ${tally.updated || 0}  ·  無新值 ${tally.nochange || 0}  ·  查無/逾時 ${(tally.skipped || 0) + (tally.failed || 0)}   `);
+    } else {
+      process.stdout.write(`\r進度 ${done}/${total} (${pct}%)  ·  已補 ${tally.enriched || 0}  ·  GCIS查無 ${tally.taxIdError || 0}  ·  逾時 ${tally.failed || 0}   `);
+    }
     await sleep(GAP_MS);
   }
 
-  console.log(`\n\n✅ 完成：已補 ${enriched} 家、GCIS查無(跳過) ${taxIdError} 家、逾時待重試 ${failed} 家。`);
-  if (failed) console.log('   逾時的可再執行一次本腳本繼續補（已補/已標記的不會重複）。');
+  if (RECAP) {
+    console.log(`\n\n✅ 完成（recap）：補回資本額 ${tally.updated || 0} 家、無新值可補 ${tally.nochange || 0} 家、查無/逾時 ${(tally.skipped || 0) + (tally.failed || 0)} 家。`);
+  } else {
+    console.log(`\n\n✅ 完成：已補 ${tally.enriched || 0} 家、GCIS查無(跳過) ${tally.taxIdError || 0} 家、逾時待重試 ${tally.failed || 0} 家。`);
+    if (tally.failed) console.log('   逾時的可再執行一次本腳本繼續補（已補/已標記的不會重複）。');
+  }
   await pg._poolEnd?.();
   process.exit(0);
 })().catch(async e => {
