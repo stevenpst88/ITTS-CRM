@@ -9738,8 +9738,8 @@ function renderMgrGauge(a) {
   const rec = a.recognized || { achieved: 0, pct: target > 0 ? 0 : null };
 
   if (target <= 0) {
-    el.innerHTML = `<div class="mgr-dual-empty" style="text-align:center;color:#9ca3af;font-size:13px;padding:24px 8px">
-      尚未設定目標<br><span style="font-size:12px">本年成交 ${fmt(won.achieved)} K（無目標可比對）</span></div>`;
+    el.innerHTML = `<div class="mgr-dual-empty" style="text-align:center;color:#9ca3af;font-size:15px;padding:24px 8px">
+      尚未設定目標<br><span style="font-size:14px">本年成交 ${fmt(won.achieved)} K（無目標可比對）</span></div>`;
     return;
   }
 
@@ -9749,16 +9749,16 @@ function renderMgrGauge(a) {
     const color = barColor(pct);
     const w = pct === null ? 0 : Math.min(pct, 100);
     return `
-      <div style="margin:4px 0 16px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-          <span style="font-size:14px;font-weight:700;color:#1a2d52">${label}
-            <span style="font-size:11px;font-weight:500;color:#9ca3af">（${hint}）</span></span>
-          <span style="font-size:19px;font-weight:800;color:${color}">${pct === null ? '—' : pct + '%'}</span>
+      <div style="margin:6px 0 20px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <span style="font-size:18px;font-weight:700;color:#1a2d52">${label}
+            <span style="font-size:13px;font-weight:500;color:#9ca3af">（${hint}）</span></span>
+          <span style="font-size:30px;font-weight:800;color:${color};line-height:1">${pct === null ? '—' : pct + '%'}</span>
         </div>
-        <div style="height:13px;background:#eef0f3;border-radius:7px;overflow:hidden">
-          <div style="height:100%;width:${w}%;background:${color};border-radius:7px;transition:width .5s"></div>
+        <div style="height:18px;background:#eef0f3;border-radius:9px;overflow:hidden">
+          <div style="height:100%;width:${w}%;background:${color};border-radius:9px;transition:width .5s"></div>
         </div>
-        <div style="font-size:12px;color:#6b7280;margin-top:5px">
+        <div style="font-size:15px;color:#6b7280;margin-top:7px">
           ${sub} <b style="color:#374151">${fmt(achieved)}</b> K / 目標 <b style="color:#374151">${fmt(target)}</b> K</div>
       </div>`;
   };
