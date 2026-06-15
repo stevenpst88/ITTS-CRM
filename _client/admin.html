@@ -588,6 +588,7 @@
               <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
               <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
+              <button class="btn btn-sm" id="companyEnrichStopBtn" style="background:#b91c1c;color:#fff;display:none">⏸ 停止補全</button>
               <button class="btn btn-sm" id="companyTemplateBtn" style="background:#fff7ed;color:#9a3412">⬇ 範本</button>
               <button class="btn btn-sm" id="companyExportBtn" style="background:#f0f2f5;color:#333">⬇ 匯出</button>
               <button class="btn btn-sm" id="companyImportBtn" style="background:#f0f2f5;color:#333">⬆ 匯入</button>
@@ -5294,15 +5295,30 @@
       }
     });
 
-    // GCIS 一鍵補全（batch + offset 連續呼叫直到 hasMore=false）
+    // GCIS 一鍵補全（每批 8 家自動連續呼叫；有進度條、可停止、批次間隔對 GCIS 友善）
+    let _gcisEnrichStop = false;
     document.getElementById('companyEnrichBtn').addEventListener('click', async () => {
-      if (!confirm('將向經濟部商業司查詢「有統編但尚未補全」的企業主檔，補入正式名稱與資本額。\n\n分批進行、需稍候，已補全的不會重複查詢。確定執行？')) return;
+      if (!confirm('將向經濟部商業司查詢「有統編但尚未補全」的企業主檔，補入正式名稱與資本額。\n\n會分批進行（每批 8 家），過程可隨時按「停止補全」中斷；已補全的不會重複查詢。確定執行？')) return;
       const btn = document.getElementById('companyEnrichBtn');
+      const stopBtn = document.getElementById('companyEnrichStopBtn');
       const resultEl = document.getElementById('companyBuildResult');
+      _gcisEnrichStop = false;
       btn.disabled = true;
-      let totalEnriched = 0, totalNoData = 0, lastRemaining = 0, guard = 0;
+      if (stopBtn) stopBtn.style.display = '';
+      let totalEnriched = 0, totalNoData = 0, lastRemaining = 0, guard = 0, initialTotal = 0, stalls = 0;
+      const paint = (headline, headColor = '#1b5e20') => {
+        const total = initialTotal || (totalEnriched + totalNoData + lastRemaining) || 1;
+        const pct = Math.min(100, Math.round((totalEnriched + totalNoData) / total * 100));
+        resultEl.innerHTML =
+          `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:${headColor}">`
+          + `<div style="margin-bottom:6px">${headline}</div>`
+          + `<div style="height:10px;background:#c8e6c9;border-radius:5px;overflow:hidden;margin:2px 0 6px"><div style="height:100%;width:${pct}%;background:#0b8043;border-radius:5px;transition:width .3s"></div></div>`
+          + `<div style="font-size:12px;color:#33691e">已補 <b>${totalEnriched}</b>　·　查無 ${totalNoData}　·　逾時待重試 ${lastRemaining}　·　共 ${initialTotal || '—'} 家（${pct}%）</div>`
+          + `</div>`;
+      };
       try {
-        while (++guard <= 300) {
+        while (++guard <= 500) {
+          if (_gcisEnrichStop) break;
           btn.textContent = `補全中… 已補 ${totalEnriched}`;
           const r = await fetch('/api/admin/companies/enrich-gcis', {
             method: 'POST',
@@ -5314,23 +5330,37 @@
           totalEnriched += d.enriched || 0;
           totalNoData += d.noData || 0;
           lastRemaining = d.remaining || 0;
-          resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
-            + `🏛️ GCIS 補全中… 已補 <b>${totalEnriched}</b> 家，剩 ${lastRemaining} 家</div>`;
+          if (!initialTotal) initialTotal = lastRemaining + (d.enriched || 0) + (d.noData || 0);
+          paint('🏛️ GCIS 補全中…（每批 8 家，可按右上「停止補全」中斷）');
           if (d.remaining === 0) break;                       // 全部處理完
-          if ((d.enriched || 0) + (d.noData || 0) === 0) break; // 這輪純逾時無進展（GCIS 忙碌）→ 停，可稍後重按
+          const progressed = (d.enriched || 0) + (d.noData || 0) > 0;
+          if (!progressed) {
+            // 這輪純逾時無進展（GCIS 忙碌）→ 多等一下重試，連續 3 次仍無進展才停
+            if (++stalls >= 3) break;
+            paint('⏳ GCIS 忙碌中，稍候自動重試…', '#8a6d00');
+            await new Promise(res => setTimeout(res, 2500));
+          } else {
+            stalls = 0;
+            await new Promise(res => setTimeout(res, 400)); // 批次間隔，避免猛打 GCIS 被限流
+          }
         }
+        const stopped = _gcisEnrichStop;
         resultEl.innerHTML = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;color:#1b5e20">`
-          + `✅ GCIS 補全完成：成功 <b>${totalEnriched}</b> 家`
+          + `${stopped ? '⏸ 已停止' : '✅ GCIS 補全完成'}：成功 <b>${totalEnriched}</b> 家`
           + (totalNoData ? `、查無 <b>${totalNoData}</b> 家（商號/已歇業/非公司組織）` : '')
-          + (lastRemaining ? `、<b>${lastRemaining}</b> 家暫時逾時（GCIS 忙碌，可稍後再按一次重試）` : '')
+          + (lastRemaining ? `、<b>${lastRemaining}</b> 家${stopped ? '尚未處理' : '暫時逾時（GCIS 忙碌'}，可再按一次繼續補${stopped ? '' : '）'}` : '')
           + (totalEnriched === 0 && totalNoData === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
         loadCompaniesView();
       } catch (e) {
         resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🏛️ GCIS 一鍵補全';
+        if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.textContent = '⏸ 停止補全'; }
+        _gcisEnrichStop = false;
       }
     });
+    const _gcisStopBtnEl = document.getElementById('companyEnrichStopBtn');
+    if (_gcisStopBtnEl) _gcisStopBtnEl.addEventListener('click', () => { _gcisEnrichStop = true; _gcisStopBtnEl.textContent = '停止中…'; });
 
     // ── 🏢 企業主檔：匯出 / 匯入 / 產業分類管理（admin）──
     let _admIndustries = [];
