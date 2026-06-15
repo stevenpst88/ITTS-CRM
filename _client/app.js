@@ -9727,39 +9727,45 @@ function renderMgrGap(gap, achievement) {
     <span style="font-size:12px;color:#999">目前進度 ${gap.dayProgress}%</span>`;
 }
 
-// ── 1. 達成儀表盤（doughnut） ─────────────────────────
+// ── 1. 業績達成度：成交 / 認列 雙條進度 ───────────────────
 function renderMgrGauge(a) {
-  const pct = a.pct;
+  const el = $('mgrDualBars');
+  if (!el) return;
   const fmt = (n) => Number(n || 0).toLocaleString('zh-TW');
-  $('mgrGaugePct').textContent   = pct === null ? '—' : pct + '%';
-  $('mgrGaugeLabel').textContent = a.target > 0 ? '本年達成度' : '尚未設定目標';
-  $('mgrGaugeDetail').innerHTML = a.target > 0
-    ? `已達成 <b>${fmt(a.achieved)}</b> K / 目標 <b>${fmt(a.target)}</b> K`
-    : `本年成交 <b>${fmt(a.achieved)}</b> K（無目標可比對）`;
+  const target = a.target || 0;
+  // 向下相容：舊回應只有 achieved/pct（＝成交）；新回應有 won / recognized
+  const won = a.won || { achieved: a.achieved || 0, pct: a.pct };
+  const rec = a.recognized || { achieved: 0, pct: target > 0 ? 0 : null };
+
+  if (target <= 0) {
+    el.innerHTML = `<div class="mgr-dual-empty" style="text-align:center;color:#9ca3af;font-size:13px;padding:24px 8px">
+      尚未設定目標<br><span style="font-size:12px">本年成交 ${fmt(won.achieved)} K（無目標可比對）</span></div>`;
+    return;
+  }
 
   // 顏色：>=90 綠 / 60-89 橘 / <60 紅
-  const color = pct === null ? '#bbb' : pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
-  const drawPct = pct === null ? 0 : Math.min(pct, 100);
-  const ctx = $('mgrGaugeChart').getContext('2d');
-  if (_mgrCharts.gauge) _mgrCharts.gauge.destroy();
-  _mgrCharts.gauge = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      datasets: [{
-        data: [drawPct, 100 - drawPct],
-        backgroundColor: [color, '#eef0f3'],
-        borderWidth: 0
-      }]
-    },
-    options: {
-      cutout: '78%',
-      circumference: 270,
-      rotation: -135,
-      plugins: { legend: { display: false }, tooltip: { enabled: false } },
-      responsive: true,
-      maintainAspectRatio: false
-    }
-  });
+  const barColor = (pct) => pct === null ? '#bbb' : pct >= 90 ? '#1e8e3e' : pct >= 60 ? '#e37400' : '#c5221f';
+  const row = (label, sub, achieved, pct, hint) => {
+    const color = barColor(pct);
+    const w = pct === null ? 0 : Math.min(pct, 100);
+    return `
+      <div style="margin:4px 0 16px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:14px;font-weight:700;color:#1a2d52">${label}
+            <span style="font-size:11px;font-weight:500;color:#9ca3af">（${hint}）</span></span>
+          <span style="font-size:19px;font-weight:800;color:${color}">${pct === null ? '—' : pct + '%'}</span>
+        </div>
+        <div style="height:13px;background:#eef0f3;border-radius:7px;overflow:hidden">
+          <div style="height:100%;width:${w}%;background:${color};border-radius:7px;transition:width .5s"></div>
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-top:5px">
+          ${sub} <b style="color:#374151">${fmt(achieved)}</b> K / 目標 <b style="color:#374151">${fmt(target)}</b> K</div>
+      </div>`;
+  };
+
+  el.innerHTML =
+    row('成交達成率', 'Won', won.achieved, won.pct, '業務成交進度') +
+    row('認列達成率', '認列', rec.achieved, rec.pct, '財務認列進度');
 }
 
 // ── 2. 本月可望成交 ─────────────────────────────────────

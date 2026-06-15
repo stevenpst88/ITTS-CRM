@@ -8461,43 +8461,45 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
       totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
     }
 
-    // 已達成：逐月計算
-    //   ① 手動認列：只算進 owner「主 BU」（陣列第一個）；非主 BU 的 viewer 不算
-    //   ② Won 商機：opps 已經 BU 過濾過（filterByBu），直接加總
+    // 已達成拆成兩條互斥指標（避免「混合值」造成的重複與混淆）：
+    //   ① 成交達成率：當年度 Won 金額加總 ÷ 目標（業務成交進度；已 BU 過濾、排除 kpiExcluded 歷史補登）
+    //   ② 認列達成率：秘書手動認列加總 ÷ 目標（財務認列進度；只算 owner 主 BU 屬於 viewer 範圍者）
     const monthlyBudgets = data.monthlyBudgets || [];
     const authForBu = loadAuth();
     const myBus = getMyBus(req); // viewer 的 BU 範圍
     const isCrossBuViewer = CROSS_BU_ROLES.includes(role);
-    let achieved = 0;
+
+    // ① 成交（Won）：不分有無認列，全年加總（opps 已 filterByBu）
+    const wonAchieved = opps
+      .filter(o => o.stage === 'Won' && isKpiCounting(o))
+      .filter(o => {
+        const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
+        return d.getFullYear() === yearNum;
+      })
+      .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
+
+    // ② 認列（手動）：只算此 viewer 有權「認」的 owner（admin/executive 永遠認；BU manager 限主 BU）
+    let recognizedAchieved = 0;
     owners.forEach(owner => {
       const ownerBus = normalizeBu(authForBu.users.find(u => u.username === owner)?.bu);
       const ownerPrimaryBu = ownerBus[0] || null;
-      // 此 viewer 是否能「認」owner 的手動認列：admin/executive 永遠認；BU manager 只在 owner 主 BU 屬於 viewer 範圍時認
       const countsManualForViewer = isCrossBuViewer ||
         (ownerPrimaryBu && myBus.includes(ownerPrimaryBu));
-
+      if (!countsManualForViewer) return;
       const budRec = monthlyBudgets.find(b => b.owner === owner && b.year === yearNum);
-      for (let m = 1; m <= 12; m++) {
-        if (budRec && budRec.actuals) {
-          const v = budRec.actuals[m - 1];
-          if (v !== null && v !== undefined) {
-            if (countsManualForViewer) achieved += v;
-            continue; // 已用手動認列覆蓋，不再加 Won 商機
-          }
+      if (budRec && Array.isArray(budRec.actuals)) {
+        for (let m = 0; m < 12; m++) {
+          const v = budRec.actuals[m];
+          if (v !== null && v !== undefined) recognizedAchieved += v;
         }
-        // 無手動認列 → 從 Won 商機抓該月（已 BU 過濾；排除 kpiExcluded 歷史補登）
-        const monthActual = opps
-          .filter(o => o.owner === owner && o.stage === 'Won' && isKpiCounting(o))
-          .filter(o => {
-            const d = new Date(o.achievedDate || o.updatedAt || o.createdAt);
-            return d.getFullYear() === yearNum && d.getMonth() + 1 === m;
-          })
-          .reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
-        achieved += monthActual;
       }
     });
 
-    const achievementPct = totalTarget > 0 ? Math.round((achieved / totalTarget) * 100) : null;
+    const wonPct        = totalTarget > 0 ? Math.round((wonAchieved        / totalTarget) * 100) : null;
+    const recognizedPct = totalTarget > 0 ? Math.round((recognizedAchieved / totalTarget) * 100) : null;
+    // gapAnalysis 與向下相容欄位以「成交(Won)」為主軸
+    const achieved = wonAchieved;
+    const achievementPct = wonPct;
 
     // ── 2. 本月可望成交（expectedDate 落在當月、stage 非 Won/D）──
     const now = new Date();
@@ -8580,7 +8582,12 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
 
     res.json({
       year: yearNum,
-      achievement: { target: totalTarget, achieved, pct: achievementPct },
+      achievement: {
+        target: totalTarget,
+        won:        { achieved: wonAchieved,        pct: wonPct },        // 成交達成率：Won ÷ 目標
+        recognized: { achieved: recognizedAchieved, pct: recognizedPct }, // 認列達成率：手動認列 ÷ 目標
+        achieved, pct: achievementPct,                                    // 向下相容（＝成交）
+      },
       thisMonthCommit: {
         confirmed: { count: confirmed.length, amount: sumAmt(confirmed), items: confirmed.map(slim) },
         atRisk:    { count: atRisk.length,    amount: sumAmt(atRisk),    items: atRisk.map(slim) },
