@@ -192,16 +192,15 @@ function applyPermissions() {
     transfer: 'navTransfer',
     campaigns: 'navCampaigns',
     leads: 'navLeads',
-    quotations: 'navQuotations'
+    quotations: 'navQuotations',
+    yoy: 'navYoy'
   };
   const allowedFeatures = new Set(userPermissions.features || []);
   Object.entries(FEATURE_NAV_MAP).forEach(([key, navId]) => {
     const el = $(navId);
     if (el) el.style.display = allowedFeatures.has(key) ? '' : 'none';
   });
-  // YoY 營收同期比（BI 報表）：先只開放 admin（之後再依功能權限表開放其他角色）。伺服器端 /api/yoy 另有把關
-  const yoyNav = $('navYoy');
-  if (yoyNav) yoyNav.style.display = (userPermissions.role === 'admin') ? '' : 'none';
+  // YoY 營收同期比（BI 報表）：併入角色功能權限表（key 'yoy'），由上方迴圈統一控管；伺服器端 /api/yoy 另有把關
 
   // Pipeline 月度變動：嵌入商機動態報表下方（仍以角色硬編，未列入勾選表）
   const role = userPermissions.role;

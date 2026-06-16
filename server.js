@@ -281,6 +281,7 @@ const FEATURE_REGISTRY = [
   { key: 'pipeline',        label: '商機看板',              icon: '💼', navId: 'navPipeline' },
   { key: 'pipelineReport',  label: '商機動態報表',          icon: '📑', navId: 'navPipelineReport' },
   { key: 'bizAnalysis',     label: '商機分析',              icon: '📊', navId: 'navBizAnalysis' },
+  { key: 'yoy',             label: 'YoY 營收同期比',        icon: '📅', navId: 'navYoy' },
   { key: 'contractGroup',   label: '合約管理',              icon: '📄', navId: 'navContractGroup' },
   { key: 'accountingGroup', label: '帳務管理',              icon: '💰', navId: 'navAccountingGroup' },
   { key: 'callin',          label: 'Call-in Pass',          icon: '📞', navId: 'navCallin' },
@@ -300,7 +301,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   executive:          ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
   manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  secretary:          ['home','targets','forecast','accountingGroup','callin'],
+  secretary:          ['home','targets','forecast','accountingGroup','callin','yoy'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
   user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
@@ -6907,10 +6908,15 @@ app.get('/api/companies/import-template', requireAuth, (req, res) => {
 //  資料存於 data.yoyRevenue（獨立命名空間），CRM 營運邏輯不會碰它。
 //  匯入：admin（日後加 'secretary' 即可開放秘書）；檢視：admin + executive（長官）。
 // ════════════════════════════════════════════════════════════
-// 先只開放 admin（檢視 + 匯入）；之後再依「功能權限表」開放其他角色（如 executive / secretary）
-const YOY_VIEW_ROLES   = ['admin'];
-const YOY_IMPORT_ROLES = ['admin'];
-function canViewYoy(req)   { return !!(req.session.user && YOY_VIEW_ROLES.includes(req.session.user.role)); }
+// 檢視（view）：併入「角色功能權限表」的 'yoy' 功能 → admin 可在勾選表逐角色開放。
+// 匯入（import）：仍以角色硬編，限 admin + 秘書（避免他人誤改歷史營收資料），不放進勾選表。
+const YOY_IMPORT_ROLES = ['admin', 'secretary'];
+function canViewYoy(req) {
+  const role = req.session.user && req.session.user.role;
+  if (!role) return false;
+  // 有 'yoy' 功能權限者可看；匯入角色（admin/秘書）一定可看（否則無法操作上傳）
+  return getUserFeatures(role).includes('yoy') || YOY_IMPORT_ROLES.includes(role);
+}
 function canImportYoy(req) { return !!(req.session.user && YOY_IMPORT_ROLES.includes(req.session.user.role)); }
 
 // 解析 YoY 活頁簿：每個「四位數年份」工作表 → 該年資料列（依表頭文字定位欄位，容忍欄位順序不同）
