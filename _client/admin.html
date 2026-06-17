@@ -585,6 +585,7 @@
             <span id="companiesCount" style="font-size:12px;color:#6b7280">—</span>
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <input id="companySearchInput" type="text" placeholder="🔍 搜尋公司/統編" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
+              <select id="companyIndustryFilter" title="依產業篩選" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;cursor:pointer;max-width:200px"><option value="">🏷️ 全部產業</option></select>
               <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
               <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
@@ -5026,6 +5027,7 @@
     // ── 🏢 企業主檔 ──
     let _companiesData = [];
     let _companyFilter = '';
+    let _companyIndustryFilter = '';   // '' = 全部；'__none__' = 未分類；其餘 = 指定產業
 
     async function loadCompaniesView() {
       const tbody = document.getElementById('companiesTbody');
@@ -5034,10 +5036,30 @@
         if (!r.ok) throw new Error('載入失敗 (HTTP ' + r.status + ')');
         _companiesData = await r.json();
         _admIndustries = ri.ok ? await ri.json() : [];
+        populateIndustryFilter();
         renderCompaniesTable();
       } catch (e) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#e74c3c;padding:24px">${e.message}</td></tr>`;
       }
+    }
+    // 填充「產業」篩選下拉（含各產業家數 + 未分類）
+    function populateIndustryFilter() {
+      const sel = document.getElementById('companyIndustryFilter');
+      if (!sel) return;
+      const counts = {};
+      let noneCount = 0;
+      (_companiesData || []).forEach(c => {
+        const ind = (c.industry || '').trim();
+        if (ind) counts[ind] = (counts[ind] || 0) + 1; else noneCount++;
+      });
+      const cats = (_admIndustries || []).slice();
+      Object.keys(counts).forEach(k => { if (!cats.includes(k)) cats.push(k); }); // 已用但不在清單的也列出
+      cats.sort((a, b) => a.localeCompare(b, 'zh-TW'));
+      let html = `<option value="">🏷️ 全部產業（${_companiesData.length}）</option>`;
+      cats.forEach(n => { html += `<option value="${escapeAttr(n)}">${escapeAttr(n)}（${counts[n] || 0}）</option>`; });
+      if (noneCount) html += `<option value="__none__">（未分類）（${noneCount}）</option>`;
+      sel.innerHTML = html;
+      sel.value = _companyIndustryFilter || '';
     }
     // 產業下拉 cell（清單內直接選）
     function companyIndustryCell(c) {
@@ -5053,12 +5075,18 @@
       const tbody = document.getElementById('companiesTbody');
       const countEl = document.getElementById('companiesCount');
       const kw = _companyFilter.toLowerCase();
-      const list = (_companiesData || []).filter(c =>
-        !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw)
-      );
+      const indF = _companyIndustryFilter;
+      const list = (_companiesData || []).filter(c => {
+        const kwOk = !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw);
+        if (!kwOk) return false;
+        if (!indF) return true;
+        const ind = (c.industry || '').trim();
+        return indF === '__none__' ? !ind : ind === indF;
+      });
+      const hasFilter = !!(_companyFilter || indF);
       countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">${_companyFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
       const fmtCap = (n) => {
@@ -5142,6 +5170,7 @@
             const d = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(d.error || '儲存失敗');
             const comp = _companiesData.find(x => x.id === id); if (comp) comp.industry = industry;
+            populateIndustryFilter();   // 刷新篩選下拉的各產業家數（保留目前選擇）
             if (d.synced > 0) showToast(`✓ 產業已更新，覆蓋同步該公司 ${d.synced} 張名片`);
           } catch (err) { alert('❌ ' + err.message); loadCompaniesView(); }
           finally { sel.disabled = false; }
@@ -5273,6 +5302,7 @@
     document.querySelector('[data-sec="companies"]').addEventListener('click', loadCompaniesView);
     document.getElementById('companyRefreshBtn').addEventListener('click', loadCompaniesView);
     document.getElementById('companySearchInput').addEventListener('input', e => { _companyFilter = e.target.value; renderCompaniesTable(); });
+    document.getElementById('companyIndustryFilter').addEventListener('change', e => { _companyIndustryFilter = e.target.value; renderCompaniesTable(); });
     document.getElementById('companyBuildBtn').addEventListener('click', async () => {
       if (!confirm('將掃描所有名片，以統一編號為主鍵建立/更新企業主檔。\n\n此操作可重複執行，不會產生重複主檔。確定執行？')) return;
       const btn = document.getElementById('companyBuildBtn');
