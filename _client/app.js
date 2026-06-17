@@ -841,6 +841,22 @@ function showSection(section) {
 // ════════════════════════════════════════════════════════════
 let _cmData = [];
 let _cmFilter = '';
+let _cmIndustryFilter = '';   // '' = 全部；'__none__' = 未分類；其餘 = 指定產業
+// 填充使用者端企業主檔的「產業」篩選下拉（含各產業家數 + 未分類）
+function cmPopulateIndustryFilter() {
+  const sel = $('cmIndustryFilter');
+  if (!sel) return;
+  const counts = {}; let none = 0;
+  (_cmData || []).forEach(c => { const i = (c.industry || '').trim(); if (i) counts[i] = (counts[i] || 0) + 1; else none++; });
+  const cats = (_industryList || []).slice();
+  Object.keys(counts).forEach(k => { if (!cats.includes(k)) cats.push(k); });
+  cats.sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  let html = `<option value="">🏷️ 全部產業（${_cmData.length}）</option>`;
+  cats.forEach(n => { html += `<option value="${escapeHtml(n)}">${escapeHtml(n)}（${counts[n] || 0}）</option>`; });
+  if (none) html += `<option value="__none__">（未分類）（${none}）</option>`;
+  sel.innerHTML = html;
+  sel.value = _cmIndustryFilter || '';
+}
 const CM_STAGE_LABEL = { D:'D 靜止', C:'C Pipeline', B:'B Upside', A:'A Commit', Won:'🏆 Won' };
 const CM_EMP_LABEL = { active:'在職', pending:'❓待確認', resigned:'🚫已離職' };
 function cmFmtCap(n) {
@@ -870,6 +886,7 @@ async function loadCompanyMasterView() {
     const r = await fetch(`${API}/companies`);
     if (!r.ok) throw new Error('載入失敗 (' + r.status + ')');
     _cmData = await r.json();
+    cmPopulateIndustryFilter();
     renderCompanyMasterList();
   } catch (e) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#e74c3c;padding:28px">${escapeHtml(e.message)}</td></tr>`;
@@ -879,13 +896,20 @@ async function loadCompanyMasterView() {
 function renderCompanyMasterList() {
   const tbody = $('cmTbody'), countEl = $('cmCount');
   const kw = _cmFilter.toLowerCase();
-  const list = (_cmData || []).filter(c =>
-    !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw));
-  if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (kw ? `（顯示 ${list.length}）` : '');
+  const indF = _cmIndustryFilter;
+  const list = (_cmData || []).filter(c => {
+    const kwOk = !kw || (c.name || '').toLowerCase().includes(kw) || (c.taxId || '').includes(kw);
+    if (!kwOk) return false;
+    if (!indF) return true;
+    const ind = (c.industry || '').trim();
+    return indF === '__none__' ? !ind : ind === indF;
+  });
+  const hasFilter = !!(kw || indF);
+  if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (hasFilter ? `（顯示 ${list.length}）` : '');
   if (!tbody) return;
   const canManage = cmCanManage();
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="${canManage ? 6 : 5}" class="cm-empty">${_cmFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${canManage ? 6 : 5}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
     return;
   }
   const colspan = canManage ? 6 : 5;
@@ -945,6 +969,7 @@ function renderCompanyMasterList() {
         if (!r.ok) throw new Error(d.error || '儲存失敗');
         const comp = _cmData.find(x => x.id === id); if (comp) comp.industry = industry;
         if (industry && !_industryList.includes(industry)) { _industryList.push(industry); rebuildIndustrySelect(); }
+        cmPopulateIndustryFilter();   // 刷新篩選下拉家數（保留目前選擇）
         if (d.synced > 0 && typeof showToast === 'function') showToast(`✓ 產業已更新，覆蓋同步該公司 ${d.synced} 張名片`);
       } catch (err) { alert('❌ ' + err.message); }
       finally { sel.disabled = false; }
@@ -1226,6 +1251,8 @@ async function cmCommitImport() {
 document.addEventListener('DOMContentLoaded', () => {
   const cmSearch = document.getElementById('cmSearchInput');
   if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
+  const cmIndFilter = document.getElementById('cmIndustryFilter');
+  if (cmIndFilter) cmIndFilter.addEventListener('change', e => { _cmIndustryFilter = e.target.value; renderCompanyMasterList(); });
 
   // 下載匯入範本
   const tplBtn = document.getElementById('cmTemplateBtn');
