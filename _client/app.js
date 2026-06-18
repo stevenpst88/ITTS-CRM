@@ -1334,6 +1334,7 @@ $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
 $('navCallin').addEventListener('click',    () => showSection('callin'));
+if ($('navTransfer')) $('navTransfer').addEventListener('click', () => showSection('transfer'));  // 名單移轉（主管/admin）
 $('goSetTargetBtn').addEventListener('click', () => showSection('targets'));
 
 // ── 合約管理側邊欄群組展開/收合 ─────────────────────────
@@ -8770,17 +8771,20 @@ async function loadTransferView() {
 
 async function populateTransferOwnerSelects() {
   try {
-    const r = await fetch(`${API}/admin/users`);
+    // 用 /api/usermap（requireAuth，回傳「可視範圍內業務」）→ 主管也可用；且不含客戶池 _pool。
+    const r = await fetch(`${API}/usermap`);
     if (!r.ok) return;
-    const users = await r.json();
-    const active = users.filter(u => u.active);
+    const map = await r.json();
+    const entries = Object.entries(map)
+      .filter(([un]) => un !== '_pool')
+      .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'zh-TW'));
     ['appTransferFromOwner','appTransferToOwner'].forEach(id => {
       const sel = $(id);
       sel.innerHTML = '<option value="">-- 選取業務人員 --</option>';
-      active.forEach(u => {
+      entries.forEach(([un, name]) => {
         const o = document.createElement('option');
-        o.value = u.username;
-        o.textContent = u.displayName || u.username;
+        o.value = un;
+        o.textContent = name || un;
         sel.appendChild(o);
       });
     });

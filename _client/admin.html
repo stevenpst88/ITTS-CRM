@@ -2612,7 +2612,9 @@
       try {
         const r = await adminFetch(`${API}/admin/users`);
         const users = await r.json();
-        const active = users.filter(u => u.active);
+        // 排除客戶池 _pool：它不是業務人員、也不在 getViewableOwners 範圍 → 選了會 403 被誤判成 Session 過期。
+        // 客戶池有自己的「📋 客戶池 → 分配」流程。
+        const active = users.filter(u => u.active && u.username !== '_pool' && u.role !== 'pool');
         ['transferFromOwner','transferToOwner'].forEach(id => {
           const sel = $(id);
           const cur = sel.value;
