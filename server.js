@@ -6322,9 +6322,9 @@ app.get('/api/contacts-by-owner', requireAuth, (req, res) => {
   const { owner } = req.query;
   if (!owner) return res.status(400).json({ error: '請指定 owner' });
 
-  // 確認查詢對象在自己 BU 可視範圍內
+  // 確認查詢對象在自己 BU 可視範圍內（客戶池 _pool 例外：全域未分配池，供名單移轉指派用）
   const cboViewable = new Set(getViewableOwners(req, 'contacts'));
-  if (!cboViewable.has(owner)) return res.status(403).json({ error: '超出 BU 可視範圍' });
+  if (owner !== '_pool' && !cboViewable.has(owner)) return res.status(403).json({ error: '超出 BU 可視範圍' });
 
   const data = db.load();
   const contacts = (data.contacts || []).filter(c => c.owner === owner && !c.deleted);
@@ -6347,15 +6347,15 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   const toUser   = auth.users.find(u => u.username === toOwner);
   if (!fromUser || !toUser) return res.status(400).json({ error: '指定的使用者不存在' });
 
-  // 確認來源與目標都在自己 BU 可視範圍內
+  // 確認來源與目標都在自己 BU 可視範圍內（客戶池 _pool 例外：全域未分配池，可被指派出去）
   const transferViewable = new Set(getViewableOwners(req, 'contacts'));
-  if (!transferViewable.has(fromOwner)) return res.status(403).json({ error: '來源業務超出 BU 可視範圍' });
+  if (fromOwner !== '_pool' && !transferViewable.has(fromOwner)) return res.status(403).json({ error: '來源業務超出 BU 可視範圍' });
   if (!transferViewable.has(toOwner)) return res.status(403).json({ error: '目標業務超出 BU 可視範圍' });
 
-  // 權限：manager2 只能移轉 user，manager1 可移轉 user/manager2
-  const transferableRoles = role === 'admin'    ? ['user','manager1','manager2','secretary']
-                          : role === 'manager1' ? ['user','manager2']
-                          : ['user'];
+  // 權限：manager2 只能移轉 user，manager1 可移轉 user/manager2；客戶池(_pool)可由 admin/主管指派給業務
+  const transferableRoles = role === 'admin'    ? ['user','manager1','manager2','secretary','pool']
+                          : role === 'manager1' ? ['user','manager2','pool']
+                          : ['user','pool'];
   if (!transferableRoles.includes(fromUser.role))
     return res.status(403).json({ error: '您無權移轉此業務的客戶名單' });
 

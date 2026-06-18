@@ -8778,9 +8778,17 @@ async function populateTransferOwnerSelects() {
     const entries = Object.entries(map)
       .filter(([un]) => un !== '_pool')
       .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'zh-TW'));
+    // 來源下拉可加「客戶池」供 admin/主管把未分配客戶指派給業務（後端 _pool 已放行）
+    const canPool = ['admin','manager1','manager2'].includes(window._myRole);
     ['appTransferFromOwner','appTransferToOwner'].forEach(id => {
       const sel = $(id);
       sel.innerHTML = '<option value="">-- 選取業務人員 --</option>';
+      if (id === 'appTransferFromOwner' && canPool) {
+        const po = document.createElement('option');
+        po.value = '_pool';
+        po.textContent = '📋 客戶池（未分配客戶）';
+        sel.appendChild(po);
+      }
       entries.forEach(([un, name]) => {
         const o = document.createElement('option');
         o.value = un;
