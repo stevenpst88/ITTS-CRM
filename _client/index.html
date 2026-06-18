@@ -1631,6 +1631,42 @@
           </div>
         </div>
 
+        <!-- ── 名單移轉 View（須在 main 內，否則會渲染到畫面外變空白）── -->
+        <div id="transferView" style="display:none;padding:24px">
+          <div style="font-size:20px;font-weight:800;color:#1a2d52;margin-bottom:6px">🔄 責任業務名單移轉</div>
+          <div style="font-size:13px;color:#888;margin-bottom:24px">將業務人員的客戶名單（含商機、拜訪記錄、應收帳款）移轉給另一位業務</div>
+          <div class="transfer-layout">
+            <div class="transfer-panel">
+              <div class="transfer-panel-head">
+                <select id="appTransferFromOwner"><option value="">-- 選取來源業務 --</option></select>
+                <span class="transfer-count" id="appTransferFromCount"></span>
+              </div>
+              <div class="transfer-list" id="appTransferFromList">
+                <div class="transfer-item-empty">請先選擇來源業務人員</div>
+              </div>
+              <div class="transfer-footer">
+                <span class="transfer-select-all" id="appTransferSelectAll">全選</span>
+                <span id="appTransferSelectedCount" style="font-size:12px;color:#fff"></span>
+              </div>
+            </div>
+            <div class="transfer-arrow">
+              <div class="transfer-arrow-icon">➡️</div>
+              <button class="btn btn-primary btn-sm" id="appTransferConfirmBtn" disabled style="writing-mode:vertical-rl;height:80px;letter-spacing:2px">確認移轉</button>
+            </div>
+            <div class="transfer-panel">
+              <div class="transfer-panel-head">
+                <select id="appTransferToOwner"><option value="">-- 選取目標業務 --</option></select>
+                <span class="transfer-count" id="appTransferToCount"></span>
+              </div>
+              <div class="transfer-list" id="appTransferToList">
+                <div class="transfer-item-empty">請先選擇目標業務人員</div>
+              </div>
+              <div class="transfer-footer"></div>
+            </div>
+          </div>
+          <div id="appTransferResultBox" style="display:none;margin-top:16px"></div>
+        </div>
+
       </main>
     </div>
   </div>
@@ -1697,45 +1733,6 @@
         <button class="btn btn-primary" id="callinModalSave">建立 Call-in</button>
       </div>
     </div>
-  </div>
-
-  <!-- ── 名單移轉 View ── -->
-  <div id="transferView" style="display:none;padding:24px">
-    <div style="font-size:20px;font-weight:800;color:#1a2d52;margin-bottom:6px">🔄 責任業務名單移轉</div>
-    <div style="font-size:13px;color:#888;margin-bottom:24px">將業務人員的客戶名單（含商機、拜訪記錄、應收帳款）移轉給另一位業務</div>
-    <div class="transfer-layout">
-      <!-- 來源 -->
-      <div class="transfer-panel">
-        <div class="transfer-panel-head">
-          <select id="appTransferFromOwner"><option value="">-- 選取來源業務 --</option></select>
-          <span class="transfer-count" id="appTransferFromCount"></span>
-        </div>
-        <div class="transfer-list" id="appTransferFromList">
-          <div class="transfer-item-empty">請先選擇來源業務人員</div>
-        </div>
-        <div class="transfer-footer">
-          <span class="transfer-select-all" id="appTransferSelectAll">全選</span>
-          <span id="appTransferSelectedCount" style="font-size:12px;color:#fff"></span>
-        </div>
-      </div>
-      <!-- 箭頭 + 確認 -->
-      <div class="transfer-arrow">
-        <div class="transfer-arrow-icon">➡️</div>
-        <button class="btn btn-primary btn-sm" id="appTransferConfirmBtn" disabled style="writing-mode:vertical-rl;height:80px;letter-spacing:2px">確認移轉</button>
-      </div>
-      <!-- 目標 -->
-      <div class="transfer-panel">
-        <div class="transfer-panel-head">
-          <select id="appTransferToOwner"><option value="">-- 選取目標業務 --</option></select>
-          <span class="transfer-count" id="appTransferToCount"></span>
-        </div>
-        <div class="transfer-list" id="appTransferToList">
-          <div class="transfer-item-empty">請先選擇目標業務人員</div>
-        </div>
-        <div class="transfer-footer"></div>
-      </div>
-    </div>
-    <div id="appTransferResultBox" style="display:none;margin-top:16px"></div>
   </div>
 
   <!-- ── Call-in 指派 Modal（主管用） ── -->
