@@ -483,6 +483,9 @@
       <div class="admin-nav-item" data-sec="infra-stats">
         <span class="admin-nav-icon">☁️</span> 雲端基礎設施
       </div>
+      <div class="admin-nav-item" data-sec="integration">
+        <span class="admin-nav-icon">🔌</span> 系統整合
+      </div>
       <div class="admin-nav-item" data-sec="subscription">
         <span class="admin-nav-icon">💳</span> 訂閱管理
       </div>
@@ -1664,6 +1667,86 @@
         </div>
       </div>
 
+      <!-- ── 系統整合：連線設定 ── -->
+      <div class="admin-section" id="sec-integration">
+        <div class="section-title">🔌 系統整合 — 連線設定</div>
+        <div class="section-sub">設定 CRM 與異質系統（首個對象：SAP Sales Cloud V2）的 REST API 連線。機敏資料（密碼 / Client Secret）加密儲存，前端不顯示明碼。實際資料推送待 API User 到位後另行開放。</div>
+
+        <div class="admin-card" style="padding:24px;max-width:720px">
+          <input type="hidden" id="integId">
+          <input type="hidden" id="integType" value="sap-sales-cloud-v2">
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eef0f3">
+            <div>
+              <div style="font-size:15px;font-weight:800;color:#1a3c7a">SAP Sales Cloud V2</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:2px">目標系統連線</div>
+            </div>
+            <label class="toggle" title="啟用此連線"><input type="checkbox" id="integEnabled"><span class="toggle-slider"></span></label>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">連線名稱</label>
+            <input id="integName" type="text" placeholder="SAP Sales Cloud V2" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </div>
+
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Base URL（租戶網址）</label>
+            <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
+          </div>
+
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">認證方式</label>
+            <select id="integAuthType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <option value="basic">Basic（帳號 / 密碼）</option>
+              <option value="oauth">OAuth2（Client Credentials）</option>
+            </select>
+          </div>
+
+          <!-- Basic 欄位 -->
+          <div id="integBasicFields">
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">API User 帳號</label>
+              <input id="integUsername" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            </div>
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
+              <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            </div>
+          </div>
+
+          <!-- OAuth 欄位 -->
+          <div id="integOauthFields" style="display:none">
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Token Endpoint</label>
+              <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            </div>
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client ID</label>
+              <input id="integClientId" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            </div>
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
+              <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+            <button id="integSaveBtn" class="btn btn-primary" style="padding:10px 24px;font-weight:700">💾 儲存設定</button>
+            <button id="integTestBtn" class="btn" style="padding:10px 20px;border:1px solid #d1d5db;background:#fff">🔌 測試連線</button>
+          </div>
+
+          <div id="integResult" style="display:none;margin-top:16px;padding:12px 14px;border-radius:8px;font-size:13px;white-space:pre-wrap;word-break:break-all"></div>
+
+          <div style="margin-top:20px;padding:14px 16px;background:#f9fafb;border-left:3px solid #1a73e8;border-radius:4px;font-size:12px;color:#6b7280;line-height:1.7">
+            <strong style="color:#1a3c7a">💡 說明</strong><br>
+            • 此頁僅設定連線；欄位對照、推送範圍、執行紀錄為後續階段。<br>
+            • 「測試連線」會由伺服器端對 SAP 發出一筆認證查詢並回報結果，不會送出任何客戶資料。<br>
+            • 密碼 / Client Secret 以 AES-256-GCM 加密存放；留空表示沿用已儲存的值。
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
         <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
@@ -2020,8 +2103,121 @@
         if (this.dataset.sec === 'version') loadVersionInfo();
         if (this.dataset.sec === 'subscription') loadSubStatus();
         if (this.dataset.sec === 'push-test') initPushTest();
+        if (this.dataset.sec === 'integration') initIntegration();
       });
     });
+
+    // ── 系統整合：連線設定 ──────────────────────────────────
+    let _integInited = false;
+    async function initIntegration() {
+      if (_integInited) return;
+      _integInited = true;
+
+      const authSel = $('integAuthType');
+      const syncAuthFields = () => {
+        const isOauth = authSel.value === 'oauth';
+        $('integBasicFields').style.display = isOauth ? 'none' : 'block';
+        $('integOauthFields').style.display = isOauth ? 'block' : 'none';
+      };
+      authSel.addEventListener('change', syncAuthFields);
+
+      // 載入已存設定
+      try {
+        const r = await adminFetch(`${API}/admin/integrations`);
+        if (r.ok) {
+          const list = await r.json();
+          const sap = list.find(x => x.type === 'sap-sales-cloud-v2') || list[0];
+          if (sap) {
+            $('integId').value = sap.id || '';
+            $('integType').value = sap.type || 'sap-sales-cloud-v2';
+            $('integName').value = sap.name || '';
+            $('integEnabled').checked = !!sap.enabled;
+            $('integBaseUrl').value = sap.baseUrl || '';
+            $('integAuthType').value = sap.authType || 'basic';
+            $('integUsername').value = sap.username || '';
+            $('integClientId').value = sap.clientId || '';
+            $('integTokenEndpoint').value = sap.tokenEndpoint || '';
+            if (sap.hasPassword) { $('integPassword').placeholder = '（已設定，留空不變更）'; $('integPwdHint').textContent = '已設定'; }
+            if (sap.hasClientSecret) { $('integClientSecret').placeholder = '（已設定，留空不變更）'; $('integSecretHint').textContent = '已設定'; }
+          }
+        }
+      } catch (e) { console.warn('[integration] 載入設定失敗', e); }
+      syncAuthFields();
+
+      const collectPayload = () => ({
+        id:            $('integId').value || undefined,
+        type:          $('integType').value || 'sap-sales-cloud-v2',
+        name:          $('integName').value.trim(),
+        enabled:       $('integEnabled').checked,
+        baseUrl:       $('integBaseUrl').value.trim(),
+        authType:      $('integAuthType').value,
+        username:      $('integUsername').value.trim(),
+        password:      $('integPassword').value,        // 空＝不變更
+        clientId:      $('integClientId').value.trim(),
+        clientSecret:  $('integClientSecret').value,    // 空＝不變更
+        tokenEndpoint: $('integTokenEndpoint').value.trim(),
+      });
+
+      const showResult = (kind, msg) => {
+        const out = $('integResult');
+        out.style.display = 'block';
+        out.style.whiteSpace = 'pre-wrap';
+        if (kind === 'ok')      { out.style.background = '#e7f5ec'; out.style.color = '#1a7f37'; }
+        else if (kind === 'err'){ out.style.background = '#fdecec'; out.style.color = '#c0322b'; }
+        else                    { out.style.background = '#f3f4f6'; out.style.color = '#374151'; }
+        out.textContent = msg;
+      };
+
+      // 儲存
+      $('integSaveBtn').addEventListener('click', async () => {
+        const btn = $('integSaveBtn'); const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = '儲存中…';
+        try {
+          const r = await adminFetch(`${API}/admin/integrations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectPayload()),
+          });
+          if (r.ok) {
+            const saved = await r.json();
+            $('integId').value = saved.id || '';
+            $('integPassword').value = ''; $('integClientSecret').value = '';
+            if (saved.hasPassword) { $('integPassword').placeholder = '（已設定，留空不變更）'; $('integPwdHint').textContent = '已設定'; }
+            if (saved.hasClientSecret) { $('integClientSecret').placeholder = '（已設定，留空不變更）'; $('integSecretHint').textContent = '已設定'; }
+            showToast('✅ 連線設定已儲存');
+            showResult('ok', '已儲存。');
+          } else {
+            showToast('儲存失敗');
+            showResult('err', '儲存失敗（HTTP ' + r.status + '）');
+          }
+        } catch (e) {
+          showResult('err', '儲存失敗：' + e.message);
+        } finally {
+          btn.disabled = false; btn.textContent = orig;
+        }
+      });
+
+      // 測試連線
+      $('integTestBtn').addEventListener('click', async () => {
+        const btn = $('integTestBtn'); const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = '測試中…';
+        showResult('info', '測試連線中…（最多 8 秒）');
+        try {
+          const r = await adminFetch(`${API}/admin/integrations/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectPayload()),
+          });
+          const d = await r.json();
+          if (d.ok) showResult('ok', '✅ 連線成功' + (d.status ? '（HTTP ' + d.status + '）' : '') + (d.note ? '\n' + d.note : ''));
+          else      showResult('err', '❌ 連線失敗：' + (d.reason || '未知錯誤') + (d.status ? '（HTTP ' + d.status + '）' : ''));
+        } catch (e) {
+          showResult('err', '❌ 測試失敗：' + e.message);
+        } finally {
+          btn.disabled = false; btn.textContent = orig;
+        }
+      });
+    }
 
     // ── 推播測試 ──────────────────────────────────────────
     let _pushTestInited = false;

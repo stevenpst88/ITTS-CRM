@@ -18,6 +18,7 @@ const storage = require('./storage');
 const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
 const pushNotify = require('./lib/pushNotify');
+const secretBox = require('./lib/secretBox');
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
@@ -5893,6 +5894,149 @@ app.delete('/api/receivables/:id', requireAuth, (req, res) => {
   db.save(data);
   if (r) writeLog('DELETE_RECEIVABLE', owner, r.company, `發票:${r.invoiceNo}`, req);
   res.json({ success: true });
+});
+
+// ── 異質系統整合：連線設定（SAP Sales Cloud V2 等）─────────────
+// 僅 admin。機敏欄位（password / clientSecret）以 AES-256-GCM 加密存，永不回傳明碼。
+// 目前僅「連線設定」：欄位對照 / 推送 / 紀錄為後續階段。
+const INTEGRATION_SECRET_FIELDS = ['password', 'clientSecret'];
+
+// 回給前端時遮蔽機敏值：password → hasPassword(boolean)，不外洩密文或明碼
+function maskIntegration(it) {
+  if (!it) return it;
+  const out = { ...it };
+  INTEGRATION_SECRET_FIELDS.forEach(f => {
+    out['has' + f.charAt(0).toUpperCase() + f.slice(1)] = !!it[f];
+    delete out[f];
+  });
+  return out;
+}
+
+app.get('/api/admin/integrations', requireAdmin, (req, res) => {
+  const data = db.load();
+  res.json((data.integrations || []).map(maskIntegration));
+});
+
+// 新增 / 更新連線（單一 SAP 連線：以 id 或 type 比對既有）
+app.post('/api/admin/integrations', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  if (!Array.isArray(data.integrations)) data.integrations = [];
+  const b = req.body || {};
+  const now = new Date().toISOString();
+
+  let idx = -1;
+  if (b.id) idx = data.integrations.findIndex(x => x.id === b.id);
+  if (idx === -1 && b.type) idx = data.integrations.findIndex(x => x.type === b.type);
+  const prev = idx >= 0 ? data.integrations[idx] : null;
+
+  const pick = (k, def) => (b[k] != null ? b[k] : (prev ? prev[k] : def));
+  const item = {
+    id:            prev ? prev.id : uuidv4(),
+    type:          pick('type', 'sap-sales-cloud-v2') || 'sap-sales-cloud-v2',
+    name:          (pick('name', 'SAP Sales Cloud V2') || 'SAP Sales Cloud V2'),
+    enabled:       b.enabled != null ? !!b.enabled : (prev ? !!prev.enabled : false),
+    baseUrl:       String(pick('baseUrl', '') || '').trim().replace(/\/+$/, ''),
+    authType:      pick('authType', 'basic') || 'basic',
+    username:      String(pick('username', '') || ''),
+    clientId:      String(pick('clientId', '') || ''),
+    tokenEndpoint: String(pick('tokenEndpoint', '') || '').trim(),
+    // 機敏欄位：預設沿用舊密文；前端有填新值才重新加密
+    password:      prev ? (prev.password || '') : '',
+    clientSecret:  prev ? (prev.clientSecret || '') : '',
+    createdAt:     prev ? prev.createdAt : now,
+    updatedAt:     now,
+    updatedBy:     operator,
+  };
+
+  INTEGRATION_SECRET_FIELDS.forEach(f => {
+    if (typeof b[f] === 'string' && b[f] !== '') {
+      try { item[f] = secretBox.encrypt(b[f]); }
+      catch (e) { console.error('[integrations] 加密失敗', f, e.message); }
+    }
+  });
+
+  if (idx >= 0) data.integrations[idx] = item;
+  else data.integrations.push(item);
+  db.save(data);
+  writeLog('SAVE_INTEGRATION', operator, item.name,
+    `type:${item.type} enabled:${item.enabled} auth:${item.authType}`, req);
+  res.json(maskIntegration(item));
+});
+
+// 測試連線：伺服器端對 SAP 發一筆認證查詢，回報結果（不寫入、不送客戶資料）
+app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const data = db.load();
+  let stored = null;
+  if (b.id) stored = (data.integrations || []).find(x => x.id === b.id);
+  if (!stored && b.type) stored = (data.integrations || []).find(x => x.type === b.type);
+
+  const baseUrl = String((b.baseUrl != null ? b.baseUrl : (stored && stored.baseUrl)) || '').trim().replace(/\/+$/, '');
+  const authType = b.authType || (stored && stored.authType) || 'basic';
+  if (!baseUrl) return res.json({ ok: false, reason: '缺少 Base URL' });
+
+  // 機敏值：前端有填用前端的；否則解密存檔值
+  const resolveSecret = (field) => {
+    if (typeof b[field] === 'string' && b[field] !== '') return b[field];
+    if (stored && stored[field]) { try { return secretBox.decrypt(stored[field]); } catch { return ''; } }
+    return '';
+  };
+  const username      = b.username != null ? b.username : ((stored && stored.username) || '');
+  const password      = resolveSecret('password');
+  const clientId      = b.clientId != null ? b.clientId : ((stored && stored.clientId) || '');
+  const clientSecret  = resolveSecret('clientSecret');
+  const tokenEndpoint = String((b.tokenEndpoint != null ? b.tokenEndpoint : (stored && stored.tokenEndpoint)) || '').trim();
+
+  let authHeader = '';
+  if (authType === 'basic') {
+    if (!username || !password) return res.json({ ok: false, reason: '帳號或密碼未填' });
+    authHeader = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+  } else if (authType === 'oauth') {
+    if (!tokenEndpoint || !clientId || !clientSecret)
+      return res.json({ ok: false, reason: 'OAuth 參數不完整（需 Token Endpoint / Client ID / Client Secret）' });
+    let tokenResp;
+    try {
+      tokenResp = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: 'grant_type=client_credentials',
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch (e) {
+      return res.json({ ok: false, reason: e.name === 'TimeoutError' ? 'Token Endpoint 連線逾時' : '無法連線 Token Endpoint：' + e.message });
+    }
+    const ttext = await tokenResp.text();
+    let tjson = null; try { tjson = JSON.parse(ttext); } catch {}
+    if (!tokenResp.ok || !tjson || !tjson.access_token)
+      return res.json({ ok: false, status: tokenResp.status, reason: 'OAuth 取得 token 失敗（HTTP ' + tokenResp.status + '）' });
+    authHeader = 'Bearer ' + tjson.access_token;
+  } else {
+    return res.json({ ok: false, reason: '不支援的認證方式：' + authType });
+  }
+
+  // 對 Account service 打一筆輕量查詢（$top=1）
+  const url = baseUrl + '/sap/c4c/api/v1/account-service/accounts?$top=1';
+  let r;
+  try {
+    r = await fetch(url, { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) });
+  } catch (e) {
+    return res.json({ ok: false, reason: e.name === 'TimeoutError' ? '連線逾時（8 秒）' : '無法連線：' + e.message });
+  }
+  if (!r.ok) {
+    const reason = r.status === 401 ? '認證失敗（帳密 / 權限不符）'
+                 : r.status === 403 ? '權限不足（API User 缺 Account 權限）'
+                 : r.status === 404 ? 'Base URL 或 API 路徑不存在'
+                 : 'HTTP ' + r.status;
+    return res.json({ ok: false, status: r.status, reason });
+  }
+  const text = await r.text();           // 防呆：不直接 r.json()
+  let body = null; try { body = JSON.parse(text); } catch {}
+  return res.json({ ok: true, status: r.status, note: body ? '已成功取得 Account 回應' : '連線成功（回應非 JSON）' });
 });
 
 // ── Call-in Pass CRUD ─────────────────────────────────────
