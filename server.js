@@ -6310,7 +6310,8 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
         const cRec = { id: uuidv4(), type: 'contact', crmId: ct.id, crmName: ct.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
         try {
           const method = linkedC ? 'PATCH' : 'POST';
-          const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-service/contacts/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-service/contacts`;
+          // 正確端點為 contact-person-service/contactPersons（contact-service/contacts 會落到 web UI → 405）
+          const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons`;
           const hdrs2 = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
           if (method === 'PATCH') hdrs2['If-Match'] = '*';
           const r2 = await fetch(url, { method, headers: hdrs2, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
