@@ -6202,11 +6202,8 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
   const indMap = Object.fromEntries((mc.account?.industryMap || []).filter(r => r.crmValue && r.sapCode).map(r => [r.crmValue, r.sapCode]));
   const on = (field, list) => list.some(f => f.crmField === field && f.push !== false);
 
-  // 前置驗證：SAP 必填的固定值若未設定，提早報錯
-  const missing = [];
-  if (!role)   missing.push('customerRole 角色碼');
-  if (!idType) missing.push('統編識別類型碼（identificationTypeCode）');
-  if (missing.length) return res.status(400).json({ error: `推送前請至「欄位對照」填入：${missing.join('、')}` });
+  // 前置驗證：customerRole 為 SAP 必填；identificationTypeCode 選填（未填則跳過統編欄位）
+  if (!role) return res.status(400).json({ error: '推送前請至「欄位對照」填入 customerRole 角色碼' });
 
   if (!data.integrationLinks) data.integrationLinks = [];
   if (!data.integrationLogs)  data.integrationLogs  = [];
