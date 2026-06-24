@@ -6096,7 +6096,29 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
       fullAccount = arr[0] || null;
     }
 
-    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount });
+    // 探測正確的 Contact 端點路徑（GET 各候選，回傳 JSON=可用，HTML=路徑錯誤）
+    const contactCandidates = [
+      '/sap/c4c/api/v1/contact-service/contacts',
+      '/sap/c4c/api/v1/contactperson-service/contactPersons',
+      '/sap/c4c/api/v1/contactperson-service/contactpersons',
+      '/sap/c4c/api/v1/contact-service/contactPersons',
+      '/sap/c4c/api/v1/contactperson-service/contacts',
+      '/sap/c4c/api/v1/individualcustomer-service/individualCustomers',
+      '/sap/c4c/api/v1/contact-person-service/contactPersons',
+    ];
+    const contactProbe = [];
+    for (const ep of contactCandidates) {
+      try {
+        const rp = await fetch(`${baseUrl}${ep}?$top=1`, { headers });
+        const tp = (await rp.text()).trim();
+        const isJson = tp.startsWith('{') || tp.startsWith('[');
+        contactProbe.push({ endpoint: ep, status: rp.status, isJson, sample: isJson ? tp.slice(0, 200) : tp.slice(0, 60) });
+      } catch (e) {
+        contactProbe.push({ endpoint: ep, status: 'ERR', isJson: false, sample: e.message });
+      }
+    }
+
+    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount, contactProbe });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
