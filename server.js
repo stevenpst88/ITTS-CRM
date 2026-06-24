@@ -6290,7 +6290,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
       const method = linkedA ? 'PATCH' : 'POST';
       const url    = linkedA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
       const hdrs = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
-      if (method === 'PATCH') hdrs['If-Match'] = '*';   // SAP V2 PATCH 需樂觀鎖標頭；* = 不比對版本直接更新
+      if (method === 'PATCH') { hdrs['If-Match'] = '*'; hdrs['Content-Type'] = 'application/merge-patch+json'; }   // SAP V2 PATCH 需 If-Match 樂觀鎖 + merge-patch 內容型別
       const r = await fetch(url, { method, headers: hdrs, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
       const rt = await r.text();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${rt.slice(0, 300)}`);
@@ -6327,7 +6327,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
           // 正確端點為 contact-person-service/contactPersons（contact-service/contacts 會落到 web UI → 405）
           const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons`;
           const hdrs2 = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
-          if (method === 'PATCH') hdrs2['If-Match'] = '*';
+          if (method === 'PATCH') { hdrs2['If-Match'] = '*'; hdrs2['Content-Type'] = 'application/merge-patch+json'; }
           const r2 = await fetch(url, { method, headers: hdrs2, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
           const ct2 = await r2.text();
           if (!r2.ok) throw new Error(`HTTP ${r2.status}: ${ct2.slice(0, 300)}`);
