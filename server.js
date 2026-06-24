@@ -6169,6 +6169,28 @@ function extractSapId(rawText, headers) {
   return m ? m[0] : null;
 }
 
+// 確保 SAP Account 至少有一筆預設地址（Contact 掛載 workplace 需 org 有地址，否則 missingOrgAddressInfo）。
+// 地址為 /accounts/{id}/addresses 子資源；已有地址則略過（idempotent，重推不重複建立）。
+async function ensureAccountAddress(baseUrl, auth, sapAccId, addressText) {
+  const base = `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}/addresses`;
+  try {
+    const rg = await fetch(`${base}?$top=1`, { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+    if (rg.ok) {
+      let bg = null; try { bg = JSON.parse(await rg.text()); } catch {}
+      const existing = bg?.value || bg?.d?.results || bg?.data || [];
+      if (existing.length > 0) return { ok: true, created: false };
+    }
+    const rp = await fetch(base, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ isDefaultAddress: true, country: 'TW', streetPrefixName: String(addressText).slice(0, 240) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const tp = await rp.text();
+    return { ok: rp.ok, created: rp.ok, status: rp.status, resp: tp.slice(0, 200) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
 // ── 異質系統整合：欄位對照（SAP Sales Cloud V2）──────────────
 const SAP_DEFAULT_MAPPING = {
   account: {
@@ -6297,7 +6319,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     if (on('name',     accF)) ap.firstLineName = co.name || '';
     if (on('taxId', accF) && co.taxId && idType) ap.identifications = [{ type: idType, identificationId: co.taxId }];
     if (on('industry', accF) && co.industry && indMap[co.industry]) ap.industrialSector = indMap[co.industry];
-    if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
+    // 地址非帳號本體欄位，而是 /accounts/{id}/addresses 子資源；於帳號 upsert 成功後另行 ensureAccountAddress 建立
     if (role) ap.customerRole = role;
     ap.country = 'TW';
     // SAP V2 的 externalIds 屬「外部 ID 對應」子系統，需先註冊 Communication System 才能寫入（否則 localIdMissing 400）；
@@ -6330,6 +6352,14 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
 
     if (aRec.status === 'ok' && sapAccId) {
       const contacts = (data.contacts || []).filter(c => c.companyId === co.id && !c.deleted && !c.isPlaceholder);
+      // Contact 掛載前先確保 Account 有地址（SAP 規則）；無地址且公司有名片時，於紀錄附註
+      if (contacts.length && co.address) {
+        const addrRes = await ensureAccountAddress(baseUrl, auth, sapAccId, co.address);
+        if (!addrRes.ok) aRec.sapResponse += `；地址建立失敗：${addrRes.error || addrRes.resp || addrRes.status}`;
+        else if (addrRes.created) aRec.sapResponse += '；已補建預設地址';
+      } else if (contacts.length && !co.address) {
+        aRec.sapResponse += '；⚠ 公司無地址，名片可能因 SAP 規則無法掛載';
+      }
       for (const ct of contacts) {
         const eC = data.integrationLinks.find(l => l.crmType === 'contact' && l.crmId === ct.id && l.integrationId === config.id);
         const linkedC = !!(eC && eC.sapId);
