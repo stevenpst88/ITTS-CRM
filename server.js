@@ -6317,7 +6317,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
         const cp = {};
         if (on('name',  conF)) { const nm = (ct.name || '').trim(); cp.familyName = nm.slice(0, 1); cp.givenName = nm.slice(1); }
         if (on('title', conF) && ct.title) cp.functionalTitleName = ct.title;
-        if (on('email', conF) && ct.email) cp.eMail = [{ eMail: ct.email, primary: true }];
+        if (on('email', conF) && ct.email) cp.eMail = ct.email;   // SAP V2 contactPerson 的 eMail 為字串，非陣列
         cp.accountId = sapAccId;
         // 同 Account：POST 不帶 externalIds，僅更新(PATCH)時帶
         if (linkedC) cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
