@@ -6144,10 +6144,16 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
   const mc = ((data.integrationMappings || {})['sap-sales-cloud-v2']) || {};
   const accF   = mc.account?.fields    || SAP_DEFAULT_MAPPING.account.fields;
   const conF   = mc.contact?.fields    || SAP_DEFAULT_MAPPING.contact.fields;
-  const role   = mc.account?.customerRole || '';
-  const idType = mc.account?.identificationType || 'TW_TAX_ID';
+  const role   = (mc.account?.customerRole || '').trim();
+  const idType = (mc.account?.identificationType || '').trim();
   const indMap = Object.fromEntries((mc.account?.industryMap || []).filter(r => r.crmValue && r.sapCode).map(r => [r.crmValue, r.sapCode]));
   const on = (field, list) => list.some(f => f.crmField === field && f.push !== false);
+
+  // 前置驗證：SAP 必填的固定值若未設定，提早報錯
+  const missing = [];
+  if (!role)   missing.push('customerRole 角色碼');
+  if (!idType) missing.push('統編識別類型碼（identificationTypeCode）');
+  if (missing.length) return res.status(400).json({ error: `推送前請至「欄位對照」填入：${missing.join('、')}` });
 
   if (!data.integrationLinks) data.integrationLinks = [];
   if (!data.integrationLogs)  data.integrationLogs  = [];
