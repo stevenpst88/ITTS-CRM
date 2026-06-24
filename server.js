@@ -6039,6 +6039,39 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   return res.json({ ok: true, status: r.status, note: body ? '已成功取得 Account 回應' : '連線成功（回應非 JSON）' });
 });
 
+// ── 異質系統整合：查詢 SAP 欄位代碼（暫時用，確認 roleCode / identificationTypeCode）──
+app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) => {
+  const data = db.load();
+  const config = (data.integrations || []).find(x => x.type === 'sap-sales-cloud-v2');
+  if (!config || !config.enabled) return res.status(400).json({ error: '連線未啟用' });
+  const baseUrl = config.baseUrl;
+  if (!baseUrl) return res.status(400).json({ error: '缺少 Base URL' });
+  if (config.authType !== 'basic') return res.status(400).json({ error: '僅支援 Basic 認證' });
+  const pw = config.password ? (() => { try { return secretBox.decrypt(config.password); } catch { return ''; } })() : '';
+  if (!config.username || !pw) return res.status(400).json({ error: '帳號或密碼未設定' });
+  const auth = 'Basic ' + Buffer.from(config.username + ':' + pw).toString('base64');
+
+  try {
+    // 查前 3 筆 Account，只取 customerRole 和 identifications 欄位
+    const url = `${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=3&$select=id,firstLineName,customerRole,identifications`;
+    const r = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json' } });
+    const text = await r.text();
+    let body = null; try { body = JSON.parse(text); } catch {}
+    if (!r.ok) return res.status(r.status).json({ error: `SAP ${r.status}`, raw: text.slice(0, 500) });
+
+    const accounts = body?.value || body?.d?.results || body?.data || [];
+    const summary = accounts.map(a => ({
+      id: a.id,
+      name: a.firstLineName,
+      customerRole: a.customerRole,
+      identifications: a.identifications,
+    }));
+    return res.json({ ok: true, accounts: summary, rawFirst: accounts[0] });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ── 異質系統整合：欄位對照（SAP Sales Cloud V2）──────────────
 const SAP_DEFAULT_MAPPING = {
   account: {
