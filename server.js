@@ -6275,7 +6275,9 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     try {
       const method = linkedA ? 'PATCH' : 'POST';
       const url    = linkedA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
-      const r = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
+      const hdrs = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
+      if (method === 'PATCH') hdrs['If-Match'] = '*';   // SAP V2 PATCH 需樂觀鎖標頭；* = 不比對版本直接更新
+      const r = await fetch(url, { method, headers: hdrs, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
       const rt = await r.text();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${rt.slice(0, 300)}`);
       if (!linkedA) {
@@ -6309,7 +6311,9 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
         try {
           const method = linkedC ? 'PATCH' : 'POST';
           const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-service/contacts/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-service/contacts`;
-          const r2 = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
+          const hdrs2 = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
+          if (method === 'PATCH') hdrs2['If-Match'] = '*';
+          const r2 = await fetch(url, { method, headers: hdrs2, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
           const ct2 = await r2.text();
           if (!r2.ok) throw new Error(`HTTP ${r2.status}: ${ct2.slice(0, 300)}`);
           if (!linkedC) {
