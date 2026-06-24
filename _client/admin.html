@@ -1853,6 +1853,7 @@
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
                 <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="pushSelectAll" checked> 全選</label>
                 <span id="pushSelectedCount" style="font-size:12px;color:#6b7280"></span>
+                <input id="pushSearch" type="search" placeholder="🔍 搜尋公司名稱 / 統編" autocomplete="off" style="margin-left:auto;width:240px;padding:5px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;outline:none">
               </div>
               <div style="max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">
                 <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -2488,10 +2489,26 @@
       // ══ ③ 推送範圍 ══════════════════════════════════════════
       let _pushStop = false;
 
+      const pushRowVisible = (tr) => tr && tr.style.display !== 'none';
+
       const updatePushSelectedCount = () => {
-        const n = $('pushCompanyBody').querySelectorAll('input.push-row-check:checked').length;
-        $('pushSelectedCount').textContent = `已選 ${n} 家`;
+        const rows = [...$('pushCompanyBody').querySelectorAll('tr')];
+        const visible = rows.filter(pushRowVisible);
+        const n = visible.filter(tr => tr.querySelector('.push-row-check')?.checked).length;
+        const filtering = ($('pushSearch')?.value || '').trim() !== '';
+        $('pushSelectedCount').textContent = filtering
+          ? `已選 ${n} 家（符合 ${visible.length} 家）`
+          : `已選 ${n} 家`;
         $('pushExecRow').style.display = n > 0 ? 'flex' : 'none';
+      };
+
+      const applyPushFilter = () => {
+        const q = ($('pushSearch')?.value || '').trim().toLowerCase();
+        $('pushCompanyBody').querySelectorAll('tr').forEach(tr => {
+          const hay = (tr.dataset.search || '');
+          tr.style.display = (!q || hay.includes(q)) ? '' : 'none';
+        });
+        updatePushSelectedCount();
       };
 
       $('pushPreviewBtn').addEventListener('click', async () => {
@@ -2508,7 +2525,7 @@
           $('pushPreviewCount').innerHTML = `共 <b>${d.total}</b> 家有統編的企業主檔　·　<span style="color:#0369a1">🆕 新建 ${d.toCreate}</span>　·　<span style="color:#374151">🔄 更新 ${d.toUpdate}</span>`;
           const tbody = $('pushCompanyBody');
           tbody.innerHTML = (d.list || []).map((c, i) => `
-            <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
+            <tr data-search="${escapeAttr(((c.name || '') + ' ' + (c.taxId || '')).toLowerCase())}" style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
               <td style="padding:5px 8px;text-align:center"><input type="checkbox" class="push-row-check" data-id="${c.id}" checked></td>
               <td style="padding:5px 8px">${escapeAttr(c.name)}</td>
               <td style="padding:5px 8px;color:#6b7280">${escapeAttr(c.taxId)}</td>
@@ -2516,21 +2533,32 @@
             </tr>`).join('');
           tbody.querySelectorAll('.push-row-check').forEach(cb => cb.addEventListener('change', updatePushSelectedCount));
           $('pushSelectAll').checked = true;
+          $('pushSearch').value = '';
           $('pushListWrap').style.display = '';
-          updatePushSelectedCount();
+          applyPushFilter();
         } catch (e) { $('pushPreviewCount').innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
         } finally { btn.disabled = false; btn.textContent = orig; }
       });
 
-      $('pushSelectAll').addEventListener('change', function() {
-        $('pushCompanyBody').querySelectorAll('.push-row-check').forEach(cb => { cb.checked = this.checked; });
+      $('pushSelectAll').addEventListener('change', (e) => {
+        // 只勾選目前「顯示中」的列（配合搜尋過濾）
+        const on = e.target.checked;
+        $('pushCompanyBody').querySelectorAll('tr').forEach(tr => {
+          if (!pushRowVisible(tr)) return;
+          const cb = tr.querySelector('.push-row-check'); if (cb) cb.checked = on;
+        });
         updatePushSelectedCount();
       });
+
+      $('pushSearch').addEventListener('input', applyPushFilter);
 
       $('pushStopBtn').addEventListener('click', () => { _pushStop = true; $('pushStopBtn').textContent = '停止中…'; });
 
       $('pushExecBtn').addEventListener('click', async () => {
-        const checked = [...$('pushCompanyBody').querySelectorAll('.push-row-check:checked')].map(cb => cb.dataset.id);
+        // 只推「勾選且顯示中」的公司（搜尋過濾時，隱藏列不推）
+        const checked = [...$('pushCompanyBody').querySelectorAll('tr')]
+          .filter(tr => pushRowVisible(tr) && tr.querySelector('.push-row-check')?.checked)
+          .map(tr => tr.querySelector('.push-row-check').dataset.id);
         if (!checked.length) { alert('請勾選至少一家公司'); return; }
         if (!confirm(`確定將 ${checked.length} 家公司推送至 SAP Sales Cloud V2？\n（已同步過的公司會更新，未同步的會新建）`)) return;
 
