@@ -6220,7 +6220,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     if (on('taxId',    accF) && co.taxId) ap.identifications = [{ identificationTypeCode: idType, identification: co.taxId }];
     if (on('industry', accF) && co.industry && indMap[co.industry]) ap.industrialSector = indMap[co.industry];
     if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
-    if (role) ap.customerRole = [{ roleCode: role }];
+    if (role) ap.customerRole = role;
     ap.country     = 'TW';
     ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
 
