@@ -6118,7 +6118,21 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
       }
     }
 
-    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount, contactProbe });
+    // 抓真實 contactPerson 看 eMail / 帳號關聯 / 職稱 等欄位真實結構
+    let fullContact = null, contactWithEmail = null, contactKeys = [];
+    const rC = await fetch(`${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons?$top=20`, { headers });
+    if (rC.ok) {
+      const tC = await rC.text();
+      let bC = null; try { bC = JSON.parse(tC); } catch {}
+      const arr = bC?.value || bC?.d?.results || bC?.data || [];
+      fullContact = arr[0] || null;
+      const keySet = new Set();
+      for (const c of arr) Object.keys(c || {}).forEach(k => keySet.add(k));
+      contactKeys = [...keySet];
+      contactWithEmail = arr.find(c => JSON.stringify(c).match(/mail|@/i)) || null;
+    }
+
+    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount, contactProbe, fullContact, contactWithEmail, contactKeys });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
