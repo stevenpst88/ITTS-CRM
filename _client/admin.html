@@ -1669,82 +1669,233 @@
 
       <!-- ── 系統整合：連線設定 ── -->
       <div class="admin-section" id="sec-integration">
-        <div class="section-title">🔌 系統整合 — 連線設定</div>
-        <div class="section-sub">設定 CRM 與異質系統（首個對象：SAP Sales Cloud V2）的 REST API 連線。機敏資料（密碼 / Client Secret）加密儲存，前端不顯示明碼。實際資料推送待 API User 到位後另行開放。</div>
+        <div class="section-title">🔌 系統整合</div>
+        <div class="section-sub">管理 CRM 與外部系統（SAP Sales Cloud V2）的 REST API 連線、欄位對照與資料同步。機敏資料（密碼 / Client Secret）加密儲存，前端不顯示明碼。</div>
 
-        <div class="admin-card" style="padding:24px;max-width:720px">
-          <input type="hidden" id="integId">
-          <input type="hidden" id="integType" value="sap-sales-cloud-v2">
+        <!-- 分頁標籤列 -->
+        <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:20px;overflow-x:auto">
+          <button class="integ-tab" data-tab="conn"    style="padding:9px 18px;border:none;border-bottom:2px solid transparent;background:transparent;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;margin-bottom:-2px;white-space:nowrap">① 連線設定</button>
+          <button class="integ-tab" data-tab="mapping" style="padding:9px 18px;border:none;border-bottom:2px solid transparent;background:transparent;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;margin-bottom:-2px;white-space:nowrap">② 欄位對照</button>
+          <button class="integ-tab" data-tab="push"    style="padding:9px 18px;border:none;border-bottom:2px solid transparent;background:transparent;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;margin-bottom:-2px;white-space:nowrap">③ 推送範圍</button>
+          <button class="integ-tab" data-tab="logs"    style="padding:9px 18px;border:none;border-bottom:2px solid transparent;background:transparent;font-size:13px;font-weight:600;color:#6b7280;cursor:pointer;margin-bottom:-2px;white-space:nowrap">④ 執行紀錄</button>
+        </div>
 
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eef0f3">
-            <div>
-              <div style="font-size:15px;font-weight:800;color:#1a3c7a">SAP Sales Cloud V2</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:2px">目標系統連線</div>
+        <!-- ① 連線設定 -->
+        <div class="integ-panel" id="integPanel-conn">
+          <div class="admin-card" style="padding:24px;max-width:720px">
+            <input type="hidden" id="integId">
+            <input type="hidden" id="integType" value="sap-sales-cloud-v2">
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eef0f3">
+              <div>
+                <div style="font-size:15px;font-weight:800;color:#1a3c7a">SAP Sales Cloud V2</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px">目標系統連線</div>
+              </div>
+              <label class="toggle" title="啟用此連線"><input type="checkbox" id="integEnabled"><span class="toggle-slider"></span></label>
             </div>
-            <label class="toggle" title="啟用此連線"><input type="checkbox" id="integEnabled"><span class="toggle-slider"></span></label>
-          </div>
 
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">連線名稱</label>
-            <input id="integName" type="text" placeholder="SAP Sales Cloud V2" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-          </div>
-
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Base URL（租戶網址）</label>
-            <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-            <div style="font-size:11px;color:#9ca3af;margin-top:4px">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
-          </div>
-
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">認證方式</label>
-            <select id="integAuthType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-              <option value="basic">Basic（帳號 / 密碼）</option>
-              <option value="oauth">OAuth2（Client Credentials）</option>
-            </select>
-          </div>
-
-          <!-- Basic 欄位 -->
-          <div id="integBasicFields">
             <div style="margin-bottom:16px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">API User 帳號</label>
-              <input id="integUsername" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">連線名稱</label>
+              <input id="integName" type="text" placeholder="SAP Sales Cloud V2" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
             </div>
-            <div style="margin-bottom:16px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
-              <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-            </div>
-          </div>
 
-          <!-- OAuth 欄位 -->
-          <div id="integOauthFields" style="display:none">
             <div style="margin-bottom:16px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Token Endpoint</label>
-              <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Base URL（租戶網址）</label>
+              <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <div style="font-size:11px;color:#9ca3af;margin-top:4px">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
             </div>
+
             <div style="margin-bottom:16px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client ID</label>
-              <input id="integClientId" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">認證方式</label>
+              <select id="integAuthType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <option value="basic">Basic（帳號 / 密碼）</option>
+                <option value="oauth">OAuth2（Client Credentials）</option>
+              </select>
             </div>
-            <div style="margin-bottom:16px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
-              <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+
+            <!-- Basic 欄位 -->
+            <div id="integBasicFields">
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">API User 帳號</label>
+                <input id="integUsername" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
+                <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              </div>
             </div>
-          </div>
 
-          <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
-            <button id="integSaveBtn" class="btn btn-primary" style="padding:10px 24px;font-weight:700">💾 儲存設定</button>
-            <button id="integTestBtn" class="btn" style="padding:10px 20px;border:1px solid #d1d5db;background:#fff">🔌 測試連線</button>
-          </div>
+            <!-- OAuth 欄位 -->
+            <div id="integOauthFields" style="display:none">
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Token Endpoint</label>
+                <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client ID</label>
+                <input id="integClientId" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              </div>
+              <div style="margin-bottom:16px">
+                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
+                <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              </div>
+            </div>
 
-          <div id="integResult" style="display:none;margin-top:16px;padding:12px 14px;border-radius:8px;font-size:13px;white-space:pre-wrap;word-break:break-all"></div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+              <button id="integSaveBtn" class="btn btn-primary" style="padding:10px 24px;font-weight:700">💾 儲存設定</button>
+              <button id="integTestBtn" class="btn" style="padding:10px 20px;border:1px solid #d1d5db;background:#fff">🔌 測試連線</button>
+            </div>
 
-          <div style="margin-top:20px;padding:14px 16px;background:#f9fafb;border-left:3px solid #1a73e8;border-radius:4px;font-size:12px;color:#6b7280;line-height:1.7">
-            <strong style="color:#1a3c7a">💡 說明</strong><br>
-            • 此頁僅設定連線；欄位對照、推送範圍、執行紀錄為後續階段。<br>
-            • 「測試連線」會由伺服器端對 SAP 發出一筆認證查詢並回報結果，不會送出任何客戶資料。<br>
-            • 密碼 / Client Secret 以 AES-256-GCM 加密存放；留空表示沿用已儲存的值。
+            <div id="integResult" style="display:none;margin-top:16px;padding:12px 14px;border-radius:8px;font-size:13px;white-space:pre-wrap;word-break:break-all"></div>
+
+            <div style="margin-top:20px;padding:14px 16px;background:#f9fafb;border-left:3px solid #1a73e8;border-radius:4px;font-size:12px;color:#6b7280;line-height:1.7">
+              <strong style="color:#1a3c7a">💡 說明</strong><br>
+              • 「測試連線」會由伺服器端對 SAP 發出一筆認證查詢並回報結果，不會送出任何客戶資料。<br>
+              • 密碼 / Client Secret 以 AES-256-GCM 加密存放；留空表示沿用已儲存的值。
+            </div>
           </div>
         </div>
+
+        <!-- ② 欄位對照 -->
+        <div class="integ-panel" id="integPanel-mapping" style="display:none">
+          <div class="admin-card" style="padding:20px;max-width:820px">
+            <!-- Object sub-tabs -->
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+              <button class="mapSubTab" data-obj="account" style="padding:6px 16px;border:1px solid #1a73e8;background:#1a73e8;color:#fff;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🏢 Account（公司）</button>
+              <button class="mapSubTab" data-obj="contact" style="padding:6px 16px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">👤 Contact（名片）</button>
+            </div>
+
+            <!-- Account Panel -->
+            <div id="mapPanel-account">
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin-bottom:14px">
+                <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px">⚙️ SAP 必填固定值（待 SAP 提供後填入）</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div>
+                    <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:3px">customerRole 角色碼</label>
+                    <input id="mapCustRole" type="text" placeholder="如 CRM000（待 SAP 提供）" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                    <div style="font-size:10px;color:#9ca3af;margin-top:2px">Account 的客戶角色代碼</div>
+                  </div>
+                  <div>
+                    <label style="display:block;font-size:11px;color:#6b7280;margin-bottom:3px">統編識別類型碼（identificationTypeCode）</label>
+                    <input id="mapIdType" type="text" placeholder="如 TW0001（待 SAP 提供）" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                    <div style="font-size:10px;color:#9ca3af;margin-top:2px">identifications 陣列的 type code</div>
+                  </div>
+                </div>
+              </div>
+
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+                <thead>
+                  <tr style="background:#f9fafb">
+                    <th style="padding:8px;text-align:center;font-size:11px;color:#6b7280;width:56px;border:1px solid #e5e7eb">推送</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">CRM 欄位</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">SAP 欄位</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">處理方式</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">說明</th>
+                  </tr>
+                </thead>
+                <tbody id="mapAccFieldBody"></tbody>
+              </table>
+
+              <!-- Industry map -->
+              <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px">
+                <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">📊 產業代碼對照（CRM 産業 → SAP industrialSector 代碼）</div>
+                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">
+                  <thead>
+                    <tr style="background:#f9fafb">
+                      <th style="padding:6px 8px;text-align:left;border:1px solid #e5e7eb;color:#6b7280;font-size:11px">CRM 産業名稱</th>
+                      <th style="padding:6px 8px;text-align:left;border:1px solid #e5e7eb;color:#6b7280;font-size:11px">SAP 代碼</th>
+                      <th style="padding:6px 8px;width:44px;border:1px solid #e5e7eb"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="mapIndBody"></tbody>
+                </table>
+                <button id="mapIndAddBtn" class="btn" style="font-size:12px;padding:5px 12px">＋ 新增對照列</button>
+              </div>
+            </div>
+
+            <!-- Contact Panel -->
+            <div id="mapPanel-contact" style="display:none">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+                <thead>
+                  <tr style="background:#f9fafb">
+                    <th style="padding:8px;text-align:center;font-size:11px;color:#6b7280;width:56px;border:1px solid #e5e7eb">推送</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">CRM 欄位</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">SAP 欄位</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">處理方式</th>
+                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">說明</th>
+                  </tr>
+                </thead>
+                <tbody id="mapConFieldBody"></tbody>
+              </table>
+              <div style="padding:10px 12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;font-size:12px;color:#5b21b6">
+                💡 <strong>accountId</strong>（所屬公司 SAP ID）由系統在推送 Account 後自動帶入，無需手動設定。<br>
+                💡 <strong>externalIds</strong>（CRM 名片 ID）系統自動填入，供 SAP 端 upsert 比對用。
+              </div>
+            </div>
+
+            <!-- Save -->
+            <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
+              <button id="mapSaveBtn" class="btn btn-primary" style="padding:9px 22px;font-weight:700">💾 儲存欄位對照</button>
+              <span id="mapSavedAt" style="font-size:12px;color:#9ca3af"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ 推送範圍 -->
+        <div class="integ-panel" id="integPanel-push" style="display:none">
+          <div class="admin-card" style="padding:20px;max-width:820px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+              <button id="pushPreviewBtn" class="btn" style="padding:8px 18px;background:#1a73e8;color:#fff;font-weight:600;border:none;border-radius:6px;cursor:pointer">🔍 載入推送清單</button>
+              <div id="pushPreviewCount" style="font-size:13px;color:#374151"></div>
+            </div>
+
+            <div id="pushListWrap" style="display:none;margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="pushSelectAll" checked> 全選</label>
+                <span id="pushSelectedCount" style="font-size:12px;color:#6b7280"></span>
+              </div>
+              <div style="max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <thead style="position:sticky;top:0;z-index:1;background:#f9fafb">
+                    <tr>
+                      <th style="padding:6px 8px;text-align:center;width:36px;border-bottom:1px solid #e5e7eb">推送</th>
+                      <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb">公司名稱</th>
+                      <th style="padding:6px 8px;text-align:left;width:100px;border-bottom:1px solid #e5e7eb">統一編號</th>
+                      <th style="padding:6px 8px;text-align:left;width:80px;border-bottom:1px solid #e5e7eb">狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pushCompanyBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="pushExecRow" style="display:none;gap:10px;align-items:center;margin-bottom:12px">
+              <button id="pushExecBtn" class="btn btn-primary" style="padding:9px 22px;font-weight:700">🚀 執行推送</button>
+              <button id="pushStopBtn" style="display:none;padding:9px 18px;background:#fde8e8;color:#b91c1c;border:1px solid #f5c6cb;border-radius:6px;cursor:pointer;font-weight:600">⏸ 停止</button>
+            </div>
+
+            <div id="pushProgressWrap" style="display:none;margin-bottom:12px">
+              <div style="height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden;margin-bottom:6px">
+                <div id="pushProgressBar" style="height:100%;width:0%;background:#1a73e8;border-radius:5px;transition:width .3s"></div>
+              </div>
+              <div id="pushProgressText" style="font-size:12px;color:#374151"></div>
+            </div>
+
+            <div id="pushResult" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px"></div>
+          </div>
+        </div>
+
+        <!-- ④ 執行紀錄 -->
+        <div class="integ-panel" id="integPanel-logs" style="display:none">
+          <div class="admin-card" style="padding:20px;max-width:900px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <button id="logsRefreshBtn" class="btn" style="padding:7px 16px;font-size:13px">🔄 重新整理</button>
+              <span style="font-size:12px;color:#9ca3af">最近 50 筆推送紀錄（最新排前）</span>
+            </div>
+            <div id="logsContainer" style="font-size:13px"></div>
+          </div>
+        </div>
+
       </div>
 
       <div class="admin-section" id="sec-version">
@@ -2113,6 +2264,24 @@
       if (_integInited) return;
       _integInited = true;
 
+      // ── 分頁切換 ──────────────────────────────────────────
+      const integTabs   = document.querySelectorAll('.integ-tab');
+      const integPanels = document.querySelectorAll('.integ-panel');
+      const switchIntegTab = (tab) => {
+        integTabs.forEach(b => {
+          const on = b.dataset.tab === tab;
+          b.style.color        = on ? '#1a73e8' : '#6b7280';
+          b.style.borderBottom = on ? '2px solid #1a73e8' : '2px solid transparent';
+          b.style.fontWeight   = on ? '700' : '600';
+        });
+        integPanels.forEach(p => { p.style.display = p.id === 'integPanel-' + tab ? '' : 'none'; });
+        if (tab === 'mapping') initMappingTab();
+        if (tab === 'logs')    loadIntegLogs();
+      };
+      integTabs.forEach(b => b.addEventListener('click', () => switchIntegTab(b.dataset.tab)));
+      switchIntegTab('conn');
+
+      // ══ ① 連線設定 ══════════════════════════════════════════
       const authSel = $('integAuthType');
       const syncAuthFields = () => {
         const isOauth = authSel.value === 'oauth';
@@ -2121,23 +2290,22 @@
       };
       authSel.addEventListener('change', syncAuthFields);
 
-      // 載入已存設定
       try {
         const r = await adminFetch(`${API}/admin/integrations`);
         if (r.ok) {
           const list = await r.json();
           const sap = list.find(x => x.type === 'sap-sales-cloud-v2') || list[0];
           if (sap) {
-            $('integId').value = sap.id || '';
+            $('integId').value  = sap.id || '';
             $('integType').value = sap.type || 'sap-sales-cloud-v2';
             $('integName').value = sap.name || '';
             $('integEnabled').checked = !!sap.enabled;
-            $('integBaseUrl').value = sap.baseUrl || '';
-            $('integAuthType').value = sap.authType || 'basic';
-            $('integUsername').value = sap.username || '';
-            $('integClientId').value = sap.clientId || '';
+            $('integBaseUrl').value   = sap.baseUrl || '';
+            $('integAuthType').value  = sap.authType || 'basic';
+            $('integUsername').value  = sap.username || '';
+            $('integClientId').value  = sap.clientId || '';
             $('integTokenEndpoint').value = sap.tokenEndpoint || '';
-            if (sap.hasPassword) { $('integPassword').placeholder = '（已設定，留空不變更）'; $('integPwdHint').textContent = '已設定'; }
+            if (sap.hasPassword)     { $('integPassword').placeholder    = '（已設定，留空不變更）'; $('integPwdHint').textContent    = '已設定'; }
             if (sap.hasClientSecret) { $('integClientSecret').placeholder = '（已設定，留空不變更）'; $('integSecretHint').textContent = '已設定'; }
           }
         }
@@ -2152,71 +2320,320 @@
         baseUrl:       $('integBaseUrl').value.trim(),
         authType:      $('integAuthType').value,
         username:      $('integUsername').value.trim(),
-        password:      $('integPassword').value,        // 空＝不變更
+        password:      $('integPassword').value,
         clientId:      $('integClientId').value.trim(),
-        clientSecret:  $('integClientSecret').value,    // 空＝不變更
+        clientSecret:  $('integClientSecret').value,
         tokenEndpoint: $('integTokenEndpoint').value.trim(),
       });
 
-      const showResult = (kind, msg) => {
+      const showConnResult = (kind, msg) => {
         const out = $('integResult');
-        out.style.display = 'block';
-        out.style.whiteSpace = 'pre-wrap';
-        if (kind === 'ok')      { out.style.background = '#e7f5ec'; out.style.color = '#1a7f37'; }
-        else if (kind === 'err'){ out.style.background = '#fdecec'; out.style.color = '#c0322b'; }
-        else                    { out.style.background = '#f3f4f6'; out.style.color = '#374151'; }
+        out.style.display = 'block'; out.style.whiteSpace = 'pre-wrap';
+        if (kind === 'ok')       { out.style.background = '#e7f5ec'; out.style.color = '#1a7f37'; }
+        else if (kind === 'err') { out.style.background = '#fdecec'; out.style.color = '#c0322b'; }
+        else                     { out.style.background = '#f3f4f6'; out.style.color = '#374151'; }
         out.textContent = msg;
       };
 
-      // 儲存
       $('integSaveBtn').addEventListener('click', async () => {
         const btn = $('integSaveBtn'); const orig = btn.textContent;
         btn.disabled = true; btn.textContent = '儲存中…';
         try {
-          const r = await adminFetch(`${API}/admin/integrations`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(collectPayload()),
-          });
+          const r = await adminFetch(`${API}/admin/integrations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectPayload()) });
           if (r.ok) {
             const saved = await r.json();
             $('integId').value = saved.id || '';
             $('integPassword').value = ''; $('integClientSecret').value = '';
-            if (saved.hasPassword) { $('integPassword').placeholder = '（已設定，留空不變更）'; $('integPwdHint').textContent = '已設定'; }
+            if (saved.hasPassword)     { $('integPassword').placeholder    = '（已設定，留空不變更）'; $('integPwdHint').textContent    = '已設定'; }
             if (saved.hasClientSecret) { $('integClientSecret').placeholder = '（已設定，留空不變更）'; $('integSecretHint').textContent = '已設定'; }
-            showToast('✅ 連線設定已儲存');
-            showResult('ok', '已儲存。');
-          } else {
-            showToast('儲存失敗');
-            showResult('err', '儲存失敗（HTTP ' + r.status + '）');
-          }
-        } catch (e) {
-          showResult('err', '儲存失敗：' + e.message);
-        } finally {
-          btn.disabled = false; btn.textContent = orig;
-        }
+            showToast('✅ 連線設定已儲存'); showConnResult('ok', '已儲存。');
+          } else { showToast('儲存失敗'); showConnResult('err', '儲存失敗（HTTP ' + r.status + '）'); }
+        } catch (e) { showConnResult('err', '儲存失敗：' + e.message);
+        } finally { btn.disabled = false; btn.textContent = orig; }
       });
 
-      // 測試連線
       $('integTestBtn').addEventListener('click', async () => {
         const btn = $('integTestBtn'); const orig = btn.textContent;
         btn.disabled = true; btn.textContent = '測試中…';
-        showResult('info', '測試連線中…（最多 8 秒）');
+        showConnResult('info', '測試連線中…（最多 8 秒）');
         try {
-          const r = await adminFetch(`${API}/admin/integrations/test`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(collectPayload()),
-          });
+          const r = await adminFetch(`${API}/admin/integrations/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectPayload()) });
           const d = await r.json();
-          if (d.ok) showResult('ok', '✅ 連線成功' + (d.status ? '（HTTP ' + d.status + '）' : '') + (d.note ? '\n' + d.note : ''));
-          else      showResult('err', '❌ 連線失敗：' + (d.reason || '未知錯誤') + (d.status ? '（HTTP ' + d.status + '）' : ''));
-        } catch (e) {
-          showResult('err', '❌ 測試失敗：' + e.message);
-        } finally {
-          btn.disabled = false; btn.textContent = orig;
-        }
+          if (d.ok) showConnResult('ok', '✅ 連線成功' + (d.status ? '（HTTP ' + d.status + '）' : '') + (d.note ? '\n' + d.note : ''));
+          else      showConnResult('err', '❌ 連線失敗：' + (d.reason || '未知錯誤') + (d.status ? '（HTTP ' + d.status + '）' : ''));
+        } catch (e) { showConnResult('err', '❌ 測試失敗：' + e.message);
+        } finally { btn.disabled = false; btn.textContent = orig; }
       });
+
+      // ══ ② 欄位對照 ══════════════════════════════════════════
+      let _mapInited = false, _mapData = null;
+      const modeLabel = { direct: '直接', lookup: '代碼對照', auto: '自動帶入' };
+      const NOTE_ACC  = { name: 'SAP 必填', taxId: '比對鍵（upsert）', industry: '需產業代碼對照', address: '' };
+
+      const renderAccFieldRows = (fields) => {
+        $('mapAccFieldBody').innerHTML = fields.map((f, i) => `
+          <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
+            <td style="padding:8px;text-align:center;border:1px solid #e5e7eb">
+              ${f.locked
+                ? '<span title="必填，不可關閉" style="color:#9ca3af;font-size:15px">🔒</span>'
+                : `<input type="checkbox" data-acc-field="${f.crmField}" ${f.push !== false ? 'checked' : ''}>`}
+            </td>
+            <td style="padding:8px;border:1px solid #e5e7eb"><strong>${f.label}</strong><br><span style="font-size:10px;color:#9ca3af">${f.crmField}</span></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px">${f.sapField}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${NOTE_ACC[f.crmField] || ''}</td>
+          </tr>`).join('');
+      };
+
+      const renderConFieldRows = (fields) => {
+        $('mapConFieldBody').innerHTML = fields.map((f, i) => `
+          <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
+            <td style="padding:8px;text-align:center;border:1px solid #e5e7eb">
+              ${f.locked
+                ? '<span title="必填，不可關閉" style="color:#9ca3af;font-size:15px">🔒</span>'
+                : `<input type="checkbox" data-con-field="${f.crmField}" ${f.push !== false ? 'checked' : ''}>`}
+            </td>
+            <td style="padding:8px;border:1px solid #e5e7eb"><strong>${f.label}</strong><br><span style="font-size:10px;color:#9ca3af">${f.crmField}</span></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px">${f.sapField}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280"></td>
+          </tr>`).join('');
+      };
+
+      const renderIndRows = (rows) => {
+        const tbody = $('mapIndBody');
+        if (!rows.length) {
+          tbody.innerHTML = `<tr><td colspan="3" style="padding:10px 8px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb">尚無對照資料，點「＋ 新增對照列」開始設定</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map((row, i) => `
+          <tr>
+            <td style="padding:5px 8px;border:1px solid #e5e7eb"><input type="text" class="ind-crm" value="${escapeAttr(row.crmValue || '')}" placeholder="CRM 産業名稱" style="width:100%;border:none;outline:none;font-size:12px;background:transparent"></td>
+            <td style="padding:5px 8px;border:1px solid #e5e7eb"><input type="text" class="ind-sap" value="${escapeAttr(row.sapCode || '')}" placeholder="SAP 代碼" style="width:100%;border:none;outline:none;font-size:12px;background:transparent;font-family:monospace"></td>
+            <td style="padding:5px 8px;text-align:center;border:1px solid #e5e7eb"><button class="ind-del-btn" data-idx="${i}" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button></td>
+          </tr>`).join('');
+        tbody.querySelectorAll('.ind-del-btn').forEach(btn => {
+          btn.addEventListener('click', () => { _mapData.account.industryMap.splice(+btn.dataset.idx, 1); renderIndRows(_mapData.account.industryMap); });
+        });
+      };
+
+      async function initMappingTab() {
+        if (_mapInited) return;
+        _mapInited = true;
+
+        document.querySelectorAll('.mapSubTab').forEach(b => {
+          b.addEventListener('click', () => {
+            document.querySelectorAll('.mapSubTab').forEach(x => {
+              const on = x.dataset.obj === b.dataset.obj;
+              x.style.background = on ? '#1a73e8' : '#fff';
+              x.style.color      = on ? '#fff' : '#374151';
+              x.style.border     = on ? '1px solid #1a73e8' : '1px solid #d1d5db';
+            });
+            $('mapPanel-account').style.display = b.dataset.obj === 'account' ? '' : 'none';
+            $('mapPanel-contact').style.display = b.dataset.obj === 'contact' ? '' : 'none';
+          });
+        });
+
+        try {
+          const r = await adminFetch(`${API}/admin/integrations/mappings`);
+          if (r.ok) {
+            _mapData = await r.json();
+            $('mapCustRole').value = _mapData.account?.customerRole || '';
+            $('mapIdType').value   = _mapData.account?.identificationType || '';
+            renderAccFieldRows(_mapData.account?.fields || []);
+            renderConFieldRows(_mapData.contact?.fields || []);
+            renderIndRows(_mapData.account?.industryMap || []);
+            if (_mapData.updatedAt) $('mapSavedAt').textContent = '上次儲存：' + new Date(_mapData.updatedAt).toLocaleString('zh-TW');
+          }
+        } catch (e) { console.warn('[mapping] 載入失敗', e); }
+
+        $('mapIndAddBtn').addEventListener('click', () => {
+          if (!_mapData) return;
+          if (!_mapData.account.industryMap) _mapData.account.industryMap = [];
+          _mapData.account.industryMap.push({ crmValue: '', sapCode: '' });
+          renderIndRows(_mapData.account.industryMap);
+        });
+
+        $('mapSaveBtn').addEventListener('click', async () => {
+          const btn = $('mapSaveBtn'); const orig = btn.textContent;
+          btn.disabled = true; btn.textContent = '儲存中…';
+          try {
+            const accFields = (_mapData?.account?.fields || []).map(f => {
+              const cb = document.querySelector(`input[data-acc-field="${f.crmField}"]`);
+              return { ...f, push: f.locked ? true : (cb ? cb.checked : !!f.push) };
+            });
+            const conFields = (_mapData?.contact?.fields || []).map(f => {
+              const cb = document.querySelector(`input[data-con-field="${f.crmField}"]`);
+              return { ...f, push: f.locked ? true : (cb ? cb.checked : !!f.push) };
+            });
+            const indRows = [...$('mapIndBody').querySelectorAll('tr')].map(tr => ({
+              crmValue: (tr.querySelector('.ind-crm')?.value || '').trim(),
+              sapCode:  (tr.querySelector('.ind-sap')?.value || '').trim(),
+            })).filter(row => row.crmValue || row.sapCode);
+            const payload = {
+              account: { customerRole: $('mapCustRole').value.trim(), identificationType: $('mapIdType').value.trim(), fields: accFields, industryMap: indRows },
+              contact: { fields: conFields },
+            };
+            const r = await adminFetch(`${API}/admin/integrations/mappings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (r.ok) {
+              const d = await r.json();
+              $('mapSavedAt').textContent = '上次儲存：' + new Date(d.updatedAt).toLocaleString('zh-TW');
+              showToast('✅ 欄位對照已儲存');
+            } else { showToast('儲存失敗 HTTP ' + r.status); }
+          } catch (e) { showToast('儲存失敗：' + e.message);
+          } finally { btn.disabled = false; btn.textContent = orig; }
+        });
+      }
+
+      // ══ ③ 推送範圍 ══════════════════════════════════════════
+      let _pushStop = false;
+
+      const updatePushSelectedCount = () => {
+        const n = $('pushCompanyBody').querySelectorAll('input.push-row-check:checked').length;
+        $('pushSelectedCount').textContent = `已選 ${n} 家`;
+        $('pushExecRow').style.display = n > 0 ? 'flex' : 'none';
+      };
+
+      $('pushPreviewBtn').addEventListener('click', async () => {
+        const btn = $('pushPreviewBtn'); const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = '載入中…';
+        $('pushPreviewCount').textContent = '';
+        $('pushListWrap').style.display = 'none';
+        $('pushExecRow').style.display  = 'none';
+        $('pushResult').style.display   = 'none';
+        try {
+          const r = await adminFetch(`${API}/admin/integrations/push/preview`);
+          const d = await r.json();
+          if (!d.ok) { $('pushPreviewCount').innerHTML = `<span style="color:#c62828">⚠️ ${d.reason}</span>`; return; }
+          $('pushPreviewCount').innerHTML = `共 <b>${d.total}</b> 家有統編的企業主檔　·　<span style="color:#0369a1">🆕 新建 ${d.toCreate}</span>　·　<span style="color:#374151">🔄 更新 ${d.toUpdate}</span>`;
+          const tbody = $('pushCompanyBody');
+          tbody.innerHTML = (d.list || []).map((c, i) => `
+            <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
+              <td style="padding:5px 8px;text-align:center"><input type="checkbox" class="push-row-check" data-id="${c.id}" checked></td>
+              <td style="padding:5px 8px">${escapeAttr(c.name)}</td>
+              <td style="padding:5px 8px;color:#6b7280">${escapeAttr(c.taxId)}</td>
+              <td style="padding:5px 8px"><span style="font-size:11px;padding:1px 7px;border-radius:10px;${c.isNew ? 'background:#e0f2fe;color:#0369a1' : 'background:#f0fdf4;color:#166534'}">${c.isNew ? '🆕 新建' : '🔄 更新'}</span></td>
+            </tr>`).join('');
+          tbody.querySelectorAll('.push-row-check').forEach(cb => cb.addEventListener('change', updatePushSelectedCount));
+          $('pushSelectAll').checked = true;
+          $('pushListWrap').style.display = '';
+          updatePushSelectedCount();
+        } catch (e) { $('pushPreviewCount').innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
+        } finally { btn.disabled = false; btn.textContent = orig; }
+      });
+
+      $('pushSelectAll').addEventListener('change', function() {
+        $('pushCompanyBody').querySelectorAll('.push-row-check').forEach(cb => { cb.checked = this.checked; });
+        updatePushSelectedCount();
+      });
+
+      $('pushStopBtn').addEventListener('click', () => { _pushStop = true; $('pushStopBtn').textContent = '停止中…'; });
+
+      $('pushExecBtn').addEventListener('click', async () => {
+        const checked = [...$('pushCompanyBody').querySelectorAll('.push-row-check:checked')].map(cb => cb.dataset.id);
+        if (!checked.length) { alert('請勾選至少一家公司'); return; }
+        if (!confirm(`確定將 ${checked.length} 家公司推送至 SAP Sales Cloud V2？\n（已同步過的公司會更新，未同步的會新建）`)) return;
+
+        const execBtn = $('pushExecBtn'), stopBtn = $('pushStopBtn');
+        const progWrap = $('pushProgressWrap'), progBar = $('pushProgressBar'), progText = $('pushProgressText');
+        const resultEl = $('pushResult');
+        _pushStop = false;
+        execBtn.disabled = true; execBtn.textContent = '推送中…';
+        stopBtn.style.display = 'inline-block'; stopBtn.textContent = '⏸ 停止';
+        progWrap.style.display = ''; resultEl.style.display = 'none';
+
+        const BATCH = 5, total = checked.length;
+        let done = 0, pushed = 0, failed = 0;
+        const paint = () => {
+          const pct = total ? Math.round(done / total * 100) : 0;
+          progBar.style.width = pct + '%';
+          progText.textContent = `已處理 ${done}／${total} 家　·　成功 ${pushed} 筆　·　失敗 ${failed} 筆（${pct}%）`;
+        };
+        paint();
+
+        for (let i = 0; i < total; i += BATCH) {
+          if (_pushStop) break;
+          const batch = checked.slice(i, i + BATCH);
+          try {
+            const r = await adminFetch(`${API}/admin/integrations/push/batch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyIds: batch }) });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+            pushed += d.pushed || 0;
+            failed += d.failed || 0;
+          } catch (e) { failed += batch.length; }
+          done += batch.length;
+          paint();
+          if (i + BATCH < total && !_pushStop) await new Promise(res => setTimeout(res, 300));
+        }
+
+        const stopped = _pushStop;
+        resultEl.style.display = '';
+        if (!failed && !stopped) {
+          resultEl.style.background = '#e7f5ec'; resultEl.style.color = '#1a7f37';
+          resultEl.textContent = `✅ 推送完成：成功 ${pushed} 筆，失敗 0 筆`;
+        } else if (stopped) {
+          resultEl.style.background = '#f3f4f6'; resultEl.style.color = '#374151';
+          resultEl.textContent = `⏸ 已停止：成功 ${pushed} 筆、失敗 ${failed} 筆（剩餘 ${total - done} 家未處理）`;
+        } else {
+          resultEl.style.background = '#fdecec'; resultEl.style.color = '#c0322b';
+          resultEl.textContent = `⚠️ 推送完成：成功 ${pushed} 筆、失敗 ${failed} 筆 — 請至「執行紀錄」查看詳情`;
+        }
+        execBtn.disabled = false; execBtn.textContent = '🚀 執行推送';
+        stopBtn.style.display = 'none'; stopBtn.textContent = '⏸ 停止';
+        _pushStop = false;
+        if (!stopped) showToast(failed === 0 ? `✅ SAP 推送完成（${pushed} 筆）` : `⚠️ SAP 推送：${failed} 筆失敗`);
+      });
+
+      // ══ ④ 執行紀錄 ══════════════════════════════════════════
+      async function loadIntegLogs() {
+        const container = $('logsContainer');
+        container.innerHTML = '<div style="color:#9ca3af;padding:20px;text-align:center">載入中…</div>';
+        try {
+          const r = await adminFetch(`${API}/admin/integrations/logs`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const logs = await r.json();
+          if (!logs.length) { container.innerHTML = '<div style="color:#9ca3af;padding:20px;text-align:center">尚無執行紀錄</div>'; return; }
+          const badge = s => s === 'ok'
+            ? '<span style="color:#166534;background:#f0fdf4;border-radius:10px;padding:1px 8px;font-size:11px">✅ 成功</span>'
+            : '<span style="color:#991b1b;background:#fef2f2;border-radius:10px;padding:1px 8px;font-size:11px">❌ 失敗</span>';
+          const actLabel = a => ({ created:'新建', updated:'更新', failed:'失敗' }[a] || (a||''));
+          container.innerHTML = logs.map(log => `
+            <details style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">
+              <summary style="padding:10px 14px;cursor:pointer;background:#f9fafb;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:12px;color:#6b7280">${new Date(log.startedAt).toLocaleString('zh-TW')}</span>
+                <span style="font-weight:600">${(log.pushed||0) + (log.failed||0)} 筆</span>
+                <span style="color:#166534">成功 ${log.pushed||0}</span>
+                ${log.failed ? `<span style="color:#991b1b">失敗 ${log.failed}</span>` : ''}
+                <span style="font-size:11px;color:#9ca3af">操作者：${log.operator}</span>
+                <span style="font-size:11px;color:#9ca3af;margin-left:auto">▸ 點擊展開</span>
+              </summary>
+              <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+                <thead><tr style="background:#f9fafb">
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">類型</th>
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">名稱</th>
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">動作</th>
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">SAP ID</th>
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">結果</th>
+                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">訊息</th>
+                </tr></thead>
+                <tbody>
+                  ${(log.records || []).map((rec, i) => `
+                    <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${rec.type === 'account' ? '🏢 公司' : '👤 名片'}</td>
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escapeAttr(rec.crmName || '')}</td>
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${actLabel(rec.action)}</td>
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;font-family:monospace;font-size:11px;color:#374151">${rec.sapId || '—'}</td>
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${badge(rec.status)}</td>
+                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:${rec.status === 'error' ? '#991b1b' : '#6b7280'};font-size:11px;word-break:break-all">${escapeAttr(rec.error || rec.sapResponse || '')}</td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+              </div>
+            </details>`).join('');
+        } catch (e) { container.innerHTML = `<div style="color:#c62828;padding:20px">❌ 載入失敗：${e.message}</div>`; }
+      }
+      $('logsRefreshBtn').addEventListener('click', loadIntegLogs);
     }
 
     // ── 推播測試 ──────────────────────────────────────────

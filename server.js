@@ -6039,6 +6039,199 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   return res.json({ ok: true, status: r.status, note: body ? '已成功取得 Account 回應' : '連線成功（回應非 JSON）' });
 });
 
+// ── 異質系統整合：欄位對照（SAP Sales Cloud V2）──────────────
+const SAP_DEFAULT_MAPPING = {
+  account: {
+    customerRole: '',
+    identificationType: '',
+    fields: [
+      { crmField: 'name',     sapField: 'firstLineName',    label: '公司名稱', mode: 'direct', push: true,  isKey: false, locked: true  },
+      { crmField: 'taxId',    sapField: 'identifications',  label: '統一編號', mode: 'direct', push: true,  isKey: true,  locked: true  },
+      { crmField: 'industry', sapField: 'industrialSector', label: '產業',    mode: 'lookup', push: true,  isKey: false, locked: false },
+      { crmField: 'address',  sapField: 'defaultAddress',   label: '地址',    mode: 'direct', push: false, isKey: false, locked: false },
+    ],
+    industryMap: [],
+  },
+  contact: {
+    fields: [
+      { crmField: 'name',  sapField: 'familyName',          label: '姓名',  mode: 'direct', push: true,  locked: true  },
+      { crmField: 'title', sapField: 'functionalTitleName', label: '職稱',  mode: 'direct', push: true,  locked: false },
+      { crmField: 'email', sapField: 'eMail',               label: 'Email', mode: 'direct', push: true,  locked: false },
+    ],
+  },
+};
+
+app.get('/api/admin/integrations/mappings', requireAdmin, (req, res) => {
+  const data = db.load();
+  const m = ((data.integrationMappings || {})['sap-sales-cloud-v2']) || {};
+  const mergeFields = (defaults, stored) => {
+    if (!Array.isArray(stored) || !stored.length) return defaults.map(d => ({ ...d }));
+    return defaults.map(d => { const s = stored.find(x => x.crmField === d.crmField); return { ...d, push: s ? !!s.push : d.push }; });
+  };
+  res.json({
+    account: {
+      customerRole:       m.account?.customerRole       ?? '',
+      identificationType: m.account?.identificationType ?? '',
+      fields:     mergeFields(SAP_DEFAULT_MAPPING.account.fields,   m.account?.fields),
+      industryMap: Array.isArray(m.account?.industryMap) ? m.account.industryMap : [],
+    },
+    contact: {
+      fields: mergeFields(SAP_DEFAULT_MAPPING.contact.fields, m.contact?.fields),
+    },
+    updatedAt: m.updatedAt || null,
+    updatedBy: m.updatedBy || null,
+  });
+});
+
+app.post('/api/admin/integrations/mappings', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  if (!data.integrationMappings) data.integrationMappings = {};
+  const b = req.body || {};
+  const now = new Date().toISOString();
+  data.integrationMappings['sap-sales-cloud-v2'] = {
+    account: {
+      customerRole:       String(b.account?.customerRole || '').trim(),
+      identificationType: String(b.account?.identificationType || '').trim(),
+      fields: Array.isArray(b.account?.fields) ? b.account.fields : SAP_DEFAULT_MAPPING.account.fields.map(f => ({ ...f })),
+      industryMap: Array.isArray(b.account?.industryMap) ? b.account.industryMap.filter(r => r.crmValue || r.sapCode) : [],
+    },
+    contact: {
+      fields: Array.isArray(b.contact?.fields) ? b.contact.fields : SAP_DEFAULT_MAPPING.contact.fields.map(f => ({ ...f })),
+    },
+    updatedAt: now,
+    updatedBy: operator,
+  };
+  db.save(data);
+  writeLog('SAVE_INTEGRATION_MAPPINGS', operator, 'system', 'SAP Sales Cloud V2 欄位對照已更新', req);
+  res.json({ success: true, updatedAt: now });
+});
+
+// ── 異質系統整合：推送預覽 ────────────────────────────────────
+app.get('/api/admin/integrations/push/preview', requireAdmin, (req, res) => {
+  const data = db.load();
+  const config = (data.integrations || []).find(x => x.type === 'sap-sales-cloud-v2');
+  if (!config)         return res.json({ ok: false, reason: '尚未設定連線，請至「連線設定」分頁填入' });
+  if (!config.enabled) return res.json({ ok: false, reason: '連線未啟用，請至「連線設定」分頁開啟' });
+  const linkedIds = new Set((data.integrationLinks || []).filter(l => l.crmType === 'company').map(l => l.crmId));
+  const all = (data.companies || []).filter(c => !c.deleted && c.taxId);
+  res.json({
+    ok: true,
+    toCreate: all.filter(c => !linkedIds.has(c.id)).length,
+    toUpdate: all.filter(c =>  linkedIds.has(c.id)).length,
+    total:    all.length,
+    list: all.map(c => ({ id: c.id, name: c.name, taxId: c.taxId, industry: c.industry || '', isNew: !linkedIds.has(c.id) })),
+  });
+});
+
+// ── 異質系統整合：批次推送（每次最多 10 家，前端循環呼叫）──────
+app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) => {
+  const operator = req.session.user.username;
+  const b = req.body || {};
+  const companyIds = Array.isArray(b.companyIds) ? b.companyIds.slice(0, 10) : [];
+  if (!companyIds.length) return res.json({ pushed: 0, failed: 0, records: [], logId: null });
+
+  const data = db.load();
+  const config = (data.integrations || []).find(x => x.type === 'sap-sales-cloud-v2');
+  if (!config || !config.enabled) return res.status(400).json({ error: '連線未啟用' });
+  const baseUrl = config.baseUrl;
+  if (!baseUrl) return res.status(400).json({ error: '缺少 Base URL' });
+  if (config.authType !== 'basic') return res.status(400).json({ error: 'OAuth 批次推送尚未支援，請改用 Basic 認證' });
+  const pw = config.password ? (() => { try { return secretBox.decrypt(config.password); } catch { return ''; } })() : '';
+  if (!config.username || !pw) return res.status(400).json({ error: '帳號或密碼未設定' });
+  const auth = 'Basic ' + Buffer.from(config.username + ':' + pw).toString('base64');
+
+  const mc = ((data.integrationMappings || {})['sap-sales-cloud-v2']) || {};
+  const accF   = mc.account?.fields    || SAP_DEFAULT_MAPPING.account.fields;
+  const conF   = mc.contact?.fields    || SAP_DEFAULT_MAPPING.contact.fields;
+  const role   = mc.account?.customerRole || '';
+  const idType = mc.account?.identificationType || 'TW_TAX_ID';
+  const indMap = Object.fromEntries((mc.account?.industryMap || []).filter(r => r.crmValue && r.sapCode).map(r => [r.crmValue, r.sapCode]));
+  const on = (field, list) => list.some(f => f.crmField === field && f.push !== false);
+
+  if (!data.integrationLinks) data.integrationLinks = [];
+  if (!data.integrationLogs)  data.integrationLogs  = [];
+  const logId    = uuidv4();
+  const logEntry = { id: logId, integrationId: config.id, startedAt: new Date().toISOString(), endedAt: null, operator, pushed: 0, failed: 0, records: [] };
+  data.integrationLogs.unshift(logEntry);
+  if (data.integrationLogs.length > 200) data.integrationLogs.length = 200;
+
+  const companies = (data.companies || []).filter(c => companyIds.includes(c.id) && !c.deleted);
+  for (const co of companies) {
+    const eA = data.integrationLinks.find(l => l.crmType === 'company' && l.crmId === co.id && l.integrationId === config.id);
+    const ap = {};
+    if (on('name',     accF)) ap.firstLineName = co.name || '';
+    if (on('taxId',    accF) && co.taxId) ap.identifications = [{ identificationTypeCode: idType, identification: co.taxId }];
+    if (on('industry', accF) && co.industry && indMap[co.industry]) ap.industrialSector = indMap[co.industry];
+    if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
+    if (role) ap.customerRole = [{ roleCode: role }];
+    ap.country     = 'TW';
+    ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
+
+    const aRec = { id: uuidv4(), type: 'account', crmId: co.id, crmName: co.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
+    let sapAccId = eA?.sapId || null;
+    try {
+      const method = eA ? 'PATCH' : 'POST';
+      const url    = eA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
+      const r = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
+      const rt = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${rt.slice(0, 300)}`);
+      if (!eA) {
+        let jb = null; try { jb = JSON.parse(rt); } catch {}
+        sapAccId = jb?.id || jb?.accountID || jb?.ID || null;
+        data.integrationLinks.push({ crmType: 'company', crmId: co.id, integrationId: config.id, sapId: sapAccId, syncedAt: new Date().toISOString() });
+      } else { eA.syncedAt = new Date().toISOString(); }
+      aRec.action = eA ? 'updated' : 'created'; aRec.sapId = sapAccId; aRec.status = 'ok'; aRec.sapResponse = `HTTP ${r.status}`;
+      logEntry.pushed++;
+    } catch (e) {
+      aRec.action = 'failed'; aRec.status = 'error'; aRec.error = e.message; logEntry.failed++;
+    }
+    logEntry.records.push(aRec);
+
+    if (aRec.status === 'ok' && sapAccId) {
+      const contacts = (data.contacts || []).filter(c => c.companyId === co.id && !c.deleted && !c.isPlaceholder);
+      for (const ct of contacts) {
+        const eC = data.integrationLinks.find(l => l.crmType === 'contact' && l.crmId === ct.id && l.integrationId === config.id);
+        const cp = {};
+        if (on('name',  conF)) { const nm = (ct.name || '').trim(); cp.familyName = nm.slice(0, 1); cp.givenName = nm.slice(1); }
+        if (on('title', conF) && ct.title) cp.functionalTitleName = ct.title;
+        if (on('email', conF) && ct.email) cp.eMail = [{ eMail: ct.email, primary: true }];
+        cp.accountId  = sapAccId;
+        cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
+        const cRec = { id: uuidv4(), type: 'contact', crmId: ct.id, crmName: ct.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
+        try {
+          const method = eC ? 'PATCH' : 'POST';
+          const url    = eC ? `${baseUrl}/sap/c4c/api/v1/contact-service/contacts/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-service/contacts`;
+          const r2 = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
+          const ct2 = await r2.text();
+          if (!r2.ok) throw new Error(`HTTP ${r2.status}: ${ct2.slice(0, 300)}`);
+          if (!eC) {
+            let cj = null; try { cj = JSON.parse(ct2); } catch {}
+            const csid = cj?.id || cj?.contactID || cj?.ID || null;
+            data.integrationLinks.push({ crmType: 'contact', crmId: ct.id, integrationId: config.id, sapId: csid, syncedAt: new Date().toISOString() });
+            cRec.sapId = csid;
+          } else { eC.syncedAt = new Date().toISOString(); cRec.sapId = eC.sapId; }
+          cRec.action = eC ? 'updated' : 'created'; cRec.status = 'ok'; cRec.sapResponse = `HTTP ${r2.status}`;
+          logEntry.pushed++;
+        } catch (e) {
+          cRec.action = 'failed'; cRec.status = 'error'; cRec.error = e.message; logEntry.failed++;
+        }
+        logEntry.records.push(cRec);
+      }
+    }
+  }
+  logEntry.endedAt = new Date().toISOString();
+  db.save(data);
+  writeLog('PUSH_INTEGRATION', operator, 'system', `SAP 批次推送 ${companies.length} 家：成功 ${logEntry.pushed} 筆、失敗 ${logEntry.failed} 筆`, req);
+  res.json({ logId, pushed: logEntry.pushed, failed: logEntry.failed, records: logEntry.records });
+});
+
+// ── 異質系統整合：執行紀錄 ────────────────────────────────────
+app.get('/api/admin/integrations/logs', requireAdmin, (req, res) => {
+  const data = db.load();
+  res.json((data.integrationLogs || []).slice(0, 50));
+});
+
 // ── Call-in Pass CRUD ─────────────────────────────────────
 // 取得 Call-in 列表（角色可視）
 app.get('/api/callins', requireAuth, (req, res) => {
