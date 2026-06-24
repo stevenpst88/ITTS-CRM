@@ -6062,21 +6062,31 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
       id: a.id, name: a.firstLineName, customerRole: a.customerRole, identifications: a.identifications,
     }));
 
-    // 查 SAP 識別類型代碼清單
-    let idTypes = null;
-    const endpoints = [
-      '/sap/c4c/api/v1/account-service/identificationTypes',
-      '/sap/c4c/api/v1/account-service/identificationtypes',
-      '/sap/c4c/api/v1/md/identificationTypes',
+    // 找有 identifications 的 Account（掃前 50 筆取第一個有值的）
+    let sampleWithId = null;
+    const rScan = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=50&$select=id,firstLineName,identifications`, { headers });
+    if (rScan.ok) {
+      const tScan = await rScan.text();
+      let bScan = null; try { bScan = JSON.parse(tScan); } catch {}
+      const all = bScan?.value || bScan?.d?.results || bScan?.data || [];
+      sampleWithId = all.find(a => Array.isArray(a.identifications) && a.identifications.length > 0) || null;
+      if (sampleWithId) sampleWithId = { id: sampleWithId.id, name: sampleWithId.firstLineName, identifications: sampleWithId.identifications };
+    }
+
+    // 嘗試 OData 識別類型代碼清單
+    let idTypesMeta = null;
+    const metaEps = [
+      '/sap/c4c/odata/v1/c4codata/IdentificationTypeCodeCollection?$top=20&$format=json',
+      '/sap/c4c/odata/v1/businesspartner/IdentificationTypeCodeCollection?$top=20&$format=json',
     ];
-    for (const ep of endpoints) {
+    for (const ep of metaEps) {
       try {
         const r2 = await fetch(baseUrl + ep, { headers });
-        if (r2.ok) { const t2 = await r2.text(); try { idTypes = { endpoint: ep, data: JSON.parse(t2) }; break; } catch {} }
+        if (r2.ok) { const t2 = await r2.text(); try { idTypesMeta = { endpoint: ep, data: JSON.parse(t2) }; break; } catch {} }
       } catch {}
     }
 
-    return res.json({ ok: true, accounts, idTypes });
+    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
