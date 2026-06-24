@@ -6171,8 +6171,15 @@ function extractSapId(rawText, headers) {
 
 // 確保 SAP Account 至少有一筆預設地址（Contact 掛載 workplace 需 org 有地址，否則 missingOrgAddressInfo）。
 // 地址為 /accounts/{id}/addresses 子資源；已有地址則略過（idempotent，重推不重複建立）。
+// SAP 規則：有 street 就必須有 postalCode。台灣名片地址多無郵遞區號 → 以候選序列降級嘗試直到成功。
 async function ensureAccountAddress(baseUrl, auth, sapAccId, addressText) {
   const base = `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}/addresses`;
+  const s = String(addressText || '').trim();
+  const lead = s.match(/^(\d{3,6})\b[\s,]*/);          // 開頭若有 3~6 碼數字，視為郵遞區號
+  const candidates = [];
+  if (lead) candidates.push({ isDefaultAddress: true, country: 'TW', postalCode: lead[1].slice(0, 5), streetPrefixName: (s.slice(lead[0].length).trim() || s).slice(0, 240) });
+  candidates.push({ isDefaultAddress: true, country: 'TW', cityName: s.slice(0, 120) });   // 地址放 cityName（非 street，避開 postalCode 必填）
+  candidates.push({ isDefaultAddress: true, country: 'TW' });                               // 最低限度：僅國別
   try {
     const rg = await fetch(`${base}?$top=1`, { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
     if (rg.ok) {
@@ -6180,14 +6187,19 @@ async function ensureAccountAddress(baseUrl, auth, sapAccId, addressText) {
       const existing = bg?.value || bg?.d?.results || bg?.data || [];
       if (existing.length > 0) return { ok: true, created: false };
     }
-    const rp = await fetch(base, {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ isDefaultAddress: true, country: 'TW', streetPrefixName: String(addressText).slice(0, 240) }),
-      signal: AbortSignal.timeout(10000),
-    });
-    const tp = await rp.text();
-    return { ok: rp.ok, created: rp.ok, status: rp.status, resp: tp.slice(0, 200) };
+    let last = '';
+    for (const body of candidates) {
+      const rp = await fetch(base, {
+        method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
+      const tp = await rp.text();
+      if (rp.ok) return { ok: true, created: true, used: Object.keys(body).join(',') };
+      last = `HTTP ${rp.status}: ${tp.slice(0, 160)}`;
+    }
+    return { ok: false, resp: last };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
