@@ -6102,6 +6102,18 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
   }
 });
 
+// 從 SAP 建立(POST)回應中盡力擷取新物件 ID：回應主體 → Location 標頭 → 內文 UUID
+function extractSapId(rawText, headers) {
+  let jb = null; try { jb = JSON.parse(rawText); } catch {}
+  const fromBody = jb?.id || jb?.value?.id || jb?.d?.id || jb?.accountID || jb?.contactID || jb?.ID;
+  if (fromBody) return fromBody;
+  const loc = headers && typeof headers.get === 'function' ? (headers.get('location') || '') : '';
+  const fromLoc = loc.split('?')[0].split('/').filter(Boolean).pop();
+  if (fromLoc && /[0-9a-f-]{8,}/i.test(fromLoc)) return fromLoc;
+  const m = (rawText || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return m ? m[0] : null;
+}
+
 // ── 異質系統整合：欄位對照（SAP Sales Cloud V2）──────────────
 const SAP_DEFAULT_MAPPING = {
   account: {
@@ -6225,6 +6237,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
   const companies = (data.companies || []).filter(c => companyIds.includes(c.id) && !c.deleted);
   for (const co of companies) {
     const eA = data.integrationLinks.find(l => l.crmType === 'company' && l.crmId === co.id && l.integrationId === config.id);
+    const linkedA = !!(eA && eA.sapId);   // 只有真的有 SAP ID 才算已連結（避免 sapId:null 的殘留對照誤判為更新）
     const ap = {};
     if (on('name',     accF)) ap.firstLineName = co.name || '';
     if (on('taxId', accF) && co.taxId && idType) ap.identifications = [{ type: idType, identificationId: co.taxId }];
@@ -6233,22 +6246,25 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     if (role) ap.customerRole = role;
     ap.country = 'TW';
     // SAP V2 POST 不接受 externalIds.id 子欄位；新建不帶（我方以 integrationLinks 記錄對應），僅更新(PATCH)時帶
-    if (eA) ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
+    if (linkedA) ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
 
     const aRec = { id: uuidv4(), type: 'account', crmId: co.id, crmName: co.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
-    let sapAccId = eA?.sapId || null;
+    let sapAccId = (eA && eA.sapId) || null;
     try {
-      const method = eA ? 'PATCH' : 'POST';
-      const url    = eA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
+      const method = linkedA ? 'PATCH' : 'POST';
+      const url    = linkedA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
       const r = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
       const rt = await r.text();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${rt.slice(0, 300)}`);
-      if (!eA) {
-        let jb = null; try { jb = JSON.parse(rt); } catch {}
-        sapAccId = jb?.id || jb?.accountID || jb?.ID || null;
-        data.integrationLinks.push({ crmType: 'company', crmId: co.id, integrationId: config.id, sapId: sapAccId, syncedAt: new Date().toISOString() });
+      if (!linkedA) {
+        sapAccId = extractSapId(rt, r.headers);
+        if (sapAccId) {
+          if (eA) { eA.sapId = sapAccId; eA.syncedAt = new Date().toISOString(); }
+          else data.integrationLinks.push({ crmType: 'company', crmId: co.id, integrationId: config.id, sapId: sapAccId, syncedAt: new Date().toISOString() });
+        }
       } else { eA.syncedAt = new Date().toISOString(); }
-      aRec.action = eA ? 'updated' : 'created'; aRec.sapId = sapAccId; aRec.status = 'ok'; aRec.sapResponse = `HTTP ${r.status}`;
+      aRec.action = linkedA ? 'updated' : 'created'; aRec.sapId = sapAccId; aRec.status = 'ok';
+      aRec.sapResponse = sapAccId ? `HTTP ${r.status}` : `HTTP ${r.status}（未取得 SAP ID，回應：${rt.slice(0, 150) || '空'}）`;
       logEntry.pushed++;
     } catch (e) {
       aRec.action = 'failed'; aRec.status = 'error'; aRec.error = e.message; logEntry.failed++;
@@ -6259,27 +6275,31 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
       const contacts = (data.contacts || []).filter(c => c.companyId === co.id && !c.deleted && !c.isPlaceholder);
       for (const ct of contacts) {
         const eC = data.integrationLinks.find(l => l.crmType === 'contact' && l.crmId === ct.id && l.integrationId === config.id);
+        const linkedC = !!(eC && eC.sapId);
         const cp = {};
         if (on('name',  conF)) { const nm = (ct.name || '').trim(); cp.familyName = nm.slice(0, 1); cp.givenName = nm.slice(1); }
         if (on('title', conF) && ct.title) cp.functionalTitleName = ct.title;
         if (on('email', conF) && ct.email) cp.eMail = [{ eMail: ct.email, primary: true }];
         cp.accountId = sapAccId;
         // 同 Account：POST 不帶 externalIds，僅更新(PATCH)時帶
-        if (eC) cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
+        if (linkedC) cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
         const cRec = { id: uuidv4(), type: 'contact', crmId: ct.id, crmName: ct.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
         try {
-          const method = eC ? 'PATCH' : 'POST';
-          const url    = eC ? `${baseUrl}/sap/c4c/api/v1/contact-service/contacts/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-service/contacts`;
+          const method = linkedC ? 'PATCH' : 'POST';
+          const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-service/contacts/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-service/contacts`;
           const r2 = await fetch(url, { method, headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
           const ct2 = await r2.text();
           if (!r2.ok) throw new Error(`HTTP ${r2.status}: ${ct2.slice(0, 300)}`);
-          if (!eC) {
-            let cj = null; try { cj = JSON.parse(ct2); } catch {}
-            const csid = cj?.id || cj?.contactID || cj?.ID || null;
-            data.integrationLinks.push({ crmType: 'contact', crmId: ct.id, integrationId: config.id, sapId: csid, syncedAt: new Date().toISOString() });
+          if (!linkedC) {
+            const csid = extractSapId(ct2, r2.headers);
+            if (csid) {
+              if (eC) { eC.sapId = csid; eC.syncedAt = new Date().toISOString(); }
+              else data.integrationLinks.push({ crmType: 'contact', crmId: ct.id, integrationId: config.id, sapId: csid, syncedAt: new Date().toISOString() });
+            }
             cRec.sapId = csid;
           } else { eC.syncedAt = new Date().toISOString(); cRec.sapId = eC.sapId; }
-          cRec.action = eC ? 'updated' : 'created'; cRec.status = 'ok'; cRec.sapResponse = `HTTP ${r2.status}`;
+          cRec.action = linkedC ? 'updated' : 'created'; cRec.status = 'ok';
+          cRec.sapResponse = cRec.sapId ? `HTTP ${r2.status}` : `HTTP ${r2.status}（未取得 SAP ID，回應：${ct2.slice(0, 150) || '空'}）`;
           logEntry.pushed++;
         } catch (e) {
           cRec.action = 'failed'; cRec.status = 'error'; cRec.error = e.message; logEntry.failed++;
