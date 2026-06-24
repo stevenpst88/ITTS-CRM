@@ -6086,7 +6086,17 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
       } catch {}
     }
 
-    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta });
+    // 抓一筆完整 Account（不 $select）看真實欄位結構：externalIds / defaultAddress 等
+    let fullAccount = null;
+    const rFull = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=1`, { headers });
+    if (rFull.ok) {
+      const tFull = await rFull.text();
+      let bFull = null; try { bFull = JSON.parse(tFull); } catch {}
+      const arr = bFull?.value || bFull?.d?.results || bFull?.data || [];
+      fullAccount = arr[0] || null;
+    }
+
+    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
@@ -6221,8 +6231,9 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     if (on('industry', accF) && co.industry && indMap[co.industry]) ap.industrialSector = indMap[co.industry];
     if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
     if (role) ap.customerRole = role;
-    ap.country     = 'TW';
-    ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
+    ap.country = 'TW';
+    // SAP V2 POST 不接受 externalIds.id 子欄位；新建不帶（我方以 integrationLinks 記錄對應），僅更新(PATCH)時帶
+    if (eA) ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
 
     const aRec = { id: uuidv4(), type: 'account', crmId: co.id, crmName: co.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
     let sapAccId = eA?.sapId || null;
@@ -6252,8 +6263,9 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
         if (on('name',  conF)) { const nm = (ct.name || '').trim(); cp.familyName = nm.slice(0, 1); cp.givenName = nm.slice(1); }
         if (on('title', conF) && ct.title) cp.functionalTitleName = ct.title;
         if (on('email', conF) && ct.email) cp.eMail = [{ eMail: ct.email, primary: true }];
-        cp.accountId  = sapAccId;
-        cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
+        cp.accountId = sapAccId;
+        // 同 Account：POST 不帶 externalIds，僅更新(PATCH)時帶
+        if (eC) cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
         const cRec = { id: uuidv4(), type: 'contact', crmId: ct.id, crmName: ct.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
         try {
           const method = eC ? 'PATCH' : 'POST';
