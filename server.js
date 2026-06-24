@@ -6281,8 +6281,8 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
     if (role) ap.customerRole = role;
     ap.country = 'TW';
-    // SAP V2 POST 不接受 externalIds.id 子欄位；新建不帶（我方以 integrationLinks 記錄對應），僅更新(PATCH)時帶
-    if (linkedA) ap.externalIds = [{ systemId: 'ITTS-CRM', id: co.id }];
+    // SAP V2 的 externalIds 屬「外部 ID 對應」子系統，需先註冊 Communication System 才能寫入（否則 localIdMissing 400）；
+    // CRM↔SAP 對應已由我方 integrationLinks 維護，故不送 externalIds。如未來要寫回 SAP 端交叉索引，再走 Communication System 設定。
 
     const aRec = { id: uuidv4(), type: 'account', crmId: co.id, crmName: co.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
     let sapAccId = (eA && eA.sapId) || null;
@@ -6319,8 +6319,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
         if (on('title', conF) && ct.title) cp.functionalTitleName = ct.title;
         if (on('email', conF) && ct.email) cp.eMail = ct.email;   // SAP V2 contactPerson 的 eMail 為字串，非陣列
         cp.accountId = sapAccId;
-        // 同 Account：POST 不帶 externalIds，僅更新(PATCH)時帶
-        if (linkedC) cp.externalIds = [{ systemId: 'ITTS-CRM', id: ct.id }];
+        // 同 Account：externalIds 需 Communication System 才能寫入，暫不送（對應由 integrationLinks 維護）
         const cRec = { id: uuidv4(), type: 'contact', crmId: ct.id, crmName: ct.name, action: null, sapId: null, status: null, sapResponse: '', error: '' };
         try {
           const method = linkedC ? 'PATCH' : 'POST';
