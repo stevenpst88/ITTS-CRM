@@ -6052,21 +6052,31 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
   const auth = 'Basic ' + Buffer.from(config.username + ':' + pw).toString('base64');
 
   try {
-    // 查前 3 筆 Account，只取 customerRole 和 identifications 欄位
-    const url = `${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=3&$select=id,firstLineName,customerRole,identifications`;
-    const r = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json' } });
-    const text = await r.text();
-    let body = null; try { body = JSON.parse(text); } catch {}
-    if (!r.ok) return res.status(r.status).json({ error: `SAP ${r.status}`, raw: text.slice(0, 500) });
+    const headers = { Authorization: auth, Accept: 'application/json' };
 
-    const accounts = body?.value || body?.d?.results || body?.data || [];
-    const summary = accounts.map(a => ({
-      id: a.id,
-      name: a.firstLineName,
-      customerRole: a.customerRole,
-      identifications: a.identifications,
+    // 查前 3 筆 Account 的 customerRole 和 identifications
+    const rAcc = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=3&$select=id,firstLineName,customerRole,identifications`, { headers });
+    const tAcc = await rAcc.text();
+    let bAcc = null; try { bAcc = JSON.parse(tAcc); } catch {}
+    const accounts = (bAcc?.value || bAcc?.d?.results || bAcc?.data || []).map(a => ({
+      id: a.id, name: a.firstLineName, customerRole: a.customerRole, identifications: a.identifications,
     }));
-    return res.json({ ok: true, accounts: summary, rawFirst: accounts[0] });
+
+    // 查 SAP 識別類型代碼清單
+    let idTypes = null;
+    const endpoints = [
+      '/sap/c4c/api/v1/account-service/identificationTypes',
+      '/sap/c4c/api/v1/account-service/identificationtypes',
+      '/sap/c4c/api/v1/md/identificationTypes',
+    ];
+    for (const ep of endpoints) {
+      try {
+        const r2 = await fetch(baseUrl + ep, { headers });
+        if (r2.ok) { const t2 = await r2.text(); try { idTypes = { endpoint: ep, data: JSON.parse(t2) }; break; } catch {} }
+      } catch {}
+    }
+
+    return res.json({ ok: true, accounts, idTypes });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
