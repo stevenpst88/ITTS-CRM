@@ -6132,7 +6132,26 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
       contactWithEmail = arr.find(c => JSON.stringify(c).match(/mail|@/i)) || null;
     }
 
-    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount, contactProbe, fullContact, contactWithEmail, contactKeys });
+    // 探測 Account 地址結構（用已知有地址的帳號 新東陽 019d2d14...，從名片 accountId 得知）
+    const addrAcctId = '019d2d14-d1fd-7225-aede-063c549b7947';
+    let addressProbe = [];
+    const addrEps = [
+      `/sap/c4c/api/v1/account-service/accounts/${addrAcctId}/addresses`,
+      `/sap/c4c/api/v1/account-service/accounts/${addrAcctId}?$expand=addresses`,
+      `/sap/c4c/api/v1/account-service/accounts/${addrAcctId}/defaultAddress`,
+    ];
+    for (const ep of addrEps) {
+      try {
+        const ra = await fetch(baseUrl + ep, { headers });
+        const ta = (await ra.text()).trim();
+        const isJson = ta.startsWith('{') || ta.startsWith('[');
+        addressProbe.push({ endpoint: ep, status: ra.status, isJson, sample: isJson ? ta.slice(0, 600) : ta.slice(0, 50) });
+      } catch (e) {
+        addressProbe.push({ endpoint: ep, status: 'ERR', isJson: false, sample: e.message });
+      }
+    }
+
+    return res.json({ ok: true, accounts, sampleWithId, idTypesMeta, fullAccount, contactProbe, fullContact, contactWithEmail, contactKeys, addressProbe });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
