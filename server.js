@@ -6217,7 +6217,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     const eA = data.integrationLinks.find(l => l.crmType === 'company' && l.crmId === co.id && l.integrationId === config.id);
     const ap = {};
     if (on('name',     accF)) ap.firstLineName = co.name || '';
-    if (on('taxId',    accF) && co.taxId) ap.identifications = [{ identificationTypeCode: idType, identification: co.taxId }];
+    if (on('taxId', accF) && co.taxId && idType) ap.identifications = [{ type: idType, identificationId: co.taxId }];
     if (on('industry', accF) && co.industry && indMap[co.industry]) ap.industrialSector = indMap[co.industry];
     if (on('address',  accF) && co.address) ap.defaultAddress = { defaultAddress: true, addressLine1: co.address, country: 'TW' };
     if (role) ap.customerRole = role;
