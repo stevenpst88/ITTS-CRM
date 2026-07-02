@@ -486,6 +486,9 @@
       <div class="admin-nav-item" data-sec="integration">
         <span class="admin-nav-icon">🔌</span> 系統整合
       </div>
+      <div class="admin-nav-item" data-sec="product-catalog">
+        <span class="admin-nav-icon">🛒</span> 銷售商品維護
+      </div>
       <div class="admin-nav-item" data-sec="subscription">
         <span class="admin-nav-icon">💳</span> 訂閱管理
       </div>
@@ -1899,6 +1902,19 @@
 
       </div>
 
+      <div class="admin-section" id="sec-product-catalog">
+        <div class="section-title">🛒 銷售商品維護</div>
+        <div class="section-sub">全 BU 共用產品目錄，供商機／合約產品下拉使用。停用不刪除、可拖曳排序；改名可連動更新歷史商機與合約。</div>
+        <div class="admin-card" style="padding:18px;max-width:920px">
+          <div id="pcBuTabs" style="display:flex;gap:2px;border-bottom:1px solid #e5e7eb;margin-bottom:16px"></div>
+          <div id="pcPanel"></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:16px;border-top:1px solid #eee;padding-top:14px">
+            <button id="pcSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存變更</button>
+            <span id="pcStatus" style="font-size:13px;color:#6b7280"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
         <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
@@ -2256,8 +2272,203 @@
         if (this.dataset.sec === 'subscription') loadSubStatus();
         if (this.dataset.sec === 'push-test') initPushTest();
         if (this.dataset.sec === 'integration') initIntegration();
+        if (this.dataset.sec === 'product-catalog') initProductCatalog();
       });
     });
+
+    // ── 銷售商品維護（Admin）───────────────────────────────────
+    const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+    const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed' };
+    let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null;
+    const pcEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    async function initProductCatalog() {
+      if (_pcInited) return;
+      _pcInited = true;
+      $('pcStatus').textContent = '載入中…';
+      try {
+        const r = await adminFetch(`${API}/product-catalog`);
+        _pcData = pcBuildModel(await r.json());
+      } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [] }; }
+      $('pcStatus').textContent = '';
+      pcAttachOnce();
+      pcRender();
+    }
+
+    function pcBuildModel(cat) {
+      const bus = (cat && cat.bus) || {};
+      const model = {};
+      for (const bu of PC_BUS) {
+        const groups = Array.isArray(bus[bu]) ? bus[bu] : [];
+        model[bu] = groups.map(g => ({
+          group: g.group || '', enabled: g.enabled !== false,
+          items: (g.items || []).map(it => ({
+            name: it.name || '', _orig: it.name || '', enabled: it.enabled !== false,
+            subs: (Array.isArray(it.subs) ? it.subs : []).map(s => ({ name: s, _orig: s })),
+          })),
+        }));
+      }
+      return model;
+    }
+
+    function pcRender() { pcRenderTabs(); pcRenderPanel(); }
+    function pcCount(bu) { return (_pcData[bu] || []).reduce((n, g) => n + g.items.length, 0); }
+
+    function pcRenderTabs() {
+      $('pcBuTabs').innerHTML = PC_BUS.map(bu => {
+        const on = bu === _pcActive, c = PC_BU_COLOR[bu];
+        return `<button data-pcact="tab" data-bu="${bu}" style="padding:8px 16px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${on ? c : 'transparent'};color:${on ? c : '#6b7280'}">${bu} <span style="font-size:12px;color:#9ca3af">(${pcCount(bu)})</span></button>`;
+      }).join('');
+    }
+
+    function pcRenderPanel() {
+      const groups = _pcData[_pcActive] || [];
+      let h = '';
+      if (!groups.length) h += '<div style="text-align:center;color:#9ca3af;font-size:14px;border:1px dashed #d1d5db;border-radius:10px;padding:26px;margin-bottom:12px">此 BU 尚無產品分類，點下方「新增分類群組」開始建立。</div>';
+      groups.forEach((g, gi) => {
+        h += `<div data-drop="group" data-gi="${gi}" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;margin-bottom:10px;background:#fff;${g.enabled ? '' : 'opacity:.5;'}">`;
+        h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">`
+          + `<span data-drag="group" data-gi="${gi}" draggable="true" title="拖曳排序" style="cursor:grab;color:#9ca3af;user-select:none">⣿</span>`
+          + `<input data-pcfld="group" data-gi="${gi}" value="${pcEsc(g.group)}" placeholder="分類群組名稱" style="flex:1;font-weight:600;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px">`
+          + (g.enabled ? '' : '<span style="font-size:11px;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px">停用</span>')
+          + `<button data-pcact="toggle-grp" data-gi="${gi}" style="font-size:12px;border:1px solid #e5e7eb;background:none;border-radius:6px;padding:4px 10px;cursor:pointer">${g.enabled ? '停用' : '啟用'}</button>`
+          + `<button data-pcact="add-prod" data-gi="${gi}" style="font-size:12px;border:1px dashed #cbd5e1;background:none;border-radius:6px;padding:4px 10px;cursor:pointer">＋產品</button>`
+          + `<button data-pcact="del-grp" data-gi="${gi}" title="刪除分類" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px">🗑</button>`
+          + `</div>`;
+        g.items.forEach((p, pi) => {
+          h += `<div data-drop="product" data-gi="${gi}" data-pi="${pi}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid #f3f4f6;${p.enabled ? '' : 'opacity:.5;'}">`
+            + `<span data-drag="product" data-gi="${gi}" data-pi="${pi}" draggable="true" title="拖曳排序" style="cursor:grab;color:#cbd5e1;margin-top:7px;user-select:none">⣿</span>`
+            + `<div style="flex:1"><div style="display:flex;align-items:center;gap:6px">`
+            + `<input data-pcfld="name" data-gi="${gi}" data-pi="${pi}" value="${pcEsc(p.name)}" placeholder="產品名稱" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px">`
+            + (p.enabled ? '' : '<span style="font-size:11px;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px">停用</span>')
+            + `<button data-pcact="toggle-prod" data-gi="${gi}" data-pi="${pi}" style="font-size:12px;border:1px solid #e5e7eb;background:none;border-radius:6px;padding:3px 9px;cursor:pointer">${p.enabled ? '停用' : '啟用'}</button>`
+            + `</div><div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">`;
+          p.subs.forEach((s, si) => {
+            h += `<span style="display:inline-flex;align-items:center;gap:2px;background:#f9fafb;border:1px solid #eee;border-radius:6px;padding:2px 4px 2px 6px">`
+              + `<input data-pcfld="sub" data-gi="${gi}" data-pi="${pi}" data-si="${si}" value="${pcEsc(s.name)}" placeholder="明細" style="width:82px;font-size:12px;padding:2px 4px;border:none;background:none">`
+              + `<button data-pcact="del-sub" data-gi="${gi}" data-pi="${pi}" data-si="${si}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px">✕</button></span>`;
+          });
+          h += `<button data-pcact="add-sub" data-gi="${gi}" data-pi="${pi}" style="font-size:12px;border:1px dashed #cbd5e1;background:none;border-radius:6px;padding:3px 9px;cursor:pointer;color:#6b7280">＋明細</button>`
+            + `</div></div>`
+            + `<button data-pcact="del-prod" data-gi="${gi}" data-pi="${pi}" title="刪除產品" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px;margin-top:5px">🗑</button>`
+            + `</div>`;
+        });
+        h += `</div>`;
+      });
+      h += `<button data-pcact="add-grp" style="width:100%;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:9px;font-size:13px;color:#6b7280;cursor:pointer">＋ 新增分類群組</button>`;
+      $('pcPanel').innerHTML = h;
+    }
+
+    function pcFocus(sel) { const el = $('pcPanel').querySelector(sel); if (el) el.focus(); }
+
+    function pcAttachOnce() {
+      if (_pcAttached) return; _pcAttached = true;
+      $('pcBuTabs').addEventListener('click', e => {
+        const b = e.target.closest('[data-pcact="tab"]'); if (b) { _pcActive = b.dataset.bu; pcRender(); }
+      });
+      const panel = $('pcPanel');
+      panel.addEventListener('click', pcOnClick);
+      panel.addEventListener('input', pcOnInput);
+      panel.addEventListener('dragstart', pcOnDragStart);
+      panel.addEventListener('dragover', e => { if (_pcDrag) e.preventDefault(); });
+      panel.addEventListener('drop', pcOnDrop);
+      $('pcSaveBtn').addEventListener('click', pcSave);
+    }
+
+    function pcOnClick(e) {
+      const b = e.target.closest('[data-pcact]'); if (!b) return;
+      const act = b.dataset.pcact, gi = +b.dataset.gi, pi = +b.dataset.pi, si = +b.dataset.si, G = _pcData[_pcActive];
+      $('pcStatus').textContent = '';
+      if (act === 'add-grp') { G.push({ group: '新分類群組', enabled: true, items: [] }); pcRender(); pcFocus(`[data-pcfld="group"][data-gi="${G.length - 1}"]`); }
+      else if (act === 'del-grp') { if (confirm('刪除此分類群組？（歷史商機不受影響）')) { G.splice(gi, 1); pcRender(); } }
+      else if (act === 'toggle-grp') { G[gi].enabled = !G[gi].enabled; pcRender(); }
+      else if (act === 'add-prod') { G[gi].items.push({ name: '', _orig: '', enabled: true, subs: [] }); pcRender(); pcFocus(`[data-pcfld="name"][data-gi="${gi}"][data-pi="${G[gi].items.length - 1}"]`); }
+      else if (act === 'del-prod') { if (confirm('刪除此產品？（歷史商機不受影響）')) { G[gi].items.splice(pi, 1); pcRender(); } }
+      else if (act === 'toggle-prod') { G[gi].items[pi].enabled = !G[gi].items[pi].enabled; pcRender(); }
+      else if (act === 'add-sub') { G[gi].items[pi].subs.push({ name: '', _orig: '' }); pcRender(); pcFocus(`[data-pcfld="sub"][data-gi="${gi}"][data-pi="${pi}"][data-si="${G[gi].items[pi].subs.length - 1}"]`); }
+      else if (act === 'del-sub') { G[gi].items[pi].subs.splice(si, 1); pcRender(); }
+    }
+
+    function pcOnInput(e) {
+      const el = e.target; if (!el.dataset.pcfld) return;
+      const gi = +el.dataset.gi, pi = +el.dataset.pi, si = +el.dataset.si, G = _pcData[_pcActive];
+      if (el.dataset.pcfld === 'group') G[gi].group = el.value;
+      else if (el.dataset.pcfld === 'name') G[gi].items[pi].name = el.value;
+      else if (el.dataset.pcfld === 'sub') G[gi].items[pi].subs[si].name = el.value;
+    }
+
+    function pcOnDragStart(e) {
+      const h = e.target.closest('[data-drag]'); if (!h) return;
+      _pcDrag = { type: h.dataset.drag, gi: +h.dataset.gi, pi: h.dataset.pi !== undefined ? +h.dataset.pi : null };
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); } catch (_) {}
+    }
+
+    function pcOnDrop(e) {
+      if (!_pcDrag) return;
+      e.preventDefault();
+      const d = _pcDrag; _pcDrag = null; const G = _pcData[_pcActive];
+      if (d.type === 'group') {
+        const tgt = e.target.closest('[data-drop="group"]'); if (!tgt) return;
+        const to = +tgt.dataset.gi; if (d.gi === to) return;
+        const [m] = G.splice(d.gi, 1); G.splice(to, 0, m); pcRender();
+      } else if (d.type === 'product') {
+        const prow = e.target.closest('[data-drop="product"]'), gcard = e.target.closest('[data-drop="group"]');
+        if (!prow && !gcard) return;
+        const toGi = prow ? +prow.dataset.gi : +gcard.dataset.gi;
+        let toPi = prow ? +prow.dataset.pi : G[toGi].items.length;
+        const [m] = G[d.gi].items.splice(d.pi, 1);
+        if (d.gi === toGi && d.pi < toPi) toPi--;
+        if (toPi < 0) toPi = 0; if (toPi > G[toGi].items.length) toPi = G[toGi].items.length;
+        G[toGi].items.splice(toPi, 0, m); pcRender();
+      }
+    }
+
+    // 收集改名：明細組合值（較具體）在前、產品在後，確保後端優先命中組合值
+    function pcCollectRenames() {
+      const subR = [], prodR = [];
+      for (const bu of PC_BUS) for (const g of _pcData[bu]) for (const p of g.items) {
+        for (const s of p.subs) if (s.name && s._orig && s.name !== s._orig) subR.push({ old: `${p._orig} ${s._orig}`, new: `${p.name} ${s.name}` });
+        if (p.name && p._orig && p.name !== p._orig) prodR.push({ old: p._orig, new: p.name });
+      }
+      return subR.concat(prodR);
+    }
+
+    function pcSerialize() {
+      const bus = {};
+      for (const bu of PC_BUS) {
+        bus[bu] = (_pcData[bu] || [])
+          .map(g => ({
+            group: (g.group || '').trim(), enabled: !!g.enabled,
+            items: g.items.map(p => ({ name: (p.name || '').trim(), enabled: !!p.enabled, subs: p.subs.map(s => (s.name || '').trim()).filter(Boolean) })).filter(p => p.name),
+          }))
+          .filter(g => g.group);
+      }
+      return { bus };
+    }
+
+    async function pcSave() {
+      const btn = $('pcSaveBtn'), st = $('pcStatus'), catalog = pcSerialize(), renames = pcCollectRenames();
+      let applyRenames = [];
+      if (renames.length) {
+        try {
+          const rp = await adminFetch(`${API}/admin/product-catalog?preview=1`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ renames }) });
+          const pd = await rp.json();
+          const list = renames.map(r => `「${r.old}」→「${r.new}」`).join('\n');
+          const ok = confirm(`偵測到 ${renames.length} 項產品改名：\n${list}\n\n將同步更新 ${pd.updatedOpps || 0} 筆歷史商機、${pd.updatedContracts || 0} 筆合約。\n\n［確定］＝連同歷史一起更新\n［取消］＝只改目錄、歷史不動`);
+          if (ok) applyRenames = renames;
+        } catch (e) { /* 預覽失敗 → 當作只改目錄 */ }
+      }
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = '儲存中…'; st.textContent = '';
+      try {
+        const r = await adminFetch(`${API}/admin/product-catalog`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ catalog, renames: applyRenames }) });
+        const d = await r.json();
+        if (!r.ok || d.error) { st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return; }
+        _pcData = pcBuildModel(catalog); pcRender();
+        const extra = (d.updatedOpps || d.updatedContracts) ? `（連動商機 ${d.updatedOpps}、合約 ${d.updatedContracts}）` : '';
+        st.textContent = `已儲存 ${new Date().toLocaleTimeString()}${extra}`;
+      } catch (e) { st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(e.message)}</span>`; }
+      finally { btn.disabled = false; btn.textContent = orig; }
+    }
 
     // ── 系統整合：連線設定 ──────────────────────────────────
     let _integInited = false;
