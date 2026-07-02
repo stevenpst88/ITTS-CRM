@@ -3747,7 +3747,9 @@ function populateContactSelect(company = '', selectedContactId = '') {
 setupCompanySearch();
 
 // ── 商機類別 → 商品選單 ──────────────────────────────────
-const OPP_PRODUCTS = {
+// 註：以下為「預設 fallback」。app 啟動時 loadProductCatalog() 會從 /api/product-catalog
+//     取回 Admin 維護的目錄並覆寫這兩個變數；API 失敗則沿用此處寫死值，不會壞。
+let OPP_PRODUCTS = {
   ERP: {
     '一般商品': [
       'SAP Public Cloud License',
@@ -3784,9 +3786,37 @@ const OPP_PRODUCTS = {
   }
 };
 
-const PRODUCT_SUBSELS = {
+let PRODUCT_SUBSELS = {
   'SAP CCFLEX': ['C&S', 'A&O'],
 };
+
+// 從後端載入 Admin 維護的銷售商品目錄，衍生成上面兩個下拉變數（只取 enabled）。
+// 與 lib/productCatalog.js 的 deriveDropdowns 邏輯一致。失敗則保留寫死 fallback。
+async function loadProductCatalog() {
+  try {
+    const res = await fetch('/api/product-catalog');
+    if (!res.ok) return;
+    const cat = await res.json();
+    const bus = cat && cat.bus;
+    if (!bus || typeof bus !== 'object') return;
+    const opp = {}, subs = {};
+    for (const bu of Object.keys(bus)) {
+      const groups = Array.isArray(bus[bu]) ? bus[bu] : [];
+      const out = {};
+      for (const g of groups) {
+        if (!g || g.enabled === false) continue;
+        const names = (g.items || []).filter(it => it && it.enabled !== false).map(it => it.name);
+        if (names.length) out[g.group] = names;
+        for (const it of (g.items || [])) {
+          if (it && it.enabled !== false && Array.isArray(it.subs) && it.subs.length) subs[it.name] = it.subs.slice();
+        }
+      }
+      opp[bu] = out;
+    }
+    OPP_PRODUCTS = opp;
+    PRODUCT_SUBSELS = subs;
+  } catch (e) { /* 保留 fallback */ }
+}
 
 $v('oppCategory').addEventListener('change', function () {
   const cat = this.value;
@@ -8005,6 +8035,7 @@ initUser();
 loadPermissions();
 loadContacts(); // 背景載入聯絡人，供圖表與拜訪記錄使用
 loadIndustryOptions(); // 載入動態產業分類，建立名片表單下拉
+loadProductCatalog(); // 載入 Admin 維護的銷售商品目錄（覆寫商機下拉；失敗沿用寫死 fallback）
 
 // ── 側邊欄拖動排序 ─────────────────────────────────────────
 (function initSidebarDrag() {

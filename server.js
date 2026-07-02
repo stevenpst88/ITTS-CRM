@@ -19,6 +19,7 @@ const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
 const pushNotify = require('./lib/pushNotify');
 const secretBox = require('./lib/secretBox');
+const productCatalog = require('./lib/productCatalog');
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
@@ -6419,6 +6420,45 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
 app.get('/api/admin/integrations/logs', requireAdmin, (req, res) => {
   const data = db.load();
   res.json((data.integrationLogs || []).slice(0, 50));
+});
+
+// ── 銷售商品目錄（Admin 維護）────────────────────────────────
+// 讀：全站登入者可用（商機/合約下拉要吃）
+app.get('/api/product-catalog', requireAuth, (req, res) => {
+  const data = db.load();
+  res.json(data.productCatalog || productCatalog.SEED_PRODUCT_CATALOG);
+});
+
+// 存：僅 admin。可帶 renames 連動改名 opp.product/contract.product；?preview=1 只回影響筆數不寫入
+app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const b = req.body || {};
+  const renames = Array.isArray(b.renames) ? b.renames : [];
+  const data = db.load();
+
+  // 預覽：只計算改名影響筆數，不寫入
+  if (req.query.preview === '1') {
+    const impact = productCatalog.applyCatalogRenames(data, renames, { dryRun: true });
+    return res.json({ ok: true, preview: true, ...impact });
+  }
+
+  // 驗證目錄形狀後寫入
+  if (b.catalog && b.catalog.bus && typeof b.catalog.bus === 'object' && !Array.isArray(b.catalog.bus)) {
+    data.productCatalog = {
+      bus: b.catalog.bus,
+      updatedAt: new Date().toISOString(),
+      updatedBy: operator,
+    };
+  } else {
+    return res.status(400).json({ error: '目錄格式不正確（需含 bus 物件）' });
+  }
+
+  // 連動改名（實際寫入歷史 opp.product / contract.product）
+  const impact = productCatalog.applyCatalogRenames(data, renames, { dryRun: false });
+  db.save(data);
+  writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
+    `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆`, req);
+  res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
 });
 
 // ── Call-in Pass CRUD ─────────────────────────────────────
