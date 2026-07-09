@@ -3225,7 +3225,13 @@ function openView(id) {
       ${c.systemVendor ? `<div class="view-row"><span class="view-label">系統</span><span class="view-value">${escapeHtml(c.systemVendor)}</span></div>` : ''}
       ${c.systemProduct ? `<div class="view-row"><span class="view-label">產品</span><span class="view-value system-badge">${escapeHtml(c.systemProduct)}</span></div>` : ''}
     </div>` : ''}
-    ${c.note ? `<div class="view-section"><div class="view-section-title">備註</div><div class="view-row"><span class="view-value" style="white-space:pre-wrap">${escapeHtml(c.note)}</span></div></div>` : ''}`;
+    ${c.note ? `<div class="view-section"><div class="view-section-title">備註</div><div class="view-row"><span class="view-value" style="white-space:pre-wrap">${escapeHtml(c.note)}</span></div></div>` : ''}
+    <div class="view-section">
+      <div class="view-section-title">建立資訊</div>
+      <div class="view-row"><span class="view-label">建立單位</span><span class="view-value">${escapeHtml(c.createdByBu) || '-'}</span></div>
+      <div class="view-row"><span class="view-label">建立人</span><span class="view-value">${escapeHtml(c.createdByName || c.createdBy) || '-'}</span></div>
+      <div class="view-row"><span class="view-label">建立時間</span><span class="view-value">${c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW') : '-'}</span></div>
+    </div>`;
 
   $('viewBody').innerHTML = html;
   $('viewOverlay').classList.add('open');

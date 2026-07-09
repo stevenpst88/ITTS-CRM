@@ -713,6 +713,7 @@ function createPoolPlaceholder(data, { company, taxId, companyId }, req) {
   const p = {
     id: uuidv4(),
     owner: POOL_USERNAME,
+    ...(req?.session?.user ? creatorFields(req) : {}),
     name: '（待補名片）',
     nameEn: '',
     company: company || '',
@@ -2136,6 +2137,17 @@ function filterByViewGroup(req, items, getCompany) {
 }
 
 // 為新建資料決定 bu：若 body 給了則驗證，否則預設用建立者的第一個 BU
+// 建立紀錄用：回傳「誰執行了這次建立動作」，與 owner（可被名單移轉改變）脫鉤、永久不變
+function creatorFields(req) {
+  const u = req.session.user;
+  const myBus = getMyBus(req);
+  return {
+    createdBy: u.username,
+    createdByName: u.displayName || u.username,
+    createdByBu: myBus.length ? myBus.join('/') : '',
+  };
+}
+
 function resolveItemBuOnCreate(req, bodyBu) {
   const role = req.session.user.role;
   // admin / executive 不一定有 BU，允許指定也可以為 null
@@ -2576,6 +2588,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     id: uuidv4(),
     owner,
     bu: buCheck.bu,
+    ...creatorFields(req),
     name: req.body.name || '',
     nameEn: req.body.nameEn || '',
     company: req.body.company || '',
@@ -2702,17 +2715,19 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
 });
 
 // ── 刪除聯絡人（軟刪除）────────────────────────────────
+// 本人可刪自己的名片；系統管理員可刪除任何人的名片（跨 BU 全權管理）
 app.delete('/api/contacts/:id', requireAuth, (req, res) => {
-  const owner = req.session.user.username;
+  const username = req.session.user.username;
+  const isAdmin = req.session.user.role === 'admin';
   const data = db.load();
-  const idx = data.contacts.findIndex(c => c.id === req.params.id && c.owner === owner && !c.deleted);
-  if (idx === -1) return res.status(404).json({ error: '找不到此聯絡人' });
+  const idx = data.contacts.findIndex(c => c.id === req.params.id && !c.deleted && (c.owner === username || isAdmin));
+  if (idx === -1) return res.status(404).json({ error: '找不到此聯絡人，或您無權刪除' });
   const contact = data.contacts[idx];
   // 軟刪除：標記而不移除（圖片保留，等永久刪除時才移除）
   contact.deleted = true;
   contact.deletedAt = new Date().toISOString();
-  contact.deletedBy = owner;
-  contact.deletedByName = req.session.user.displayName || owner;
+  contact.deletedBy = username;
+  contact.deletedByName = req.session.user.displayName || username;
   db.save(data);
   writeContactAudit('DELETE', req, contact, []);
   res.json({ success: true });
@@ -6579,7 +6594,7 @@ app.put('/api/callins/:id/assign', requireAuth, (req, res) => {
         ((item.company && c.company === item.company) || (item.contactName && c.name === item.contactName)));
       if (!exists) {
         data.contacts.push({
-          id: uuidv4(), owner: assignedTo,
+          id: uuidv4(), owner: assignedTo, ...creatorFields(req),
           name: item.contactName || '', company: item.company || '',
           phone: item.phone || '', email: '', title: '', mobile: '', ext: '',
           address: '', website: '', taxId: '', industry: '', note: `[Call-in] ${item.topic}`,
@@ -6831,7 +6846,7 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
   let contactId = exists ? exists.id : null;
   if (!exists) {
     const newContact = {
-      id: uuidv4(), owner: salesPerson, bu: salesBu,
+      id: uuidv4(), owner: salesPerson, bu: salesBu, ...creatorFields(req),
       name: l.contactName || '', company: l.company || '',
       title: l.title || '', phone: l.phone || '', email: l.email || '',
       note: `[Lead] ${l.campaignName || ''} - ${l.interest || ''}`,
@@ -8189,7 +8204,7 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
 
   rows.forEach((row, i) => {
     try {
-      const contact = { id: uuidv4(), owner: targetOwner, createdAt: new Date().toISOString(),
+      const contact = { id: uuidv4(), owner: targetOwner, createdAt: new Date().toISOString(), ...creatorFields(req),
         name:'', nameEn:'', company:'', title:'', phone:'', ext:'', mobile:'', email:'',
         address:'', website:'', taxId:'', industry:'', note:'',
         opportunityStage:'', isPrimary: false, systemVendor:'', systemProduct:'', cardImage:'' };
@@ -8250,7 +8265,7 @@ app.post('/api/admin/import-contacts-json', requireAdmin, (req, res) => {
       if (dup) { skipped++; return; }
     }
     const contact = {
-      id: uuidv4(), owner: targetOwner, createdAt: new Date().toISOString(),
+      id: uuidv4(), owner: targetOwner, createdAt: new Date().toISOString(), ...creatorFields(req),
       name: row.name||'', nameEn: row.nameEn||'', company: row.company||'',
       title: row.title||'', phone: row.phone||'', ext: row.ext||'',
       mobile: row.mobile||'', email: row.email||'', address: row.address||'',
