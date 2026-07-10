@@ -909,15 +909,16 @@ function renderCompanyMasterList() {
   if (!tbody) return;
   const canManage = cmCanManage();
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="${canManage ? 6 : 5}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${canManage ? 7 : 6}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
     return;
   }
-  const colspan = canManage ? 6 : 5;
+  const colspan = canManage ? 7 : 6;
   const rowHtml = (c, isNew) => `
     <tr class="cm-row" data-id="${escapeHtml(c.id)}"${isNew ? ' style="background:rgba(59,130,246,0.07)"' : ''}>
       <td><strong>${escapeHtml(c.name)}</strong>${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
       <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
       <td>${c.contactCount || 0}</td>
+      <td>${(c.owners && c.owners.length) ? `<span style="font-size:12px">${c.owners.map(escapeHtml).join('、')}</span>` : '<span class="cm-label">-</span>'}</td>
       <td>${cmFmtCap(c.capital)}</td>
       <td>${cmIndustryCell(c)}</td>
       ${canManage ? `<td><button class="cm-del" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️</button></td>` : ''}
@@ -1767,6 +1768,7 @@ function buildContactCard(c, extraClass = '') {
       ${c.phone  ? `<div class="card-info-row"><span class="info-icon">&#128222;</span><span class="info-text">${escapeHtml(c.phone)}</span></div>` : ''}
       ${c.mobile ? `<div class="card-info-row"><span class="info-icon">&#128241;</span><span class="info-text">${escapeHtml(c.mobile)}</span></div>` : ''}
       ${c.email  ? `<div class="card-info-row"><span class="info-icon">&#128140;</span><span class="info-text">${escapeHtml(c.email)}</span></div>` : ''}
+      ${(c.ownerDisplayName && c.owner !== (window._myUsername || '')) ? `<div class="card-info-row"><span class="info-icon">&#128100;</span><span class="info-text">服務業務：${escapeHtml(c.ownerDisplayName)}</span></div>` : ''}
     </div>
     ${oppBadge ? `<div class="card-opp-row">${oppBadge}</div>` : ''}
     <div class="card-rel-row">
@@ -3228,6 +3230,7 @@ function openView(id) {
     ${c.note ? `<div class="view-section"><div class="view-section-title">備註</div><div class="view-row"><span class="view-value" style="white-space:pre-wrap">${escapeHtml(c.note)}</span></div></div>` : ''}
     <div class="view-section">
       <div class="view-section-title">建立資訊</div>
+      <div class="view-row"><span class="view-label">目前服務業務</span><span class="view-value">${escapeHtml(c.ownerDisplayName) || '-'}</span></div>
       <div class="view-row"><span class="view-label">建立單位</span><span class="view-value">${escapeHtml(c.createdByBu) || '-'}</span></div>
       <div class="view-row"><span class="view-label">建立人</span><span class="view-value">${escapeHtml(c.createdByName || c.createdBy) || '-'}</span></div>
       <div class="view-row"><span class="view-label">建立時間</span><span class="view-value">${c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW') : '-'}</span></div>

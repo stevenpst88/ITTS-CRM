@@ -615,6 +615,7 @@
                   <th>公司正式名稱</th>
                   <th>統一編號</th>
                   <th>名片數</th>
+                  <th>服務業務</th>
                   <th>資本額</th>
                   <th>產業</th>
                   <th>GCIS補全</th>
@@ -622,7 +623,7 @@
                 </tr>
               </thead>
               <tbody id="companiesTbody">
-                <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
               </tbody>
             </table>
           </div>
@@ -5964,17 +5965,21 @@
         const statusBadge = dissolved
           ? ` <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle" title="GCIS 公司狀態：${escapeAttr(c.gcisStatus)}（此公司已不存在，建議清理或轉移）">🚫 ${escapeAttr(c.gcisStatus)}</span>`
           : '';
+        const ownersCell = (c.owners && c.owners.length)
+          ? `<span style="font-size:12px">${c.owners.map(escapeAttr).join('、')}</span>`
+          : '<span style="color:#cbd5e1;font-size:12px">-</span>';
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
           <td><strong>${escapeAttr(c.name)}</strong>${tag}${statusBadge} <span style="color:#9ca3af;font-size:11px">›</span></td>
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
+          <td>${ownersCell}</td>
           <td>${cap}</td>
           <td>${companyIndustryCell(c)}</td>
           <td style="font-size:12px">${gcis}</td>
           <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
       };
-      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="7" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
+      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="8" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
       // 區隔：新匯入（尚無真實名片）排上方、歷史資料（已有名片）排下方
       const newImports = list.filter(c => c.isNewImport).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       const historical = list.filter(c => !c.isNewImport);
