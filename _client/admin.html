@@ -5070,16 +5070,17 @@
     const year = parseInt(document.getElementById('qrYearSel').value);
     const yStr = String(year);
 
-    // 取得非 admin 帳號列表（從 allUsers 或重新 fetch）
+    // 只列背業績的角色：秘書 / 行銷 / 會計 / 集團PM / admin 等不需要季度目標
+    const QR_SALES_ROLES = ['manager1', 'manager2', 'user'];
     const users = (typeof allUsers !== 'undefined' ? allUsers : [])
-      .filter(u => !['admin'].includes(u.role) && u.active !== false);
+      .filter(u => QR_SALES_ROLES.includes(u.role) && u.active !== false);
 
     if (!users.length) {
       wrap.innerHTML = '<div style="color:#9ca3af;font-size:13px">請先切換至「帳號管理」以載入帳號清單，再返回此頁面。</div>';
       return;
     }
 
-    const roleLabel = { manager1:'一級主管', manager2:'二級主管', user:'業務', secretary:'秘書' };
+    const roleLabel = { manager1:'一級主管', manager2:'二級主管', user:'業務' };
     const getDefaultRatio = () => qrAllRatios[year] || qrAllRatios[yStr] || [0, 0, 0, 0];
 
     wrap.innerHTML = `
@@ -5105,7 +5106,10 @@
     users.forEach(u => {
       const saved = (qrUserRatios[u.username] &&
         (qrUserRatios[u.username][year] || qrUserRatios[u.username][yStr]));
-      const ratios = saved || getDefaultRatio();
+      // 未設定個人配比者一律顯示 0，不再帶入全域預設。
+      // 全域預設存的是「百分比」(如 14/21/17/48)，這張表的欄位卻是「金額 K」，
+      // 直接帶入會讓人誤按儲存後把 14K/21K 當成目標金額存進去。
+      const ratios = saved || [0, 0, 0, 0];
       const hasPersonal = !!saved;
       const rl = roleLabel[u.role] || u.role;
 
@@ -5115,7 +5119,7 @@
       tr.innerHTML = `
         <td style="padding:10px 12px;white-space:nowrap">
           <div style="font-weight:600;color:#1a2d52">${u.displayName || u.username}</div>
-          <div style="font-size:11px;color:#9ca3af">${rl}${hasPersonal ? '' : ' · 使用預設'}</div>
+          <div style="font-size:11px;color:#9ca3af">${rl}${hasPersonal ? '' : ' · 尚未設定'}</div>
         </td>
         ${[0,1,2,3].map(i => `
           <td style="padding:6px 4px;text-align:center">
@@ -5177,7 +5181,7 @@
       const clearBtn = tr.querySelector('.qr-user-clear-btn');
       if (clearBtn) {
         clearBtn.addEventListener('click', async () => {
-          if (!confirm(`確定清除 ${u.displayName || u.username} 的個人配比？清除後將回到全域預設。`)) return;
+          if (!confirm(`確定清除 ${u.displayName || u.username} 的個人配比？清除後此人季度目標顯示為 0（尚未設定）。`)) return;
           clearBtn.textContent = '清除中…';
           // 清除方式：送全域預設值（或實作 DELETE 端點）
           // 這裡用 PUT 送空值，server 端改為刪除該 key
