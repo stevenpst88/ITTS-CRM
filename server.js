@@ -1660,10 +1660,29 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     accessMode: (u.role === 'admin') ? 'edit' : (u.accessMode === 'view' ? 'view' : 'edit'),
     // 集團PM 專用欄位（其他角色為 undefined）
     viewOwnerScope: u.viewOwnerScope || null,
-    viewGroupId:    u.viewGroupId    || null
+    viewGroupId:    u.viewGroupId    || null,
+    // 直屬主管（組織階層；空值 = 頂層或未設定）
+    supervisor:     u.supervisor     || ''
   }));
   res.json(users);
 });
+
+// 校驗直屬主管：不可指向自己、必須存在、不可形成循環（A→B→A）
+function validateSupervisor(users, username, supervisorInput) {
+  const sup = String(supervisorInput || '').trim();
+  if (!sup) return { supervisor: '' };
+  if (sup === username) return { error: '直屬主管不可指定為自己' };
+  if (!users.find(u => u.username === sup)) return { error: '指定的直屬主管帳號不存在' };
+  // 往上追溯主管鏈，若回到自己表示形成循環
+  const seen = new Set([username]);
+  let cur = sup;
+  while (cur) {
+    if (seen.has(cur)) return { error: '直屬主管設定形成循環（該主管的上級鏈已包含此帳號）' };
+    seen.add(cur);
+    cur = (users.find(u => u.username === cur) || {}).supervisor || '';
+  }
+  return { supervisor: sup };
+}
 
 // 校驗並回傳 finalBu（陣列）；錯誤時回傳 { error }
 function validateBuInput(role, buInput) {
@@ -1680,7 +1699,7 @@ function validateBuInput(role, buInput) {
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets,
-          accessMode, viewOwnerScope, viewGroupId } = req.body;
+          accessMode, viewOwnerScope, viewGroupId, supervisor } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
@@ -1690,6 +1709,9 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const finalRole = role || 'user';
   const buCheck = validateBuInput(finalRole, bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+
+  const supCheck = validateSupervisor(auth.users, username.trim(), supervisor);
+  if (supCheck.error) return res.status(400).json({ error: supCheck.error });
 
   // 集團PM 必須指定 viewOwnerScope + viewGroupId
   if (finalRole === 'tecopm') {
@@ -1719,6 +1741,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     active: true,
     createdAt: new Date().toISOString(),
     mustChangePassword: true,   // 第一次登入必須更換密碼
+    supervisor: supCheck.supervisor,
     ...(finalRole === 'tecopm' ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
@@ -1735,7 +1758,12 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
   const { displayName, role, bu, canDownloadContacts, canSetTargets, active,
-          accessMode, viewOwnerScope, viewGroupId } = req.body;
+          accessMode, viewOwnerScope, viewGroupId, supervisor } = req.body;
+  if (supervisor !== undefined) {
+    const supCheck = validateSupervisor(auth.users, req.params.username, supervisor);
+    if (supCheck.error) return res.status(400).json({ error: supCheck.error });
+    auth.users[idx].supervisor = supCheck.supervisor;
+  }
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
   if (role !== undefined)               auth.users[idx].role = role;
   const effectiveRole = auth.users[idx].role;
@@ -2020,6 +2048,37 @@ function normalizeBu(bu) {
   if (Array.isArray(bu)) return bu.filter(Boolean);
   if (typeof bu === 'string' && bu.trim()) return [bu.trim()];
   return [];
+}
+
+// ── 組織階層 ────────────────────────────────────────────────
+// 以帳號的 supervisor（直屬主管）欄位為準；未設定者沿用舊的 role+BU 推斷（過渡相容）。
+// 注意：同 BU 有多位同級主管時，BU 推斷會把部屬全歸給第一個命中者，
+//       故正式階層一律以 supervisor 為準，BU 推斷僅為未設定時的退路。
+function isDirectReport(x, boss) {
+  if (!x || !boss || x.username === boss.username) return false;
+  if (x.supervisor) return x.supervisor === boss.username;   // 有設定 → 只認設定值
+  const xBus = normalizeBu(x.bu), bossBus = normalizeBu(boss.bu);
+  if (!xBus.some(b => bossBus.includes(b))) return false;     // 未設定 → 同 BU 才算
+  if (boss.role === 'manager1') return ['user', 'manager2', 'secretary'].includes(x.role);
+  if (boss.role === 'manager2') return x.role === 'user';
+  return false;
+}
+
+// 整棵子樹的 username（含間接部屬）；seen 防止 supervisor 迴圈造成無限遞迴
+function collectSubtree(boss, users, seen) {
+  seen = seen || new Set([boss.username]);
+  const out = [];
+  users.forEach(x => {
+    if (seen.has(x.username) || !isDirectReport(x, boss)) return;
+    seen.add(x.username);
+    out.push(x.username, ...collectSubtree(x, users, seen));
+  });
+  return out;
+}
+
+// 直屬部屬（僅一層）
+function directReportsOf(boss, users) {
+  return users.filter(x => isDirectReport(x, boss));
 }
 
 function getViewableOwners(req, dataType) {
@@ -2981,19 +3040,14 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const yearStart = new Date(year, 0, 1);
   const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
 
-  // 建構一筆 row：asSales=true 時把 manager2 當作普通業務處理（個人視角）
-  function buildRow(u, asSales = false) {
+  // 建構一筆 row。只有一級主管是「部屬加總」，其餘（含二級主管）一律顯示本人業績，
+  // 底下的人各自有節點，要看整條線的總和由樹狀層級呈現即可。
+  function buildRow(u) {
+    const effRole = u.role;
     const uBus = normalizeBu(u.bu);
-    // asSales 模式下視同 'user'，不算 manager1 的部屬聚合
-    const effRole = asSales ? 'user' : u.role;
 
-    const uSubordinates = effRole === 'manager1'
-      ? auth.users.filter(x =>
-          x.username !== u.username &&
-          (x.role === 'user' || x.role === 'manager2' || x.role === 'secretary') &&
-          normalizeBu(x.bu).some(b => uBus.includes(b))
-        ).map(x => x.username)
-      : [];
+    // 一級主管：整棵子樹（含二級主管底下的業務）
+    const uSubordinates = effRole === 'manager1' ? collectSubtree(u, auth.users) : [];
 
     // 目標：依角色決定加總範圍
     let targetAmount;
@@ -3001,30 +3055,15 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       targetAmount = (data.targets || [])
         .filter(t => t.year === year && uSubordinates.includes(t.owner))
         .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
-    } else if (effRole === 'manager2') {
-      const m2Members = auth.users
-        .filter(x => (x.role === 'user' && normalizeBu(x.bu).some(b => uBus.includes(b))) || x.username === u.username)
-        .map(x => x.username);
-      targetAmount = (data.targets || [])
-        .filter(t => t.year === year && m2Members.includes(t.owner))
-        .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
     } else {
+      // 二級主管與業務一律只算本人（部屬各自有節點，整條線的總和由樹狀層級呈現）
       const t = (data.targets || []).find(t2 => t2.owner === u.username && t2.year === year);
       targetAmount = t ? parseFloat(t.amount) || 0 : null;
     }
     const target = targetAmount !== null ? { amount: targetAmount } : null;
 
     // 此列要統計的 owner 範圍
-    let rowOwners;
-    if (effRole === 'manager1') {
-      rowOwners = [u.username, ...uSubordinates];
-    } else if (effRole === 'manager2') {
-      rowOwners = auth.users
-        .filter(x => (x.role === 'user' && normalizeBu(x.bu).some(b => uBus.includes(b))) || x.username === u.username)
-        .map(x => x.username);
-    } else {
-      rowOwners = [u.username];
-    }
+    const rowOwners = (effRole === 'manager1') ? [u.username, ...uSubordinates] : [u.username];
 
     const myOpps = (data.opportunities || []).filter(o => {
       if (!rowOwners.includes(o.owner)) return false;
@@ -3062,14 +3101,18 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     const targetAmt = target ? (parseFloat(target.amount) || 0) : 0;
     const rate = targetAmt > 0 ? Math.round(achieved / targetAmt * 100) : null;
 
-    const viewMode = (effRole === 'manager1' || effRole === 'manager2') ? 'team' : 'individual';
+    // viewMode 只影響「是否為部屬加總」：僅一級主管是加總，二級主管顯示本人業績。
+    // rowKey 則以角色決定錨點——主管一律用 :team，部屬的 parentRowKey 才有固定對象可指。
+    const viewMode = (effRole === 'manager1') ? 'team' : 'individual';
+    const rowKey   = (effRole === 'manager1' || effRole === 'manager2')
+      ? `${u.username}:team` : `${u.username}:individual`;
     return {
       username:    u.username,
       displayName: u.displayName || u.username,
-      role:        effRole,       // asSales 時為 'user'，前端顯示「業務」badge
+      role:        effRole,
       actualRole:  u.role,        // 原始角色（給前端參考；不影響顯示）
-      viewMode,                   // 'team' = 主管彙總，'individual' = 個人/業務
-      rowKey:      `${u.username}:${viewMode}`,
+      viewMode,                   // 'team' = 部屬加總（僅一級主管），'individual' = 本人業績
+      rowKey,
       target:      targetAmt,
       achieved,
       pipeline,
@@ -3078,20 +3121,14 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     };
   }
 
-  // manager2 一拆二：一筆主管視角（team）+ 一筆業務視角（individual）
-  const rows = salesUsers.flatMap(u => {
-    const main = buildRow(u, false);
-    if (u.role === 'manager2') {
-      return [main, buildRow(u, true)];
-    }
-    return [main];
-  });
+  // 只有業務階層的角色會進組織樹；秘書 / admin / 行銷 / 集團PM 不背業績，不畫節點
+  const TREE_ROLES = ['manager1', 'manager2', 'user'];
+  // 每人一個節點（二級主管不再一拆二；他的業績就是本人業績，部屬另有自己的節點）
+  const rows = salesUsers.flatMap(u => TREE_ROLES.includes(u.role) ? [buildRow(u)] : []);
 
   // ── 計算 parentRowKey（組織樹層級）─────────────────────────
-  // user → 同 BU 的 manager2 團隊 row；無 manager2 則找 manager1
-  // manager2(team) → 同 BU 的 manager1 團隊 row
-  // manager2(individual) → 自己的 manager2(team) row
-  // manager1 / 其他 → null（樹根）
+  // 有設定 supervisor → 直接掛在該主管的 team row 底下
+  // 未設定 → 沿用舊的同 BU 推斷（manager2 找 manager1；user 找 manager2、無則 manager1）
   const findMgrTeamKey = (uBus, role) => {
     const m = auth.users.find(x =>
       x.role === role &&
@@ -3104,11 +3141,11 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     if (!u) { r.parentRowKey = null; return; }
     const uBus = normalizeBu(u.bu);
     if (u.role === 'manager1') {
-      r.parentRowKey = null;
-    } else if (u.role === 'manager2' && r.viewMode === 'team') {
+      r.parentRowKey = u.supervisor ? `${u.supervisor}:team` : null;
+    } else if (u.supervisor) {
+      r.parentRowKey = `${u.supervisor}:team`;    // 有設定主管一律以此為準
+    } else if (u.role === 'manager2') {
       r.parentRowKey = findMgrTeamKey(uBus, 'manager1');
-    } else if (u.role === 'manager2' && r.viewMode === 'individual') {
-      r.parentRowKey = `${u.username}:team`;
     } else if (u.role === 'user') {
       r.parentRowKey = findMgrTeamKey(uBus, 'manager2') || findMgrTeamKey(uBus, 'manager1');
     } else {

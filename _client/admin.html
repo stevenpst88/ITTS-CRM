@@ -2047,6 +2047,13 @@
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
         </div>
+        <div class="form-group" id="supervisorFieldGroup">
+          <label>直屬主管</label>
+          <select id="fieldSupervisor">
+            <option value="">（無 / 頂層）</option>
+          </select>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">決定業績達成率的組織樹與歸屬。未設定者沿用「同 BU 自動推斷」（同 BU 有多位同級主管時會歸錯人，建議明確指定）。</div>
+        </div>
         <div class="form-group">
           <label>狀態</label>
           <select id="fieldActive">
@@ -3206,6 +3213,22 @@
       return Array.from(document.querySelectorAll('#buCheckboxWrap .bu-cb:checked')).map(cb => cb.value);
     }
 
+    // 直屬主管下拉：列出所有啟用中的帳號（排除自己與系統帳號），由 admin 自由指定
+    const SUPERVISOR_ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'一般業務', marketing:'行銷人員', tecopm:'集團PM' };
+    function loadSupervisorOptions(selfUsername) {
+      const sel = $('fieldSupervisor');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">（無 / 頂層）</option>';
+      allUsers
+        .filter(u => u.active !== false && u.username !== selfUsername && u.role !== 'pool')
+        .forEach(u => {
+          const o = document.createElement('option');
+          o.value = u.username;
+          o.textContent = `${u.displayName || u.username}（${u.username}・${SUPERVISOR_ROLE_LABEL[u.role] || u.role || 'user'}）`;
+          sel.appendChild(o);
+        });
+    }
+
     // 載入 tecopm 兩個下拉所需資料（業務員清單 + 全系統集團清單）
     async function loadTecopmOptions() {
       // 業務員清單：用 allUsers 過濾 active 且非 tecopm 自己
@@ -3252,6 +3275,8 @@
       const accEdit = document.querySelector('input[name="fieldAccessMode"][value="edit"]');
       if (accEdit) accEdit.checked = true;
       await loadTecopmOptions();
+      loadSupervisorOptions('');
+      $('fieldSupervisor').value = '';
       $('fieldViewOwnerScope').value = '';
       $('fieldViewGroupId').value = '';
       onRoleChange();
@@ -3277,6 +3302,8 @@
       const accRadio = document.querySelector(`input[name="fieldAccessMode"][value="${accVal}"]`);
       if (accRadio) accRadio.checked = true;
       await loadTecopmOptions();
+      loadSupervisorOptions(username);
+      $('fieldSupervisor').value = u.supervisor || '';
       $('fieldViewOwnerScope').value = u.viewOwnerScope || '';
       $('fieldViewGroupId').value    = u.viewGroupId    || '';
       onRoleChange();
@@ -3317,6 +3344,7 @@
         canDownloadContacts: $('fieldCanDownload').checked,
         canSetTargets: $('fieldCanTargets').checked,
         accessMode,
+        supervisor: $('fieldSupervisor').value || '',
         ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
       try {

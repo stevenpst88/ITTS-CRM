@@ -4890,23 +4890,28 @@ async function loadManagerAchievement(year) {
         roots.push(node);
       }
     });
-    // 只保留有層級關係（有子節點）的根 — 過濾零散帳號（admin/secretary/marketing/tecopm 等獨立節點）
-    const visibleRoots = roots.filter(r => r.children.length > 0);
+    // 過濾零散帳號（admin/secretary/marketing/tecopm 等不在業務階層內的獨立節點）。
+    // 注意：改以「角色」判斷，不可用「有沒有子節點」判斷 —— 否則沒有部屬的主管
+    // （新上任、團隊還在招募中）會整個從畫面消失，看起來像系統壞掉。
+    const HIERARCHY_ROLES = ['manager1', 'manager2', 'user'];
+    const visibleRoots = roots.filter(r => r.children.length > 0 || HIERARCHY_ROLES.includes(r.role));
 
-    // 後序遍歷計算每個節點的 qVals：team 節點 = 子節點加總；leaf 節點 = 個人 ratios
+    // 後序遍歷計算 qVals。注意：一律遞迴走訪子節點（不能因為節點自己不加總就停下來，
+    // 否則一級主管的加總會漏掉「二級主管底下的業務」這層孫節點）。
+    // 顯示值：viewMode==='team'（一級主管）= 整個子樹加總；其餘 = 本人配比。
+    // 回傳值：一律回「本人 + 子樹」，供上層加總使用。
     function computeQVals(node) {
-      if (node.viewMode === 'team' && node.children.length > 0) {
-        const qSum = [0, 0, 0, 0];
-        node.children.forEach(c => {
-          const cQ = computeQVals(c);
-          for (let i = 0; i < 4; i++) qSum[i] += cQ[i] || 0;
-        });
-        node.qVals = qSum.map(v => Math.round(v));
-      } else {
-        const ratios = getUserRatios(node.username, year);
-        node.qVals = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
-      }
-      return node.qVals;
+      const ratios = getUserRatios(node.username, year);
+      const own = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
+      const childSum = [0, 0, 0, 0];
+      node.children.forEach(c => {
+        const cQ = computeQVals(c);
+        for (let i = 0; i < 4; i++) childSum[i] += cQ[i] || 0;
+      });
+      node.qVals = (node.viewMode === 'team')
+        ? childSum.map(v => Math.round(v))
+        : own;
+      return [0,1,2,3].map(i => own[i] + childSum[i]);
     }
     visibleRoots.forEach(computeQVals);
 
