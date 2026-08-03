@@ -2106,15 +2106,16 @@ function getViewableOwners(req, dataType) {
     return userBus.some(b => myBus.includes(b));
   };
 
-  if (role === 'manager1') {
+  // 主管只看得到「自己這條線」的資料：自己 + supervisor 鏈上的整棵子樹。
+  // 未設定 supervisor 的帳號，isDirectReport 會退回同 BU 推斷（過渡相容）。
+  // 秘書另外處理：他們掛在管理部主管底下、不在業務子樹內，但仍需支援同 BU 業務，
+  // 故一級主管一併保留同 BU 秘書的可見性（否則會看不到秘書經手的資料）。
+  if (role === 'manager1' || role === 'manager2') {
+    const subtree = new Set(collectSubtree(me, auth.users));
     return auth.users
       .filter(u => u.username === username ||
-                   (sameBu(u) && (u.role === 'user' || u.role === 'manager2' || u.role === 'secretary')))
-      .map(u => u.username);
-  }
-  if (role === 'manager2') {
-    return auth.users
-      .filter(u => u.username === username || (sameBu(u) && u.role === 'user'))
+                   subtree.has(u.username) ||
+                   (role === 'manager1' && u.role === 'secretary' && sameBu(u)))
       .map(u => u.username);
   }
   if (role === 'secretary') {
@@ -5658,15 +5659,9 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
 
-  // 可視合約範圍：manager1 看全部，manager2 看自己+業務，user 看自己
-  let owners;
-  if (role === 'manager1') {
-    owners = auth.users.map(u => u.username);
-  } else if (role === 'manager2') {
-    owners = auth.users.filter(u => u.role === 'user' || u.username === username).map(u => u.username);
-  } else {
-    owners = [username];
-  }
+  // 可視合約範圍一律走 getViewableOwners（原本自行硬寫階層，manager1 會看到全公司、
+  // manager2 會看到全部業務，兩者都無視 BU 與組織線，是可見性破口）
+  const owners = getViewableOwners(req, 'contracts');
 
   const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
 
@@ -5762,14 +5757,8 @@ app.get('/api/poll-bundle', requireAuth, (req, res) => {
   // ── 2. 合約到期提醒 ──
   let contractReminders = [];
   if (role !== 'secretary') {
-    let owners;
-    if (role === 'manager1') {
-      owners = auth.users.map(u => u.username);
-    } else if (role === 'manager2') {
-      owners = auth.users.filter(u => u.role === 'user' || u.username === username).map(u => u.username);
-    } else {
-      owners = [username];
-    }
+    // 同 /api/contract-reminders：一律走 getViewableOwners，不再自行硬寫階層
+    const owners = getViewableOwners(req, 'contracts');
     const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const calcStatus = (c) => {
@@ -9712,12 +9701,24 @@ async function checkOverdueReminders() {
     let changed = false;
 
     // helper：找 manager1（同 BU）
+    // 找該業務的一級主管（合約到期 / 帳款逾期要一併通知）。
+    // 優先沿 supervisor 鏈往上走到 manager1；沒設定才退回同 BU 推斷。
+    // 註：舊版只做同 BU find()，同 BU 有多位 manager1（含已停用者）時會通知到錯的人。
     function findManager1(ownerUsername) {
-      const u = auth.users.find(x => x.username === ownerUsername);
-      if (!u) return null;
-      const ownerBu = normalizeBu(u.bu);
+      const seen = new Set();
+      let cur = auth.users.find(x => x.username === ownerUsername);
+      if (!cur) return null;
+      const start = cur;
+      while (cur && cur.supervisor && !seen.has(cur.username)) {
+        seen.add(cur.username);
+        const up = auth.users.find(x => x.username === cur.supervisor);
+        if (!up) break;
+        if (up.role === 'manager1' && up.active !== false) return up.username;
+        cur = up;
+      }
+      const ownerBu = normalizeBu(start.bu);
       return auth.users.find(x =>
-        x.role === 'manager1' &&
+        x.role === 'manager1' && x.active !== false &&
         normalizeBu(x.bu).some(b => ownerBu.includes(b))
       )?.username || null;
     }
