@@ -545,10 +545,17 @@ function renderZombieSection() {
   }
 }
 
+// 屬於自己範圍的名片：排除純因 KA 跨部門共享才看得到的（_kaOnly）。
+// 公司數／名片數是「個人管理個人的」統計，只算自己的，不混入別人的 KA 名片。
+function ownScopeContacts() {
+  return allContacts.filter(c => !c._kaOnly);
+}
+
 function updateStatCards() {
-  const uniqueCompanies = new Set(allContacts.map(c => c.company).filter(Boolean)).size;
+  const mine = ownScopeContacts();
+  const uniqueCompanies = new Set(mine.map(c => c.company).filter(Boolean)).size;
   $('statCompanies').textContent = uniqueCompanies;
-  $('statContacts').textContent  = allContacts.length;
+  $('statContacts').textContent  = mine.length;
   $('statCommit').textContent    = countOppStage('A');
   $('statUpside').textContent    = countOppStage('B');
   $('statPipeline').textContent  = countOppStage('C');
@@ -558,7 +565,7 @@ function renderDashboardCharts() {
   // ── 產業圓餅圖（以公司為單位，同公司只算一次）──
   // 先建立每家公司的代表聯絡人（主要聯繫人優先，否則取第一筆）
   const companyRepMap = new Map();
-  allContacts.forEach(c => {
+  ownScopeContacts().forEach(c => {
     const key = (c.company || '').trim();
     if (!key) {
       // 無公司名稱：個人各自計入
@@ -598,9 +605,10 @@ function renderDashboardCharts() {
     { key:'B', name:'Upside',   base:'#f57c00', light:'#ffb74d', dark:'#8f3e00', rim:'#ffa040' },
     { key:'A', name:'Commit',   base:'#d32f2f', light:'#ff6b6b', dark:'#7f0000', rim:'#f05050' },
   ];
-  // 商機漏斗來源：只使用實際商機記錄（與商機推進進度一致）
+  // 商機漏斗來源：只使用實際商機記錄（與商機推進進度一致）；
+  // 排除他人的 KA 共享商機，否則會與同頁「商機推進進度」的口徑不一致
   const oppMap = {};
-  allOpportunities.forEach(o => {
+  ownScopeOpps().forEach(o => {
     if (o.stage) oppMap[o.stage] = (oppMap[o.stage] || 0) + 1;
   });
   const oppTotal = OPP_FUNNEL.reduce((s, st) => s + (oppMap[st.key] || 0), 0);
@@ -1388,9 +1396,10 @@ async function loadContacts(search = '') {
       $('prospectCompanyCount').textContent = `${cos} 家公司`;
       $('prospectContactCount').textContent = `${displayed.length} 位潛在客戶`;
     } else {
-      const uniqueCompanies = new Set(allContacts.map(c => c.company).filter(Boolean)).size;
+      const mine = ownScopeContacts();
+      const uniqueCompanies = new Set(mine.map(c => c.company).filter(Boolean)).size;
       $('companyCount2').textContent = `${uniqueCompanies} 家公司`;
-      $('contactCount2').textContent = `${allContacts.length} 位聯絡人`;
+      $('contactCount2').textContent = `${mine.length} 位聯絡人`;
     }
     updateStatCards();
     if (currentSection === null) renderDashboardCharts();
@@ -4126,9 +4135,10 @@ async function loadPipelineView() {
 }
 
 function renderKanban() {
+  // 看板每欄有金額與筆數合計 → 必須排除他人的 KA 共享商機，否則會灌進自己的數字
   let activeOpps = kanbanOwnerFilter
-    ? allOpportunities.filter(o => o.owner === kanbanOwnerFilter)
-    : allOpportunities;
+    ? ownScopeOpps().filter(o => o.owner === kanbanOwnerFilter)
+    : ownScopeOpps();
 
   // 年份篩選（Won→成交日；其他→預計簽約日；皆空→建立日）
   if (kanbanYearFilter) {
@@ -5127,7 +5137,7 @@ async function loadUserBu() {
 
 // 取得某業務某年某月的實際成交金額（從 Won 商機的 achievedDate）
 function getMonthActual(year, month, ownerFilter = '') {
-  return allOpportunities
+  return ownScopeOpps()
     .filter(o => o.stage === 'Won')
     .filter(o => !ownerFilter || o.owner === ownerFilter)
     .filter(o => {
@@ -5738,7 +5748,7 @@ function getMonthActualFinal(year, month, owner) {
 
 // 取得某業務某月的毛利實際（從 Won 商機 amount × grossMarginRate 計算）
 function getGmActual(year, month, ownerFilter) {
-  return allOpportunities
+  return ownScopeOpps()
     .filter(o => o.stage === 'Won')
     .filter(o => !ownerFilter || o.owner === ownerFilter)
     .filter(o => {
