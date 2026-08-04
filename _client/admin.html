@@ -3320,7 +3320,9 @@
       const isEdit = !!editUn;
       const role = $('fieldRole').value;
       const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
-      const isTecoPm  = role === 'tecopm';
+      // 集團範圍角色（集團PM／集團業務）以集團界定範圍、不掛 BU，BU 欄位在表單上是隱藏的，
+      // 故此處不可要求勾選（否則會出現「叫你勾但沒地方勾」的死結）
+      const isTecoPm  = ['tecopm','groupsales'].includes(role);
       const buArr = (isCrossBu || isTecoPm) ? null : getBuCheckboxes();
       if (!isCrossBu && !isTecoPm && (!buArr || buArr.length === 0)) {
         showToast('請至少勾選一個 BU');

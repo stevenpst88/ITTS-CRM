@@ -2122,12 +2122,17 @@ function getViewableOwners(req, dataType) {
     return ownerScope ? [ownerScope] : [];
   }
 
-  // 集團業務：看「viewOwnerScope 那位 + 自己 + 自己的部屬」，再由 filterByViewGroup 收斂到該集團。
-  // 自己與部屬要納入，否則自己新增的資料會看不到（可見範圍原本只綁在別人身上）。
+  // 集團業務：看「viewOwnerScope 那位 + 綁定同一集團的所有帳號 + 自己 + 部屬」，
+  // 再由 filterByViewGroup 收斂到該集團的公司。
+  //  - 自己與部屬要納入，否則自己新增的資料會看不到（可見範圍原本只綁在別人身上）
+  //  - 同集團帳號互相可見：助理要看得到主管的案子才能協助；日後加人也不必再調設定
+  //    （可「編輯」的範圍仍只有自己與部屬，見 getEditableOwners）
   if (role === 'groupsales') {
     const out = new Set([username]);
     const scope = req.session.user.viewOwnerScope;
     if (scope) out.add(scope);
+    const gid = req.session.user.viewGroupId;
+    if (gid) auth.users.forEach(u => { if (u.viewGroupId === gid) out.add(u.username); });
     if (me) collectSubtree(me, auth.users).forEach(u => out.add(u));
     return [...out];
   }
