@@ -146,6 +146,27 @@ function applyPermissions() {
     return;   // tecopm 不執行後續其他角色邏輯
   }
 
+  // ── 集團業務（groupsales）── 與集團PM 同樣只看 4 個 nav，但可新增/編輯，
+  // 故不隱藏動作按鈕。真正的權限（只能動自己與部屬的、且限該集團）由後端把關。
+  if (userPermissions.role === 'groupsales') {
+    document.body.classList.add('role-groupsales');
+    const GS_NAV_ALLOW = new Set(['navForecast', 'navPipeline', 'navContacts', 'navVisits']);
+    document.querySelectorAll('.sidebar-nav-item, .sidebar-nav-group').forEach(el => {
+      const id = el.id;
+      if (!id) return;
+      if (el.classList.contains('sidebar-nav-item') && !el.classList.contains('sidebar-nav-group-hd')) {
+        el.style.display = GS_NAV_ALLOW.has(id) ? '' : 'none';
+      } else {
+        el.style.display = 'none';
+      }
+    });
+    // 這些仍然不開放：後台、名單移轉、Excel 匯出、業績目標設定
+    ['adminPanelLink', 'exportBtn', 'forecastExportBtn', 'saveTargetBtn'].forEach(id => {
+      const el = $(id); if (el) el.style.display = 'none';
+    });
+    return;
+  }
+
   // 業績目標：只有有權限才能儲存
   const saveTargetBtn = $('saveTargetBtn');
   if (saveTargetBtn) {
@@ -3340,13 +3361,13 @@ async function initUser() {
     // 頂部工具列也顯示角色 + BU 徽章（方便快速核對權限狀態）
     const topbarBadge = document.getElementById('topbarUserBadge');
     if (topbarBadge) {
-      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）' };
+      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）', groupsales:'集團業務' };
       const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
-      // 集團PM：badge 顯示集團名稱（取代 BU 徽章）
-      if (user.role === 'tecopm') {
+      // 集團範圍角色：badge 顯示集團名稱（取代 BU 徽章）
+      if (user.role === 'tecopm' || user.role === 'groupsales') {
         const groupName = user.viewGroupName || '未設定集團';
         topbarBadge.innerHTML = `
-          <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL.tecopm}</span>
+          <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL[user.role]}</span>
           <span style="background:#6b728020;color:#6b7280;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">🔒 ${escapeHtml(groupName)}</span>`;
       } else {
         const isCross = user.role === 'admin' || user.role === 'executive';

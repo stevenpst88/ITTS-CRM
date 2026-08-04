@@ -2021,6 +2021,7 @@
             <option value="executive">董事長/總經理</option>
             <option value="admin">系統管理員</option>
             <option value="tecopm">集團PM（唯讀）</option>
+            <option value="groupsales">集團業務（可在集團內編輯）</option>
           </select>
         </div>
         <!-- 集團PM 專屬欄位（其他角色隱藏）-->
@@ -2077,7 +2078,7 @@
           function onRoleChange() {
             const role = document.getElementById('fieldRole').value;
             const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
-            const isTecoPm  = role === 'tecopm';
+            const isTecoPm  = ['tecopm','groupsales'].includes(role);   // 集團範圍角色：以集團界定，不掛 BU
             const cbs = document.querySelectorAll('#buCheckboxWrap .bu-cb');
             const hint = document.getElementById('buRequiredHint');
             const crossHint = document.getElementById('buCrossHint');
@@ -3120,12 +3121,12 @@
     }
 
     function renderUserTable() {
-      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）'};
+      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）',groupsales:'集團業務'};
       const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
       $('userTableBody').innerHTML = allUsers.map(u => {
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
         // 集團PM：顯示「依集團限制」並把 viewOwnerScope 寫上
-        const buCell = u.role === 'tecopm'
+        const buCell = ['tecopm','groupsales'].includes(u.role)
           ? `<span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px" title="只看 ${u.viewOwnerScope || '?'} 名下、且公司在指定集團內的資料">🔒 看 ${u.viewOwnerScope || '?'} ／ 集團限制</span>`
           : (buArr.length === 0
             ? `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`

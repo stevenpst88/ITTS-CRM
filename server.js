@@ -294,7 +294,7 @@ const FEATURE_REGISTRY = [
   { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
   { key: 'quotations',      label: '報價單',                icon: '📋', navId: 'navQuotations' },
 ];
-const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','marketing','user','accounting_manager','finance_manager'];
+const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','groupsales','marketing','user','accounting_manager','finance_manager'];
 const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 // 跨 BU 全公司視角的角色（不受 BU 隔離限制）
 const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
@@ -305,6 +305,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   secretary:          ['home','targets','forecast','accountingGroup','callin','yoy'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
+  groupsales:         ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
   user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
@@ -825,12 +826,30 @@ const TECOPM_ALLOWED_PATHS = new Set([
 // 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
 // （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
 const TECOPM_WRITE_EXEMPT_PATHS = new Set(['/api/user/password', '/api/logout']);
+// 集團業務（groupsales）：可讀可寫，但只在下列端點內；用前綴比對以涵蓋 /:id 子路徑
+// （PUT /api/opportunities/xxx 這種路徑不會出現在精確比對的 Set 裡）。
+// 刻意不放行 contracts / receivables / targets / poll-bundle 等：
+// 那些路由內部會用 getViewableOwners 取到 viewOwnerScope 那位業務的資料，超出本角色職掌。
+const GROUPSALES_ALLOWED_PREFIXES = [
+  '/api/me', '/api/logout', '/api/user/password',
+  '/api/opportunities', '/api/contacts', '/api/visits',
+  '/api/groups', '/api/usermap', '/api/company-lookup',
+];
 app.use((req, res, next) => {
-  if (req.session?.user?.role !== 'tecopm') return next();
+  const role = req.session?.user?.role;
+  if (!GROUP_SCOPED_ROLES.includes(role)) return next();
   if (!req.path.startsWith('/api/')) return next();
   if (TECOPM_WRITE_EXEMPT_PATHS.has(req.path)) return next(); // 改密碼/登出放行（含強制改密碼流程）
-  if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
-  if (!TECOPM_ALLOWED_PATHS.has(req.path)) return res.status(403).json({ error: '無權存取此資源' });
+
+  if (role === 'tecopm') {
+    if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
+    if (!TECOPM_ALLOWED_PATHS.has(req.path)) return res.status(403).json({ error: '無權存取此資源' });
+    return next();
+  }
+
+  // groupsales：讀寫皆可，但限於白名單端點
+  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => req.path === p || req.path.startsWith(p + '/'));
+  if (!ok) return res.status(403).json({ error: '無權存取此資源' });
   next();
 });
 
@@ -857,7 +876,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     // 集團PM 額外查詢 group 名稱（顯示在頂部 badge 用）
     let tecopmExtra = {};
-    if (role === 'tecopm') {
+    if (GROUP_SCOPED_ROLES.includes(role)) {
       const data = db.load();
       const grp = (data.groups || []).find(g => g.id === user.viewGroupId);
       tecopmExtra = {
@@ -1643,6 +1662,10 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
 const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
 // 集團PM（tecopm）= 唯讀角色，不走 BU 過濾、改用 viewOwnerScope + viewGroupId 二維過濾
 const READONLY_ROLES = ['tecopm'];
+// 以「集團」而非 BU 界定範圍的角色：一律 bu=null，改用 viewOwnerScope + viewGroupId 過濾。
+//   tecopm      集團PM   — 純唯讀
+//   groupsales  集團業務 — 可在該集團範圍內新增/修改自己與部屬的資料
+const GROUP_SCOPED_ROLES = ['tecopm', 'groupsales'];
 // 跨 BU 角色（bu 應為 null）— 定義在前面 FEATURE_REGISTRY 區塊，這裡不重新宣告
 
 // ── Admin: get all users ─────────────────────────────────
@@ -1687,7 +1710,7 @@ function validateSupervisor(users, username, supervisorInput) {
 // 校驗並回傳 finalBu（陣列）；錯誤時回傳 { error }
 function validateBuInput(role, buInput) {
   if (CROSS_BU_ROLES.includes(role)) return { bu: null }; // 跨 BU 角色一律 null
-  if (READONLY_ROLES.includes(role)) return { bu: null }; // 唯讀角色不走 BU，一律 null
+  if (GROUP_SCOPED_ROLES.includes(role)) return { bu: null }; // 集團範圍角色不走 BU，一律 null
   const arr = Array.isArray(buInput) ? buInput : (buInput ? [buInput] : []);
   const cleaned = [...new Set(arr.filter(b => VALID_BUS.includes(b)))];
   if (cleaned.length === 0) {
@@ -1714,7 +1737,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   if (supCheck.error) return res.status(400).json({ error: supCheck.error });
 
   // 集團PM 必須指定 viewOwnerScope + viewGroupId
-  if (finalRole === 'tecopm') {
+  if (GROUP_SCOPED_ROLES.includes(finalRole)) {
     if (!viewOwnerScope) return res.status(400).json({ error: '集團PM 必須指定查看的業務（viewOwnerScope）' });
     if (!viewGroupId)    return res.status(400).json({ error: '集團PM 必須指定查看的集團（viewGroupId）' });
     if (!auth.users.find(u => u.username === viewOwnerScope)) {
@@ -1742,12 +1765,12 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     createdAt: new Date().toISOString(),
     mustChangePassword: true,   // 第一次登入必須更換密碼
     supervisor: supCheck.supervisor,
-    ...(finalRole === 'tecopm' ? { viewOwnerScope, viewGroupId } : {})
+    ...(GROUP_SCOPED_ROLES.includes(finalRole) ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
-  const scopeLabel = finalRole === 'tecopm' ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
+  const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
   writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${buLabel}${scopeLabel}`, req);
   res.json({ success: true });
 });
@@ -1783,7 +1806,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   }
 
   // 集團PM 唯讀範圍欄位
-  if (effectiveRole === 'tecopm') {
+  if (GROUP_SCOPED_ROLES.includes(effectiveRole)) {
     if (viewOwnerScope !== undefined) auth.users[idx].viewOwnerScope = viewOwnerScope || null;
     if (viewGroupId    !== undefined) auth.users[idx].viewGroupId    = viewGroupId    || null;
     // 校驗（更新後值）
@@ -1799,7 +1822,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
       return res.status(400).json({ error: '指定的集團不存在' });
     }
   } else {
-    // 角色改回非 tecopm 時清掉相關欄位避免殘留
+    // 角色改為非集團範圍角色時清掉相關欄位避免殘留
     delete auth.users[idx].viewOwnerScope;
     delete auth.users[idx].viewGroupId;
   }
@@ -2099,6 +2122,16 @@ function getViewableOwners(req, dataType) {
     return ownerScope ? [ownerScope] : [];
   }
 
+  // 集團業務：看「viewOwnerScope 那位 + 自己 + 自己的部屬」，再由 filterByViewGroup 收斂到該集團。
+  // 自己與部屬要納入，否則自己新增的資料會看不到（可見範圍原本只綁在別人身上）。
+  if (role === 'groupsales') {
+    const out = new Set([username]);
+    const scope = req.session.user.viewOwnerScope;
+    if (scope) out.add(scope);
+    if (me) collectSubtree(me, auth.users).forEach(u => out.add(u));
+    return [...out];
+  }
+
   // 同 BU 判斷：viewer 的任一 BU 與目標的任一 BU 有交集
   const sameBu = u => {
     if (!myBus.length) return false;
@@ -2139,6 +2172,20 @@ function getViewableOwners(req, dataType) {
   return [username]; // 一般業務只看自己
 }
 
+// 可「編輯」的 owner 範圍 —— 與可「檢視」的範圍刻意分離。
+// 集團業務看得到 viewOwnerScope 那位業務的資料（例如 Peter），但不得修改他的，
+// 只能改自己與自己部屬建立的。其餘角色維持原本「看得到就能改」的行為
+// （對主管而言，可視範圍本來就是自己的子樹）。
+function getEditableOwners(req) {
+  const { username, role } = req.session.user;
+  if (role !== 'groupsales') return getViewableOwners(req, 'opportunities');
+  const auth = loadAuth();
+  const me = auth.users.find(u => u.username === username);
+  const out = new Set([username]);
+  if (me) collectSubtree(me, auth.users).forEach(u => out.add(u));
+  return [...out];
+}
+
 // 取得使用者所屬 BU（陣列形式，向下相容舊資料）
 function getMyBus(req) {
   const auth = loadAuth();
@@ -2166,7 +2213,7 @@ function filterByBu(req, items) {
   // 行銷非 BU 制：可見範圍已由 getViewableOwners 控管（客戶/商機=全部），不再走 BU 過濾
   if (role === 'marketing') return items;
   // 唯讀角色（tecopm）不走 BU 過濾，後續會由 filterByViewGroup() 用集團 memberCompanies 做公司過濾
-  if (READONLY_ROLES.includes(role)) return items;
+  if (GROUP_SCOPED_ROLES.includes(role)) return items;   // 集團範圍角色不受 BU 隔離
   const myBus = getMyBus(req);
   const myUsername = req.session.user.username;
   if (!myBus.length) return items.filter(it => it.owner === myUsername);
@@ -2182,7 +2229,7 @@ function filterByBu(req, items) {
 // 非 tecopm 直接放行；getCompany(item, data) 回傳該筆資料對應的公司名稱
 function filterByViewGroup(req, items, getCompany) {
   const role = req.session?.user?.role;
-  if (!READONLY_ROLES.includes(role)) return items;
+  if (!GROUP_SCOPED_ROLES.includes(role)) return items;  // 只有集團範圍角色需要集團過濾
   const gid = req.session.user.viewGroupId;
   if (!gid) return [];                         // 沒設定 group → 看不到任何資料（fail-safe）
   const data = db.load();
@@ -2194,6 +2241,26 @@ function filterByViewGroup(req, items, getCompany) {
     const co = getCompany(it, data);
     return co && allowed.has(co);
   });
+}
+
+// 集團範圍角色「寫入」時的公司檢查：公司必須屬於自己綁定的集團。
+// 這道檢查一定要在後端做——前端隱藏按鈕擋不住直接打 API，
+// 否則「限定某集團」的設定形同虛設（可建到集團外的公司上）。
+// 回傳 { error } 表示不允許；回傳 {} 表示放行（非集團範圍角色一律放行）。
+function checkGroupScopeWrite(req, companyName) {
+  const role = req.session?.user?.role;
+  if (!GROUP_SCOPED_ROLES.includes(role)) return {};
+  const gid = req.session.user.viewGroupId;
+  if (!gid) return { error: '此帳號未綁定集團，無法建立或修改資料' };
+  const data = db.load();
+  const group = (data.groups || []).find(g => g.id === gid);
+  if (!group) return { error: '綁定的集團已不存在，請聯絡管理員' };
+  const co = String(companyName || '').trim();
+  if (!co) return { error: '公司名稱為必填' };
+  if (!(group.memberCompanies || []).includes(co)) {
+    return { error: `「${co}」不屬於${group.name}，無法建立資料。若為新成立的關係企業，請先將它加入集團。` };
+  }
+  return {};
 }
 
 // 為新建資料決定 bu：若 body 給了則驗證，否則預設用建立者的第一個 BU
@@ -2210,6 +2277,8 @@ function creatorFields(req) {
 
 function resolveItemBuOnCreate(req, bodyBu) {
   const role = req.session.user.role;
+  // 集團範圍角色（集團PM／集團業務）本來就沒有 BU，其資料以集團界定範圍，不掛 BU
+  if (GROUP_SCOPED_ROLES.includes(role)) return { bu: null };
   // admin / executive 不一定有 BU，允許指定也可以為 null
   if (CROSS_BU_ROLES.includes(role)) {
     if (bodyBu && VALID_BUS.includes(bodyBu)) return { bu: bodyBu };
@@ -2651,6 +2720,8 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   }
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+  const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
+  if (gScopeC.error) return res.status(403).json({ error: gScopeC.error });
   const data = db.load();
   const contact = {
     id: uuidv4(),
@@ -2712,7 +2783,9 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const role = req.session.user.role;
   const data = db.load();
-  const idx = data.contacts.findIndex(c => c.id === req.params.id && c.owner === owner && !c.deleted);
+  // 既有角色維持「只能改自己的」；集團業務可改自己與部屬的
+  const editOwners = role === 'groupsales' ? getEditableOwners(req) : [owner];
+  const idx = data.contacts.findIndex(c => c.id === req.params.id && editOwners.includes(c.owner) && !c.deleted);
 
   // 行銷例外：可修改「任何」名片的「產業屬性」，但僅此一欄（其他欄位一律忽略）
   if (idx === -1 && role === 'marketing' && req.body.industry !== undefined) {
@@ -2818,8 +2891,9 @@ app.get('/api/groups', requireAuth, (req, res) => {
   const role = req.session.user.role;
   const data = db.load();
   if (!data.groups) data.groups = [];
-  // 集團PM（tecopm）：只能看自己 viewGroupId 對應的那一筆 group（用於前端取 memberCompanies）
-  if (role === 'tecopm') {
+  // 集團範圍角色（集團PM／集團業務）：只能看自己 viewGroupId 對應的那一筆 group
+  // （前端用它取 memberCompanies，集團業務另可據以維護成員公司）
+  if (GROUP_SCOPED_ROLES.includes(role)) {
     const gid = req.session.user.viewGroupId;
     return res.json(data.groups.filter(g => g.id === gid));
   }
@@ -2846,10 +2920,29 @@ app.post('/api/groups', requireAuth, (req, res) => {
 
 app.put('/api/groups/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
+  const role = req.session.user.role;
   const data = db.load();
   if (!data.groups) data.groups = [];
-  const idx = data.groups.findIndex(g => g.id === req.params.id && g.owner === owner);
+  // 集團業務：可維護「自己綁定的那個集團」的成員公司（新關係企業成立時要能加入），
+  // 但不得改名、也動不了其他集團 → 只放行 viewGroupId 相符者，且僅允許更新 memberCompanies。
+  const isGroupSales = role === 'groupsales';
+  const idx = data.groups.findIndex(g =>
+    g.id === req.params.id &&
+    (g.owner === owner || (isGroupSales && g.id === req.session.user.viewGroupId))
+  );
   if (idx === -1) return res.status(404).json({ error: '找不到此集團' });
+
+  if (isGroupSales && data.groups[idx].owner !== owner) {
+    const mc = req.body.memberCompanies;
+    if (!Array.isArray(mc)) return res.status(400).json({ error: '此角色僅可調整集團的成員公司' });
+    const cleaned = [...new Set(mc.map(x => String(x || '').trim()).filter(Boolean))];
+    data.groups[idx] = { ...data.groups[idx], memberCompanies: cleaned, updatedAt: new Date().toISOString() };
+    db.save(data);
+    writeLog('UPDATE_GROUP_MEMBERS', owner, data.groups[idx].name,
+      `集團成員公司調整為 ${cleaned.length} 家`, req);
+    return res.json(data.groups[idx]);
+  }
+
   const { name, taxId, industry, website, address, note, memberCompanies } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: '集團名稱為必填' });
   data.groups[idx] = {
@@ -2966,6 +3059,12 @@ app.post('/api/visits', requireAuth, (req, res) => {
       }
       _notifyOppOwner = opp.owner;   // 跨部門協作者寫日報 → 通知建立者
     }
+  }
+  // 集團範圍角色：拜訪對象所屬公司須在自己的集團內（公司由該聯絡人推得）
+  if (GROUP_SCOPED_ROLES.includes(req.session.user.role)) {
+    const _ct = (data.contacts || []).find(c => c.id === (req.body.contactId || ''));
+    const gScopeV = checkGroupScopeWrite(req, _ct ? _ct.company : req.body.company);
+    if (gScopeV.error) return res.status(403).json({ error: gScopeV.error });
   }
   const visit = {
     id: uuidv4(),
@@ -3462,6 +3561,8 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+  const gScope = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
+  if (gScope.error) return res.status(403).json({ error: gScope.error });
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
   const opp = {
@@ -3533,12 +3634,17 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   const { username, role } = req.session.user;
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
-  // 一般業務只能改自己的；主管/admin 可改其可查看範圍內的商機（owner 不變）
-  const viewable = getViewableOwners(req, 'opportunities');
+  // 一般業務只能改自己的；主管/admin 可改其可查看範圍內的商機（owner 不變）。
+  // 集團業務例外：看得到 viewOwnerScope 那位業務的商機，但只能改自己與部屬的
+  // → 故此處用「可編輯範圍」而非「可檢視範圍」。
+  const editable = getEditableOwners(req);
   const idx = data.opportunities.findIndex(o =>
-    o.id === req.params.id && viewable.includes(o.owner)
+    o.id === req.params.id && editable.includes(o.owner)
   );
   if (idx === -1) return res.status(404).json({ error: '找不到此商機' });
+  // 集團範圍角色：連改動的對象也必須落在自己的集團內（PUT 原本完全沒有集團檢查）
+  const gScopeU = checkGroupScopeWrite(req, req.body.company !== undefined ? req.body.company : data.opportunities[idx].company);
+  if (gScopeU.error) return res.status(403).json({ error: gScopeU.error });
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
@@ -3851,7 +3957,9 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
   const { deleteReason } = req.body || {};
   const data = db.load();
   if (!data.opportunities) return res.json({ success: true });
-  const opp = data.opportunities.find(o => o.id === req.params.id && o.owner === owner);
+  // 既有角色維持「只能刪自己的」；集團業務可刪自己與部屬的（主管管部屬）
+  const canDelete = req.session.user.role === 'groupsales' ? getEditableOwners(req) : [owner];
+  const opp = data.opportunities.find(o => o.id === req.params.id && canDelete.includes(o.owner));
   if (!opp) return res.status(404).json({ error: '找不到此商機' });
   // 保存到 lostOpportunities 供事後分析
   if (!data.lostOpportunities) data.lostOpportunities = [];
