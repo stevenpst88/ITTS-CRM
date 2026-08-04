@@ -2497,7 +2497,13 @@ function crossDeptKaVisible(req, data, auth, items, type) {
 function mergeKaVisible(baseList, req, data, auth, allItems, type) {
   const have = new Set(baseList.map(x => x.id));
   crossDeptKaVisible(req, data, auth, allItems, type).forEach(x => {
-    if (!have.has(x.id)) { baseList.push(x); have.add(x.id); }
+    if (have.has(x.id)) return;
+    // _kaOnly：這筆純粹因 KA 跨部門共享才看得到，不屬於檢視者自己的範圍。
+    // 前端據此把它排除在商機預算比等統計之外（KA 頁面與看板仍照常顯示）。
+    // 註：不能改用 _kaShared 判斷——那個標記另有用途（確認接手 UI），
+    //     且只在 viewerCanCrossDeptOpp 為真時才加，角色白名單不含秘書。
+    baseList.push({ ...x, _kaOnly: true });
+    have.add(x.id);
   });
   return baseList;
 }

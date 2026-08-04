@@ -5684,7 +5684,7 @@ async function loadGroups() {
 // KA 的用意是「大家都看得到公司的主要 Key Account」——所以 KA 頁面、看板照常顯示；
 // 但別部門的 KA 商機金額不可滾入本部門的商機預算比、業績統計等計算，否則數字會爆掉。
 function ownScopeOpps() {
-  return allOpportunities.filter(o => !o._kaShared);
+  return allOpportunities.filter(o => !o._kaOnly);
 }
 
 function getQuarterPipeline(year, q) {
