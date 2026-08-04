@@ -4822,19 +4822,8 @@ async function loadManagerAchievement(year) {
       const qVals = r.qVals || [0, 0, 0, 0];
       const isTeamView = r.viewMode === 'team';
       const teamHint = isTeamView ? '<span style="font-size:9px;color:#1a3c7a;background:#dbe5f7;padding:1px 5px;border-radius:6px;margin-left:4px">部屬加總</span>' : '';
-      const editBtn = (canManage && !isTeamView)
-        ? `<button class="qr-edit-btn" style="font-size:10px;padding:2px 6px;background:#f0f4ff;color:#1a3c7a;border:1px solid #c7d7fb;border-radius:4px;cursor:pointer">編輯</button>`
-        : '';
-      const editArea = (canManage && !isTeamView) ? `
-            <div class="qr-edit-area" style="display:none;margin-top:6px">
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
-                ${['Q1','Q2','Q3','Q4'].map((q,i) => `<div><div style="text-align:center;font-size:10px;color:#888;margin-bottom:2px">${q}</div><input type="number" class="qr-input" min="0" placeholder="0" value="${qVals[i]}" style="width:100%;font-size:12px;padding:3px 2px;border:1.5px solid #1a73e8;border-radius:4px;text-align:center;box-sizing:border-box"></div>`).join('')}
-              </div>
-              <div style="display:flex;gap:4px;justify-content:flex-end">
-                <button class="qr-cancel-btn" style="padding:2px 8px;font-size:11px;background:#eee;color:#555;border:none;border-radius:4px;cursor:pointer">取消</button>
-                <button class="qr-save-btn" style="padding:2px 8px;font-size:11px;background:#1a3c7a;color:#fff;border:none;border-radius:4px;cursor:pointer">儲存</button>
-              </div>
-            </div>` : '';
+      // 季度目標已改為「月度預算每 3 個月加總」的推導值，不再提供直接編輯
+      // （手動改了也會被月度預算蓋掉）。要調整請走下方「設定月度預算」。
       const budgetBtn = (canManage && !isTeamView)
         ? `<button onclick="openMbBudgetModal('${r.username}',${year})" style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>`
         : '';
@@ -4843,12 +4832,11 @@ async function loadManagerAchievement(year) {
           <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
               <span style="font-size:11px;color:#666;font-weight:600">季度目標（K）${teamHint}</span>
-              ${editBtn}
+              <span style="font-size:9px;color:#9ca3af">月度預算加總</span>
             </div>
             <div class="qr-display" style="display:flex;gap:3px">
               ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
             </div>
-            ${editArea}
           </div>
           ${budgetBtn}
         </div>` : '';
@@ -4898,11 +4886,12 @@ async function loadManagerAchievement(year) {
 
     // 後序遍歷計算 qVals。注意：一律遞迴走訪子節點（不能因為節點自己不加總就停下來，
     // 否則一級主管的加總會漏掉「二級主管底下的業務」這層孫節點）。
-    // 顯示值：viewMode==='team'（一級主管）= 整個子樹加總；其餘 = 本人配比。
+    // 顯示值：viewMode==='team'（一級主管）= 整個子樹加總；其餘 = 本人季度目標。
     // 回傳值：一律回「本人 + 子樹」，供上層加總使用。
     function computeQVals(node) {
-      const ratios = getUserRatios(node.username, year);
-      const own = [0,1,2,3].map(i => ratios ? Math.round(ratios[i] || 0) : 0);
+      // 季度目標＝月度預算每 3 個月一季加總（與預測頁、月度計畫表同一套算法）。
+      // 沒有月度預算的人才退回舊的季度配比，避免既有資料歸零。
+      const own = quarterFromMonthlyBudget(node.username, year);
       const childSum = [0, 0, 0, 0];
       node.children.forEach(c => {
         const cQ = computeQVals(c);
@@ -4997,47 +4986,8 @@ async function loadManagerAchievement(year) {
       });
     });
 
-    // ── Inline 編輯：季度目標（秘書 / Admin）──
-    if (canManage) {
-      container.querySelectorAll('.qr-row').forEach(row => {
-        const username = row.dataset.user;
-        const yr = parseInt(row.dataset.year);
-        const display = row.querySelector('.qr-display');
-        const editArea = row.querySelector('.qr-edit-area');
-        const editBtn = row.querySelector('.qr-edit-btn');
-        const saveBtn = row.querySelector('.qr-save-btn');
-        const cancelBtn = row.querySelector('.qr-cancel-btn');
-
-        editBtn.addEventListener('click', () => {
-          display.style.display = 'none';
-          editArea.style.display = '';
-          editBtn.style.display = 'none';
-        });
-
-        cancelBtn.addEventListener('click', () => {
-          display.style.display = '';
-          editArea.style.display = 'none';
-          editBtn.style.display = '';
-        });
-
-        saveBtn.addEventListener('click', async () => {
-          const inputs = editArea.querySelectorAll('.qr-input');
-          const ratiosNew = Array.from(inputs).map(inp => parseFloat(inp.value) || 0);
-          saveBtn.disabled = true; saveBtn.textContent = '…';
-          try {
-            const res = await fetch(`${API}/settings/user-quarter-ratios`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username, year: yr, ratios: ratiosNew }),
-            });
-            if (!res.ok) { const e = await res.json(); showToast(e.error || '儲存失敗'); saveBtn.disabled = false; saveBtn.textContent = '儲存'; return; }
-            showToast('✅ 季度目標已更新');
-            await loadUserQuarterRatios();
-            loadManagerAchievement(yr);
-          } catch { showToast('儲存失敗，請重試'); saveBtn.disabled = false; saveBtn.textContent = '儲存'; }
-        });
-      });
-    }
+    // 季度目標已改為月度預算的推導值，不再有 inline 編輯（原本的 .qr-edit-btn 綁定已移除）。
+    // 要調整季度目標請改月度預算：卡片下方「📆 設定月度預算」。
 
   } catch (e) {
     console.error('loadManagerAchievement error', e);
@@ -5126,6 +5076,22 @@ function getUserRatios(username, year) {
     if (r) return r;
   }
   return allQuarterRatios[year] || allQuarterRatios[yStr] || null;
+}
+
+// 季度目標的統一算法：月度預算「每 3 個月一季」加總。
+// 這是系統的正解——預測頁、月度計畫表、一級主管個人季度卡都用這套。
+// 沒有月度預算的人才退回舊的季度配比，避免既有資料一改就歸零。
+function quarterFromMonthlyBudget(username, year) {
+  const q = [0, 0, 0, 0];
+  const budget = (allMonthlyBudgets || []).find(b => b.owner === username && b.year === year);
+  if (budget && Array.isArray(budget.months)) {
+    for (let qi = 0; qi < 4; qi++) {
+      for (let m = 0; m < 3; m++) q[qi] += parseFloat(budget.months[qi * 3 + m]) || 0;
+    }
+  }
+  if (q.some(v => v)) return q.map(v => Math.round(v));
+  const ratios = getUserRatios(username, year);
+  return [0, 1, 2, 3].map(i => (ratios ? Math.round(ratios[i] || 0) : 0));
 }
 
 async function loadOprRange() {
@@ -5913,13 +5879,13 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     qRatioDisplay = qTargets.map(v => totalQ > 0 ? Math.round(v / totalQ * 100) : 0);
     if (!totalQ) { wrap.style.display = 'none'; return; }
   } else {
-    // 一般業務 / manager2：使用個人季度目標金額（若無則用全域預設）
+    // 一般業務 / manager2：同樣以月度預算每 3 個月加總為準（與一級主管、預測頁一致），
+    // 沒有月度預算才退回舊的季度配比
     const myUsername = window._myUsername || '';
-    const ratios = getUserRatios(myUsername, year);
-    if (!ratios) { wrap.style.display = 'none'; return; }
-    qTargets = ratios.map(r => Math.round(r || 0));
+    qTargets = quarterFromMonthlyBudget(myUsername, year);
     const totalAmt = qTargets.reduce((s, v) => s + v, 0);
-    qRatioDisplay = qTargets.map(v => totalAmt > 0 ? Math.round(v / totalAmt * 100) : 0);
+    if (!totalAmt) { wrap.style.display = 'none'; return; }
+    qRatioDisplay = qTargets.map(v => Math.round(v / totalAmt * 100));
   }
 
   wrap.style.display = '';
