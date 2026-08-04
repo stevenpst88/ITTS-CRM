@@ -7,8 +7,10 @@
  *                          → network-first，失敗時回 cache，最後 fallback offline
  *   - /sw.js, /manifest.webmanifest
  *                          → network-only（避免 cache 自身造成升級問題）
- *   - 其他靜態（CSS / JS / 圖片 / 字型）
- *                          → stale-while-revalidate
+ *   - JS / CSS              → network-first（離線才退回快取）
+ *                            理由：HTML 是 network-first，程式碼若吃舊快取會新舊錯配；
+ *                            本系統資料全靠 API、本來就需連線。
+ *   - 圖片 / 字型等其他靜態  → stale-while-revalidate
  *
  * 升級流程：
  *   - 改 SW_VERSION 觸發新版本
@@ -16,7 +18,9 @@
  *   - 客戶端可 postMessage({type:'SKIP_WAITING'}) 強制接管
  */
 
-const SW_VERSION = 'itts-crm-v2';
+// ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
+//    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
+const SW_VERSION = 'itts-crm-v3';
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
@@ -66,6 +70,10 @@ function isNetworkOnly(url) {
   );
 }
 
+function isAppCode(url) {
+  return /\.(js|css)$/i.test(url.pathname);
+}
+
 function isHtmlRequest(request, url) {
   if (request.mode === 'navigate') return true;
   if (request.destination === 'document') return true;
@@ -90,6 +98,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // JS / CSS 一律 network-first：HTML 本來就是 network-first，若程式碼還吃舊快取
+  // 會造成「新 HTML 配舊 JS」的錯配。本系統資料全靠 API、本來就需連線，
+  // 保留舊程式碼備用的價值遠低於版本錯配的風險。
+  if (isAppCode(url)) {
+    event.respondWith(networkFirstCode(request));
+    return;
+  }
+
+  // 圖片 / 字型等：維持 stale-while-revalidate（幾乎不變，快取價值高）
   event.respondWith(staleWhileRevalidate(request));
 });
 
@@ -108,6 +125,20 @@ async function networkFirstHtml(request) {
         '<h2>📡 網路連線中斷</h2><p>請確認連線後重新整理。</p></body>',
       { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
     );
+  }
+}
+
+// 程式碼用：優先取網路最新版；離線時才退回快取（仍保有離線可用性）
+async function networkFirstCode(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const fresh = await fetch(request);
+    if (fresh && fresh.ok) cache.put(request, fresh.clone());
+    return fresh;
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw err;
   }
 }
 
