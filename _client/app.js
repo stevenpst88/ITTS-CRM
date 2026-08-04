@@ -413,8 +413,8 @@ function buildLegendHTML(labels, data, colors, unit = '家') {
 }
 
 function countOppStage(stage) {
-  // 只統計商機記錄中的等級（不含名片的 opportunityStage 欄位）
-  return allOpportunities.filter(o => o.stage === stage).length;
+  // 只統計商機記錄中的等級（不含名片的 opportunityStage 欄位）；KA 跨部門共享不計入
+  return ownScopeOpps().filter(o => o.stage === stage).length;
 }
 
 // ── 生日提醒 ──────────────────────────────────────────────
@@ -711,7 +711,7 @@ function renderDashboardCharts() {
   if (pipelineCols) {
     pipelineCols.innerHTML = '';
     DASH_STAGES.forEach(({ key, name, cls }) => {
-      const stageOpps = allOpportunities.filter(o => o.stage === key);
+      const stageOpps = ownScopeOpps().filter(o => o.stage === key);
       const total = stageOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
       const col = document.createElement('div');
       col.className = `dash-pipeline-col ${cls}`;
@@ -4889,9 +4889,9 @@ async function loadManagerAchievement(year) {
     // 顯示值：viewMode==='team'（一級主管）= 整個子樹加總；其餘 = 本人季度目標。
     // 回傳值：一律回「本人 + 子樹」，供上層加總使用。
     function computeQVals(node) {
-      // 季度目標＝月度預算每 3 個月一季加總（與預測頁、月度計畫表同一套算法）。
-      // 沒有月度預算的人才退回舊的季度配比，避免既有資料歸零。
-      const own = quarterFromMonthlyBudget(node.username, year);
+      // 卡片式季度呈現一律用「季度考核目標」（Admin 直接輸入的 K），
+      // 與月度營運預算脫鉤、互不覆蓋；未設定即顯示 0。
+      const own = quarterTargetOf(node.username, year);
       const childSum = [0, 0, 0, 0];
       node.children.forEach(c => {
         const cQ = computeQVals(c);
@@ -5078,9 +5078,18 @@ function getUserRatios(username, year) {
   return allQuarterRatios[year] || allQuarterRatios[yStr] || null;
 }
 
-// 季度目標的統一算法：月度預算「每 3 個月一季」加總。
-// 這是系統的正解——預測頁、月度計畫表、一級主管個人季度卡都用這套。
-// 沒有月度預算的人才退回舊的季度配比，避免既有資料一改就歸零。
+// ── 三層目標各司其職，互不覆蓋 ──────────────────────────────
+//   data.targets        年度考核目標（業績目標頁設定）
+//   userQuarterRatios   季度考核目標（Admin →「季度業績配比設定」直接輸入 K）← 本函式
+//   monthlyBudgets      月度營運預算（各卡片「📆 設定月度預算」，供月報表用）
+// 季度考核目標未設定即為 0，不會退回月度預算或全域百分比。
+function quarterTargetOf(username, year) {
+  const rec = allUserQuarterRatios[username];
+  const r = rec && (rec[year] || rec[String(year)]);
+  return [0, 1, 2, 3].map(i => (r ? Math.round(r[i] || 0) : 0));
+}
+
+// 月度營運預算每 3 個月加總（月報表／一級主管年度目標用，非考核季度目標）
 function quarterFromMonthlyBudget(username, year) {
   const q = [0, 0, 0, 0];
   const budget = (allMonthlyBudgets || []).find(b => b.owner === username && b.year === year);
@@ -5089,9 +5098,7 @@ function quarterFromMonthlyBudget(username, year) {
       for (let m = 0; m < 3; m++) q[qi] += parseFloat(budget.months[qi * 3 + m]) || 0;
     }
   }
-  if (q.some(v => v)) return q.map(v => Math.round(v));
-  const ratios = getUserRatios(username, year);
-  return [0, 1, 2, 3].map(i => (ratios ? Math.round(ratios[i] || 0) : 0));
+  return q.map(v => Math.round(v));
 }
 
 async function loadOprRange() {
@@ -5673,10 +5680,17 @@ async function loadGroups() {
 // 商機預算比的分子：該季度「預計簽約日」落在這季的商機總額
 // 涵蓋：A/B/C/D/Won 五個 stage（依預計簽約日歸屬於該季度即計入）
 // 排除：已刪除 (lostOpportunities，allOpportunities 本身就不含)
+// 歸屬於自己（或自己部門）的商機：排除 KA 跨部門共享的那些。
+// KA 的用意是「大家都看得到公司的主要 Key Account」——所以 KA 頁面、看板照常顯示；
+// 但別部門的 KA 商機金額不可滾入本部門的商機預算比、業績統計等計算，否則數字會爆掉。
+function ownScopeOpps() {
+  return allOpportunities.filter(o => !o._kaShared);
+}
+
 function getQuarterPipeline(year, q) {
   const qStart = (q - 1) * 3 + 1;
   const qEnd   = q * 3;
-  return allOpportunities
+  return ownScopeOpps()
     .filter(o => ['A', 'B', 'C', 'D', 'Won'].includes(o.stage))
     .filter(o => {
       if (!o.expectedDate) return false;
@@ -5692,7 +5706,7 @@ function getQuarterPipelineForOwner(year, q, owner) {
   if (!owner) return 0;
   const qStart = (q - 1) * 3 + 1;
   const qEnd   = q * 3;
-  return allOpportunities
+  return ownScopeOpps()
     .filter(o => o.owner === owner)
     .filter(o => ['A', 'B', 'C', 'D', 'Won'].includes(o.stage))
     .filter(o => {
@@ -5785,7 +5799,7 @@ function getQuarterAchieved(year, q, isManager1Mode, ownerForUser) {
 }
 
 function getAchievedAmount(year) {
-  return allOpportunities
+  return ownScopeOpps()
     .filter(o => o.stage === 'Won')
     .filter(o => {
       const y = o.achievedDate ? new Date(o.achievedDate).getFullYear()
@@ -5802,7 +5816,10 @@ function updateTargetCard() {
   const myUsername = window._myUsername || '';
   const isM1 = window._myRole === 'manager1';
   const isExec = window._myRole === 'executive';
-  const isAggregator = isM1 || isExec;
+  // 秘書自己不背業績，看的是「所屬部門」的彙總（等同該部門一級主管看到的數字）。
+  // 秘書的可見範圍本來就是同 BU 的業務/主管，所以用同一套彙總邏輯即可。
+  const isSecretary = window._myRole === 'secretary';
+  const isAggregator = isM1 || isExec || isSecretary;
   let achieved = 0;
   if (isAggregator) {
     // 一級主管 / 董事長/總經理：只彙總有手動認列的部屬（不再 fallback Won）
@@ -5815,8 +5832,8 @@ function updateTargetCard() {
   }
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' K';
 
-  if (window._myRole === 'manager1' || window._myRole === 'executive') {
-    // 一級主管 / 董事長/總經理：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
+  if (isAggregator) {
+    // 一級主管 / 董事長總經理 / 秘書：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
     const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
     const totalAmount = budgetRecs.reduce(function(sum, b) {
       return sum + b.months.reduce(function(s, v) { return s + (v || 0); }, 0);
@@ -5863,30 +5880,22 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
   let qTargets; // [q1, q2, q3, q4] 各季目標金額
   let qRatioDisplay; // [q1%, q2%, q3%, q4%] 用於顯示的配比數字
 
+  // 卡片式季度呈現一律使用「季度考核目標」（Admin 直接輸入的 K），與月度營運預算脫鉤。
   if (isManager1Mode) {
-    // 一級主管：各季目標 = 直接從月度預算各月加總（Q1=1-3月, Q2=4-6月, etc.）
+    // 一級主管 / 秘書：彙總可見部屬的季度考核目標（排除自己）
     const myU = window._myUsername || '';
     qTargets = [0, 0, 0, 0];
-    allMonthlyBudgets.filter(b => b.year === year && b.owner !== myU).forEach(b => {
-      for (let q = 0; q < 4; q++) {
-        for (let m = 0; m < 3; m++) {
-          qTargets[q] += b.months[q * 3 + m] || 0;
-        }
-      }
+    Object.keys(allUserQuarterRatios || {}).forEach(u => {
+      if (u === myU) return;
+      const t = quarterTargetOf(u, year);
+      for (let q = 0; q < 4; q++) qTargets[q] += t[q];
     });
-    // 顯示各季佔總目標的百分比
-    const totalQ = qTargets.reduce((s, v) => s + v, 0);
-    qRatioDisplay = qTargets.map(v => totalQ > 0 ? Math.round(v / totalQ * 100) : 0);
-    if (!totalQ) { wrap.style.display = 'none'; return; }
   } else {
-    // 一般業務 / manager2：同樣以月度預算每 3 個月加總為準（與一級主管、預測頁一致），
-    // 沒有月度預算才退回舊的季度配比
-    const myUsername = window._myUsername || '';
-    qTargets = quarterFromMonthlyBudget(myUsername, year);
-    const totalAmt = qTargets.reduce((s, v) => s + v, 0);
-    if (!totalAmt) { wrap.style.display = 'none'; return; }
-    qRatioDisplay = qTargets.map(v => Math.round(v / totalAmt * 100));
+    qTargets = quarterTargetOf(window._myUsername || '', year);
   }
+  const totalQ = qTargets.reduce((s, v) => s + v, 0);
+  qRatioDisplay = qTargets.map(v => (totalQ > 0 ? Math.round(v / totalQ * 100) : 0));
+  if (!totalQ) { wrap.style.display = 'none'; return; }
 
   wrap.style.display = '';
   const now = new Date();
@@ -5949,7 +5958,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
           <div class="q-label">${label}</div>
           <div class="q-months">${months[i]}</div>
         </div>
-        <div class="q-ratio-badge" title="該季目標佔年度總目標的配比">配比 ${ratio}%</div>
+        <div class="q-ratio-badge" title="該季佔全年目標的比重（由月度預算加總推得，非可設定的配比）">佔 ${ratio}%</div>
       </div>
       <div class="q-nums">
         <div class="q-row">
@@ -6009,7 +6018,7 @@ async function loadTargetsView() {
         const note = document.createElement('div');
         note.id = 'manager1TargetNote';
         note.style.cssText = 'background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#1e40af;line-height:1.6';
-        note.innerHTML = `<strong>📋 一級主管的年度業績目標</strong>由所有部屬（二級主管 + 業務）的年度目標<strong>自動加總</strong>，無需手動設定。<br>請至後台「📅 季度業績配比設定」為各業務員設定個別的季度配比。`;
+        note.innerHTML = `<strong>📋 一級主管的年度業績目標</strong>由所有部屬（二級主管 + 業務）的月度預算<strong>自動加總</strong>，無需手動設定。<br>季度目標則由月度預算每 3 個月加總得出；要調整請至各業務卡片的「📆 設定月度預算」。`;
         targetSetCard.parentNode.insertBefore(note, targetSetCard);
       }
     } else if (window._myRole === 'secretary') {
@@ -6460,7 +6469,7 @@ function initForecastStageMultiSel() {
 function getForecastOpps(year) {
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
 
-  return allOpportunities.filter(o => {
+  return ownScopeOpps().filter(o => {
     if (!o.expectedDate) return false;
     if (o.stage === 'D') return false;          // D 階段不納入銷售預測
     if (new Date(o.expectedDate).getFullYear() !== year) return false;
@@ -6873,7 +6882,7 @@ function renderForecastQuarterPanel(username) {
             <div class="q-label">${labels[i]}</div>
             <div class="q-months">${months[i]}</div>
           </div>
-          <div class="q-ratio-badge" title="該季目標佔年度總目標的配比">配比 ${ratio}%</div>
+          <div class="q-ratio-badge" title="該季佔全年目標的比重（由月度預算加總推得，非可設定的配比）">佔 ${ratio}%</div>
         </div>
         <div class="q-nums">
           <div class="q-row">
