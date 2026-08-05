@@ -4712,6 +4712,7 @@ $('oppEditDelete').addEventListener('click', () => {
   $('oppDeleteProduct').value = product;
   $('oppDeleteReasonSel').value = '';
   $('oppDeleteReasonNote').value = '';
+  $('oppDeleteReasonNote').placeholder = '補充說明（選填）';
   $('oppDeleteModal').classList.add('open');
 });
 
@@ -4720,11 +4721,21 @@ function closeOppDeleteModal() {
 }
 $('oppDeleteClose').addEventListener('click', closeOppDeleteModal);
 $('oppDeleteCancel').addEventListener('click', closeOppDeleteModal);
+// 選「其他」時，說明欄提示改為必填（實際擋在送出時與後端）
+$('oppDeleteReasonSel').addEventListener('change', function () {
+  $('oppDeleteReasonNote').placeholder =
+    this.value === '其他' ? '選「其他」請務必說明流失原因（必填）' : '補充說明（選填）';
+});
 
 $('oppDeleteConfirm').addEventListener('click', async () => {
   const reasonSel  = $('oppDeleteReasonSel').value.trim();
   const reasonNote = $('oppDeleteReasonNote').value.trim();
   if (!reasonSel) { alert('請選擇刪除原因'); return; }
+  if (reasonSel === '其他' && !reasonNote) {
+    alert('選擇「其他」時，請於下方補充說明流失原因');
+    $('oppDeleteReasonNote').focus();
+    return;
+  }
   const deleteReason = reasonNote ? `${reasonSel}：${reasonNote}` : reasonSel;
   const id = $('oppEditId').value;
   try {

@@ -3979,6 +3979,12 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
 app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const { deleteReason } = req.body || {};
+  // 防呆：選「其他」為刪除原因時必須補充說明（deleteReason 格式為「類別：說明」）
+  const _rCat  = String(deleteReason || '').split('：')[0].trim();
+  const _rNote = String(deleteReason || '').split('：').slice(1).join('：').trim();
+  if (_rCat === '其他' && !_rNote) {
+    return res.status(400).json({ error: '選擇「其他」為刪除原因時，請補充說明' });
+  }
   const data = db.load();
   if (!data.opportunities) return res.json({ success: true });
   // 既有角色維持「只能刪自己的」；集團業務可刪自己與部屬的（主管管部屬）
