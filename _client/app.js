@@ -1855,6 +1855,8 @@ function openProductLineModal(c) {
       <div class="product-line-options">
         <button class="pl-btn pl-erp" data-pl="ERP">ERP</button>
         <button class="pl-btn pl-its" data-pl="ITS">ITS</button>
+        <button class="pl-btn pl-crm" data-pl="CRM">CRM</button>
+        <button class="pl-btn pl-mdm" data-pl="MDM">MDM</button>
       </div>
       <button class="pl-cancel">取消</button>
     </div>`;
@@ -4361,6 +4363,8 @@ async function promptConvertToCustomer(opp) {
       <div class="product-line-options">
         <button class="pl-btn pl-erp" data-pl="ERP">ERP 客戶</button>
         <button class="pl-btn pl-its" data-pl="ITS">ITS 客戶</button>
+        <button class="pl-btn pl-crm" data-pl="CRM">CRM 客戶</button>
+        <button class="pl-btn pl-mdm" data-pl="MDM">MDM 客戶</button>
       </div>
       <button class="pl-cancel">稍後再設定</button>
     </div>`;

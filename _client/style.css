@@ -1805,7 +1805,7 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 }
 .product-line-title { font-size: 18px; font-weight: 700; color: #1a2d52; margin-bottom: 8px; }
 .product-line-sub { font-size: 13px; color: #888; margin-bottom: 24px; }
-.product-line-options { display: flex; gap: 16px; justify-content: center; margin-bottom: 20px; }
+.product-line-options { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 20px; }
 .pl-btn {
   padding: 14px 32px; border: none; border-radius: 10px;
   font-size: 16px; font-weight: 700; cursor: pointer;
@@ -1814,6 +1814,8 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 .pl-btn:hover { transform: translateY(-2px); opacity: 0.9; }
 .pl-erp { background: linear-gradient(135deg, #1a73e8, #1558b0); color: #fff; }
 .pl-its { background: linear-gradient(135deg, #34a853, #1e7e34); color: #fff; }
+.pl-crm { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: #fff; }
+.pl-mdm { background: linear-gradient(135deg, #e37400, #b35a00); color: #fff; }
 .pl-cancel {
   background: none; border: 1px solid #ddd; border-radius: 8px;
   padding: 8px 24px; font-size: 14px; color: #666; cursor: pointer;
