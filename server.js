@@ -303,7 +303,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   executive:          ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
   manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  secretary:          ['home','targets','forecast','accountingGroup','callin','yoy'],
+  secretary:          ['home','managerHome','targets','forecast','accountingGroup','callin','yoy'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   groupsales:         ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
@@ -9261,7 +9261,7 @@ function getOwnerOptions(req) {
 app.get('/api/manager-home', requireAuth, (req, res) => {
   try {
     const role = req.session.user.role;
-    if (!['manager1','manager2','admin','executive'].includes(role)) {
+    if (!['manager1','manager2','admin','executive','secretary'].includes(role)) {
       return res.status(403).json({ error: '權限不足' });
     }
     const yearNum = parseInt(req.query.year) || new Date().getFullYear();
@@ -9286,12 +9286,12 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     // ── 1. 業績達成度 ──
     // manager1：目標來自月度預算收入金額加總（排除自身）；admin/executive 也排除任何 manager1
     let totalTarget;
-    if (role === 'manager1') {
-      const mgr1Self = req.session.user.username;
+    if (role === 'manager1' || role === 'secretary') {
+      // 秘書代看＝比照該 BU 的一級主管：月度預算收入加總、排除所有 manager1 自身記錄
       totalTarget = (data.monthlyBudgets || [])
-        .filter(b => b.year === yearNum && owners.includes(b.owner) && b.owner !== mgr1Self)
+        .filter(b => b.year === yearNum && owners.includes(b.owner) && !isManager1User(b.owner))
         .reduce((sum, b) => sum + b.months.reduce((s, v) => s + (v || 0), 0), 0);
-      // 若無月度預算資料，fallback 到 targets（已排除自身）
+      // 若無月度預算資料，fallback 到 targets（已排除所有 manager1）
       if (!totalTarget) totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
     } else {
       totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
