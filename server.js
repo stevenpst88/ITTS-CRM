@@ -1685,7 +1685,9 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     viewOwnerScope: u.viewOwnerScope || null,
     viewGroupId:    u.viewGroupId    || null,
     // 直屬主管（組織階層；空值 = 頂層或未設定）
-    supervisor:     u.supervisor     || ''
+    supervisor:     u.supervisor     || '',
+    // 唯讀掛名主管（業績由部屬彙總，不計本人）——供帳號編輯器勾選框回填
+    pureSupervisor: !!u.pureSupervisor
   }));
   res.json(users);
 });
