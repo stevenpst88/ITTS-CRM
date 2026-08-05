@@ -2055,6 +2055,13 @@
           </select>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">決定業績達成率的組織樹與歸屬。未設定者沿用「同 BU 自動推斷」（同 BU 有多位同級主管時會歸錯人，建議明確指定）。</div>
         </div>
+        <div class="form-group" id="pureSupervisorFieldGroup">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
+            <input type="checkbox" id="fieldPureSupervisor" style="width:16px;height:16px">
+            <span>唯讀掛名主管（業績由部屬彙總，不計本人）</span>
+          </label>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">勾選後：此帳號在「業績達成率」不列入自己名下數字，卡片改為即時彙總其部屬；上層主管加總時也只算其部屬一次，不重複。適用「掛名主管、實際業務由部屬執行」的情形。</div>
+        </div>
         <div class="form-group">
           <label>狀態</label>
           <select id="fieldActive">
@@ -3272,6 +3279,7 @@
       $('fieldActive').value = 'true';
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
+      $('fieldPureSupervisor').checked = false;
       // Phase 3：accessMode 預設 edit
       const accEdit = document.querySelector('input[name="fieldAccessMode"][value="edit"]');
       if (accEdit) accEdit.checked = true;
@@ -3298,6 +3306,7 @@
       $('fieldActive').value = u.active ? 'true' : 'false';
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
+      $('fieldPureSupervisor').checked = !!u.pureSupervisor;
       // Phase 3：載入 accessMode
       const accVal = (u.accessMode === 'view') ? 'view' : 'edit';
       const accRadio = document.querySelector(`input[name="fieldAccessMode"][value="${accVal}"]`);
@@ -3348,6 +3357,7 @@
         canSetTargets: $('fieldCanTargets').checked,
         accessMode,
         supervisor: $('fieldSupervisor').value || '',
+        pureSupervisor: $('fieldPureSupervisor').checked,
         ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
       try {

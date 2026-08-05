@@ -1722,7 +1722,7 @@ function validateBuInput(role, buInput) {
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets,
-          accessMode, viewOwnerScope, viewGroupId, supervisor } = req.body;
+          accessMode, viewOwnerScope, viewGroupId, supervisor, pureSupervisor } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
@@ -1765,6 +1765,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     createdAt: new Date().toISOString(),
     mustChangePassword: true,   // 第一次登入必須更換密碼
     supervisor: supCheck.supervisor,
+    pureSupervisor: !!pureSupervisor,
     ...(GROUP_SCOPED_ROLES.includes(finalRole) ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
@@ -1781,7 +1782,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
   const { displayName, role, bu, canDownloadContacts, canSetTargets, active,
-          accessMode, viewOwnerScope, viewGroupId, supervisor } = req.body;
+          accessMode, viewOwnerScope, viewGroupId, supervisor, pureSupervisor } = req.body;
   if (supervisor !== undefined) {
     const supCheck = validateSupervisor(auth.users, req.params.username, supervisor);
     if (supCheck.error) return res.status(400).json({ error: supCheck.error });
@@ -1797,6 +1798,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   }
   if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
+  if (pureSupervisor !== undefined)      auth.users[idx].pureSupervisor = !!pureSupervisor;
   if (active !== undefined)             auth.users[idx].active = !!active;
   // Phase 3：存取模式（admin 永遠 edit）
   if (effectiveRole === 'admin') {
@@ -3151,18 +3153,27 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
   const yearStart = new Date(year, 0, 1);
   const yearEnd   = new Date(year, 11, 31, 23, 59, 59);
 
-  // 建構一筆 row。只有一級主管是「部屬加總」，其餘（含二級主管）一律顯示本人業績，
+  // 唯讀掛名主管（pureSupervisor，例：Kane）：本身不背業績，業績達成率一律由部屬即時彙總，
+  // 其名下若有殘留的鏡射目標/實績記錄一律不計，避免上層主管加總時重複疊加。
+  const pureSupervisors = new Set(auth.users.filter(x => x.pureSupervisor).map(x => x.username));
+
+  // 建構一筆 row。一級主管與唯讀掛名主管是「部屬加總」，其餘（含二級主管）一律顯示本人業績，
   // 底下的人各自有節點，要看整條線的總和由樹狀層級呈現即可。
   function buildRow(u) {
     const effRole = u.role;
     const uBus = normalizeBu(u.bu);
 
-    // 一級主管：整棵子樹（含二級主管底下的業務）
-    const uSubordinates = effRole === 'manager1' ? collectSubtree(u, auth.users) : [];
+    // 一級主管、或唯讀掛名主管：彙總整棵子樹（含二級主管底下的業務）
+    const isPure  = pureSupervisors.has(u.username);
+    const rollsUp = effRole === 'manager1' || isPure;
+    // 子樹（不含自己），並排除所有 pureSupervisor 自身記錄，避免祖先重複疊加
+    const uSubordinates = rollsUp
+      ? collectSubtree(u, auth.users).filter(name => !pureSupervisors.has(name))
+      : [];
 
     // 目標：依角色決定加總範圍
     let targetAmount;
-    if (effRole === 'manager1') {
+    if (rollsUp) {
       targetAmount = (data.targets || [])
         .filter(t => t.year === year && uSubordinates.includes(t.owner))
         .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0) || null;
@@ -3173,8 +3184,11 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     }
     const target = targetAmount !== null ? { amount: targetAmount } : null;
 
-    // 此列要統計的 owner 範圍
-    const rowOwners = (effRole === 'manager1') ? [u.username, ...uSubordinates] : [u.username];
+    // 此列要統計的 owner 範圍：
+    //  一級主管＝本人＋子樹；唯讀掛名主管＝只有子樹（自己的鏡射記錄不計）；其餘＝本人
+    const rowOwners = rollsUp
+      ? (isPure ? [...uSubordinates] : [u.username, ...uSubordinates])
+      : [u.username];
 
     const myOpps = (data.opportunities || []).filter(o => {
       if (!rowOwners.includes(o.owner)) return false;
@@ -3212,9 +3226,9 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
     const targetAmt = target ? (parseFloat(target.amount) || 0) : 0;
     const rate = targetAmt > 0 ? Math.round(achieved / targetAmt * 100) : null;
 
-    // viewMode 只影響「是否為部屬加總」：僅一級主管是加總，二級主管顯示本人業績。
+    // viewMode 只影響「是否為部屬加總」：一級主管與唯讀掛名主管是加總，其餘二級主管顯示本人業績。
     // rowKey 則以角色決定錨點——主管一律用 :team，部屬的 parentRowKey 才有固定對象可指。
-    const viewMode = (effRole === 'manager1') ? 'team' : 'individual';
+    const viewMode = (effRole === 'manager1' || isPure) ? 'team' : 'individual';
     const rowKey   = (effRole === 'manager1' || effRole === 'manager2')
       ? `${u.username}:team` : `${u.username}:individual`;
     return {
@@ -3222,7 +3236,8 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       displayName: u.displayName || u.username,
       role:        effRole,
       actualRole:  u.role,        // 原始角色（給前端參考；不影響顯示）
-      viewMode,                   // 'team' = 部屬加總（僅一級主管），'individual' = 本人業績
+      viewMode,                   // 'team' = 部屬加總（一級主管或唯讀掛名主管），'individual' = 本人業績
+      pureSupervisor: isPure,     // 前端季度加總用：唯讀掛名主管自身季度目標不計
       rowKey,
       target:      targetAmt,
       achieved,

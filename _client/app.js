@@ -4922,13 +4922,16 @@ async function loadManagerAchievement(year) {
     function computeQVals(node) {
       // 卡片式季度呈現一律用「季度考核目標」（Admin 直接輸入的 K），
       // 與月度營運預算脫鉤、互不覆蓋；未設定即顯示 0。
-      const own = quarterTargetOf(node.username, year);
+      // 唯讀掛名主管（pureSupervisor）自身季度目標一律不計（可能是鏡射殘值），
+      // 其卡片與回傳值一律由部屬彙總，避免祖先重複疊加。
+      const isPure = !!node.pureSupervisor;
+      const own = isPure ? [0, 0, 0, 0] : quarterTargetOf(node.username, year);
       const childSum = [0, 0, 0, 0];
       node.children.forEach(c => {
         const cQ = computeQVals(c);
         for (let i = 0; i < 4; i++) childSum[i] += cQ[i] || 0;
       });
-      node.qVals = (node.viewMode === 'team')
+      node.qVals = (node.viewMode === 'team' || isPure)
         ? childSum.map(v => Math.round(v))
         : own;
       return [0,1,2,3].map(i => own[i] + childSum[i]);
