@@ -5330,6 +5330,25 @@ function renderMonthBudgetCard() {
   const canEditActuals = ['admin', 'secretary'].includes(role);
   const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
+  // 月度認列格子格式化：負數以紅色括號呈現（會計慣例）-30→(30)、-38%→(38%)；0/無資料→—
+  function mbFmtVal(v, budget, decimals) {
+    if (v < 0) {
+      const a = decimals ? parseFloat(Math.abs(v).toFixed(1)) : Math.abs(v);
+      return { disp: `(${a.toLocaleString()})`, cls: 'mb-td-red' };
+    }
+    if (v > 0) {
+      const val = decimals ? parseFloat(v.toFixed(1)) : v;
+      return { disp: val.toLocaleString(), cls: budget > 0 ? (v >= budget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-orange' };
+    }
+    return { disp: '—', cls: 'mb-td-muted' };
+  }
+  function mbFmtPct(v, budget) {
+    const p = (budget > 0 && v !== 0) ? Math.round(v / budget * 100) : null;
+    if (p === null) return { disp: '—', cls: 'mb-td-muted' };
+    if (p < 0)      return { disp: `(${Math.abs(p)}%)`, cls: 'mb-td-red' };
+    return { disp: `${p}%`, cls: p >= 100 ? 'mb-td-green' : 'mb-td-orange' };
+  }
+
   // 為每個業務（或合計）產生一個表格
   const tables = budgetRows.map(b => {
     // 收入實際：只算 Debbie 手動輸入（actuals），不 fallback Won
@@ -5394,36 +5413,26 @@ function renderMonthBudgetCard() {
     // 收入實際
     const actualMonths = actuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
-      const budget = b.months[i];
       const isManual = b.actuals && b.actuals[i] !== null && b.actuals[i] !== undefined;
-      let cls = 'mb-td-muted';
-      if (v > 0 && budget > 0) cls = v >= budget ? 'mb-td-green' : 'mb-td-orange';
-      else if (v > 0) cls = 'mb-td-orange';
+      const { disp, cls } = mbFmtVal(v, b.months[i], false);
       const manualDot = isManual ? '<span class="mb-manual-dot" title="手動認列">●</span>' : '';
-      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${v > 0 ? v.toLocaleString() : '—'}${manualDot}</td>`;
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${disp}${manualDot}</td>`;
     });
     const actualQuarters = qActual.map((v, q) => {
-      let cls = 'mb-td-muted';
-      if (v > 0 && qBudget[q] > 0) cls = v >= qBudget[q] ? 'mb-td-green' : 'mb-td-orange';
-      else if (v > 0) cls = 'mb-td-orange';
-      return `<td class="mb-td mb-q-col ${cls}">${v > 0 ? v.toLocaleString() : '—'}</td>`;
+      const { disp, cls } = mbFmtVal(v, qBudget[q], false);
+      return `<td class="mb-td mb-q-col ${cls}">${disp}</td>`;
     });
     const actualCells = withQuarters(actualMonths, actualQuarters);
 
     // 收入達成 %
     const pctMonths = actuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
-      const budget = b.months[i];
-      const p = budget > 0 && v > 0 ? Math.round(v / budget * 100) : null;
-      let cls = 'mb-td-muted';
-      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
-      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${p !== null ? p + '%' : '—'}</td>`;
+      const { disp, cls } = mbFmtPct(v, b.months[i]);
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${disp}</td>`;
     });
     const pctQuarters = qActual.map((v, q) => {
-      const p = qBudget[q] > 0 && v > 0 ? Math.round(v / qBudget[q] * 100) : null;
-      let cls = 'mb-td-muted';
-      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
-      return `<td class="mb-td mb-q-col ${cls}">${p !== null ? p + '%' : '—'}</td>`;
+      const { disp, cls } = mbFmtPct(v, qBudget[q]);
+      return `<td class="mb-td mb-q-col ${cls}">${disp}</td>`;
     });
     const pctCells = withQuarters(pctMonths, pctQuarters);
 
@@ -5438,20 +5447,13 @@ function renderMonthBudgetCard() {
     // 毛利實際
     const gmActualMonths = gmActuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
-      const budget = gmBudget[i];
       const isManual = b.grossMarginActuals && b.grossMarginActuals[i] !== null && b.grossMarginActuals[i] !== undefined;
-      let cls = 'mb-td-muted';
-      if (v > 0 && budget > 0) cls = v >= budget ? 'mb-td-green' : 'mb-td-orange';
-      else if (v > 0) cls = 'mb-td-orange';
+      const { disp, cls } = mbFmtVal(v, gmBudget[i], true);
       const manualDot = isManual ? '<span class="mb-manual-dot" title="手動認列">●</span>' : '';
-      const disp = v > 0 ? parseFloat(v.toFixed(1)).toLocaleString() : '—';
       return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${disp}${manualDot}</td>`;
     });
     const gmActualQuarters = qGmActual.map((v, q) => {
-      let cls = 'mb-td-muted';
-      if (v > 0 && qGmBudget[q] > 0) cls = v >= qGmBudget[q] ? 'mb-td-green' : 'mb-td-orange';
-      else if (v > 0) cls = 'mb-td-orange';
-      const disp = v > 0 ? parseFloat(v.toFixed(1)).toLocaleString() : '—';
+      const { disp, cls } = mbFmtVal(v, qGmBudget[q], true);
       return `<td class="mb-td mb-q-col ${cls}">${disp}</td>`;
     });
     const gmActualCells = withQuarters(gmActualMonths, gmActualQuarters);
@@ -5459,25 +5461,21 @@ function renderMonthBudgetCard() {
     // 毛利達成 %
     const gmPctMonths = gmActuals.map((v, i) => {
       const isCur = (i + 1) === nowMonth;
-      const budget = gmBudget[i];
-      const p = budget > 0 && v > 0 ? Math.round(v / budget * 100) : null;
-      let cls = 'mb-td-muted';
-      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
-      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${p !== null ? p + '%' : '—'}</td>`;
+      const { disp, cls } = mbFmtPct(v, gmBudget[i]);
+      return `<td class="mb-td ${cls}${isCur ? ' mb-cur-month' : ''}">${disp}</td>`;
     });
     const gmPctQuarters = qGmActual.map((v, q) => {
-      const p = qGmBudget[q] > 0 && v > 0 ? Math.round(v / qGmBudget[q] * 100) : null;
-      let cls = 'mb-td-muted';
-      if (p !== null) cls = p >= 100 ? 'mb-td-green' : 'mb-td-orange';
-      return `<td class="mb-td mb-q-col ${cls}">${p !== null ? p + '%' : '—'}</td>`;
+      const { disp, cls } = mbFmtPct(v, qGmBudget[q]);
+      return `<td class="mb-td mb-q-col ${cls}">${disp}</td>`;
     });
     const gmPctCells = withQuarters(gmPctMonths, gmPctQuarters);
 
     // 合計欄顏色
-    const totalActualCls = totalActual > 0 ? (totalActual >= totalBudget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
-    const totalRevPctCls = totalRevPct > 0 ? (totalRevPct >= 100 ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
-    const totalGmActualCls = totalGmActual > 0 ? (totalGmActual >= totalGmBudget ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
-    const totalGmPctCls = totalGmPct > 0 ? (totalGmPct >= 100 ? 'mb-td-green' : 'mb-td-orange') : 'mb-td-muted';
+    // 全年合計欄：同樣套「負數紅色括號」規則
+    const totalActualFmt   = mbFmtVal(totalActual, totalBudget, false);
+    const totalRevPctFmt   = mbFmtPct(totalActual, totalBudget);
+    const totalGmActualFmt = mbFmtVal(totalGmActual, totalGmBudget, true);
+    const totalGmPctFmt    = mbFmtPct(totalGmActual, totalGmBudget);
 
     // 取得業務員 displayName（透過 ownerMap 或 username）
     const ownerLabel = (_ownerMapCache && _ownerMapCache[b.owner]) ? _ownerMapCache[b.owner] : b.owner;
@@ -5513,12 +5511,12 @@ function renderMonthBudgetCard() {
               <tr>
                 <td class="mb-row-label">收入實際</td>
                 ${actualCells}
-                <td class="mb-td ${totalActualCls} mb-total-col">${totalActual > 0 ? totalActual.toLocaleString() : '—'}</td>
+                <td class="mb-td ${totalActualFmt.cls} mb-total-col">${totalActualFmt.disp}</td>
               </tr>
               <tr>
                 <td class="mb-row-label">收入達成</td>
                 ${pctCells}
-                <td class="mb-td ${totalRevPctCls} mb-total-col">${totalRevPct > 0 ? totalRevPct + '%' : '—'}</td>
+                <td class="mb-td ${totalRevPctFmt.cls} mb-total-col">${totalRevPctFmt.disp}</td>
               </tr>
               <tr class="mb-gm-divider"><td colspan="18"></td></tr>
               <tr>
@@ -5529,12 +5527,12 @@ function renderMonthBudgetCard() {
               <tr>
                 <td class="mb-gm-label">毛利實際</td>
                 ${gmActualCells}
-                <td class="mb-td ${totalGmActualCls} mb-total-col">${totalGmActual > 0 ? parseFloat(totalGmActual.toFixed(1)).toLocaleString() : '—'}</td>
+                <td class="mb-td ${totalGmActualFmt.cls} mb-total-col">${totalGmActualFmt.disp}</td>
               </tr>
               <tr>
                 <td class="mb-gm-label">毛利達成</td>
                 ${gmPctCells}
-                <td class="mb-td ${totalGmPctCls} mb-total-col">${totalGmPct > 0 ? totalGmPct + '%' : '—'}</td>
+                <td class="mb-td ${totalGmPctFmt.cls} mb-total-col">${totalGmPctFmt.disp}</td>
               </tr>
             </tbody>
           </table>

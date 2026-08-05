@@ -3750,6 +3750,7 @@ th.mb-q-col {
 .mb-td-green  { color: #10b981 !important; }
 .mb-td-orange { color: #f59e0b !important; }
 .mb-td-muted  { color: #d1d5db !important; }
+.mb-td-red    { color: #ef4444 !important; }
 .mb-edit-actual-btn { margin-left: auto; font-size: 11px; padding: 3px 10px; }
 .mb-manual-dot { font-size: 7px; color: #6366f1; margin-left: 2px; vertical-align: super; }
 .mb-manual-tag { font-size: 11px; background: #ede9fe; color: #6d28d9; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
@@ -3939,6 +3940,7 @@ body.dark .mb-gm-label { color: #a78bfa; }
 body.dark .mb-cur-month { background: #1c2a40 !important; }
 body.dark .mb-td { color: #e6edf3 !important; border-bottom-color: #21262d; }
 body.dark .mb-td-muted { color: #636e7b !important; }
+body.dark .mb-td-red { color: #f87171 !important; }
 body.dark td.mb-q-col { background: #1a2840 !important; border-color: #1c3a5f !important; }
 body.dark th.mb-q-col { background: #0d2040 !important; color: #8ecfff !important; }
 body.dark .mb-total-col { color: #e6edf3 !important; border-left-color: #30363d; }
