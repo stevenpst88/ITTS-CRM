@@ -3476,6 +3476,12 @@ app.get('/api/monthly-budget', requireAuth, (req, res) => {
   res.json(budgets.filter(b => owners.includes(b.owner)));
 });
 
+// GET /api/pure-supervisors — 唯讀掛名主管 username 清單（供前端 dashboard/execDash 各彙總統一排除鏡射記錄）
+app.get('/api/pure-supervisors', requireAuth, (req, res) => {
+  const auth = loadAuth();
+  res.json(auth.users.filter(u => u.pureSupervisor).map(u => u.username));
+});
+
 // PUT /api/monthly-budget — manager/admin 設定某業務某年的 12 月預算
 app.put('/api/monthly-budget', requireAuth, (req, res) => {
   const role = req.session.user.role;
@@ -9271,16 +9277,18 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const allOwners = getViewableOwners(req, 'opportunities');
     const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
 
-    const opps = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
-
-    // manager1 的目標應由部屬加總，永遠排除任何 manager1 自身的個人目標記錄
-    // （包含 admin/executive 跨 BU 視角，避免 manager1 殘留目標被誤加）
+    // manager1 的目標應由部屬加總，永遠排除任何 manager1 自身的個人目標記錄；
+    // 唯讀掛名主管(pureSupervisor，如 Kane)的鏡射記錄也一律排除（比照 buildRow）
     const authForRoles = loadAuth();
     const isManager1User = (u) => authForRoles.users.find(x => x.username === u)?.role === 'manager1';
+    const pureSupervisors = new Set(authForRoles.users.filter(x => x.pureSupervisor).map(x => x.username));
+
+    const opps = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner) && !pureSupervisors.has(o.owner)));
+
     const targetOwners = (role === 'manager1'
       ? owners.filter(u => u !== req.session.user.username)
       : owners
-    ).filter(u => !isManager1User(u));
+    ).filter(u => !isManager1User(u) && !pureSupervisors.has(u));
     const targets = (data.targets || []).filter(t => targetOwners.includes(t.owner) && t.year === yearNum);
 
     // ── 1. 業績達成度 ──
@@ -9289,7 +9297,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     if (role === 'manager1' || role === 'secretary') {
       // 秘書代看＝比照該 BU 的一級主管：月度預算收入加總、排除所有 manager1 自身記錄
       totalTarget = (data.monthlyBudgets || [])
-        .filter(b => b.year === yearNum && owners.includes(b.owner) && !isManager1User(b.owner))
+        .filter(b => b.year === yearNum && owners.includes(b.owner) && !isManager1User(b.owner) && !pureSupervisors.has(b.owner))
         .reduce((sum, b) => sum + b.months.reduce((s, v) => s + (v || 0), 0), 0);
       // 若無月度預算資料，fallback 到 targets（已排除所有 manager1）
       if (!totalTarget) totalTarget = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
@@ -9317,6 +9325,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     // ② 認列（手動）：只算此 viewer 有權「認」的 owner（admin/executive 永遠認；BU manager 限主 BU）
     let recognizedAchieved = 0;
     owners.forEach(owner => {
+      if (pureSupervisors.has(owner)) return;   // 唯讀掛名主管的鏡射認列不計
       const ownerBus = normalizeBu(authForBu.users.find(u => u.username === owner)?.bu);
       const ownerPrimaryBu = ownerBus[0] || null;
       const countsManualForViewer = isCrossBuViewer ||
@@ -9779,7 +9788,7 @@ app.get('/api/exec/bu-comparison', requireAuth, (req, res) => {
   const result = BUS.map(bu => {
     // 屬於此 BU 的業務人員
     const buUsers = auth.users
-      .filter(u => normalizeBu(u.bu).includes(bu) && ['user','manager1','manager2'].includes(u.role))
+      .filter(u => normalizeBu(u.bu).includes(bu) && ['user','manager1','manager2'].includes(u.role) && !u.pureSupervisor)
       .map(u => u.username);
 
     const opps = (data.opportunities || []).filter(o => buUsers.includes(o.owner));

@@ -802,13 +802,22 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   setActiveNav(null);
   updateStatCards();
-  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget(), loadUserBu()]).then(() => {
+  Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget(), loadUserBu(), loadPureSupervisors()]).then(() => {
     renderDashboardCharts();
     updateTargetCard();
     renderMonthBudgetCard();
   });
   loadBirthdayReminders();
   loadZombieAlertCard();
+}
+
+// 唯讀掛名主管（pureSupervisor）名單：供 dashboard/execDash 各彙總統一排除鏡射記錄
+function _isPureSup(u) { return !!(window._pureSupervisorSet && window._pureSupervisorSet.has(u)); }
+async function loadPureSupervisors() {
+  try {
+    const r = await fetch('/api/pure-supervisors', { credentials: 'include' });
+    window._pureSupervisorSet = new Set(r.ok ? await r.json() : []);
+  } catch { window._pureSupervisorSet = new Set(); }
 }
 
 function showSection(section) {
@@ -5221,7 +5230,7 @@ function renderBuBreakdown() {
 
   const cards = BUS.map(bu => {
     // 此 BU 包含的人員（用於 target / 手動認列計算）
-    const usersInBu = Object.keys(_userBuCache).filter(u => _userBus(u).includes(bu));
+    const usersInBu = Object.keys(_userBuCache).filter(u => _userBus(u).includes(bu) && !_isPureSup(u));
     if (!usersInBu.length) {
       return `<div class="bu-card" style="border-top-color:${BU_COLOR[bu]};opacity:.45">
         <div class="bu-card-name" style="color:${BU_COLOR[bu]}">${bu}</div>
@@ -5832,8 +5841,8 @@ function getQuarterAchieved(year, q, isManager1Mode, ownerForUser) {
   }
 
   if (isManager1Mode) {
-    // 一級主管：只算 Debbie 手動認列（不再 fallback Won）
-    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year);
+    // 一級主管：只算 Debbie 手動認列（不再 fallback Won）；排除唯讀掛名主管鏡射
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && !_isPureSup(b.owner));
     let sum = 0;
     budgetRecs.forEach(b => {
       for (let m = qStart; m <= qEnd; m++) sum += getMonthActualFinal(year, m, b.owner);
@@ -5869,8 +5878,8 @@ function updateTargetCard() {
   const isAggregator = isM1 || isExec || isSecretary;
   let achieved = 0;
   if (isAggregator) {
-    // 一級主管 / 董事長/總經理：只彙總有手動認列的部屬（不再 fallback Won）
-    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
+    // 一級主管 / 董事長/總經理：只彙總有手動認列的部屬（不再 fallback Won）；排除唯讀掛名主管鏡射
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername && !_isPureSup(b.owner));
     budgetRecs.forEach(b => {
       for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, b.owner);
     });
@@ -5880,8 +5889,8 @@ function updateTargetCard() {
   $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' K';
 
   if (isAggregator) {
-    // 一級主管 / 董事長總經理 / 秘書：年度業績目標 = 所有可見部屬月度預算「收入金額」加總
-    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername);
+    // 一級主管 / 董事長總經理 / 秘書：年度業績目標 = 所有可見部屬月度預算「收入金額」加總；排除唯讀掛名主管鏡射
+    const budgetRecs = allMonthlyBudgets.filter(b => b.year === year && b.owner !== myUsername && !_isPureSup(b.owner));
     const totalAmount = budgetRecs.reduce(function(sum, b) {
       return sum + b.months.reduce(function(s, v) { return s + (v || 0); }, 0);
     }, 0);
@@ -5933,7 +5942,7 @@ function updateQuarterCards(annualAmount, year, isManager1Mode = false) {
     const myU = window._myUsername || '';
     qTargets = [0, 0, 0, 0];
     Object.keys(allUserQuarterRatios || {}).forEach(u => {
-      if (u === myU) return;
+      if (u === myU || _isPureSup(u)) return;
       const t = quarterTargetOf(u, year);
       for (let q = 0; q < 4; q++) qTargets[q] += t[q];
     });
