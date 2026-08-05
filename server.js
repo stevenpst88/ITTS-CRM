@@ -822,6 +822,7 @@ const TECOPM_ALLOWED_PATHS = new Set([
   '/api/visits',            // 拜訪記錄
   '/api/groups',            // 載入 group → 取 memberCompanies
   '/api/usermap',           // 預測表業務員名稱對應
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
 ]);
 // 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
 // （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
@@ -834,6 +835,7 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/me', '/api/logout', '/api/user/password',
   '/api/opportunities', '/api/contacts', '/api/visits',
   '/api/groups', '/api/usermap', '/api/company-lookup',
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
 ];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
