@@ -926,6 +926,7 @@
             <button class="btn btn-primary" id="oppImportBtn" disabled style="min-width:120px">匯入</button>
             <button class="btn" id="oppImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
+          <div id="oppImportPrecheck" style="margin-top:14px"></div>
           <div id="oppImportResult" style="margin-top:14px"></div>
         </div>
       </div>
@@ -4763,6 +4764,42 @@
         } catch {}
       };
       reader.readAsArrayBuffer(file);
+
+      runOppPrecheck(file);   // 選檔後自動跑伺服器端預檢
+    }
+
+    // 匯入前預檢（dryRun）：驗證業務帳號、公司名對應，不寫入任何資料
+    async function runOppPrecheck(file) {
+      const el = $('oppImportPrecheck');
+      if (!el) return;
+      el.innerHTML = '<div style="color:#888;font-size:13px">🔍 預檢中…</div>';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('dryRun', '1');
+        const r = await adminFetch(`${API}/admin/opportunities/import`, { method: 'POST', body: fd });
+        const d = await r.json();
+        if (!r.ok) { el.innerHTML = `<div class="import-result error">❌ 預檢失敗：${escH(d.error || '')}</div>`; return; }
+        const hasIssue = (d.skipped > 0) || (d.unmatchedCompanies && d.unmatchedCompanies.length);
+        let h = `<div class="import-result ${hasIssue ? '' : 'success'}"><b>🔍 匯入預檢</b><br>✅ 可匯入 ${d.wouldCreate} 筆`;
+        if (d.linkedContacts) h += `　🔗 連既有名片 ${d.linkedContacts} 筆`;
+        if (d.wouldCreatePoolPlaceholders) h += `　📋 客戶池新建 ${d.wouldCreatePoolPlaceholders} 張`;
+        if (d.skipped > 0) {
+          h += `<div style="color:#c62828;margin-top:8px">⚠ ${d.skipped} 列業務對不到、正式匯入會被略過：<br>${d.ownerErrors.slice(0, 15).map(escH).join('<br>')}${d.ownerErrors.length > 15 ? '<br>…' : ''}</div>`;
+        }
+        if (d.unmatchedCompanies && d.unmatchedCompanies.length) {
+          h += `<div style="color:#b45309;margin-top:8px">⚠ ${d.unmatchedCompanies.length} 家公司在系統找不到相符名片（會建成孤立商機，可能名稱不一致）：<br>`;
+          h += d.unmatchedCompanies.slice(0, 15).map(u =>
+            `・${escH(u.company)}（第 ${u.rows.join('、')} 列）${u.suggestion ? ` → 系統有近似：<b>${escH(u.suggestion)}</b>` : ''}`
+          ).join('<br>');
+          h += `${d.unmatchedCompanies.length > 15 ? '<br>…' : ''}</div>`;
+        }
+        if (!hasIssue) h += `<div style="color:#166534;margin-top:6px">全部列都對得到業務與公司，可安心匯入 👍</div>`;
+        h += '</div>';
+        el.innerHTML = h;
+      } catch (e) {
+        el.innerHTML = `<div class="import-result error">❌ 預檢失敗：${escH(e.message)}</div>`;
+      }
     }
 
     $('oppImportClearBtn').addEventListener('click', () => {
@@ -4772,6 +4809,7 @@
       $('oppImportBtn').disabled = true;
       $('oppImportClearBtn').style.display = 'none';
       $('oppImportPreviewWrap').style.display = 'none';
+      $('oppImportPrecheck').innerHTML = '';
       $('oppImportResult').innerHTML = '';
     });
 
@@ -4782,6 +4820,7 @@
       btn.disabled = true;
       btn.textContent = '匯入中...';
       resultEl.innerHTML = '';
+      $('oppImportPrecheck').innerHTML = '';
       try {
         const fd = new FormData();
         fd.append('file', oppImportFile);

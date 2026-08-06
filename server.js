@@ -4569,8 +4569,17 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       return '';
     };
 
+    const dryRun = String(req.body?.dryRun || '') === '1';   // 預檢模式：只驗證不寫入
     let created = 0, linkedContacts = 0, createdPoolContacts = 0;
     const errors = [];
+    const unmatchedCompanies = new Map();   // 預檢：真實業務 + 公司名對不到既有名片（可能名稱不一致）
+    // 寬鬆正規化公司名 → 既有名片原始公司名（供預檢「近似建議」，抓 股份有限公司/空白/標點差異）
+    const looseCompanyToOriginal = new Map();
+    (data.contacts || []).forEach(c => {
+      if (c.deleted || !c.company) return;
+      const loose = normalizeCompanyLoose(c.company);
+      if (loose && !looseCompanyToOriginal.has(loose)) looseCompanyToOriginal.set(loose, String(c.company).trim());
+    });
 
     // 選項 A: owner=_pool 但 contacts 找不到對應公司 → 自動建 placeholder 名片
     // 同次匯入「同公司+同聯絡人」共用一張（key 小寫去空白），避免一公司被建出多張
@@ -4601,16 +4610,18 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         importedAt: new Date().toISOString(),
       };
       placeholderByKey.set(key, p);
-      if (!data.contacts) data.contacts = [];
-      // 企業主檔：placeholder 也掛主檔（無統編 → 以公司名為鍵）
-      const _pm = ensureCompanyMaster(data, p);
-      if (_pm) p.companyId = _pm.id;
-      data.contacts.push(p);
-      // 同步進 contactsByCompany 索引，讓後續同公司其他聯絡人也能查到本次新建的
-      if (!contactsByCompany.has(company)) contactsByCompany.set(company, []);
-      contactsByCompany.get(company).push(p);
-      // 寫名片稽核（CREATE）— 留下「placeholder 從哪來」追溯線
-      try { writeContactAudit('CREATE', req, p, []); } catch {}
+      if (!dryRun) {
+        if (!data.contacts) data.contacts = [];
+        // 企業主檔：placeholder 也掛主檔（無統編 → 以公司名為鍵）
+        const _pm = ensureCompanyMaster(data, p);
+        if (_pm) p.companyId = _pm.id;
+        data.contacts.push(p);
+        // 同步進 contactsByCompany 索引，讓後續同公司其他聯絡人也能查到本次新建的
+        if (!contactsByCompany.has(company)) contactsByCompany.set(company, []);
+        contactsByCompany.get(company).push(p);
+        // 寫名片稽核（CREATE）— 留下「placeholder 從哪來」追溯線
+        try { writeContactAudit('CREATE', req, p, []); } catch {}
+      }
       createdPoolContacts++;
       return p;
     };
@@ -4675,6 +4686,17 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         if (!resolvedContactName) resolvedContactName = placeholder.name;
       }
 
+      // 預檢：真實業務 + 公司名對不到既有名片（且非 _pool 待補）→ 潛在名稱不一致
+      if (!contactId && owner !== POOL_USERNAME) {
+        const rec = unmatchedCompanies.get(company) || { company, rows: [], suggestion: '' };
+        rec.rows.push(rowNum);
+        if (!rec.suggestion) {
+          const near = looseCompanyToOriginal.get(normalizeCompanyLoose(company));
+          if (near && near !== company) rec.suggestion = near;
+        }
+        unmatchedCompanies.set(company, rec);
+      }
+
       // Phase B: 歷史紀錄欄判定（Y/Yes/True/1/是 → kpiExcluded）
       const kpiRaw = COL.kpiExcluded >= 0 ? String(row[COL.kpiExcluded] ?? '').trim() : '';
       const isHistorical = /^(Y|y|Yes|yes|YES|TRUE|true|True|1|是)$/.test(kpiRaw);
@@ -4698,9 +4720,21 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         ...(parsedAchievedDate ? { achievedDate: parsedAchievedDate } : {}),
         ...(isHistorical ? { kpiExcluded: true } : {}),
       };
-      data.opportunities.push(opp);
+      if (!dryRun) data.opportunities.push(opp);
       created++;
     });
+
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        wouldCreate: created,                        // 可匯入筆數
+        skipped: errors.length,                      // 會被略過（業務對不到等）
+        ownerErrors: errors,                         // 略過的詳細列
+        linkedContacts,                              // 會連到既有名片
+        wouldCreatePoolPlaceholders: createdPoolContacts,  // _pool 會新建的客戶池名片
+        unmatchedCompanies: [...unmatchedCompanies.values()],  // 公司名對不到既有名片（附近似建議）
+      });
+    }
 
     if (created > 0 || createdPoolContacts > 0) db.save(data);
 
