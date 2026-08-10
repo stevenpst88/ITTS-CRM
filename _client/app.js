@@ -806,6 +806,7 @@ function showDashboard() {
     renderDashboardCharts();
     updateTargetCard();
     renderMonthBudgetCard();
+    _revealIn(document.querySelectorAll('#dashboardView > div'));
   });
   loadBirthdayReminders();
   loadZombieAlertCard();
@@ -818,6 +819,29 @@ async function loadPureSupervisors() {
     const r = await fetch('/api/pure-supervisors', { credentials: 'include' });
     window._pureSupervisorSet = new Set(r.ok ? await r.json() : []);
   } catch { window._pureSupervisorSet = new Set(); }
+}
+
+// ── UI 手感 helper（只加動畫、沿用既有色系；漸進增強）──
+function _prefersReduce() { return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+function _revealIn(els) {
+  els = [...els].filter(el => el && el.offsetParent !== null);   // 只動可見的
+  if (!els.length || _prefersReduce()) return;
+  els.forEach(el => el.classList.add('reveal-init'));
+  requestAnimationFrame(() => els.forEach((el, i) => setTimeout(() => el.classList.add('reveal-in'), i * 55)));
+}
+function _countUp(el, to, opts) {
+  if (!el) return;
+  opts = opts || {};
+  const suffix = opts.suffix || '', dur = opts.dur || 850;
+  const fmt = opts.fmt || (n => Math.round(n).toLocaleString());
+  to = Number(to) || 0;
+  if (_prefersReduce()) { el.textContent = fmt(to) + suffix; return; }
+  const start = performance.now();
+  (function tick(now) {
+    const t = Math.min(1, (now - start) / dur);
+    el.textContent = fmt(to * (1 - Math.pow(1 - t, 3))) + suffix;
+    if (t < 1) requestAnimationFrame(tick);
+  })(start);
 }
 
 function showSection(section) {
@@ -5892,7 +5916,7 @@ function updateTargetCard() {
   } else {
     for (let m = 1; m <= 12; m++) achieved += getMonthActualFinal(year, m, myUsername);
   }
-  $('targetAchievedDisplay').textContent = achieved.toLocaleString() + ' K';
+  _countUp($('targetAchievedDisplay'), achieved, { suffix: ' K' });
 
   if (isAggregator) {
     // 一級主管 / 董事長總經理 / 秘書：年度業績目標 = 所有可見部屬月度預算「收入金額」加總；排除唯讀掛名主管鏡射
@@ -5909,8 +5933,8 @@ function updateTargetCard() {
       return;
     }
     const rate = Math.min(100, Math.round(achieved / totalAmount * 100));
-    $('targetAmountDisplay').textContent = totalAmount.toLocaleString() + ' K';
-    $('targetRateDisplay').textContent = rate + '%';
+    _countUp($('targetAmountDisplay'), totalAmount, { suffix: ' K' });
+    _countUp($('targetRateDisplay'), rate, { suffix: '%' });
     $('targetProgressFill').style.width = rate + '%';
     updateQuarterCards(totalAmount, year, true);
     renderBuBreakdown();
@@ -9820,6 +9844,7 @@ async function loadManagerHome() {
   renderMgrGauge(d.achievement);
   renderMgrGap(d.gapAnalysis, d.achievement);
   renderMgrCommit(d.thisMonthCommit);
+  _revealIn(document.querySelectorAll('#managerHomeView .mgr-card'));
   renderMgrAging(d.aging);
   renderMgrTopCust(d.topCustomers);
 }

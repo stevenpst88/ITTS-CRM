@@ -4353,6 +4353,26 @@ body.dark .mgr-filter-bar { background: #161b22; border-color: #30363d; }
 body.dark .mgr-card { background: #161b22; border-color: #30363d; }
 body.dark .mgr-card:hover { border-color: #444c56; }
 body.dark .mgr-card-title { color: #8b949e; }
+
+/* ════ UI 手感地基（只加動畫，沿用既有色系；漸進增強：JS 未跑到不影響顯示）════ */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); }
+/* 卡片進場：由 JS 先加 .reveal-init，下一幀再加 .reveal-in（沒加就正常顯示，零風險） */
+.reveal-init { opacity: 0; transform: translateY(10px); }
+.reveal-init.reveal-in {
+  opacity: 1; transform: none;
+  transition: opacity .34s var(--ease-out), transform .34s var(--ease-out);
+}
+/* 進度條平滑填充 */
+.target-progress-fill { transition: width .8s var(--ease-out); }
+/* hover 微抬（僅桌面滑鼠；只動 transform/陰影/邊框，不碰顏色） */
+@media (hover: hover) and (pointer: fine) {
+  .mgr-card { transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out), border-color .18s var(--ease-out); }
+  .mgr-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px -12px rgba(0,0,0,.16); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal-init { opacity: 1 !important; transform: none !important; }
+  .mgr-card, .target-progress-fill { transition: none !important; }
+}
 body.dark .mgr-gauge-pct { color: #58a6ff; }
 body.dark .mgr-commit-block { background: #21262d; border-color: #30363d; }
 body.dark .mgr-commit-label { color: #8b949e; }
