@@ -5952,8 +5952,8 @@ function updateTargetCard() {
     return;
   }
   const rate = Math.min(100, Math.round(achieved / target.amount * 100));
-  $('targetAmountDisplay').textContent = target.amount.toLocaleString() + ' K';
-  $('targetRateDisplay').textContent = rate + '%';
+  _countUp($('targetAmountDisplay'), target.amount, { suffix: ' K' });
+  _countUp($('targetRateDisplay'), rate, { suffix: '%' });
   $('targetProgressFill').style.width = rate + '%';
   updateQuarterCards(target.amount, year);
 }
@@ -9898,10 +9898,10 @@ function renderMgrGauge(a) {
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
           <span style="font-size:18px;font-weight:700;color:#1a2d52">${label}
             <span style="font-size:13px;font-weight:500;color:#9ca3af">（${hint}）</span></span>
-          <span style="font-size:30px;font-weight:800;color:${color};line-height:1">${pct === null ? '—' : pct + '%'}</span>
+          <span class="mgr-pct" data-pct="${pct === null ? '' : pct}" style="font-size:30px;font-weight:800;color:${color};line-height:1">${pct === null ? '—' : '0%'}</span>
         </div>
         <div style="height:18px;background:#eef0f3;border-radius:9px;overflow:hidden">
-          <div style="height:100%;width:${w}%;background:${color};border-radius:9px;transition:width .5s"></div>
+          <div class="mgr-bar" data-w="${w}" style="height:100%;width:0%;background:${color};border-radius:9px;transition:width .8s var(--ease-out)"></div>
         </div>
         <div style="font-size:15px;color:#6b7280;margin-top:7px">
           ${sub} <b style="color:#374151">${fmt(achieved)}</b> K / 目標 <b style="color:#374151">${fmt(target)}</b> K</div>
@@ -9911,6 +9911,12 @@ function renderMgrGauge(a) {
   el.innerHTML =
     row('成交達成率', 'Won', won.achieved, won.pct, '業務成交進度') +
     row('認列達成率', '認列', rec.achieved, rec.pct, '財務認列進度');
+  // 達成率 % count-up、長條從 0 填（只加動畫，不碰色）
+  el.querySelectorAll('.mgr-pct').forEach(s => {
+    const p = parseFloat(s.dataset.pct);
+    if (!isNaN(p)) _countUp(s, p, { suffix: '%' });
+  });
+  requestAnimationFrame(() => el.querySelectorAll('.mgr-bar').forEach(b => { b.style.width = (b.dataset.w || 0) + '%'; }));
 }
 
 // ── 2. 本月可望成交 ─────────────────────────────────────
