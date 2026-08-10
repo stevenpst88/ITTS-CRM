@@ -2305,6 +2305,7 @@ $('cOppSaveBtn').addEventListener('click', async () => {
   if (!contactId) { showToast('請先儲存聯絡人資料'); return; }
   const category = $('cOppCategory').value;
   if (!category)  { showToast('請選擇商機類別'); return; }
+  if (!$('cOppExpectedDate').value) { showToast('請填寫預計成交日期'); return; }
 
   const contact = allContacts.find(c => c.id === contactId);
   const payload = {
@@ -3964,6 +3965,9 @@ $v('visitSaveBtn').addEventListener('click', async () => {
   if (!contactId) { showToast('請選擇聯絡人'); return; }
   if (!visitDate) { showToast('請填入拜訪日期'); return; }
   if (!topic)     { showToast('請填入拜訪主題'); return; }
+  if (!_visitOppId && $v('oppCategory').value && !$v('oppExpectedDate').value) {
+    showToast('填了商機類別就必須填預計成交日期'); return;
+  }
 
   const contact = allContacts.find(c => c.id === contactId);
   const visitPayload = {
@@ -4508,6 +4512,7 @@ async function _createOppFromModal() {
   const company  = $('oppEditCompany').value.trim();
   const category = $('oppEditCategory').value;
   if (!category) { showToast('請選擇商機類別'); return; }
+  if (!$('oppEditExpectedDate').value) { showToast('請填寫預定簽約日期'); return; }
   const sel       = $('oppEditContactSelect');
   const contactId = sel ? sel.value : '';
   const contact   = contactId ? allContacts.find(c => c.id === contactId) : null;
@@ -4769,6 +4774,7 @@ $('oppEditSave').addEventListener('click', async () => {
   const id = $('oppEditId').value;
   if (!id) { await _createOppFromModal(); return; }   // ⭐ 新增模式（從 KA 頁建立商機）
   const newStage = $('oppEditStage').value;
+  if (newStage !== 'Won' && !$('oppEditExpectedDate').value) { showToast('請填寫預定簽約日期'); return; }
   const gmRaw = $('oppEditGrossMargin').value;
   const payload = {
     category:        $('oppEditCategory').value,

@@ -3593,6 +3593,10 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const gScope = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
   if (gScope.error) return res.status(403).json({ error: gScope.error });
+  // 正常表單建立一律要求預計簽約日（新建 stage 固定為 C，不涉 Won 豁免）
+  if (!String(req.body.expectedDate || '').trim()) {
+    return res.status(400).json({ error: '請填寫預計簽約日' });
+  }
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
   const opp = {
@@ -3691,6 +3695,11 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'businessType 值無效（須為 new/recurring/expansion 或空白）' });
   }
   if (req.body.businessType === '') req.body.businessType = null;
+  // 表單編輯若動到預計簽約日、清成空、且非 Won → 擋（拖曳等不帶 expectedDate 的偏更新不受影響）
+  if (req.body.expectedDate !== undefined && !String(req.body.expectedDate || '').trim()) {
+    const effStage = req.body.stage !== undefined ? req.body.stage : data.opportunities[idx].stage;
+    if (effStage !== 'Won') return res.status(400).json({ error: '請填寫預計簽約日' });
+  }
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   const newStage = data.opportunities[idx].stage;
   // 記錄預計簽約日變動歷史
@@ -4573,6 +4582,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     let created = 0, linkedContacts = 0, createdPoolContacts = 0;
     const errors = [];
     const unmatchedCompanies = new Map();   // 預檢：真實業務 + 公司名對不到既有名片（可能名稱不一致）
+    const fieldErrors = [];                 // 欄位異常（如缺預計簽約日）→ 略過該列
     // 寬鬆正規化公司名 → 既有名片原始公司名（供預檢「近似建議」，抓 股份有限公司/空白/標點差異）
     const looseCompanyToOriginal = new Map();
     (data.contacts || []).forEach(c => {
@@ -4646,6 +4656,13 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       const stageMap = { 'Commit': 'A', 'commit': 'A', 'Upside': 'B', 'upside': 'B', 'Pipeline': 'C', 'pipeline': 'C', 'won': 'Won', '成交': 'Won' };
       const resolvedStage = VALID_STAGES.has(stage) ? stage : (stageMap[stage] || 'C');
 
+      // 欄位異常：非 Won 的列必須有預計簽約日（Won 用成交日期歸屬、豁免）
+      const parsedExpectedDate = parseDate(row[COL.expectedDate]) || String(row[COL.expectedDate] ?? '').trim();
+      if (resolvedStage !== 'Won' && !parsedExpectedDate) {
+        fieldErrors.push(`第${rowNum}列：缺預計簽約日（${company}）`);
+        return;
+      }
+
       // Phase B: 依公司名連結 contactId
       const contactNameInput = COL.contactName >= 0 ? String(row[COL.contactName] ?? '').trim() : '';
       let contactId = '';
@@ -4707,7 +4724,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         company,
         product:        String(row[COL.product]      ?? '').trim(),
         category:       String(row[COL.category]     ?? '').trim(),
-        expectedDate:   parseDate(row[COL.expectedDate]) || String(row[COL.expectedDate] ?? '').trim(),
+        expectedDate:   parsedExpectedDate,
         stage:          resolvedStage,
         amount:         String(row[COL.amount]       ?? '').trim(),
         grossMarginRate:String(row[COL.grossMarginRate] ?? '').trim(),
@@ -4728,8 +4745,9 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       return res.json({
         dryRun: true,
         wouldCreate: created,                        // 可匯入筆數
-        skipped: errors.length,                      // 會被略過（業務對不到等）
-        ownerErrors: errors,                         // 略過的詳細列
+        skipped: errors.length + fieldErrors.length, // 會被略過（業務對不到 / 欄位異常）
+        ownerErrors: errors,                         // 業務對不到的詳細列
+        fieldErrors,                                 // 欄位異常（如缺預計簽約日）
         linkedContacts,                              // 會連到既有名片
         wouldCreatePoolPlaceholders: createdPoolContacts,  // _pool 會新建的客戶池名片
         unmatchedCompanies: [...unmatchedCompanies.values()],  // 公司名對不到既有名片（附近似建議）
@@ -4738,7 +4756,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
     if (created > 0 || createdPoolContacts > 0) db.save(data);
 
-    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors });
+    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors, fieldErrors });
   } catch (err) {
     console.error('[import opp]', err);
     res.status(500).json({ error: '匯入失敗：' + err.message });

@@ -4784,8 +4784,11 @@
         let h = `<div class="import-result ${hasIssue ? '' : 'success'}"><b>🔍 匯入預檢</b><br>✅ 可匯入 ${d.wouldCreate} 筆`;
         if (d.linkedContacts) h += `　🔗 連既有名片 ${d.linkedContacts} 筆`;
         if (d.wouldCreatePoolPlaceholders) h += `　📋 客戶池新建 ${d.wouldCreatePoolPlaceholders} 張`;
-        if (d.skipped > 0) {
-          h += `<div style="color:#c62828;margin-top:8px">⚠ ${d.skipped} 列業務對不到、正式匯入會被略過：<br>${d.ownerErrors.slice(0, 15).map(escH).join('<br>')}${d.ownerErrors.length > 15 ? '<br>…' : ''}</div>`;
+        if (d.ownerErrors && d.ownerErrors.length) {
+          h += `<div style="color:#c62828;margin-top:8px">⚠ ${d.ownerErrors.length} 列業務對不到、會被略過：<br>${d.ownerErrors.slice(0, 15).map(escH).join('<br>')}${d.ownerErrors.length > 15 ? '<br>…' : ''}</div>`;
+        }
+        if (d.fieldErrors && d.fieldErrors.length) {
+          h += `<div style="color:#c62828;margin-top:8px">⚠ ${d.fieldErrors.length} 列欄位異常（缺必填）、會被略過：<br>${d.fieldErrors.slice(0, 15).map(escH).join('<br>')}${d.fieldErrors.length > 15 ? '<br>…' : ''}</div>`;
         }
         if (d.unmatchedCompanies && d.unmatchedCompanies.length) {
           h += `<div style="color:#b45309;margin-top:8px">⚠ ${d.unmatchedCompanies.length} 家公司在系統找不到相符名片（會建成孤立商機，可能名稱不一致）：<br>`;
@@ -4836,7 +4839,10 @@
           html += `<div class="import-result-detail" style="color:#1a73e8">${detailBits.join('<br>')}</div>`;
         }
         if (data.errors && data.errors.length) {
-          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+          html += `<div class="import-result-detail">⚠ ${data.errors.length} 列業務對不到略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        if (data.fieldErrors && data.fieldErrors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.fieldErrors.length} 列欄位異常略過：<br>${data.fieldErrors.slice(0,10).map(e => escH(e)).join('<br>')}${data.fieldErrors.length > 10 ? '<br>...' : ''}</div>`;
         }
         html += '</div>';
         resultEl.innerHTML = html;
