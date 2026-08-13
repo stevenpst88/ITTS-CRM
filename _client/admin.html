@@ -620,12 +620,13 @@
                   <th>產業</th>
                   <th>BU</th>
                   <th>區域</th>
+                  <th>客戶代號</th>
                   <th>GCIS補全</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="companiesTbody">
-                <tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
+                <tr><td colspan="11" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
               </tbody>
             </table>
           </div>
@@ -6033,7 +6034,7 @@
       const hasFilter = !!(_companyFilter || indF);
       countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:24px">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#9ca3af;padding:24px">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
       const fmtCap = (n) => {
@@ -6064,6 +6065,7 @@
           ? c.bu.map(b => `<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:5px;font-size:11px;padding:1px 6px;margin:1px">${escapeAttr(b)}</span>`).join('')
           : '<span style="color:#cbd5e1">—</span>';
         const regionCell = `<input class="company-region-inp" data-id="${escapeAttr(c.id)}" value="${escapeAttr(c.region || '')}" placeholder="—" title="輸入區域，離開欄位即儲存" style="width:78px;font-size:12px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px" />`;
+        const custCodeCell = `<input class="company-custcode-inp" data-id="${escapeAttr(c.id)}" value="${escapeAttr(c.customerCode || '')}" placeholder="—" title="輸入 ERP 客戶代號，離開欄位即儲存；潛客可留空" style="width:90px;font-size:12px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px" />`;
         return `<tr class="company-row" data-id="${escapeAttr(c.id)}" style="cursor:pointer${isNew ? ';background:rgba(59,130,246,0.07)' : ''}">
           <td><strong>${escapeAttr(c.name)}</strong>${tag}${statusBadge} <span style="color:#9ca3af;font-size:11px">›</span></td>
           <td>${tax}</td>
@@ -6073,11 +6075,12 @@
           <td>${companyIndustryCell(c)}</td>
           <td>${buCell}</td>
           <td>${regionCell}</td>
+          <td>${custCodeCell}</td>
           <td style="font-size:12px">${gcis}</td>
           <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
       };
-      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="10" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
+      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="11" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
       // 區隔：新匯入（尚無真實名片）排上方、歷史資料（已有名片）排下方
       const newImports = list.filter(c => c.isNewImport).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       const historical = list.filter(c => !c.isNewImport);
@@ -6177,6 +6180,25 @@
           finally { inp.disabled = false; }
         });
       });
+      // 客戶代號：inline 編輯，離開欄位即存（阻止冒泡，不觸發開明細）
+      tbody.querySelectorAll('.company-custcode-inp').forEach(inp => {
+        inp.addEventListener('click', e => e.stopPropagation());
+        inp.addEventListener('change', async (e) => {
+          e.stopPropagation();
+          const id = inp.dataset.id, customerCode = inp.value.trim();
+          inp.disabled = true;
+          try {
+            const r = await fetch(`/api/companies/${encodeURIComponent(id)}/set-customer-code`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customerCode })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || '儲存失敗');
+            const comp = _companiesData.find(x => x.id === id); if (comp) comp.customerCode = customerCode;
+            showToast('✓ 客戶代號已更新');
+          } catch (err) { alert('❌ ' + err.message); loadCompaniesView(); }
+          finally { inp.disabled = false; }
+        });
+      });
     }
 
     // ── 公司彙整明細（Phase 3）──
@@ -6220,6 +6242,7 @@
         ['產業', c.industry || '—'],
         ['BU', (c.bu && c.bu.length) ? c.bu.join('、') : '—'],
         ['區域', c.region || '—'],
+        ['客戶代號', c.customerCode || '—'],
         ['負責人', c.representative || '—'],
         ['地址', c.address || '—'],
         ['官網', c.website ? `<a href="${escapeAttr(c.website)}" target="_blank" rel="noopener">${escapeAttr(c.website)}</a>` : '—'],

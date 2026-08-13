@@ -611,6 +611,7 @@ function ensureCompanyMaster(data, src) {
     phone: String(src.phone || '').trim(),
     website: String(src.website || '').trim(),
     region: '',
+    customerCode: '',
     buImport: [],
     groupId: null,
     gcisEnriched: false,
@@ -664,6 +665,7 @@ function runCompanyImport(working, rows, COL, ctx) {
     const taxId = COL.taxId >= 0 ? String(r[COL.taxId] ?? '').trim() : '';
     const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
     const region = (COL.region >= 0) ? String(r[COL.region] ?? '').trim() : '';
+    const customerCode = (COL.customerCode >= 0) ? String(r[COL.customerCode] ?? '').trim() : '';
     const serviceOwnerRaw = (COL.serviceOwner >= 0) ? String(r[COL.serviceOwner] ?? '').trim() : '';
     if (!name && !taxId) { skipped++; return; }
     const key = companyMatchKey(taxId, name);
@@ -715,6 +717,7 @@ function runCompanyImport(working, rows, COL, ctx) {
       if (!existingInd.has(industry)) { working.industries.push(industry); existingInd.add(industry); addedInd.add(industry); }
     }
     if (region) m.region = region;
+    if (customerCode) m.customerCode = customerCode;
     // 服務業務欄 → 對應到該業務帳號的 BU，累加進 buImport（可多位，逗號/頓號/斜線分隔）
     if (serviceOwnerRaw && ctx && ctx.usersByName) {
       const bus = new Set(Array.isArray(m.buImport) ? m.buImport : []);
@@ -7426,7 +7429,7 @@ app.get('/api/admin/companies', requireAdmin, (req, res) => {
     }
   });
   const list = (data.companies || [])
-    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])], bu: companyBuUnion([...(ownerUserById[c.id] || [])], c.buImport, usersByName), region: c.region || '' }))
+    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])], bu: companyBuUnion([...(ownerUserById[c.id] || [])], c.buImport, usersByName), region: c.region || '', customerCode: c.customerCode || '' }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(list);
 });
@@ -7662,6 +7665,7 @@ app.get('/api/companies', requireAuth, (req, res) => {
       owners: [...(ownersById[m.id] || [])],
       bu: companyBuUnion([...(ownerUserById[m.id] || [])], m.buImport, usersByName),
       region: m.region || '',
+      customerCode: m.customerCode || '',
     }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(companies);
@@ -7739,7 +7743,7 @@ app.post('/api/companies/import', requireAuth,
     if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
     const header = rows[0].map(h => String(h).trim());
     const find = (...keys) => { for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; } return -1; };
-    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業'), serviceOwner: find('服務業務'), region: find('區域', '地區') };
+    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業'), serviceOwner: find('服務業務'), region: find('區域', '地區'), customerCode: find('客戶代號', '客戶編號') };
     if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
 
     const dryRun = req.query.dryRun === '1';
@@ -8143,6 +8147,19 @@ app.post('/api/companies/:id/set-region', requireAuth, (req, res) => {
   res.json({ success: true, region: m.region });
 });
 
+// 設定企業主檔「客戶代號」（自由文字，限管理員/行銷；對應 ERP 客戶代號，潛客可留空）
+app.post('/api/companies/:id/set-customer-code', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.id === req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+  m.customerCode = String(req.body && req.body.customerCode || '').trim();
+  m.updatedAt = new Date().toISOString();
+  db.save(data);
+  writeLog('SET_COMPANY_CUSTCODE', req.session.user.username, m.name || m.id, `客戶代號=${m.customerCode || '(清空)'}`, req);
+  res.json({ success: true, customerCode: m.customerCode });
+});
+
 // ── 刪除企業主檔（admin + 行銷）──
 // 主檔是衍生參照層：底下尚有「真實名片」時一律擋下（會在「建立/更新」時依名片重建，硬刪無意義且危險）。
 // 只剩「待補名片」(客戶池 placeholder) 或完全無名片時才可刪，並連帶軟刪除那些待補名片。
@@ -8219,6 +8236,7 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
       representative: company.representative || '', gcisEnriched: !!company.gcisEnriched,
       bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName),
       region: company.region || '',
+      customerCode: company.customerCode || '',
     },
     contacts: contacts.map(c => ({
       id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
