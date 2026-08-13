@@ -715,6 +715,8 @@ function runCompanyImport(working, rows, COL, ctx) {
       m.industry = industry;
       m.industrySource = '行銷匯入';
       if (!existingInd.has(industry)) { working.industries.push(industry); existingInd.add(industry); addedInd.add(industry); }
+      // 覆蓋同步到該公司名片（首頁圖/名片層級讀 contact.industry；dryRun 的 working 無 contacts → 自動跳過）
+      if (working.contacts) overwriteContactsIndustryByCompany(working, m.id, industry);
     }
     if (region) m.region = region;
     if (customerCode) m.customerCode = customerCode;
@@ -7397,6 +7399,7 @@ app.post('/api/admin/companies/set-industry-batch', requireAdmin, (req, res) => 
       m.industryCode = code;
       m.industrySource = '財政部稅籍';
       m.updatedAt = new Date().toISOString();
+      overwriteContactsIndustryByCompany(data, m.id, chapter);   // 覆蓋同步到該公司名片
       updated++;
     });
   });

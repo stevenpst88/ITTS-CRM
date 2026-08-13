@@ -2531,16 +2531,6 @@ $('taxId').addEventListener('input', function () {
       if (d.companyName) $('company').value = d.companyName;
       if (d.address)     $('address').value = d.address;
 
-      // 產業自動判斷（欄位鎖定時不寫入）
-      if (d.companyName) {
-        const detected = detectIndustry(d.companyName);
-        if (detected && !$('industry').disabled) {
-          $('industry').value = detected;
-          $('industry').dataset.manual = 'false';
-          $('autoDetectBadge').style.display = 'inline';
-        }
-      }
-
       // 同步公司資訊頁簽的查詢結果
       renderCompanyInfo(d);
       checkCompanySimilar();   // GCIS 帶出公司名後，檢查是否已有相近主檔（疑似重複）
@@ -2716,32 +2706,7 @@ function renderOpportunityBadge(stage) {
   return `<span class="opp-badge ${o.cls}">${o.label}</span><span class="opp-sub">${o.sub}</span>`;
 }
 
-// ── 產業自動判斷 ─────────────────────────────────────────
-const INDUSTRY_RULES = [
-  { industry: '半導體', keywords: ['半導體','晶圓','晶片','積體電路','封測','TSMC','台積','聯電','聯發科','日月光','矽品','力積電','世界先進','瑞昱','novatek','聯詠','群聯','慧榮','矽統','南亞科','華邦','旺宏','winbond','realtek','mediatek','semiconductor'] },
-  { industry: '科技業', keywords: ['科技','資訊','軟體','系統','網路','數位','雲端','AI','tech','software','IT','cloud','data','solution','solutions','資安','智慧','IoT','SaaS','platform','微軟','google','apple','Meta','IBM','intel','nvidia','amd','cisco','oracle','SAP'] },
-  { industry: '電子製造', keywords: ['電子','鴻海','廣達','仁寶','緯創','英業達','和碩','台達','光寶','鴻準','富士康','foxconn','quanta','compal','wistron','pegatron','delta','liteon','PCB','電路板','主機板','ASUS','華碩','宏碁','acer','HTC','研華','advantech'] },
-  { industry: '製造業', keywords: ['工業','製造','機械','自動化','零件','精密','模具','鑄造','沖壓','焊接','組裝','生產','工廠','automotive','汽車','車輛','輪胎','鋼鐵','鋁','金屬','塑膠','化工','石化','中鋼','台塑','台化'] },
-  { industry: '金融業', keywords: ['銀行','保險','證券','投信','投顧','金融','期貨','基金','資產','信託','租賃','bank','finance','insurance','富邦','國泰','中信','玉山','永豐','兆豐','第一','台新','遠東商銀','凱基'] },
-  { industry: '醫療／生技', keywords: ['醫院','醫療','生技','製藥','藥廠','藥局','健康','biotech','pharma','medical','health','診所','長庚','台大醫','榮總','慈濟','聯合醫','中醫','牙科','器材','基因','疫苗'] },
-  { industry: '零售／電商', keywords: ['百貨','零售','電商','購物','超市','超商','便利','量販','momo','pchome','蝦皮','shopee','amazon','7-11','全家','全聯','costco','ikea','outlet','商場','連鎖'] },
-  { industry: '建設／不動產', keywords: ['建設','地產','房屋','建築','營造','開發','estate','realty','住宅','豪宅','工程','承包','土木','信義房屋','永慶','遠雄','國泰建設','長虹','興富發'] },
-  { industry: '顧問／服務業', keywords: ['顧問','會計','審計','法律','律師','諮詢','consultant','consulting','kpmg','pwc','deloitte','ey','管理','人資','獵頭','公關','廣告','行銷','媒體','傳播','創意'] },
-  { industry: '政府／公家機關', keywords: ['政府','公所','市政','縣政','部','局','院','署','處','委員會','行政院','立法院','經濟部','財政部','教育部','衛生局','警察','消防','台電','中華電信','中油','台水'] },
-  { industry: '教育', keywords: ['大學','學校','學院','高中','國中','國小','教育','university','college','school','institute','研究院','學術','補習班','培訓'] },
-  { industry: '傳產／食品', keywords: ['食品','飲料','農業','畜牧','水產','紡織','成衣','皮革','木材','造紙','印刷','菸酒','統一','味全','泰山','黑松','台糖','大成','卜蜂','桂格','義美'] },
-];
-
-function detectIndustry(companyName) {
-  if (!companyName) return '';
-  const name = companyName.toLowerCase();
-  for (const rule of INDUSTRY_RULES) {
-    if (rule.keywords.some(kw => name.includes(kw.toLowerCase()))) {
-      return rule.industry;
-    }
-  }
-  return '';
-}
+// ── 產業「自動判斷」已移除（2026-08：改由行銷從「產業分類清單」手動維護，避免灌入舊分類名稱造成重複桶）──
 
 // ── 公司名稱自動完成 ─────────────────────────────────────
 function updateCompanyDatalist(contacts) {
@@ -3102,24 +3067,6 @@ $('company').addEventListener('input', function () {
       $('isPrimaryNo').checked = true;  // 已有公司：預設否
     }
   }, 350);
-});
-
-// ── 公司輸入自動判斷產業 ─────────────────────────────────
-let industryAutoTimer = null;
-$('company').addEventListener('input', function () {
-  clearTimeout(industryAutoTimer);
-  industryAutoTimer = setTimeout(() => {
-    if ($('industry').disabled) return;   // 產業鎖定（非行銷/管理員）→ 不自動判斷、不寫入
-    const manual = $('industry').dataset.manual === 'true';
-    if (manual) return;
-    const detected = detectIndustry(this.value.trim());
-    if (detected) {
-      $('industry').value = detected;
-      $('autoDetectBadge').style.display = 'inline';
-    } else {
-      $('autoDetectBadge').style.display = 'none';
-    }
-  }, 400);
 });
 
 $('industry').addEventListener('change', function () {
