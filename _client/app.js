@@ -2499,7 +2499,30 @@ $('taxId').addEventListener('input', function () {
   $('taxIdLoadingBadge').style.display = 'inline';
   taxIdTimer = setTimeout(async () => {
     try {
-      // basic=1：只取 GCIS 公司名/地址（快），不等上市櫃/財務查詢，避免冷啟動逾時
+      // ① 先查內部企業主檔：統編命中就直接帶出，省一次外部 GCIS 爬取
+      try {
+        const mres = await fetch(`/api/company-master?taxId=${tid}`);
+        if (mres.ok) {
+          const md = await mres.json();
+          if (md.found && md.company) {
+            const c = md.company;
+            if (c.name)    $('company').value = c.name;
+            if (c.address) $('address').value = c.address;
+            // 產業屬性僅行銷/管理員可寫入；欄位鎖定時不塞值（與產業鎖定一致）
+            if (c.industry && !$('industry').disabled) {
+              $('industry').value = c.industry;
+              $('industry').dataset.manual = 'true';
+              $('autoDetectBadge').style.display = 'none';
+            }
+            checkCompanySimilar();
+            $('taxIdOkBadge').style.display = 'inline';
+            showToast(`✓ 已帶入企業主檔：${c.name || tid}`);
+            return;   // 命中主檔 → 不再爬 GCIS
+          }
+        }
+      } catch { /* 內部查詢失敗 → 往外查 GCIS */ }
+
+      // ② 主檔沒有 → 往外爬 GCIS（basic=1：只取公司名/地址，快，避免冷啟動逾時）
       const res = await fetch(`/api/company-lookup?taxId=${tid}&basic=1`);
       if (!res.ok) return;
       const d = await res.json();
@@ -2508,10 +2531,10 @@ $('taxId').addEventListener('input', function () {
       if (d.companyName) $('company').value = d.companyName;
       if (d.address)     $('address').value = d.address;
 
-      // 產業自動判斷
+      // 產業自動判斷（欄位鎖定時不寫入）
       if (d.companyName) {
         const detected = detectIndustry(d.companyName);
-        if (detected) {
+        if (detected && !$('industry').disabled) {
           $('industry').value = detected;
           $('industry').dataset.manual = 'false';
           $('autoDetectBadge').style.display = 'inline';
@@ -2520,6 +2543,7 @@ $('taxId').addEventListener('input', function () {
 
       // 同步公司資訊頁簽的查詢結果
       renderCompanyInfo(d);
+      checkCompanySimilar();   // GCIS 帶出公司名後，檢查是否已有相近主檔（疑似重複）
 
       $('taxIdOkBadge').style.display = 'inline';
       showToast(`✓ 已帶入：${d.companyName || '查無資料'}`);
@@ -2910,17 +2934,27 @@ function applyContactFormReadonly(contact) {
   all.forEach(el => { el.disabled = false; });            // 先全部還原可編輯
   form.classList.remove('mkt-readonly');
   if ($('mktReadonlyHint')) $('mktReadonlyHint').style.display = 'none';
+  if ($('industryLockHint')) $('industryLockHint').style.display = 'none';
 
-  const ro = userPermissions.role === 'marketing'
+  const role = userPermissions.role;
+  // 行銷編輯「非自己擁有」的名片：只開放「產業屬性」，其餘反灰唯讀
+  const ro = role === 'marketing'
     && contact && contact.owner && contact.owner !== window._myUsername;
-  if (!ro) return false;
+  if (ro) {
+    all.forEach(el => { if (el.id !== 'industry') el.disabled = true; }); // 只留產業
+    // 存檔/取消/關閉 維持可用（要能存產業、能關閉）
+    ['saveBtn', 'cancelBtn', 'modalClose'].forEach(id => { if ($(id)) $(id).disabled = false; });
+    form.classList.add('mkt-readonly');
+    if ($('mktReadonlyHint')) $('mktReadonlyHint').style.display = 'block';
+    return true;
+  }
 
-  all.forEach(el => { if (el.id !== 'industry') el.disabled = true; }); // 只留產業
-  // 存檔/取消/關閉 維持可用（要能存產業、能關閉）
-  ['saveBtn', 'cancelBtn', 'modalClose'].forEach(id => { if ($(id)) $(id).disabled = false; });
-  form.classList.add('mkt-readonly');
-  if ($('mktReadonlyHint')) $('mktReadonlyHint').style.display = 'block';
-  return true;
+  // 產業屬性僅行銷／管理員可維護：其餘角色（含新增名片）一律反灰，其他欄位照常可編
+  if (role !== 'marketing' && role !== 'admin') {
+    if ($('industry')) $('industry').disabled = true;
+    if ($('industryLockHint')) $('industryLockHint').style.display = 'block';
+  }
+  return false;
 }
 
 function closeModal() {
@@ -3075,6 +3109,7 @@ let industryAutoTimer = null;
 $('company').addEventListener('input', function () {
   clearTimeout(industryAutoTimer);
   industryAutoTimer = setTimeout(() => {
+    if ($('industry').disabled) return;   // 產業鎖定（非行銷/管理員）→ 不自動判斷、不寫入
     const manual = $('industry').dataset.manual === 'true';
     if (manual) return;
     const detected = detectIndustry(this.value.trim());
@@ -3090,6 +3125,32 @@ $('company').addEventListener('input', function () {
 $('industry').addEventListener('change', function () {
   this.dataset.manual = 'true';
   $('autoDetectBadge').style.display = 'none';
+});
+
+// ── 建卡前：偵測疑似重複的企業主檔（寬鬆同名，提醒不阻擋）──
+let companySimTimer = null;
+async function checkCompanySimilar() {
+  const box = $('companySimDup');
+  if (!box) return;
+  const name = $('company').value.trim();
+  const taxId = $('taxId').value.trim();
+  if (!name) { box.style.display = 'none'; return; }
+  try {
+    const res = await fetch(`/api/company-similar?name=${encodeURIComponent(name)}&taxId=${encodeURIComponent(taxId)}`);
+    if (!res.ok) { box.style.display = 'none'; return; }
+    const d = await res.json();
+    if (d.matches && d.matches.length) {
+      const list = d.matches.map(m => m.taxId ? `${m.name}（統編 ${m.taxId}）` : m.name).join('、');
+      box.innerHTML = `⚠ 系統已有相似公司：${list}。請確認是否為同一家，避免重複建檔（如是同一家，建議填該公司統編或通知行銷合併主檔）。`;
+      box.style.display = 'block';
+    } else {
+      box.style.display = 'none';
+    }
+  } catch { box.style.display = 'none'; }
+}
+$('company').addEventListener('input', function () {
+  clearTimeout(companySimTimer);
+  companySimTimer = setTimeout(checkCompanySimilar, 500);
 });
 
 // ── 系統子選單聯動 ───────────────────────────────────────
@@ -4926,8 +4987,8 @@ async function loadManagerAchievement(year) {
           ${budgetBtn}
         </div>` : '';
       return `
-      <div class="ach-gauge-card gauge-card-light" style="border-radius:14px;padding:14px 16px;width:230px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-        <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+      <div class="ach-gauge-card gauge-card-light" style="border-radius:14px;padding:14px 16px;width:250px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+        <div style="font-size:17px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           ${r.displayName}${badge}
         </div>
         ${makeGaugeSvg(r.rate, color)}
@@ -4935,17 +4996,17 @@ async function loadManagerAchievement(year) {
             style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 4px">
           <span style="font-size:11px;color:#888">目標</span>
           <span class="mgr-target-display" title="點擊編輯目標"
-            style="font-size:14px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
+            style="font-size:16px;font-weight:700;color:${r.target ? '#1a2d52' : '#ccc'};border-bottom:1px dashed #bbb;cursor:pointer;padding-bottom:1px">
             ${r.target ? r.target.toLocaleString() + ' K' : '未設定'}
           </span>
           <span style="font-size:11px;color:#aaa">✎</span>
         </div>
         <div style="display:flex;justify-content:space-around;margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#555;text-align:center">
-          <div><div style="font-weight:700;font-size:14px;color:#0a8a4a">${fmt(r.achieved)}</div><div style="color:#aaa;margin-top:2px">已成交（K）</div></div>
+          <div><div style="font-weight:700;font-size:16px;color:#0a8a4a">${fmt(r.achieved)}</div><div style="color:#aaa;margin-top:2px">已成交（K）</div></div>
           <div style="width:1px;background:#f0f0f0"></div>
-          <div><div style="font-weight:700;font-size:14px;color:#1a73e8">${fmt(r.pipeline)}</div><div style="color:#aaa;margin-top:2px">在手商機（K）</div></div>
+          <div><div style="font-weight:700;font-size:16px;color:#1a73e8">${fmt(r.pipeline)}</div><div style="color:#aaa;margin-top:2px">在手商機（K）</div></div>
           <div style="width:1px;background:#f0f0f0"></div>
-          <div><div style="font-weight:700;font-size:14px;color:#555">${r.wonCount}</div><div style="color:#aaa;margin-top:2px">成交件數</div></div>
+          <div><div style="font-weight:700;font-size:16px;color:#555">${r.wonCount}</div><div style="color:#aaa;margin-top:2px">成交件數</div></div>
         </div>
         ${manageBlock}
       </div>`;
@@ -4993,10 +5054,14 @@ async function loadManagerAchievement(year) {
     visibleRoots.forEach(computeQVals);
 
     function renderNode(node) {
-      const childrenHtml = node.children.length
+      const hasKids = node.children.length > 0;
+      const childrenHtml = hasKids
         ? `<ul class="org-children">${node.children.map(renderNode).join('')}</ul>`
         : '';
-      return `<li class="org-node">${renderCard(node)}${childrenHtml}</li>`;
+      const toggle = hasKids
+        ? `<button class="org-toggle" type="button" title="展開／收合部屬">–</button>`
+        : '';
+      return `<li class="org-node">${renderCard(node)}${toggle}${childrenHtml}</li>`;
     }
 
     // 注入樹狀圖 CSS（只注入一次）
@@ -5005,7 +5070,7 @@ async function loadManagerAchievement(year) {
       style.id = 'orgChartStyle';
       style.textContent = `
         .org-tree, .org-children { list-style:none; padding:0; margin:0; }
-        .org-tree { display:flex; justify-content:center; padding:8px 4px; overflow-x:auto; }
+        .org-tree { display:flex; justify-content:safe center; padding:8px 4px 14px; overflow-x:auto; }
         .org-children { position:relative; display:flex; justify-content:center; padding-top:28px; gap:18px; }
         .org-children::before { content:''; position:absolute; top:0; left:50%; width:2px; height:14px; background:#f59e0b; }
         .org-node { position:relative; display:flex; flex-direction:column; align-items:center; padding:0 4px; }
@@ -5016,6 +5081,11 @@ async function loadManagerAchievement(year) {
         .org-children > .org-node:last-child:not(:only-child)::before  { width:50%; }
         /* 根層不要連線 */
         .org-tree > .org-node::before, .org-tree > .org-node::after { display:none; }
+        /* 折疊控制鈕（位在卡片與部屬連線之間） */
+        .org-toggle { margin-top:6px; width:24px; height:24px; border-radius:50%; border:1px solid #d0d5dd; background:#fff; color:#667085; font-size:15px; font-weight:700; line-height:1; cursor:pointer; z-index:2; transition:background .15s, color .15s, border-color .15s; }
+        .org-toggle:hover { background:#f2f4f7; }
+        .org-node.collapsed > .org-toggle { color:#f59e0b; border-color:#f59e0b; background:#fff7ed; }
+        .org-node.collapsed > .org-children { display:none; }
       `;
       document.head.appendChild(style);
     }
@@ -5023,6 +5093,16 @@ async function loadManagerAchievement(year) {
     container.innerHTML = visibleRoots.length
       ? `<ul class="org-tree">${visibleRoots.map(renderNode).join('')}</ul>`
       : '<div class="empty-msg" style="text-align:center;padding:20px">暫無團隊資料</div>';
+
+    // ── 節點折疊／展開（事件委派；每次 render 以指派方式覆寫，不疊加）──
+    container.onclick = (e) => {
+      const btn = e.target.closest('.org-toggle');
+      if (!btn || !container.contains(btn)) return;
+      const node = btn.closest('.org-node');
+      if (!node) return;
+      const collapsed = node.classList.toggle('collapsed');
+      btn.textContent = collapsed ? '+' : '–';
+    };
 
     // ── Inline 編輯：點擊目標欄位 ──
     container.querySelectorAll('.mgr-target-cell').forEach(cell => {

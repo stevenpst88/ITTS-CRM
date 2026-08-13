@@ -2750,7 +2750,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     address: req.body.address || '',
     website: sanitizeUrl(req.body.website),
     taxId: req.body.taxId || '',
-    industry: req.body.industry || '',
+    industry: isAdminOrMarketing(req) ? (req.body.industry || '') : '',
     opportunityStage: req.body.opportunityStage || '',
     isPrimary: req.body.isPrimary === true || req.body.isPrimary === 'true',
     employmentStatus: ['active','pending','resigned'].includes(req.body.employmentStatus) ? req.body.employmentStatus : 'active',
@@ -2771,6 +2771,8 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   const _before = (data.companies || []).length;
   const _master = ensureCompanyMaster(data, contact);
   if (_master) contact.companyId = _master.id;
+  // 產業屬性僅行銷／管理員可設；其餘角色一律沿用企業主檔既有產業別（行銷維護的結果），不吃使用者輸入
+  if (!isAdminOrMarketing(req)) contact.industry = (_master && _master.industry) ? _master.industry : '';
   // 全新客戶判斷：依公司名/統編比對，這張名片「新建」了一筆主檔（系統首次出現此公司）
   const _isNewCompany = !!_master && data.companies.length > _before;
   data.contacts.push(contact);
@@ -2818,6 +2820,8 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: '找不到此聯絡人' });
   const old = data.contacts[idx];
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
+  // 產業屬性僅行銷／管理員可改；其餘角色即使前端送出也一律忽略（後端雙保險，維持 industry 由行銷維護）
+  if (!isAdminOrMarketing(req) && 'industry' in safeBody) delete safeBody.industry;
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
     // 若 bu 沒變動，跳過驗證（避免未設 BU 的使用者只想改其他欄位時被 BU 驗證擋下）
@@ -5563,6 +5567,36 @@ async function fetchFinancialData(stockCode, year, exchange) {
   }
   return result;
 }
+
+// ── 用統編查「內部企業主檔」（命中就免爬外部 GCIS）──
+app.get('/api/company-master', requireAuth, (req, res) => {
+  const tid = String(req.query.taxId || '').trim();
+  if (!/^\d{8}$/.test(tid)) return res.json({ found: false });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.matchKey === 'tax:' + tid || c.taxId === tid);
+  if (!m) return res.json({ found: false });
+  res.json({ found: true, company: {
+    id: m.id, name: m.name || '', taxId: m.taxId || '',
+    address: m.address || '', industry: m.industry || '',
+    website: m.website || '', capital: (m.capital != null ? m.capital : null),
+  } });
+});
+
+// ── 建卡前：以「寬鬆同名」偵測疑似重複的企業主檔（提醒用，不阻擋）──
+app.get('/api/company-similar', requireAuth, (req, res) => {
+  const name = String(req.query.name || '').trim();
+  const taxId = String(req.query.taxId || '').trim();
+  if (!name) return res.json({ matches: [] });
+  const loose = normalizeCompanyLoose(name);
+  if (!loose) return res.json({ matches: [] });
+  const selfKey = companyMatchKey(taxId, name);   // 同 matchKey = 同一家，不算重複
+  const data = db.load();
+  const matches = (data.companies || [])
+    .filter(c => c.matchKey !== selfKey && normalizeCompanyLoose(c.name) === loose)
+    .slice(0, 5)
+    .map(c => ({ name: c.name || '', taxId: c.taxId || '' }));
+  res.json({ matches });
+});
 
 // ── 公司查詢 API ─────────────────────────────────────────
 app.get('/api/company-lookup', requireAuth, async (req, res) => {
