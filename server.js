@@ -610,6 +610,8 @@ function ensureCompanyMaster(data, src) {
     address: String(src.address || '').trim(),
     phone: String(src.phone || '').trim(),
     website: String(src.website || '').trim(),
+    region: '',
+    buImport: [],
     groupId: null,
     gcisEnriched: false,
     source: src._source || 'manual',
@@ -620,13 +622,24 @@ function ensureCompanyMaster(data, src) {
   return m;
 }
 
+// 企業主檔 BU（自動）：名片擁有者(username) 的帳號 BU ∪ 匯入寫入的 buImport，過濾為合法 BU 並依 VALID_BUS 順序輸出
+function companyBuUnion(ownerUsernames, buImport, usersByName) {
+  const set = new Set();
+  (Array.isArray(buImport) ? buImport : []).forEach(b => { if (VALID_BUS.includes(b)) set.add(b); });
+  (ownerUsernames || []).forEach(un => {
+    const u = usersByName && usersByName[un];
+    if (u) normalizeBu(u.bu).forEach(b => { if (VALID_BUS.includes(b)) set.add(b); });
+  });
+  return VALID_BUS.filter(b => set.has(b));
+}
+
 // 跑一遍企業主檔匯入（在傳入的 working 物件上操作）
 //   - 正式寫入：working = db.load() 的真實物件，呼叫端負責 db.save()
 //   - 乾跑/預覽：working = { companies, industries } 的 clone，丟棄即可不落地
 //   比對/建檔沿用 ensureCompanyMaster（唯一主檔邏輯），確保預覽數字 == 實際結果。
 //   額外偵測「疑似重複」：某列會新建主檔，但已存在同名（正規化）卻比對鍵不同的主檔
 //   （= 一邊有統編、一邊沒有，最典型的歷史資料重複來源）。
-function runCompanyImport(working, rows, COL) {
+function runCompanyImport(working, rows, COL, ctx) {
   if (!working.companies) working.companies = [];
   if (!working.industries) working.industries = [];
   const existingInd = new Set(working.industries);
@@ -650,6 +663,8 @@ function runCompanyImport(working, rows, COL) {
     const name = COL.name >= 0 ? String(r[COL.name] ?? '').trim() : '';
     const taxId = COL.taxId >= 0 ? String(r[COL.taxId] ?? '').trim() : '';
     const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
+    const region = (COL.region >= 0) ? String(r[COL.region] ?? '').trim() : '';
+    const serviceOwnerRaw = (COL.serviceOwner >= 0) ? String(r[COL.serviceOwner] ?? '').trim() : '';
     if (!name && !taxId) { skipped++; return; }
     const key = companyMatchKey(taxId, name);
     if (!key) { skipped++; return; }
@@ -698,6 +713,17 @@ function runCompanyImport(working, rows, COL) {
       m.industry = industry;
       m.industrySource = '行銷匯入';
       if (!existingInd.has(industry)) { working.industries.push(industry); existingInd.add(industry); addedInd.add(industry); }
+    }
+    if (region) m.region = region;
+    // 服務業務欄 → 對應到該業務帳號的 BU，累加進 buImport（可多位，逗號/頓號/斜線分隔）
+    if (serviceOwnerRaw && ctx && ctx.usersByName) {
+      const bus = new Set(Array.isArray(m.buImport) ? m.buImport : []);
+      serviceOwnerRaw.split(/[,，、/;；]+/).map(s => s.trim()).filter(Boolean).forEach(nm => {
+        const un = ctx.usersByName[nm] ? nm : (ctx.displayToUser && ctx.displayToUser[nm]);
+        const u = un ? ctx.usersByName[un] : null;
+        if (u) normalizeBu(u.bu).forEach(b => { if (VALID_BUS.includes(b)) bus.add(b); });
+      });
+      m.buImport = VALID_BUS.filter(b => bus.has(b));
     }
     m.updatedAt = new Date().toISOString();
   });
@@ -7382,20 +7408,25 @@ app.get('/api/admin/companies', requireAdmin, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const ownerNameMap = {};
-  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; });
+  const usersByName = {};
+  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
   const countById = {};
   const ownersById = {};   // companyId -> Set(服務業務顯示名)，僅算「真實名片」，排除客戶池 placeholder
+  const ownerUserById = {};   // companyId -> Set(owner username)，供推導 BU
   const realCompanyIds = new Set();   // 有「真實名片」(非 placeholder) 的公司 → 歷史資料
   (data.contacts || []).forEach(c => {
     if (c.deleted || !c.companyId) return;
     countById[c.companyId] = (countById[c.companyId] || 0) + 1;
     if (!c.isPlaceholder) {
       realCompanyIds.add(c.companyId);
-      if (c.owner) (ownersById[c.companyId] = ownersById[c.companyId] || new Set()).add(ownerNameMap[c.owner] || c.owner);
+      if (c.owner) {
+        (ownersById[c.companyId] = ownersById[c.companyId] || new Set()).add(ownerNameMap[c.owner] || c.owner);
+        (ownerUserById[c.companyId] = ownerUserById[c.companyId] || new Set()).add(c.owner);
+      }
     }
   });
   const list = (data.companies || [])
-    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])] }))
+    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])], bu: companyBuUnion([...(ownerUserById[c.id] || [])], c.buImport, usersByName), region: c.region || '' }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(list);
 });
@@ -7543,7 +7574,8 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
 
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  const usersByName = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
 
   // 掛在此主檔的名片
@@ -7563,7 +7595,7 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
   const receivables = (data.receivables || []).filter(r => names.has((r.company || '').trim()));
 
   res.json({
-    company,
+    company: { ...company, bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName) },
     contacts: contacts.map(c => ({
       id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
       ownerDisplay: od(c), isPrimary: !!c.isPrimary,
@@ -7597,11 +7629,14 @@ app.get('/api/companies', requireAuth, (req, res) => {
 
   const auth = loadAuth();
   const ownerNameMap = {};
-  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; });
+  const usersByName = {};
+  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
   const ownersById = {};   // companyId -> Set(服務業務顯示名)，僅算「真實名片」
+  const ownerUserById = {};   // companyId -> Set(owner username)，供推導 BU
   contacts.forEach(c => {
     if (c.companyId && !c.isPlaceholder && c.owner) {
       (ownersById[c.companyId] = ownersById[c.companyId] || new Set()).add(ownerNameMap[c.owner] || c.owner);
+      (ownerUserById[c.companyId] = ownerUserById[c.companyId] || new Set()).add(c.owner);
     }
   });
 
@@ -7625,6 +7660,8 @@ app.get('/api/companies', requireAuth, (req, res) => {
       isNewImport: !realCompanyIds.has(m.id),
       createdAt: m.createdAt || '',
       owners: [...(ownersById[m.id] || [])],
+      bu: companyBuUnion([...(ownerUserById[m.id] || [])], m.buImport, usersByName),
+      region: m.region || '',
     }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(companies);
@@ -7702,7 +7739,7 @@ app.post('/api/companies/import', requireAuth,
     if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
     const header = rows[0].map(h => String(h).trim());
     const find = (...keys) => { for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; } return -1; };
-    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業') };
+    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業'), serviceOwner: find('服務業務'), region: find('區域', '地區') };
     if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
 
     const dryRun = req.query.dryRun === '1';
@@ -7713,7 +7750,10 @@ app.post('/api/companies/import', requireAuth,
     const working = dryRun
       ? { companies: JSON.parse(JSON.stringify(data.companies || [])), industries: [...(data.industries || [])] }
       : data;
-    const out = runCompanyImport(working, dataRows, COL);
+    const _authImp = loadAuth();
+    const _usersByName = {}; const _displayToUser = {};
+    (_authImp.users || []).forEach(u => { _usersByName[u.username] = u; _displayToUser[u.displayName || u.username] = u.username; });
+    const out = runCompanyImport(working, dataRows, COL, { usersByName: _usersByName, displayToUser: _displayToUser });
 
     // 客戶池候選：本次處理到、但「目前沒有任何名片」的主檔（用真實 data.contacts 判斷；
     // 已含上次建的 placeholder，重匯不會重複）。dryRun/commit 一致。
@@ -8090,6 +8130,19 @@ app.post('/api/companies/:id/set-industry', requireAuth, (req, res) => {
   res.json({ success: true, industry, synced });
 });
 
+// 設定企業主檔「區域」（自由文字，限管理員/行銷）
+app.post('/api/companies/:id/set-region', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.id === req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+  m.region = String(req.body && req.body.region || '').trim();
+  m.updatedAt = new Date().toISOString();
+  db.save(data);
+  writeLog('SET_COMPANY_REGION', req.session.user.username, m.name || m.id, `區域=${m.region || '(清空)'}`, req);
+  res.json({ success: true, region: m.region });
+});
+
 // ── 刪除企業主檔（admin + 行銷）──
 // 主檔是衍生參照層：底下尚有「真實名片」時一律擋下（會在「建立/更新」時依名片重建，硬刪無意義且危險）。
 // 只剩「待補名片」(客戶池 placeholder) 或完全無名片時才可刪，並連帶軟刪除那些待補名片。
@@ -8135,7 +8188,8 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
   const owners = new Set(getViewableOwners(req, 'contacts'));
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  const usersByName = {};
+  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
 
   // 可見名片（依擁有者 + BU）
@@ -8163,6 +8217,8 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
       id: company.id, name: company.name, taxId: company.taxId || '', capital: company.capital,
       industry: company.industry || '', address: company.address || '', website: company.website || '',
       representative: company.representative || '', gcisEnriched: !!company.gcisEnriched,
+      bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName),
+      region: company.region || '',
     },
     contacts: contacts.map(c => ({
       id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
