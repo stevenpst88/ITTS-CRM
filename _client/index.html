@@ -662,6 +662,14 @@
               <select id="forecastSalesFilter" class="forecast-year-sel" style="display:none">
                 <option value="">全部業務</option>
               </select>
+              <!-- BU 篩選：只對「可看全公司」的跨 BU 角色顯示 -->
+              <select id="forecastBuFilter" class="forecast-year-sel" style="display:none">
+                <option value="">全部 BU</option>
+                <option value="ERP">ERP</option>
+                <option value="ITS">ITS</option>
+                <option value="MDM">MDM</option>
+                <option value="CRM">CRM</option>
+              </select>
               <!-- 把握度多選篩選 -->
               <div id="forecastStageWrap" class="fc-multisel-wrap" style="display:none;position:relative">
                 <button type="button" id="forecastStageBtn" class="forecast-year-sel fc-multisel-btn">全部階段 ▾</button>

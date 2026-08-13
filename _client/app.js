@@ -6580,6 +6580,17 @@ function initForecastSalesFilter() {
     }
   }
 
+  // BU 篩選：只對「可看全公司」的跨 BU 角色顯示（一般業務本來就只有自己 BU 的資料）
+  const buFilter = $('forecastBuFilter');
+  if (buFilter) {
+    const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(userPermissions.role);
+    buFilter.style.display = isCrossBu ? '' : 'none';
+    if (isCrossBu && !buFilter.dataset.bound) {
+      buFilter.addEventListener('change', renderForecastTable);
+      buFilter.dataset.bound = '1';
+    }
+  }
+
   // 階段多選：所有角色都顯示
   initForecastStageMultiSel();
 }
@@ -6634,12 +6645,14 @@ function initForecastStageMultiSel() {
 
 function getForecastOpps(year) {
   const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
+  const buVal = $('forecastBuFilter') ? $('forecastBuFilter').value : '';
 
   return ownScopeOpps().filter(o => {
     if (!o.expectedDate) return false;
     if (o.stage === 'D') return false;          // D 階段不納入銷售預測
     if (new Date(o.expectedDate).getFullYear() !== year) return false;
     if (salesVal && o.owner !== salesVal) return false;   // 業務人員篩選
+    if (buVal && o.category !== buVal) return false;      // BU 篩選（比對畫面顯示的「BU」欄＝o.category，資料齊全）
     if (forecastSelectedStages.length && !forecastSelectedStages.includes(o.stage)) return false;  // 多選階段篩選
     return true;
   });
