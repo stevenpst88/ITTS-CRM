@@ -2487,6 +2487,25 @@ if (SpeechRecognition) {
   if ($('taxIdMicBtn')) $('taxIdMicBtn').style.display = 'none';
 }
 
+// ── 境外公司（無統編）：勾選 → 清空+停用統編欄、隱藏必填星號 ──
+function syncForeignField() {
+  const chk = $('isForeignChk'), tax = $('taxId'), star = $('taxIdStar');
+  if (!chk || !tax) return;
+  const form = $('contactForm');
+  const mktReadonly = !!(form && form.classList.contains('mkt-readonly'));  // 行銷改他人卡：全表單唯讀
+  if (chk.checked) {
+    tax.value = '';
+    tax.disabled = true;
+    tax.placeholder = '境外公司，免填統編';
+    if (star) star.style.display = 'none';
+  } else {
+    if (!mktReadonly) tax.disabled = false;   // 唯讀模式下不要把統編欄重新啟用
+    tax.placeholder = '輸入 8 碼統編，自動帶入公司資料';
+    if (star) star.style.display = '';
+  }
+}
+if ($('isForeignChk')) $('isForeignChk').addEventListener('change', syncForeignField);
+
 // ── 統編自動帶入公司資料 ─────────────────────────────────
 let taxIdTimer = null;
 $('taxId').addEventListener('input', function () {
@@ -2839,6 +2858,7 @@ function openModal(contact = null) {
     $('address').value = contact.address || '';
     $('website').value = contact.website || '';
     $('taxId').value = contact.taxId || '';
+    if ($('isForeignChk')) $('isForeignChk').checked = !!contact.isForeign;
     rebuildIndustrySelect(contact.industry || '');
     $('industry').dataset.manual = contact.industry ? 'true' : 'false';
     $('autoDetectBadge').style.display = 'none';
@@ -2868,6 +2888,7 @@ function openModal(contact = null) {
     renderJfSelector(jfKey);
   } else {
     $('modalTitle').textContent = currentSection === 'prospects' ? '新增潛在客戶' : '新增名片';
+    if ($('isForeignChk')) $('isForeignChk').checked = false;
     rebuildIndustrySelect('');
     $('industry').dataset.manual = 'false';
     $('autoDetectBadge').style.display = 'none';
@@ -2886,6 +2907,7 @@ function openModal(contact = null) {
   $('companyInsightResult').innerHTML     = '';
 
   const ro = applyContactFormReadonly(contact);
+  syncForeignField();   // 依「境外公司」勾選狀態設定統編欄（須排在 applyContactFormReadonly 還原 disabled 之後）
   $('modalOverlay').classList.add('open');
   (ro ? $('industry') : $('name')).focus();
 }
@@ -2983,6 +3005,8 @@ function openModalAddContact(prefill = {}) {
   $('address').value  = prefill.address  || '';
   $('website').value  = prefill.website  || '';
   $('taxId').value    = prefill.taxId    || '';
+  if ($('isForeignChk')) $('isForeignChk').checked = !!prefill.isForeign;
+  syncForeignField();
   // 帶入產業（從同公司繼承）
   if (prefill.industry) {
     $('industry').value = prefill.industry;
@@ -3208,6 +3232,12 @@ $('saveBtn').addEventListener('click', async () => {
   if (!company) { showToast('請輸入公司名稱'); $('company').focus(); return; }
   const email = $('email').value.trim();
   if (!email) { showToast('請輸入 Email'); $('email').focus(); return; }
+  const isForeign = !!($('isForeignChk') && $('isForeignChk').checked);
+  const taxIdVal = $('taxId').value.trim();
+  if (!isForeign) {
+    if (!taxIdVal) { showToast('請輸入統一編號（境外公司請勾選「境外公司（無統一編號）」）'); $('taxId').focus(); return; }
+    if (!/^\d{8}$/.test(taxIdVal)) { showToast('統一編號需為 8 碼數字'); $('taxId').focus(); return; }
+  }
 
   const payload = {
     name,
@@ -3220,7 +3250,8 @@ $('saveBtn').addEventListener('click', async () => {
     email: $('email').value.trim(),
     address: $('address').value.trim(),
     website: $('website').value.trim(),
-    taxId: $('taxId').value.trim(),
+    taxId: taxIdVal,
+    isForeign,
     industry: $('industry').value,
     systemVendor: $('systemVendor').value,
     systemProduct: SYSTEMS[$('systemVendor').value] === null
@@ -9120,6 +9151,8 @@ async function doAppTransfer() {
       fill('address', c.address);
       fill('website', c.website);
       fill('taxId',   c.taxId);
+      if ($('isForeignChk')) $('isForeignChk').checked = false;
+      syncForeignField();
 
       // 若有統編，觸發自動查詢
       if (c.taxId && c.taxId.length === 8) {

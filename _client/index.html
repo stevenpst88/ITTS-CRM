@@ -1892,11 +1892,14 @@
                 <div id="companySimDup" style="display:none;font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;margin-top:6px;line-height:1.5"></div>
               </div>
               <div class="form-group full-width taxid-top">
-                <label>統一編號 <span style="font-size:11px;color:#888;font-weight:normal">（輸入 8 碼自動帶入公司名/地址；約需數秒）</span> <span class="auto-tag" id="taxIdLoadingBadge" style="display:none">查詢中...</span><span class="auto-tag taxid-ok" id="taxIdOkBadge" style="display:none">✓ 已帶入</span></label>
+                <label>統一編號 <span id="taxIdStar" style="color:red">*</span> <span style="font-size:11px;color:#888;font-weight:normal">（輸入 8 碼自動帶入公司名/地址；約需數秒）</span> <span class="auto-tag" id="taxIdLoadingBadge" style="display:none">查詢中...</span><span class="auto-tag taxid-ok" id="taxIdOkBadge" style="display:none">✓ 已帶入</span></label>
                 <div class="input-with-mic">
                   <input type="text" id="taxId" placeholder="輸入 8 碼統編，自動帶入公司資料" maxlength="8" inputmode="numeric">
                   <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
                 </div>
+                <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:13px;color:#555;font-weight:normal;cursor:pointer">
+                  <input type="checkbox" id="isForeignChk"> 境外公司（無統一編號）
+                </label>
               </div>
               <div class="form-group">
                 <label>職稱</label>

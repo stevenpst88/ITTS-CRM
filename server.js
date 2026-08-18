@@ -509,7 +509,7 @@ function writeContactAudit(action, req, target, changes) {
 function pickFields(obj, fields) {
   return fields.reduce((acc, f) => { if (f in obj) acc[f] = obj[f]; return acc; }, {});
 }
-const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
+const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
@@ -2760,6 +2760,13 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   if (!String(req.body.company || '').trim()) {
     return res.status(400).json({ error: '公司名稱為必填' });
   }
+  // 統一編號必填（境外公司免填：前端勾「境外公司」時送 isForeign=true）
+  const _isForeign = req.body.isForeign === true || req.body.isForeign === 'true';
+  if (!_isForeign) {
+    const _tax = String(req.body.taxId || '').trim();
+    if (!_tax) return res.status(400).json({ error: '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
+    if (!/^\d{8}$/.test(_tax)) return res.status(400).json({ error: '統一編號需為 8 碼數字' });
+  }
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
@@ -2780,7 +2787,8 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     email: req.body.email || '',
     address: req.body.address || '',
     website: sanitizeUrl(req.body.website),
-    taxId: req.body.taxId || '',
+    taxId: _isForeign ? '' : (req.body.taxId || ''),
+    isForeign: _isForeign,
     industry: isAdminOrMarketing(req) ? (req.body.industry || '') : '',
     opportunityStage: req.body.opportunityStage || '',
     isPrimary: req.body.isPrimary === true || req.body.isPrimary === 'true',
@@ -2853,6 +2861,15 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
   // 產業屬性僅行銷／管理員可改；其餘角色即使前端送出也一律忽略（後端雙保險，維持 industry 由行銷維護）
   if (!isAdminOrMarketing(req) && 'industry' in safeBody) delete safeBody.industry;
+  // 統一編號：非境外時，若有動到 taxId 就必須是 8 碼（清空或格式錯都擋）；不帶 taxId 的偏更新（看板拖曳等）不受影響
+  if (req.body.taxId !== undefined) {
+    const effForeign = req.body.isForeign !== undefined ? (req.body.isForeign === true || req.body.isForeign === 'true') : !!old.isForeign;
+    const t = String(req.body.taxId || '').trim();
+    if (!effForeign && !/^\d{8}$/.test(t)) {
+      return res.status(400).json({ error: t ? '統一編號需為 8 碼數字' : '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
+    }
+    if (effForeign) safeBody.taxId = '';   // 境外 → 統編清空（企業主檔改以公司名為鍵）
+  }
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
     // 若 bu 沒變動，跳過驗證（避免未設 BU 的使用者只想改其他欄位時被 BU 驗證擋下）
