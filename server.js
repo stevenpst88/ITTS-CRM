@@ -7725,6 +7725,75 @@ app.delete('/api/industries/:name', requireAuth, (req, res) => {
   res.json({ success: true, industries: (data.industries || []).slice().sort(sortZh) });
 });
 
+// ── 批次覆蓋整份產業分類清單（限管理員/行銷）──
+app.put('/api/industries', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const raw = Array.isArray(req.body && req.body.industries) ? req.body.industries : null;
+  if (!raw) return res.status(400).json({ error: '請提供 industries 陣列' });
+  const seen = new Set(); const list = [];
+  raw.forEach(x => { const n = String(x || '').trim(); if (n && !seen.has(n)) { seen.add(n); list.push(n); } });
+  const data = db.load();
+  const before = (data.industries || []).length;
+  data.industries = list;
+  db.save(data);
+  writeLog('REPLACE_INDUSTRIES', req.session.user.username, 'system', `批次覆蓋產業清單：${before} → ${list.length} 項`, req);
+  res.json({ success: true, industries: list.slice().sort(sortZh) });
+});
+
+// ── 清理不在清單內的產業值（清空）＋通知行銷（限管理員/行銷；?dryRun=1 只預覽不落地）──
+app.post('/api/industries/cleanup', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const dryRun = req.query.dryRun === '1' || !!(req.body && req.body.dryRun === true);
+  const data = db.load();
+  const set = new Set((data.industries || []).map(x => String(x || '').trim()).filter(Boolean));
+  const offList = {};
+  let contactsCleared = 0, companiesCleared = 0;
+  (data.contacts || []).forEach(c => {
+    if (c.deleted) return;
+    const v = String(c.industry || '').trim();
+    if (v && !set.has(v)) {
+      (offList[v] = offList[v] || { contacts: 0, companies: 0 }).contacts++;
+      contactsCleared++;
+      if (!dryRun) c.industry = '';
+    }
+  });
+  (data.companies || []).forEach(m => {
+    const v = String(m.industry || '').trim();
+    if (v && !set.has(v)) {
+      (offList[v] = offList[v] || { contacts: 0, companies: 0 }).companies++;
+      companiesCleared++;
+      if (!dryRun) m.industry = '';
+    }
+  });
+  const offListArr = Object.entries(offList).map(([value, n]) => ({ value, contacts: n.contacts, companies: n.companies }))
+    .sort((a, b) => (b.contacts + b.companies) - (a.contacts + a.companies));
+  // 待補公司數：有真實名片、且產業（清理後）為空的公司（willBeEmpty 對 dryRun 與正式都成立）
+  const realCompanyIds = new Set();
+  (data.contacts || []).forEach(c => { if (!c.deleted && !c.isPlaceholder && c.companyId) realCompanyIds.add(c.companyId); });
+  let pendingCompanies = 0;
+  (data.companies || []).forEach(m => {
+    if (!realCompanyIds.has(m.id)) return;
+    const v = String(m.industry || '').trim();
+    if (!v || !set.has(v)) pendingCompanies++;
+  });
+
+  if (dryRun) {
+    return res.json({ dryRun: true, contactsToClear: contactsCleared, companiesToClear: companiesCleared, offList: offListArr, pendingCompaniesAfter: pendingCompanies });
+  }
+  db.save(data);
+  writeLog('CLEANUP_INDUSTRIES', req.session.user.username, 'system', `清空越界產業：名片 ${contactsCleared} 張、公司 ${companiesCleared} 家；待補公司 ${pendingCompanies} 家`, req);
+  let notified = 0;
+  if (contactsCleared || companiesCleared || pendingCompanies) {
+    const auth = loadAuth();
+    const mkts = (auth.users || []).filter(u => u.role === 'marketing' && u.active !== false);
+    const title = '🏭 產業分類整頓：待補產業';
+    const body = `已依最新產業清單清理：清空名片 ${contactsCleared} 張、公司 ${companiesCleared} 家的舊產業值。目前約 ${pendingCompanies} 家客戶產業待補，請至企業主檔設定正確產業。`;
+    mkts.forEach(u => { try { pushNotification(u.username, 'industry_cleanup', title, body, null); } catch {} });
+    notified = mkts.length;
+  }
+  res.json({ success: true, contactsCleared, companiesCleared, offList: offListArr, pendingCompaniesAfter: pendingCompanies, notifiedMarketers: notified });
+});
+
 // ── 企業主檔匯出（admin + 行銷）──
 app.get('/api/companies/export', requireAuth, (req, res) => {
   if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });

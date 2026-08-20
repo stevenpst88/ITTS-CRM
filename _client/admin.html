@@ -658,8 +658,22 @@
               <input id="newIndustryInputAdm" type="text" placeholder="新增分類名稱" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
               <button id="addIndustryBtnAdm" class="btn btn-sm btn-primary">新增</button>
             </div>
-            <div id="industryListBoxAdm" style="max-height:340px;overflow-y:auto"></div>
+            <div id="industryListBoxAdm" style="max-height:300px;overflow-y:auto"></div>
             <div style="font-size:12px;color:#888;margin-top:10px">行銷與管理員皆可增刪；匯入時出現的新分類也會自動加入。</div>
+            <div style="border-top:1px solid #eef0f3;margin-top:14px;padding-top:12px">
+              <strong style="font-size:13px;color:#374151">批次覆蓋整份清單</strong>
+              <textarea id="industryBulkBox" rows="5" placeholder="一行一項" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="industryBulkApplyBtn" class="btn btn-sm btn-primary">套用整份清單</button>
+                <button id="industryFill37Btn" class="btn btn-sm" style="background:#eef2ff;color:#3730a3;border:none">填入官方 37 項</button>
+              </div>
+            </div>
+            <div style="border-top:1px solid #eef0f3;margin-top:12px;padding-top:12px">
+              <strong style="font-size:13px;color:#374151">清理不在清單的舊產業值</strong>
+              <div style="font-size:12px;color:#888;margin:4px 0 8px">把名片/公司中「不在上方清單」的產業值清空，並站內通知行銷補產業。清空不可逆，會先顯示預覽。</div>
+              <button id="industryCleanupBtn" class="btn btn-sm" style="background:#fff3e0;color:#9a3412;border:1px solid #fb923c">預覽清理…</button>
+              <div id="industryCleanupResult" style="font-size:12px;margin-top:8px"></div>
+            </div>
           </div>
         </div>
 
@@ -6546,6 +6560,37 @@
     };
     document.getElementById('addIndustryBtnAdm').addEventListener('click', admAddInd);
     document.getElementById('newIndustryInputAdm').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); admAddInd(); } });
+    // ── 批次覆蓋清單 + 官方 37 項 + 清理越界值 ──
+    const OFFICIAL_INDUSTRIES_37 = ['水泥工業','食品工業','塑膠工業','紡織纖維','電機機械','電器電纜','玻璃陶瓷','造紙工業','鋼鐵工業','橡膠工業','汽車工業','電子工業','建材營造業','航運業','觀光餐旅','金融保險業','貿易百貨業','綜合','其他業','化學工業','生技醫療業','油電燃氣業','半導體業','電腦及週邊設備業','光電業','通信網路業','電子零組件業','電子通路業','資訊服務業','其他電子業','文化創意業','農業科技業','綠能環保','數位雲端','運動休閒','居家生活','政府／公家機關'];
+    document.getElementById('industryFill37Btn').addEventListener('click', () => {
+      document.getElementById('industryBulkBox').value = OFFICIAL_INDUSTRIES_37.join('\n');
+    });
+    document.getElementById('industryBulkApplyBtn').addEventListener('click', async () => {
+      const lines = (document.getElementById('industryBulkBox').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+      if (!lines.length) { alert('請先輸入清單（一行一項），或按「填入官方 37 項」'); return; }
+      if (!confirm(`將整份產業清單覆蓋為 ${lines.length} 項（去重後）？既有清單會被取代。`)) return;
+      const r = await fetch('/api/industries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ industries: lines }) });
+      const d = await r.json();
+      if (r.ok) { _admIndustries = d.industries; renderAdmIndustryList(); alert(`已套用，共 ${d.industries.length} 項。`); }
+      else alert(d.error || '套用失敗');
+    });
+    document.getElementById('industryCleanupBtn').addEventListener('click', async () => {
+      const box = document.getElementById('industryCleanupResult');
+      box.innerHTML = '計算中…';
+      const r = await fetch('/api/industries/cleanup?dryRun=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json();
+      if (!r.ok) { box.innerHTML = `<span style="color:#b91c1c">${d.error || '預覽失敗'}</span>`; return; }
+      if (!d.contactsToClear && !d.companiesToClear) { box.innerHTML = '<span style="color:#059669">沒有需要清理的越界產業值 🎉</span>'; return; }
+      const rows = (d.offList || []).map(o => `<div style="display:flex;justify-content:space-between;border-bottom:1px solid #f0f2f5;padding:3px 0"><span>${escapeAttr(o.value)}</span><span style="color:#9a3412">名片 ${o.contacts}／公司 ${o.companies}</span></div>`).join('');
+      box.innerHTML = `<div style="color:#9a3412;margin-bottom:6px">將清空：名片 <b>${d.contactsToClear}</b> 張、公司 <b>${d.companiesToClear}</b> 家（越界舊值）；清理後待補公司約 <b>${d.pendingCompaniesAfter}</b> 家。</div><div style="max-height:160px;overflow-y:auto;margin-bottom:8px">${rows}</div><button id="industryCleanupConfirmBtn" class="btn btn-sm" style="background:#b91c1c;color:#fff;border:none">確認清理並通知行銷</button>`;
+      document.getElementById('industryCleanupConfirmBtn').addEventListener('click', async () => {
+        if (!confirm('確定要清空這些越界產業值？此動作不可逆。')) return;
+        const rr = await fetch('/api/industries/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const dd = await rr.json();
+        if (rr.ok) box.innerHTML = `<span style="color:#059669">✓ 已清空名片 ${dd.contactsCleared} 張、公司 ${dd.companiesCleared} 家；已通知 ${dd.notifiedMarketers} 位行銷（待補公司 ${dd.pendingCompaniesAfter} 家）。</span>`;
+        else box.innerHTML = `<span style="color:#b91c1c">${dd.error || '清理失敗'}</span>`;
+      });
+    });
 
     // ── 🏢 企業主檔：資料一致性檢查（1B）──
     document.getElementById('companyReportBtn').addEventListener('click', async () => {
