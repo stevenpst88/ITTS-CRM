@@ -7884,15 +7884,33 @@ app.post('/api/companies/import', requireAuth,
   });
 
 // ── 企業主檔匯入範本下載（admin + 行銷）──
+// 欄位須與 POST /api/companies/import 實際解析的欄位一致（見該處的 COL）；
+// 匯入只讀「第一個工作表」，所以說明頁一定要放第二張，否則會被當成資料列。
 app.get('/api/companies/import-template', requireAuth, (req, res) => {
   if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
-  const headers = ['公司名稱', '統一編號', '產業'];
-  const sample1 = ['台灣積體電路製造股份有限公司', '22099131', '半導體'];
-  const sample2 = ['中國砂輪企業股份有限公司', '03089008', '製造業'];
+  const headers = ['公司名稱', '統一編號', '產業', '服務業務', '區域', '客戶代號'];
+  const sample1 = ['台灣積體電路製造股份有限公司', '22099131', '半導體', 'David', '新竹', 'C0001'];
+  const sample2 = ['中國砂輪企業股份有限公司', '03089008', '製造業', 'David、Peter', '台北', ''];
   const ws = XLSX.utils.aoa_to_sheet([headers, sample1, sample2]);
-  ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 16 }];
+  ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 12 }];
+
+  const guide = [
+    ['欄位', '必填', '說明'],
+    ['公司名稱', '與統一編號擇一', '公司正式名稱。有統編時以統編比對既有主檔，沒有統編才以公司名稱比對。'],
+    ['統一編號', '與公司名稱擇一', '同統編的公司會「更新」而不是重複新增；既有主檔已有統編時不會被覆蓋。無統編（如國外客戶）仍可匯入，但只能用公司名稱去重。'],
+    ['產業', '否', '填了就覆蓋既有產業。產業清單中沒有的名稱會被自動新增為新產業，請留意不要打錯字。'],
+    ['服務業務', '否', '填業務的「帳號」或「顯示名稱」，多位用「、」「,」「/」分隔。系統會依該業務所屬的 BU，把 BU 標到這家公司（只增加、不移除）。' +
+      '注意：這不是指定名片擁有者——列表上「服務業務」欄的人名，是由該公司名下名片的擁有者自動帶出。名字在系統中找不到時會被忽略，不會報錯。'],
+    ['區域', '否', '自由文字（例：北區、新竹）。'],
+    ['客戶代號', '否', 'ERP／客戶端的代號，自由文字。'],
+    ['通用規則', '', '格子留空＝不變更既有資料（不會清空）。「範例」兩列請先刪除再匯入。'],
+  ];
+  const wsGuide = XLSX.utils.aoa_to_sheet(guide);
+  wsGuide['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 100 }];
+
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '企業主檔匯入範本');
+  XLSX.utils.book_append_sheet(wb, ws, '企業主檔匯入範本');   // 必須是第一張（匯入只讀這張）
+  XLSX.utils.book_append_sheet(wb, wsGuide, '填寫說明');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('企業主檔匯入範本.xlsx')}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
