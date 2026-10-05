@@ -7245,12 +7245,25 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   if (fromOwner !== '_pool' && !transferViewable.has(fromOwner)) return res.status(403).json({ error: '來源業務超出 BU 可視範圍' });
   if (!transferViewable.has(toOwner)) return res.status(403).json({ error: '目標業務超出 BU 可視範圍' });
 
-  // 權限：manager2 只能移轉 user，manager1 可移轉 user/manager2；客戶池(_pool)可由 admin/主管指派給業務
-  const transferableRoles = role === 'admin'    ? ['user','manager1','manager2','secretary','pool']
-                          : role === 'manager1' ? ['user','manager2','pool']
-                          : ['user','pool'];
-  if (!transferableRoles.includes(fromUser.role))
-    return res.status(403).json({ error: '您無權移轉此業務的客戶名單' });
+  // 權限（名單移轉）：
+  //   admin     ：user/manager1/manager2/secretary/pool
+  //   manager1  ：user/manager2/pool（維持原行為；不含「自己名下」）
+  //   manager2  ：二級主管是唯一可處理「自己名下客戶」的角色——
+  //               來源可為 自己／部屬業務(user)／客戶池；目標只能是 部屬業務(user) 或 自己（把業務名單轉回自己）。
+  //               可視範圍（自己＋部屬子樹）已在上方檢查，故碰不到其他二級主管或其他線的人。
+  // 客戶池(_pool)可由 admin/主管指派給業務。
+  if (role === 'manager2') {
+    if (!(fromOwner === username || ['user','pool'].includes(fromUser.role)))
+      return res.status(403).json({ error: '您無權移轉此業務的客戶名單' });
+    if (!(toOwner === username || toUser.role === 'user'))
+      return res.status(403).json({ error: '二級主管僅能將客戶移轉給所屬業務，或轉回自己' });
+  } else {
+    const transferableRoles = role === 'admin'    ? ['user','manager1','manager2','secretary','pool']
+                            : role === 'manager1' ? ['user','manager2','pool']
+                            : ['user','pool'];
+    if (!transferableRoles.includes(fromUser.role))
+      return res.status(403).json({ error: '您無權移轉此業務的客戶名單' });
+  }
 
   const data = db.load();
 
