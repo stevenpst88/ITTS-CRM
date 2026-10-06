@@ -111,6 +111,16 @@
     .admin-table td { padding: 12px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
     .admin-table tr:last-child td { border-bottom: none; }
     .admin-table tr:hover td { background: #f8f9ff; }
+    /* ── 功能權限矩陣：角色多時橫向捲動，左欄「功能名稱」與頂端「角色表頭」固定不動 ── */
+    .rp-wrap { overflow: auto; max-height: calc(100vh - 290px); min-height: 240px; border: 1px solid #eef0f3; border-radius: 10px; }
+    .rp-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+    .rp-table thead th { position: sticky; top: 0; z-index: 3; text-align: center; vertical-align: bottom; padding: 8px 6px; border-bottom: 2px solid #e9ecef; }
+    .rp-table th.rp-role { min-width: 84px; max-width: 112px; }
+    .rp-table th.rp-feat, .rp-table td.rp-feat { position: sticky; left: 0; z-index: 2; min-width: 170px; text-align: left; white-space: nowrap; background: #fff; box-shadow: 1px 0 0 #e5e7eb; }
+    .rp-table thead th.rp-feat { z-index: 4; background: #f8f9fa; }
+    .rp-table tbody tr:hover td.rp-feat { background: #f1f4ff; }
+    .rp-zh { font-size: 12px; font-weight: 700; color: #333; white-space: normal; line-height: 1.25; }
+    .rp-en { font-size: 10px; font-weight: 400; color: #9aa0a6; margin-top: 2px; overflow-wrap: anywhere; line-height: 1.2; }
     /* ── Badge ── */
     .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
     .badge-admin { background: #e8f0fe; color: #1a73e8; }
@@ -328,6 +338,11 @@
     body.dark .admin-table th { background: #21262d; color: #8b949e; border-bottom-color: #30363d; }
     body.dark .admin-table td { border-bottom-color: #21262d; color: #c9d1d9; }
     body.dark .admin-table tr:hover td { background: #1c2128; }
+    body.dark .rp-wrap { border-color: #30363d; }
+    body.dark .rp-table th.rp-feat, body.dark .rp-table td.rp-feat { background: #161b22; box-shadow: 1px 0 0 #30363d; }
+    body.dark .rp-table thead th.rp-feat { background: #21262d; }
+    body.dark .rp-table tbody tr:hover td.rp-feat { background: #1c2128; }
+    body.dark .rp-zh { color: #c9d1d9; }
     body.dark .admin-login-box { background: #161b22; }
     body.dark .admin-login-logo h1 { color: #e6edf3; }
     body.dark .admin-login-group label { color: #8b949e; }
@@ -1323,8 +1338,8 @@
             <button class="btn" id="rpResetBtn">⟲ 還原預設</button>
             <span id="rpStatus" style="font-size:13px;color:#666;margin-left:8px"></span>
           </div>
-          <div style="overflow-x:auto">
-            <table class="admin-table" id="rpTable" style="min-width:920px">
+          <div class="rp-wrap">
+            <table class="admin-table rp-table" id="rpTable">
               <thead></thead>
               <tbody></tbody>
             </table>
@@ -5785,17 +5800,23 @@
       const { features, roles, matrix } = _rpData;
       const thead = document.querySelector('#rpTable thead');
       const tbody = document.querySelector('#rpTable tbody');
-      // 表頭：第一欄是功能名稱，其後每個角色一欄
-      let headHtml = '<tr><th style="text-align:left;min-width:180px;background:#f8f9fa">功能</th>';
+      // 表頭：第一欄是功能名稱（橫向捲動時固定在左），其後每個角色一欄。
+      // 角色表頭拆成「中文名稱（大）＋英文代碼（小）」兩行，每欄約 90px，13 個角色不必一路往右拉
+      const rolePartsOf = (r) => {
+        const m = /^(.+?)（(.+)）$/.exec(ROLE_LABEL[r] || '');
+        return m ? { en: m[1], zh: m[2] } : { en: r, zh: r };
+      };
+      let headHtml = '<tr><th class="rp-feat">功能</th>';
       roles.forEach(r => {
-        headHtml += `<th style="text-align:center;background:#f8f9fa;white-space:nowrap;padding:8px 6px;font-size:12px">${ROLE_LABEL[r] || r}</th>`;
+        const p = rolePartsOf(r);
+        headHtml += `<th class="rp-role" title="${escH(ROLE_LABEL[r] || r)}"><div class="rp-zh">${escH(p.zh)}</div><div class="rp-en">${escH(p.en)}</div></th>`;
       });
       headHtml += '</tr>';
       thead.innerHTML = headHtml;
       // 表身：每個功能一列
       let bodyHtml = '';
       features.forEach(f => {
-        bodyHtml += `<tr><td style="font-weight:500">${f.icon} ${f.label}</td>`;
+        bodyHtml += `<tr><td class="rp-feat" style="font-weight:500">${f.icon} ${f.label}</td>`;
         roles.forEach(r => {
           const checked = (matrix[r] || []).includes(f.key);
           const disabled = (r === 'admin'); // admin 永遠全勾且禁用
