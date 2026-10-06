@@ -565,6 +565,7 @@ function renderApproval(s) {
       <div><span class="k">狀態</span>${approvalBadge(q)}</div>
       <div><span class="k">客戶</span>${e(q.company || '')}</div>
       <div><span class="k">專案名稱</span>${e(q.projectName || '')}</div>
+      ${q.validUntil ? `<div><span class="k">報價期限</span>${e(q.validUntil)}</div>` : ''}
       <div><span class="k">業務</span>${e(q.ownerName || q.owner || '')}</div>
       <div><span class="k">商品</span>${(q.products || []).map((p) => `<span class="qap-chip">${e(p)}</span>`).join(' ') || '<span class="qap-muted">（未勾選）</span>'}</div>
     </div>`);
@@ -806,6 +807,7 @@ ul { margin: 4px 0 0; padding-left: 20px; }
 <tr><td>報價單號</td><td>${e(q.quoteNo || '')}</td><td style="width:16%;background:#f7f7f7;font-weight:700">承辦業務</td><td>${e(q.ownerName || q.owner || '')}</td></tr>
 <tr><td>客戶</td><td colspan="3">${e(q.company || '')}</td></tr>
 <tr><td>專案名稱</td><td colspan="3">${e(q.projectName || '')}</td></tr>
+${q.validUntil ? `<tr><td>報價期限</td><td colspan="3">${e(q.validUntil)}</td></tr>` : ''}
 <tr><td>案件類別</td><td colspan="3">${e(d.rowLabel || '')}${(q.products || []).length ? '（商品：' + e((q.products || []).join('、')) + '）' : ''}</td></tr>
 </table>
 <h2>金額與毛利</h2>
@@ -897,6 +899,7 @@ function renderCostFill(s) {
       <div><span class="k">業務</span>${e(q.ownerName || q.owner || '')}</div>
       <div><span class="k">公司</span>${e(q.company || '')}</div>
       <div><span class="k">專案名稱</span>${e(q.projectName || '')}</div>
+      ${q.validUntil ? `<div><span class="k">報價期限</span>${e(q.validUntil)}</div>` : ''}
     </div></div>
     ${note}
     <div class="qap-sec"><h3>請填寫每一列的成本（單位成本，未稅）</h3>

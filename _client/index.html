@@ -2675,19 +2675,18 @@
             <div style="font-size:12px;color:#8a94a3;margin-top:4px">匯出與預覽時，報價單上的日期會自動帶入當天（台灣）日期</div>
           </div>
           <div class="form-group">
-            <label>簽核狀態</label>
-            <div id="qApprovalState" class="q-ro-state">新建立（尚未送簽）</div>
+            <label>報價期限（有效至） <span class="required">*</span></label>
+            <input type="date" id="qValidUntil">
+            <div id="qValidUntilHint" style="font-size:12px;color:#8a94a3;margin-top:4px">印在報價單 Remarks 第 4 條「本報價單於○年○月○日前有效」；預設為報價日期當月的最後一個工作天，可自行修改</div>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>專案名稱</label>
-            <input type="text" id="qProjectName" placeholder="本次報價專案名稱">
-          </div>
-          <div class="form-group">
-            <label>專案號碼</label>
-            <input type="text" id="qProjectNo" placeholder="例：PRJ-2026-001">
-          </div>
+        <div class="form-group">
+          <label>專案名稱</label>
+          <input type="text" id="qProjectName" maxlength="200" placeholder="請輸入專案名稱（會印在報價單中間的「專案資料」框內）">
+        </div>
+        <div class="form-group">
+          <label>簽核狀態</label>
+          <div id="qApprovalState" class="q-ro-state">新建立（尚未送簽）</div>
         </div>
 
         <!-- 商品（必勾）與支援顧問：決定簽核核決表的類別與是否需要顧問填成本 -->

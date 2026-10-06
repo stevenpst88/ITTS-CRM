@@ -140,7 +140,10 @@ function buildQuotePreviewHtml(q, info) {
   }).join('');
 
   const note = String(q.note || '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
-  const remarks = QPV_REMARKS.concat(note ? ['7.' + note] : []).map(t => `<div>${e(t)}</div>`).join('');
+  // Remarks 第 4 條：把範本的「XXXX年XX月XX日」換成報價期限（與 Excel 一致，年月日不補零）
+  const vuM = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(q.validUntil || ''));
+  const remarkList = QPV_REMARKS.map(t => vuM ? t.replace(/X{4}年X{2}月X{2}日/, `${+vuM[1]}年${+vuM[2]}月${+vuM[3]}日`) : t);
+  const remarks = remarkList.concat(note ? ['7.' + note] : []).map(t => `<div>${e(t)}</div>`).join('');
 
   return `<div class="qpv-paper">
     <div class="qpv-head">
@@ -175,7 +178,7 @@ function buildQuotePreviewHtml(q, info) {
       </table>
     </div>
     <div class="qpv-box qpv-proj"><span class="lg">專案資料</span>
-      ${row('專案名稱：', q.projectName)}${row('專案號碼：', q.projectNo)}
+      ${row('專案名稱：', q.projectName)}
     </div>
     <div class="qpv-remarks"><div>Remarks ：</div>${remarks}</div>
     <div class="qpv-sign">
@@ -210,7 +213,16 @@ async function _qpvLoadInfo(id) {
 /** 聯絡資訊還沒維護時的提示：自己的單給「立即設定」；別人的單請對方維護 */
 function _qpvNotice(info, q) {
   const approvalWarn = _qpvApprovalNotice(q);
-  return approvalWarn + _qpvIssuerNotice(info);
+  return approvalWarn + _qpvExpiryNotice(info, q) + _qpvIssuerNotice(info);
+}
+
+/** 報價期限已早於「今天」（出單日）→ 提醒業務更新期限；核准後改期限會使核准作廢，所以只提醒、不擋 */
+function _qpvExpiryNotice(info, q) {
+  const vu = q && q.validUntil;
+  const today = String((info && info.issueDate) || taipeiTodayClient());
+  if (!vu || vu >= today) return '';
+  return '<div class="qpv-warn"><span>報價期限（' + escapeHtml(vu.replace(/-/g, '/')) + '）已早於今天，客戶收到的報價單會是已過期的。請編輯報價單更新報價期限' +
+    (q.approval && q.approval.state === 'approved' ? '（已核准的單修改後需重新簽核）' : '') + '。</span></div>';
 }
 
 function _qpvIssuerNotice(info) {

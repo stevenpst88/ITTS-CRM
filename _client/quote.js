@@ -166,6 +166,38 @@ function taipeiTodayClient() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
+/**
+ * 報價期限預設值：dateStr（YYYY-MM-DD）當月的最後一個工作天；dateStr 已在當月最後工作天之後（例如月底週末或假日建單）
+ * 就順延到下個月的最後一個工作天，避免預設期限早於報價日期。
+ * 規則與 lib/quoteExcel.js 的 defaultValidUntil 相同（改一邊要改另一邊；單元測試會逐月比對兩邊）：週一至週五，且不是固定日期國定假日
+ * 元旦 1/1、和平紀念日 2/28、勞動節 5/1、孔子誕辰紀念日／教師節 9/28（遇週六補前一個週五、遇週日補後一個週一）。
+ * 春節、清明、端午、中秋日期逐年變動，未內建（2026~2030 年這些連假不影響任何月底）→ 之後月底剛好落在這些連假時請自行修改。
+ */
+function quoteLastWorkingDay(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return '';
+  const y0 = +m[1], mo0 = +m[2], dd0 = +m[3];
+  const chk = new Date(Date.UTC(y0, mo0 - 1, dd0));
+  if (chk.getUTCFullYear() !== y0 || chk.getUTCMonth() !== mo0 - 1 || chk.getUTCDate() !== dd0) return '';   // 必須是真實存在的日期
+  const iso = function (d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); };
+  const lwd = function (y, mo) {
+    const hol = new Set();
+    [y, y + 1].forEach(function (yy) {          // 含隔年：隔年 1/1 遇週六會補到今年 12/31
+      [[1, 1], [2, 28], [5, 1], [9, 28]].forEach(function (md) {
+        const dt = new Date(Date.UTC(yy, md[0] - 1, md[1])), dow = dt.getUTCDay();
+        if (dow === 6) dt.setUTCDate(dt.getUTCDate() - 1); else if (dow === 0) dt.setUTCDate(dt.getUTCDate() + 1);
+        hol.add(iso(dt));
+      });
+    });
+    const d = new Date(Date.UTC(y, mo, 0));   // 當月最後一天
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6 || hol.has(iso(d))) d.setUTCDate(d.getUTCDate() - 1);
+    return iso(d);
+  };
+  let r = lwd(y0, mo0);
+  if (r < dateStr) { let y = y0, mo = mo0 + 1; if (mo === 13) { mo = 1; y += 1; } r = lwd(y, mo); }
+  return r;
+}
+
 function fmtMoney(n) {
   return 'NT$ ' + Math.round(n).toLocaleString();
 }
@@ -1062,7 +1094,7 @@ function renderQuoteApprovalState(q) {
   let html = `<span class="quote-status ${escapeHtml(st.cls)}">${escapeHtml(st.label)}</span>`;
   const a = q.approval;
   if (a && a.state === 'approved' && a.valid !== false) {
-    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註、商品、品項、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
+    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註、報價期限、商品、品項、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
   } else if (a && a.state === 'returned') {
     const h = (a.history || []).filter(x => x && x.action === 'RETURN');
     const last = h.length ? h[h.length - 1] : null;
@@ -1070,6 +1102,24 @@ function renderQuoteApprovalState(q) {
   }
   if (QUOTE_LEGACY_LABEL[q.status]) html += `<span class="q-sub">舊狀態：${escapeHtml(QUOTE_LEGACY_LABEL[q.status])}（簽核功能上線前）</span>`;
   box.innerHTML = html;
+}
+
+// ── 報價期限欄位：業務自行輸入；沒動過就隨「建立日期」重算預設值 ─────────────────────
+let _qValidUntilTouched = false;
+function bindQuoteValidUntil() {
+  const vu = $('qValidUntil'), qd = $('qDate');
+  if (vu && !vu._qBound) {
+    vu._qBound = true;
+    vu.addEventListener('input', function () { _qValidUntilTouched = true; });
+  }
+  if (qd && !qd._qBoundVu) {
+    qd._qBoundVu = true;
+    qd.addEventListener('change', function () {
+      if (_qValidUntilTouched) return;
+      const d = quoteLastWorkingDay(qd.value);
+      if (d && $('qValidUntil')) $('qValidUntil').value = d;
+    });
+  }
 }
 
 // ── 開啟新增 / 編輯 Modal ────────────────────────────────────
@@ -1109,8 +1159,11 @@ async function openQuoteModal(idOrNull) {
     $('qAddress').value     = q ? (q.address       || '') : '';
     $('qDate').value        = q ? (q.quoteDate     || today) : today;
     $('qProjectName').value = q ? (q.projectName   || '') : '';
-    $('qProjectNo').value   = q ? (q.projectNo     || '') : '';
     $('qNote').value        = q ? (q.note          || '') : '';
+    // 報價期限：新單預設「報價日期當月最後一個工作天」，業務沒改過就跟著報價日期走；編輯舊單則尊重已存的值
+    $('qValidUntil').value  = q ? (q.validUntil || quoteLastWorkingDay($('qDate').value)) : quoteLastWorkingDay($('qDate').value);
+    _qValidUntilTouched     = !!q;
+    bindQuoteValidUntil();
     renderQuoteApprovalState(q);
 
     // 公司 datalist
@@ -1380,6 +1433,10 @@ async function saveQuote() {
   const quoteDate = $('qDate').value;
   if (!company)   { showToast('請輸入客戶公司名稱'); return; }
   if (!quoteDate) { showToast('請選擇報價日期');     return; }
+  // 報價期限（印在報價單 Remarks 第 4 條）：必填、不可早於建立日期（伺服器端也會驗證）
+  const validUntil = ($('qValidUntil').value || '').trim();
+  if (!validUntil) { switchQuoteTab('info'); $('qValidUntil').focus(); showToast('請輸入報價期限'); return; }
+  if (validUntil < quoteDate) { switchQuoteTab('info'); $('qValidUntil').focus(); showToast('報價期限不能早於建立日期'); return; }
 
   const products = readSelectedProducts();
   if (!products.length) { switchQuoteTab('info'); showToast('請至少勾選一項商品'); return; }
@@ -1426,7 +1483,7 @@ async function saveQuote() {
     address:       $('qAddress').value.trim(),
     quoteDate:     quoteDate,
     projectName:   $('qProjectName').value.trim(),
-    projectNo:     $('qProjectNo').value.trim(),
+    validUntil:    validUntil,
     items:         payloadItems,
     discountType:  discountType,
     discountValue: discountValue,
@@ -1452,7 +1509,7 @@ async function saveQuote() {
     if (!res.r.ok && res.j.code === 'WILL_VOID') {
       const ok = await qDialog({
         title: '修改會使核准作廢',
-        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註、商品、品項、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
+        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註、報價期限、商品、品項、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
         buttons: [
           { text: '儲存並作廢核准', value: true, cls: 'btn-danger' },
           { text: '取消', value: false, cls: 'btn-secondary' },
