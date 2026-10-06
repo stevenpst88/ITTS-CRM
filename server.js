@@ -31,6 +31,17 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
+// ── API 路徑大小寫防護 ──────────────────────────────────
+// Express 路由預設不分大小寫（/API/quotations 會命中 /api/quotations 的路由），
+// 但下方多個 middleware（唯讀/路徑白名單/強制改密碼…）用區分大小寫的 startsWith('/api/') 判斷，
+// 大寫路徑會整個繞過它們。這裡統一擋掉「前綴不是小寫 /api/」的 API 路徑。
+app.use((req, res, next) => {
+  if (/^\/api\//i.test(req.path) && !req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: '找不到此 API 端點' });
+  }
+  next();
+});
+
 // ── Postgres backend：每個 API 請求前 ready()（會做輕量 stale check 確保跨實例新鮮）──
 // 只套用在 /api/：靜態檔（JS/CSS/圖）不需要 DB，跳過以免每個資產都打一次 DB 拖慢載入。
 if (process.env.DB_BACKEND === 'postgres') {
@@ -303,7 +314,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
   executive:          ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
   manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
   manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  secretary:          ['home','managerHome','targets','forecast','accountingGroup','callin','yoy'],
+  secretary:          ['home','managerHome','targets','forecast','accountingGroup','callin','yoy','quotations'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   groupsales:         ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
@@ -871,17 +882,18 @@ const GROUPSALES_ALLOWED_PREFIXES = [
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
   if (!GROUP_SCOPED_ROLES.includes(role)) return next();
-  if (!req.path.startsWith('/api/')) return next();
-  if (TECOPM_WRITE_EXEMPT_PATHS.has(req.path)) return next(); // 改密碼/登出放行（含強制改密碼流程）
+  const rp = req.path.toLowerCase();   // 路由不分大小寫，白名單比對也必須不分大小寫（雙保險；最上方已擋非小寫 /api/ 前綴）
+  if (!rp.startsWith('/api/')) return next();
+  if (TECOPM_WRITE_EXEMPT_PATHS.has(rp)) return next(); // 改密碼/登出放行（含強制改密碼流程）
 
   if (role === 'tecopm') {
     if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
-    if (!TECOPM_ALLOWED_PATHS.has(req.path)) return res.status(403).json({ error: '無權存取此資源' });
+    if (!TECOPM_ALLOWED_PATHS.has(rp)) return res.status(403).json({ error: '無權存取此資源' });
     return next();
   }
 
   // groupsales：讀寫皆可，但限於白名單端點
-  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => req.path === p || req.path.startsWith(p + '/'));
+  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => rp === p || rp.startsWith(p + '/'));
   if (!ok) return res.status(403).json({ error: '無權存取此資源' });
   next();
 });
@@ -963,6 +975,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -5906,6 +5919,8 @@ function pushNotification(toUsername, type, title, body, refId) {
 
 // 點擊推播後要打開的頁面（SW 收到後 navigate 到這個 URL）
 function notificationUrlFor(type, refId) {
+  // 成本請求帶 :cost → 前端開「填成本」；其他開簽核面板
+  if (String(type || '').startsWith('quote_')) return refId ? `/index.html#quote:${refId}${type === 'quote_cost_request' ? ':cost' : ''}` : '/index.html#quotations';
   switch (type) {
     case 'contract_expiring':
     case 'contract_expiring_30':
@@ -9125,10 +9140,22 @@ const QUOTE_TEMPLATE = path.join(__dirname, 'templates', 'quotation_template.xls
 const { buildQuoteWorkbook, taipeiToday } = require('./lib/quoteExcel');   // 給客戶的報價單：直接填範本，保留框線／logo／列印設定
 
 function genQuoteNo(data) {
+  // 單號＝QU-<台灣年月>-<流水號>，例：QU-202610-001＝2026 年 10 月第 1 張；由系統給號，前端不可指定。
+  // 流水號用「永不倒退的計數器」(data.quoteSeq)，不是「現有張數+1」：後者在刪掉中間一張草稿後會撞號，
+  // 也會重用已刪除單據的號碼。計數器與現有最大號取較大者再 +1，所以舊資料也能銜接。
   const yyyymm = taipeiToday().slice(0, 7).replace('-', '');   // 台灣年月（不可用伺服器本地時間：Vercel 為 UTC）
   const prefix = `QU-${yyyymm}-`;
-  const count = (data.quotations || []).filter(q => q.quoteNo && q.quoteNo.startsWith(prefix)).length;
-  return prefix + String(count + 1).padStart(3, '0');
+  let maxSerial = 0;
+  (data.quotations || []).forEach(q => {
+    if (q.quoteNo && q.quoteNo.startsWith(prefix)) {
+      const n = parseInt(q.quoteNo.slice(prefix.length), 10);
+      if (n > maxSerial) maxSerial = n;
+    }
+  });
+  if (!data.quoteSeq) data.quoteSeq = {};
+  const seq = Math.max(data.quoteSeq[yyyymm] || 0, maxSerial) + 1;
+  data.quoteSeq[yyyymm] = seq;
+  return prefix + String(seq).padStart(3, '0');
 }
 
 /**
@@ -9286,166 +9313,12 @@ app.put('/api/me/contact', requireAuth, (req, res) => {
   res.json({ success: true, ...info });
 });
 
-// ── 報價單 CRUD ───────────────────────────────────────────
-app.get('/api/quotations', requireAuth, (req, res) => {
-  const data  = db.load();
-  const owners = getViewableOwners(req, 'quotations');
-  const list   = (data.quotations || [])
-    .filter(q => owners.includes(q.owner))
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  res.json(list);
-});
-
-app.get('/api/quotations/:id', requireAuth, (req, res) => {
-  const data = db.load();
-  const q    = (data.quotations || []).find(q => q.id === req.params.id);
-  if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  const owners = getViewableOwners(req, 'quotations');
-  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
-  res.json(q);
-});
-
-app.post('/api/quotations', requireAuth, (req, res) => {
-  const owner = req.session.user.username;
-  const data  = db.load();
-  if (!data.quotations) data.quotations = [];
-
-  const items = Array.isArray(req.body.items)
-    ? req.body.items.slice(0, 50).map(it => ({
-        desc:      sanitizeStr(it.desc,      200),
-        unit:      sanitizeStr(it.unit,       20),
-        qty:       Math.max(0.001, sanitizePositiveFloat(it.qty)       || 1),
-        unitPrice: sanitizePositiveFloat(it.unitPrice) || 0,
-        cost:      sanitizePositiveFloat(it.cost)      || 0,
-      }))
-    : [];
-
-  const q = {
-    id:          uuidv4(),
-    owner,
-    quoteNo:     genQuoteNo(data),
-    contactId:   sanitizeStr(req.body.contactId,    36),
-    company:     sanitizeStr(req.body.company,     100),
-    contactName: sanitizeStr(req.body.contactName, 100),
-    phone:       sanitizeStr(req.body.phone,        50),
-    mobile:      sanitizeStr(req.body.mobile,       50),
-    address:     sanitizeStr(req.body.address,     200),
-    quoteDate:   sanitizeStr(req.body.quoteDate,    10) || taipeiToday(),
-    projectName: sanitizeStr(req.body.projectName, 200),
-    projectNo:   sanitizeStr(req.body.projectNo,    50),
-    items,
-    note:          sanitizeStr(req.body.note,        500),
-    discountType:  ['none','percent','amount'].includes(req.body.discountType) ? req.body.discountType : 'none',
-    discountValue: sanitizePositiveFloat(req.body.discountValue) || 0,
-    status:        'draft',
-    createdAt:     new Date().toISOString(),
-    updatedAt:     new Date().toISOString(),
-  };
-  data.quotations.push(q);
-  db.save(data);
-  res.status(201).json(q);
-});
-
-app.put('/api/quotations/:id', requireAuth, (req, res) => {
-  const { username } = req.session.user;
-  const data = db.load();
-  const idx  = (data.quotations || []).findIndex(q => q.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: '找不到此報價單' });
-  const q = data.quotations[idx];
-  const quoteOwners = new Set(getViewableOwners(req, 'quotations'));
-  if (!quoteOwners.has(q.owner)) return res.status(403).json({ error: '無權限' });
-
-  const items = Array.isArray(req.body.items)
-    ? req.body.items.slice(0, 50).map(it => ({
-        desc:      sanitizeStr(it.desc,      200),
-        unit:      sanitizeStr(it.unit,       20),
-        qty:       Math.max(0.001, sanitizePositiveFloat(it.qty)       || 1),
-        unitPrice: sanitizePositiveFloat(it.unitPrice) || 0,
-        cost:      sanitizePositiveFloat(it.cost)      || 0,
-      }))
-    : q.items;
-
-  data.quotations[idx] = {
-    ...q,
-    company:     sanitizeStr(req.body.company,     100) || q.company,
-    contactName: sanitizeStr(req.body.contactName, 100),
-    phone:       sanitizeStr(req.body.phone,        50),
-    mobile:      sanitizeStr(req.body.mobile,       50),
-    address:     sanitizeStr(req.body.address,     200),
-    quoteDate:   sanitizeStr(req.body.quoteDate,    10) || q.quoteDate,
-    projectName: sanitizeStr(req.body.projectName, 200),
-    projectNo:   sanitizeStr(req.body.projectNo,    50),
-    items,
-    note:          sanitizeStr(req.body.note,        500),
-    discountType:  ['none','percent','amount'].includes(req.body.discountType) ? req.body.discountType : (q.discountType || 'none'),
-    discountValue: req.body.discountValue !== undefined ? (sanitizePositiveFloat(req.body.discountValue) || 0) : (q.discountValue || 0),
-    status:        sanitizeStr(req.body.status,       20) || q.status,
-    updatedAt:     new Date().toISOString(),
-  };
-  db.save(data);
-  res.json(data.quotations[idx]);
-});
-
-app.delete('/api/quotations/:id', requireAuth, (req, res) => {
-  const data = db.load();
-  const q    = (data.quotations || []).find(q => q.id === req.params.id);
-  if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  const delQuoteOwners = new Set(getViewableOwners(req, 'quotations'));
-  if (!delQuoteOwners.has(q.owner)) return res.status(403).json({ error: '無權限' });
-  data.quotations = data.quotations.filter(q => q.id !== req.params.id);
-  db.save(data);
-  res.json({ success: true });
-});
-
-app.get('/api/quotations/:id/export', requireAuth, async (req, res) => {
-  const data   = db.load();
-  const q      = (data.quotations || []).find(q => q.id === req.params.id);
-  if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  const owners = getViewableOwners(req, 'quotations');
-  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
-
-  if (!fs.existsSync(QUOTE_TEMPLATE)) {
-    return res.status(500).json({ error: '報價單範本不存在，請聯繫管理員' });
-  }
-  try {
-    const buf   = await buildQuoteWorkbook(q, QUOTE_TEMPLATE, { issueDate: taipeiToday(), issuer: resolveIssuer(q.owner) });
-    const fname = encodeURIComponent(`${q.quoteNo}_${q.company || '報價單'}.xlsx`);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
-  } catch (e) {
-    console.error('[QuoteExport]', e.message, e.stack);
-    res.status(500).json({ error: '報價單產生失敗：' + e.message });
-  }
-});
-
-// 預覽用：這張報價單「現在送出」會蓋的日期（台灣當天）與業務聯絡資訊
-app.get('/api/quotations/:id/issue-info', requireAuth, (req, res) => {
-  const data   = db.load();
-  const q      = (data.quotations || []).find(q => q.id === req.params.id);
-  if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  const owners = getViewableOwners(req, 'quotations');
-  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
-  res.json({ issueDate: taipeiToday(), issuer: resolveIssuer(q.owner), ownerIsMe: q.owner === req.session.user.username });
-});
-
-// 毛利分析（內部用）：含成本與毛利率，與給客戶的報價單分開匯出
-app.get('/api/quotations/:id/export-pnl', requireAuth, (req, res) => {
-  const data   = db.load();
-  const q      = (data.quotations || []).find(q => q.id === req.params.id);
-  if (!q) return res.status(404).json({ error: '找不到此報價單' });
-  const owners = getViewableOwners(req, 'quotations');
-  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
-  try {
-    const buf   = buildQuotePnlExcel(q);
-    const fname = encodeURIComponent(`${q.quoteNo}_毛利分析-內部.xlsx`);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
-  } catch (e) {
-    console.error('[QuotePnlExport]', e.message, e.stack);
-    res.status(500).json({ error: '毛利分析產生失敗：' + e.message });
-  }
+// ── 報價單：CRUD、成本填寫、簽核、簽核設定、報價章、匯出 ─────────────────────
+// 實作在 lib/quoteRoutes.js（權限／狀態機／通知／稽核），規則在 lib/quoteApproval.js（核決表、毛利精算、內容雜湊）。
+require('./lib/quoteRoutes')(app, {
+  db, loadAuth, saveAuth, requireAuth, requireAdmin, writeLog, pushNotification, getViewableOwners,
+  sanitizeStr, genQuoteNo, taipeiToday, resolveIssuer, buildQuoteWorkbook, buildQuotePnlExcel,
+  QUOTE_TEMPLATE, uuidv4, normalizeBu, getUserFeatures,
 });
 
 // ── 全域錯誤處理（必須在所有路由之後）─────────────────────

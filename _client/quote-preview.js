@@ -70,9 +70,10 @@ const QPV_CSS = `
 .qpv-remarks div { min-height: 22px; }
 .qpv-sign { display: flex; justify-content: space-between; margin-top: 16px; }
 .qpv-sign .col { width: 45%; }
-.qpv-sign .sig { height: 64px; display: flex; align-items: center; justify-content: center;
-  font-family: "Brush Script MT","Segoe Script","Lucida Handwriting",cursive; font-size: 30px; font-weight: 700; }
+.qpv-sign .sig { position: relative; height: 88px; display: flex; align-items: center; justify-content: center; }
+.qpv-sign .sig .qpv-seal { position: absolute; right: 14%; top: 2px; width: 84px; height: 84px; object-fit: contain; mix-blend-mode: multiply; pointer-events: none; }
 .qpv-sign .ln { border-top: 3px solid #111; padding-top: 3px; margin-top: 6px; }
+.qpv-warn.qpv-unsigned { background: #fff0f0; color: #a31515; border-color: #f0b4b4; }
 body.dark .qpv-body { background: #0d1117; }
 body.dark .qpv-hint { color: #8b949e; }
 `;
@@ -83,6 +84,23 @@ function _qpvEnsureStyle() {
   st.id = 'qpvStyle';
   st.textContent = QPV_CSS;
   document.head.appendChild(st);
+}
+
+/** 已核准且核准仍有效（內容雜湊吻合）才蓋章；與下載 Excel 的蓋章條件一致 */
+function _qpvStamped(q) {
+  const a = q && q.approval;
+  return !!(a && a.state === 'approved' && a.valid === true);
+}
+let _qpvSealVer = Date.now();   // 每次開預覽換一個，避免瀏覽器快取到舊章
+
+/** 預覽上方的簽核警示條：未核准／核准已失效時提醒「下載檔案不會有報價專用章」 */
+function _qpvApprovalNotice(q) {
+  if (_qpvStamped(q)) return '';
+  const a = q && q.approval;
+  const voided = a && a.state === 'approved' && a.valid === false;
+  return '<div class="qpv-warn qpv-unsigned"><span>' +
+    (voided ? '核准已失效（核准後報價內容被修改）：' : '主管尚未簽核完成：') +
+    '下載檔案不會有報價專用章。</span></div>';
 }
 
 /** 金額與優惠：規則與 lib/quoteExcel.js 一致 */
@@ -162,7 +180,7 @@ function buildQuotePreviewHtml(q, info) {
     <div class="qpv-remarks"><div>Remarks ：</div>${remarks}</div>
     <div class="qpv-sign">
       <div class="col"><div>Customer Confirme by:</div><div class="sig">&nbsp;</div><div class="ln">請簽回以確認訂單</div></div>
-      <div class="col"><div>Prepared by :</div><div class="sig">Steven Lee</div><div class="ln">ITTS Corp.</div></div>
+      <div class="col"><div>Prepared by :</div><div class="sig">${_qpvStamped(q) ? `<img class="qpv-seal" src="${API}/quotations/${encodeURIComponent(q.id)}/seal?v=${_qpvSealVer}" alt="報價專用章" onerror="this.style.display='none'">` : '&nbsp;'}</div><div class="ln">ITTS Corp.</div></div>
     </div>
   </div>`;
 }
@@ -190,7 +208,12 @@ async function _qpvLoadInfo(id) {
 }
 
 /** 聯絡資訊還沒維護時的提示：自己的單給「立即設定」；別人的單請對方維護 */
-function _qpvNotice(info) {
+function _qpvNotice(info, q) {
+  const approvalWarn = _qpvApprovalNotice(q);
+  return approvalWarn + _qpvIssuerNotice(info);
+}
+
+function _qpvIssuerNotice(info) {
   if (!info || !info.issuer || info.issuer.isSet) return '';
   return info.ownerIsMe
     ? '<div class="qpv-warn"><span>你還沒維護聯絡資訊，右上「廠商資料」框的電話與手機會是空白。</span><button class="btn btn-sm btn-primary" onclick="openMyContactModal()">立即設定</button></div>'
@@ -206,14 +229,20 @@ async function refreshQuotePreview() {
   const info = await _qpvLoadInfo(_qpvCurrentId);
   stage.innerHTML = buildQuotePreviewHtml(q, info);
   const warn = document.getElementById('qpvNotice');
-  if (warn) warn.innerHTML = _qpvNotice(info);
+  if (warn) warn.innerHTML = _qpvNotice(info, q);
   fitQuotePreview();
 }
 
 async function previewQuote(id) {
-  let q = (typeof allQuotations !== 'undefined' ? allQuotations : []).find(x => x.id === id);
-  if (!q) {
-    try { const r = await fetch(`${API}/quotations/${id}`); if (r.ok) q = await r.json(); } catch (e) { /* 下方統一提示 */ }
+  // 蓋章與否取決於「現在」的核准狀態，所以一律先向伺服器取最新的單；取不到才退回列表快取
+  let q = null;
+  try { const r = await fetch(`${API}/quotations/${encodeURIComponent(id)}`); if (r.ok) q = await r.json(); } catch (e) { /* 退回列表快取 */ }
+  const list = (typeof allQuotations !== 'undefined' ? allQuotations : []);
+  if (q) {
+    const i = list.findIndex(x => x.id === id);
+    if (i >= 0) list[i] = q;
+  } else {
+    q = list.find(x => x.id === id) || null;
   }
   if (!q) return showToast('找不到此報價單');
   const info = await _qpvLoadInfo(id);
@@ -221,6 +250,7 @@ async function previewQuote(id) {
   _qpvEnsureStyle();
   closeQuotePreview();
   _qpvCurrentId = id;
+  _qpvSealVer = Date.now();
   const no = escapeHtml(q.quoteNo || '');
   const ov = document.createElement('div');
   ov.className = 'modal-overlay open';
@@ -232,16 +262,19 @@ async function previewQuote(id) {
         <button class="modal-close" onclick="closeQuotePreview()">&#10005;</button>
       </div>
       <div class="modal-body qpv-body">
-        <div id="qpvNotice">${_qpvNotice(info)}</div>
+        <div id="qpvNotice">${_qpvNotice(info, q)}</div>
         <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；實際成品以「下載 Excel」為準。</div>
         <div class="qpv-stage" id="qpvStage">${buildQuotePreviewHtml(q, info)}</div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeQuotePreview()">關閉</button>
-        <button class="btn btn-export" onclick="exportQuote('${escapeHtml(q.id)}','${no}')">&#11015; 下載 Excel</button>
+        <button class="btn btn-export" id="qpvExportBtn" type="button">&#11015; 下載 Excel</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
+  // 不把 id/單號拼進 inline JS（HTML 屬性的實體解碼會讓單引號跳脫失效）→ 用 listener 帶閉包值
+  const exBtn = ov.querySelector('#qpvExportBtn');
+  if (exBtn) exBtn.addEventListener('click', function () { exportQuote(q.id, q.quoteNo || ''); });
   fitQuotePreview();
   window.addEventListener('resize', fitQuotePreview);
 }

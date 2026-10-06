@@ -3517,6 +3517,8 @@ $('logoutBtn').addEventListener('click', async () => {
 // ── 更改密碼 ─────────────────────────────────────────────
 function openChangePw() {
   $('changePwOld').value     = '';
+    // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單
+    if (typeof _handleQuoteDeepLink === 'function') _handleQuoteDeepLink();
   $('changePwNew').value     = '';
   $('changePwConfirm').value = '';
   $('changePwError').style.display = 'none';
@@ -8418,7 +8420,9 @@ function renderNotifList(list) {
 
   const typeIcon = {
     callin_new:'📞', callin_assigned:'📋', callin_overdue:'⏰', callin_responded:'✅',
-    contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴'
+    contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
+    quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
@@ -8469,7 +8473,7 @@ function renderNotifList(list) {
   if (regularItems.length) {
     if (contractItems.length) html += `<div class="notif-group-hd">🔔 系統通知</div>`;
     html += regularItems.slice(0, 20).map(n => `
-      <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}">
+      <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}" data-type="${escapeHtml(n.type || '')}" data-ref="${escapeHtml(n.refId || '')}">
         <div class="notif-icon">${typeIcon[n.type] || '🔔'}</div>
         <div class="notif-content">
           <div class="notif-title">${escapeHtml(n.title)}</div>
@@ -8509,11 +8513,33 @@ function _updateBadgeFromDOM() {
   const badge = $('notifBadge');
   if (unreadCount > 0) {
     badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+        if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
     badge.style.display = '';
   } else {
     badge.style.display = 'none';
   }
 }
+// 簽核相關通知 → 切到報價單頁並開啟該張（成本請求開「填成本」，其餘開「簽核面板」）
+function openQuoteFromNotification(type, id) {
+  const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+  showSection('quotations');
+  setTimeout(() => {
+    const fn = type === 'quote_cost_request' ? window.openQuoteCostFill : window.openQuoteApproval;
+    if (typeof fn === 'function') fn(id); else showToast('請在「報價單管理」查看這張報價單');
+  }, 700);
+}
+
+// 推播通知點擊 → 網址帶 #quote:<id>（server 的 notificationUrlFor）。頁面載入（initUser 結尾）與 hashchange 都處理；
+// 處理完立刻清掉 hash，避免重新整理又開一次。伺服器端仍會對該張單做權限檢查。
+function _handleQuoteDeepLink() {
+  const m = /^#quote:([0-9a-fA-F-]{8,64})(:cost)?$/.exec(window.location.hash || '');
+  if (!m) return false;
+  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) { /* 忽略 */ }
+  openQuoteFromNotification(m[2] ? 'quote_cost_request' : 'quote_submitted', m[1]);
+  return true;
+}
+window.addEventListener('hashchange', _handleQuoteDeepLink);
+
 
 $('notifReadAll').addEventListener('click', async () => {
   // 生日提醒全標已讀（localStorage）

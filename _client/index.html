@@ -760,15 +760,19 @@
               <span class="search-icon">&#128269;</span>
               <input type="text" id="quoteSearchInput" placeholder="搜尋公司、報價單號...">
             </div>
-            <select id="quoteStatusFilter" class="forecast-year-sel">
+            <select id="quoteStatusFilter" class="forecast-year-sel" title="依簽核進度篩選">
               <option value="">全部狀態</option>
-              <option value="draft">草稿</option>
-              <option value="sent">已寄出</option>
-              <option value="accepted">已接受</option>
-              <option value="rejected">已拒絕</option>
+              <option value="draft">草稿／未送簽</option>
+              <option value="cost">待顧問填成本</option>
+              <option value="pending">簽核中</option>
+              <option value="returned">已退回</option>
+              <option value="approved">已核准</option>
+              <option value="void">核准已失效／作廢</option>
             </select>
+            <button class="btn btn-secondary" id="quoteInboxBtn" type="button" title="只看需要我簽核或填成本的報價單">&#128276; 待我處理 <span id="quoteInboxBadge" class="q-inbox-badge" style="display:none">0</span></button>
+            <button class="btn btn-secondary" id="quoteSettingsBtn" type="button" style="display:none" onclick="openQuoteApprovalSettingsSafe()" title="簽核名冊、商品歸類、核決門檻、報價專用章">&#9881; 簽核設定</button>
             <button class="btn btn-secondary" id="myContactBtn" onclick="openMyContactModal()" title="維護印在報價單上的我方業務姓名／電話／手機">&#128100; 我的聯絡資訊</button>
-            <button class="btn btn-primary" id="addQuoteBtn" onclick="openQuoteModal(null)">&#43; 新增報價單</button>
+            <button class="btn btn-primary" id="addQuoteBtn">&#43; 新增報價單</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="quoteTable">
@@ -777,9 +781,11 @@
                 <th>公司名稱</th>
                 <th>聯絡人</th>
                 <th>專案名稱</th>
+                <th>業務</th>
                 <th>建立日期</th>
                 <th>合計金額</th>
-                <th>狀態</th>
+                <th>簽核</th>
+                <th>成本</th>
                 <th>操作</th>
               </tr></thead>
               <tbody id="quoteTbody"></tbody>
@@ -2626,7 +2632,7 @@
       <!-- ── 報價單 TAB 導覽 ── -->
       <div class="q-modal-tabs">
         <button class="q-tab-btn active" id="quoteTabBtnInfo" onclick="switchQuoteTab('info')">📋 報價資訊</button>
-        <button class="q-tab-btn" id="quoteTabBtnPnl" onclick="switchQuoteTab('pnl')">📊 毛利分析（PNL）</button>
+        <button class="q-tab-btn" id="quoteTabBtnPnl" onclick="switchQuoteTab('pnl')">📊 毛利與簽核路徑</button>
       </div>
 
       <!-- ── TAB 1：報價資訊 ── -->
@@ -2669,13 +2675,8 @@
             <div style="font-size:12px;color:#8a94a3;margin-top:4px">匯出與預覽時，報價單上的日期會自動帶入當天（台灣）日期</div>
           </div>
           <div class="form-group">
-            <label>狀態</label>
-            <select id="qStatus">
-              <option value="draft">草稿</option>
-              <option value="sent">已寄出</option>
-              <option value="accepted">已接受</option>
-              <option value="rejected">已拒絕</option>
-            </select>
+            <label>簽核狀態</label>
+            <div id="qApprovalState" class="q-ro-state">新建立（尚未送簽）</div>
           </div>
         </div>
         <div class="form-row">
@@ -2688,6 +2689,33 @@
             <input type="text" id="qProjectNo" placeholder="例：PRJ-2026-001">
           </div>
         </div>
+
+        <!-- 商品（必勾）與支援顧問：決定簽核核決表的類別與是否需要顧問填成本 -->
+        <div class="quote-section-title" style="margin-top:20px">🧩 商品 <span class="required">*</span>
+          <span class="q-sec-sub">勾選本次報價包含的商品（至少 1 項），系統依商品歸類決定簽核層級</span></div>
+        <div id="qProductsSection">
+          <div class="qp-top">
+            <input type="text" id="qProdSearch" class="qp-search" placeholder="搜尋商品名稱…" autocomplete="off">
+            <span id="qProdCount" class="qp-count">已勾選 0 項</span>
+          </div>
+          <div id="qProdSelected" class="qp-selected"></div>
+          <div id="qProductsList" class="qp-list"></div>
+          <div id="qProdWarn" class="q-warnbar" style="display:none"></div>
+        </div>
+        <div id="qCostByWrap" class="q-costby" style="display:none">
+          <div class="form-row">
+            <div class="form-group">
+              <label>支援顧問（成本填寫人） <span class="required">*</span></label>
+              <select id="qCostBy"></select>
+              <div id="qCostByHint" class="q-hint"></div>
+            </div>
+            <div class="form-group">
+              <label>給顧問的備註</label>
+              <textarea id="qCostNote" rows="2" maxlength="500" placeholder="例：SAP 授權的成本為…；客戶需求重點…"></textarea>
+            </div>
+          </div>
+        </div>
+        <div id="qSelfCostHint" class="q-infobar" style="display:none">此單的商品都由業務自行填成本（例如 SAP 軟體授權），不需要顧問。請到「毛利與簽核路徑」頁籤填寫各品項成本。</div>
 
         <!-- 報價項目 -->
         <div class="quote-section-title" style="margin-top:20px">📦 報價項目</div>
@@ -2707,6 +2735,7 @@
             <tbody id="quoteItemsBody"></tbody>
           </table>
           <button class="btn btn-secondary btn-sm" id="addQuoteItemBtn" style="margin-top:8px">&#43; 新增項目</button>
+          <div id="qItemsHint" class="q-hint" style="display:none"></div>
         </div>
 
         <!-- 優惠設定 -->
@@ -2764,55 +2793,9 @@
         </div>
       </div><!-- end quoteTabContentInfo -->
 
-      <!-- ── TAB 2：毛利分析（PNL） ── -->
+      <!-- ── TAB 2：毛利與簽核路徑（唯讀摘要；成本由顧問填寫，業務自填時才可編輯成本） ── -->
       <div class="modal-body" id="quoteTabContentPnl" style="display:none">
-        <div class="pnl-note">
-          📌 成本欄位請填未稅金額；毛利以<strong>優惠後未稅報價</strong>為基準計算。
-        </div>
-
-        <div class="quote-items-wrap" style="margin-top:12px;overflow-x:auto">
-          <table class="quote-items-table pnl-table">
-            <thead>
-              <tr>
-                <th style="width:34px">#</th>
-                <th>品項說明</th>
-                <th style="width:60px;text-align:right">數量</th>
-                <th style="width:110px;text-align:right">報價單價</th>
-                <th style="width:110px;text-align:right">報價小計</th>
-                <th style="width:120px;text-align:right">成本單價</th>
-                <th style="width:110px;text-align:right">成本小計</th>
-                <th style="width:100px;text-align:right">毛利</th>
-                <th style="width:80px;text-align:right">毛利率</th>
-              </tr>
-            </thead>
-            <tbody id="pnlItemsBody"></tbody>
-          </table>
-        </div>
-
-        <!-- 折扣資訊提示 -->
-        <div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>
-
-        <!-- PNL 匯總 -->
-        <div class="pnl-summary-bar">
-          <div class="pnl-sum-grid">
-            <div class="pnl-sum-card">
-              <div class="pnl-sum-label">報價合計（未稅）</div>
-              <div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div>
-            </div>
-            <div class="pnl-sum-card">
-              <div class="pnl-sum-label">成本合計</div>
-              <div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div>
-            </div>
-            <div class="pnl-sum-card">
-              <div class="pnl-sum-label">毛利</div>
-              <div class="pnl-sum-value pnl-gp-val" id="pnlGrossProfit">NT$ 0</div>
-            </div>
-            <div class="pnl-sum-card pnl-margin-card">
-              <div class="pnl-sum-label">整體毛利率</div>
-              <div class="pnl-sum-value pnl-margin-val" id="pnlMarginPct">0.0%</div>
-            </div>
-          </div>
-        </div>
+        <div id="pnlBody"></div>
       </div><!-- end quoteTabContentPnl -->
 
       <div class="modal-footer">
@@ -3052,6 +3035,7 @@
   <script src="app.js"></script>
   <script src="quote.js"></script>
   <script src="quote-preview.js"></script>
+  <script src="quote-approval.js"></script>
   <script>
   // ── Web Push 推播訂閱管理（與 sw.js 對應） ─────────────
   (function(){
