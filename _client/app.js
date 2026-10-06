@@ -3506,6 +3506,8 @@ async function initUser() {
       // 非首次載入時的安全網：tecopm 一律強制進預測表
       showSection('forecast');
     }
+    // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單
+    if (typeof _handleQuoteDeepLink === 'function') _handleQuoteDeepLink();
   } catch { window.location.href = '/login.html'; }
 }
 
@@ -3517,8 +3519,6 @@ $('logoutBtn').addEventListener('click', async () => {
 // ── 更改密碼 ─────────────────────────────────────────────
 function openChangePw() {
   $('changePwOld').value     = '';
-    // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單
-    if (typeof _handleQuoteDeepLink === 'function') _handleQuoteDeepLink();
   $('changePwNew').value     = '';
   $('changePwConfirm').value = '';
   $('changePwError').style.display = 'none';
@@ -8502,23 +8502,12 @@ function renderNotifList(list) {
         item.classList.remove('unread');
         _pollBundleEtag = null; // server 狀態已改，強制下次取最新
         pollNotifications();
+        if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
       }
     });
   });
 }
 
-// 由 DOM 重算未讀 badge（用於 localStorage 已讀，不需打 server）
-function _updateBadgeFromDOM() {
-  const unreadCount = document.querySelectorAll('#notifList .notif-item.unread').length;
-  const badge = $('notifBadge');
-  if (unreadCount > 0) {
-    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-        if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
-    badge.style.display = '';
-  } else {
-    badge.style.display = 'none';
-  }
-}
 // 簽核相關通知 → 切到報價單頁並開啟該張（成本請求開「填成本」，其餘開「簽核面板」）
 function openQuoteFromNotification(type, id) {
   const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
@@ -8540,6 +8529,17 @@ function _handleQuoteDeepLink() {
 }
 window.addEventListener('hashchange', _handleQuoteDeepLink);
 
+// 由 DOM 重算未讀 badge（用於 localStorage 已讀，不需打 server）
+function _updateBadgeFromDOM() {
+  const unreadCount = document.querySelectorAll('#notifList .notif-item.unread').length;
+  const badge = $('notifBadge');
+  if (unreadCount > 0) {
+    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
 
 $('notifReadAll').addEventListener('click', async () => {
   // 生日提醒全標已讀（localStorage）
