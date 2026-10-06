@@ -1878,41 +1878,44 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   }
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
+  // 所有修改先套在「副本」u 上，全部驗證通過才寫回 auth.users[idx]：
+  // Postgres 模式 loadAuth() 回傳的是共用快取，若驗證失敗（400）前已就地改了欄位，半套修改會被下一次任何存檔寫進資料庫
+  const u = Object.assign({}, auth.users[idx]);
   if (supervisor !== undefined) {
     const supCheck = validateSupervisor(auth.users, req.params.username, supervisor);
     if (supCheck.error) return res.status(400).json({ error: supCheck.error });
-    auth.users[idx].supervisor = supCheck.supervisor;
+    u.supervisor = supCheck.supervisor;
   }
-  if (displayName !== undefined)        auth.users[idx].displayName = displayName;
-  if (nickCheck) { if (nickCheck.nickname) auth.users[idx].nickname = nickCheck.nickname; else delete auth.users[idx].nickname; }
-  if (role !== undefined)               auth.users[idx].role = role;
-  const effectiveRole = auth.users[idx].role;
+  if (displayName !== undefined)        u.displayName = displayName;
+  if (nickCheck) { if (nickCheck.nickname) u.nickname = nickCheck.nickname; else delete u.nickname; }
+  if (role !== undefined)               u.role = role;
+  const effectiveRole = u.role;
   if (bu !== undefined || role !== undefined) {
-    const buCheck = validateBuInput(effectiveRole, bu !== undefined ? bu : auth.users[idx].bu);
+    const buCheck = validateBuInput(effectiveRole, bu !== undefined ? bu : u.bu);
     if (buCheck.error) return res.status(400).json({ error: buCheck.error });
-    auth.users[idx].bu = buCheck.bu;
+    u.bu = buCheck.bu;
   }
-  if (canDownloadContacts !== undefined) auth.users[idx].canDownloadContacts = !!canDownloadContacts;
-  if (canSetTargets !== undefined)       auth.users[idx].canSetTargets = !!canSetTargets;
-  if (pureSupervisor !== undefined)      auth.users[idx].pureSupervisor = !!pureSupervisor;
-  if (active !== undefined)             auth.users[idx].active = !!active;
+  if (canDownloadContacts !== undefined) u.canDownloadContacts = !!canDownloadContacts;
+  if (canSetTargets !== undefined)       u.canSetTargets = !!canSetTargets;
+  if (pureSupervisor !== undefined)      u.pureSupervisor = !!pureSupervisor;
+  if (active !== undefined)             u.active = !!active;
   // Phase 3：存取模式（admin 永遠 edit）
   if (effectiveRole === 'admin') {
-    auth.users[idx].accessMode = 'edit';
+    u.accessMode = 'edit';
   } else if (accessMode !== undefined) {
-    auth.users[idx].accessMode = (accessMode === 'view') ? 'view' : 'edit';
+    u.accessMode = (accessMode === 'view') ? 'view' : 'edit';
   }
 
   // 集團PM 唯讀範圍欄位
   if (GROUP_SCOPED_ROLES.includes(effectiveRole)) {
-    if (viewOwnerScope !== undefined) auth.users[idx].viewOwnerScope = viewOwnerScope || null;
-    if (viewGroupId    !== undefined) auth.users[idx].viewGroupId    = viewGroupId    || null;
+    if (viewOwnerScope !== undefined) u.viewOwnerScope = viewOwnerScope || null;
+    if (viewGroupId    !== undefined) u.viewGroupId    = viewGroupId    || null;
     // 校驗（更新後值）
-    const finalScope = auth.users[idx].viewOwnerScope;
-    const finalGid   = auth.users[idx].viewGroupId;
+    const finalScope = u.viewOwnerScope;
+    const finalGid   = u.viewGroupId;
     if (!finalScope) return res.status(400).json({ error: '集團PM 必須指定查看的業務' });
     if (!finalGid)   return res.status(400).json({ error: '集團PM 必須指定查看的集團' });
-    if (!auth.users.find(u => u.username === finalScope)) {
+    if (!auth.users.find(x => x.username === finalScope)) {
       return res.status(400).json({ error: `查看的業務 ${finalScope} 不存在` });
     }
     const data = db.load();
@@ -1921,13 +1924,18 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     }
   } else {
     // 角色改為非集團範圍角色時清掉相關欄位避免殘留
-    delete auth.users[idx].viewOwnerScope;
-    delete auth.users[idx].viewGroupId;
+    delete u.viewOwnerScope;
+    delete u.viewGroupId;
   }
 
+  // 到這裡所有驗證都過了，才真正改動共用資料。保持「同一個物件」就地同步（而不是換成 u）：
+  // 改密碼路由在 await bcrypt 期間持有舊的 user 參照，物件被換掉的話它之後寫入的新密碼會落在已被丟棄的舊物件上
+  const target = auth.users[idx];
+  Object.keys(target).forEach(k => { if (!(k in u)) delete target[k]; });
+  Object.assign(target, u);
   saveAuth(auth);
-  const buLabel = auth.users[idx].bu ? auth.users[idx].bu.join('+') : '全公司';
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (auth.users[idx].role !== roleBefore ? `；角色 ${roleBefore}→${auth.users[idx].role}` : ''), req);
+  const buLabel = u.bu ? u.bu.join('+') : '全公司';
+  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (u.role !== roleBefore ? `；角色 ${roleBefore}→${u.role}` : ''), req);
   res.json({ success: true });
 });
 
@@ -2371,9 +2379,13 @@ function checkGroupScopeWrite(req, companyName) {
 function creatorFields(req) {
   const u = req.session.user;
   const myBus = getMyBus(req);
+  // session（JWT）快照不含暱稱 → 以帳號現況查出完整使用者再取暱稱>顯示名稱，否則同名業務在建立者欄仍分不出來
+  // 批次匯入會對每一列呼叫本函式，地端 JSON 模式 loadAuth() 每次都重讀檔案 → 每個請求只查一次
+  if (req._creatorAuthUser === undefined) req._creatorAuthUser = (loadAuth().users || []).find(x => x.username === u.username) || null;
+  const authU = req._creatorAuthUser;
   return {
     createdBy: u.username,
-    createdByName: userLabel(u),
+    createdByName: userLabel(authU || u, u.username),
     createdByBu: myBus.length ? myBus.join('/') : '',
   };
 }
@@ -4315,10 +4327,11 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   const yr   = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
   const user = req.session.user;
-  const salesPerson = userLabel(user);
+  const auth = loadAuth();
+  // session（JWT）快照不含暱稱 → 以帳號現況取暱稱>顯示名稱
+  const salesPerson = userLabel((auth.users || []).find(x => x.username === user.username) || user);
 
   // 篩選當年度商機（依預定簽約日，依角色可視範圍）
-  const auth = loadAuth();
   const forecastOwners = getViewableOwners(req, 'opportunities');
   const opps = (data.opportunities || [])
     .filter(o => forecastOwners.includes(o.owner) && o.expectedDate && new Date(o.expectedDate).getFullYear() === yr && o.stage !== 'D')
