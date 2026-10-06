@@ -32,6 +32,11 @@ function quoteTotal(items, discountType, discountValue) {
   return { sub, discounted, discountAmt, tax, total };
 }
 
+/** 台灣（Asia/Taipei）今天，格式 YYYY-MM-DD。不可用 toISOString()：那是 UTC，台灣凌晨 0~8 點會差一天 */
+function taipeiTodayClient() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
 function fmtMoney(n) {
   return 'NT$ ' + Math.round(n).toLocaleString();
 }
@@ -85,6 +90,7 @@ function renderQuoteList() {
       <td><span class="quote-status ${stClass}">${escapeHtml(stLabel)}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="openQuoteModal('${q.id}')">✏️ 編輯</button>
+        <button class="btn btn-sm" onclick="previewQuote('${q.id}')" title="下載前先預覽報價單長相">👁 預覽</button>
         <button class="btn btn-sm btn-export" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}')" title="下載給客戶的報價單">&#11015; Excel</button>
         <button class="btn btn-sm" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}','pnl')" title="含成本與毛利率，僅限內部使用，請勿提供客戶">&#11015; 毛利分析(內部)</button>
         <button class="btn btn-sm btn-soft-danger" onclick="deleteQuote('${q.id}')">🗑️</button>
@@ -306,7 +312,7 @@ async function openQuoteModal(idOrNull) {
 
     const contacts = (typeof allContacts !== 'undefined' && allContacts) ? allContacts : [];
     const q = idOrNull ? ((allQuotations || []).find(function(x){ return x.id === idOrNull; }) || null) : null;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = taipeiTodayClient();
 
     $('quoteModalTitle').textContent = q ? ('編輯報價單 ' + (q.quoteNo || '')) : '新增報價單';
     $('quoteId').value      = q ? (q.id           || '') : '';
@@ -605,5 +611,69 @@ async function saveQuote() {
     loadQuotationsView();
   } catch(e) {
     showToast('儲存失敗，請重試');
+  }
+}
+
+// ── 我的聯絡資訊（印在報價單右上「廠商資料」框；業務自行維護、之後自動套用）─────────────────
+async function openMyContactModal() {
+  let info = { name: '', phone: '', ext: '', mobile: '', displayName: '' };
+  try { const r = await fetch(`${API}/me/contact`); if (r.ok) info = await r.json(); } catch (e) { /* 失敗就用空白表單 */ }
+  closeMyContactModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 'myContactOverlay';
+  ov.innerHTML = `
+    <div class="modal" style="max-width:460px;width:96%">
+      <div class="modal-header">
+        <h2>我的聯絡資訊</h2>
+        <button class="modal-close" onclick="closeMyContactModal()">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12.5px;color:#5f6b7a;line-height:1.6;margin:0 0 14px">這些資料會印在報價單右上角的「廠商資料」框。維護一次，之後匯出與預覽的報價單都會自動套用。</p>
+        <div class="form-group"><label>聯絡人姓名</label>
+          <input type="text" id="mcName" maxlength="50" placeholder="${escapeHtml(info.displayName || '')}">
+          <div style="font-size:12px;color:#8a94a3;margin-top:4px">未填時會使用帳號顯示名稱</div></div>
+        <div style="display:flex;gap:12px">
+          <div class="form-group" style="flex:2"><label>電話</label><input type="text" id="mcPhone" maxlength="40" placeholder="02-2655-2525"></div>
+          <div class="form-group" style="flex:1"><label>分機</label><input type="text" id="mcExt" maxlength="10" placeholder="123"></div>
+        </div>
+        <div class="form-group"><label>手機</label><input type="text" id="mcMobile" maxlength="30" placeholder="0912-345-678"></div>
+        <div id="mcMsg" style="font-size:12.5px;color:#c62828;min-height:18px"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeMyContactModal()">取消</button>
+        <button class="btn btn-primary" id="mcSaveBtn" onclick="saveMyContact()">儲存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  $('mcName').value = info.name || '';
+  $('mcPhone').value = info.phone || '';
+  $('mcExt').value = info.ext || '';
+  $('mcMobile').value = info.mobile || '';
+}
+
+function closeMyContactModal() {
+  const ov = document.getElementById('myContactOverlay');
+  if (ov) ov.remove();
+}
+
+async function saveMyContact() {
+  const btn = $('mcSaveBtn'), msg = $('mcMsg');
+  msg.textContent = '';
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/me/contact`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('mcName').value, phone: $('mcPhone').value, ext: $('mcExt').value, mobile: $('mcMobile').value }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.textContent = j.error || '儲存失敗'; return; }
+    closeMyContactModal();
+    showToast('聯絡資訊已儲存，之後的報價單會自動套用');
+    if (typeof refreshQuotePreview === 'function') refreshQuotePreview();   // 預覽開著的話，立刻看到新資料
+  } catch (e) {
+    msg.textContent = '儲存失敗，請重試';
+  } finally {
+    btn.disabled = false;
   }
 }

@@ -767,6 +767,7 @@
               <option value="accepted">已接受</option>
               <option value="rejected">已拒絕</option>
             </select>
+            <button class="btn btn-secondary" id="myContactBtn" onclick="openMyContactModal()" title="維護印在報價單上的我方業務姓名／電話／手機">&#128100; 我的聯絡資訊</button>
             <button class="btn btn-primary" id="addQuoteBtn" onclick="openQuoteModal(null)">&#43; 新增報價單</button>
           </div>
           <div class="table-wrap">
@@ -776,7 +777,7 @@
                 <th>公司名稱</th>
                 <th>聯絡人</th>
                 <th>專案名稱</th>
-                <th>報價日期</th>
+                <th>建立日期</th>
                 <th>合計金額</th>
                 <th>狀態</th>
                 <th>操作</th>
@@ -2663,8 +2664,9 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>報價日期 <span class="required">*</span></label>
+            <label>建立日期 <span class="required">*</span></label>
             <input type="date" id="qDate">
+            <div style="font-size:12px;color:#8a94a3;margin-top:4px">匯出與預覽時，報價單上的日期會自動帶入當天（台灣）日期</div>
           </div>
           <div class="form-group">
             <label>狀態</label>
@@ -3049,6 +3051,7 @@
           crossorigin="anonymous"></script>
   <script src="app.js"></script>
   <script src="quote.js"></script>
+  <script src="quote-preview.js"></script>
   <script>
   // ── Web Push 推播訂閱管理（與 sw.js 對應） ─────────────
   (function(){

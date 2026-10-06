@@ -962,6 +962,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -9121,11 +9122,10 @@ app.get('/api/admin/api-stats', requireAdmin, (req, res) => {
 
 // ── 報價單功能 ─────────────────────────────────────────────
 const QUOTE_TEMPLATE = path.join(__dirname, 'templates', 'quotation_template.xlsx');
-const { buildQuoteWorkbook } = require('./lib/quoteExcel');   // 給客戶的報價單：直接填範本，保留框線／logo／列印設定
+const { buildQuoteWorkbook, taipeiToday } = require('./lib/quoteExcel');   // 給客戶的報價單：直接填範本，保留框線／logo／列印設定
 
 function genQuoteNo(data) {
-  const d = new Date();
-  const yyyymm = d.getFullYear().toString() + String(d.getMonth() + 1).padStart(2, '0');
+  const yyyymm = taipeiToday().slice(0, 7).replace('-', '');   // 台灣年月（不可用伺服器本地時間：Vercel 為 UTC）
   const prefix = `QU-${yyyymm}-`;
   const count = (data.quotations || []).filter(q => q.quoteNo && q.quoteNo.startsWith(prefix)).length;
   return prefix + String(count + 1).padStart(3, '0');
@@ -9251,6 +9251,41 @@ function buildQuotePnlExcel(q) {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
+// ── 業務聯絡資訊（印在報價單右上「廠商資料」框；由業務自行維護，之後自動套用）────────────
+const CONTACT_PHONE_RE = /^[0-9+\-()#.,\s]*$/;
+function readContactInfo(u) {
+  const c = (u && u.contactInfo) || {};
+  return { name: c.name || '', phone: c.phone || '', ext: c.ext || '', mobile: c.mobile || '' };
+}
+/** 報價單上的我方業務資訊。姓名未維護時退回帳號顯示名稱，避免「聯絡人」整格空白；isSet＝電話或手機至少維護了一個 */
+function resolveIssuer(ownerUsername) {
+  const u = loadAuth().users.find(x => x.username === ownerUsername);
+  const info = readContactInfo(u);
+  return {
+    name: info.name || (u && (u.displayName || u.username)) || ownerUsername || '',
+    phone: info.phone, ext: info.ext, mobile: info.mobile,
+    isSet: !!(info.phone || info.mobile),
+  };
+}
+app.get('/api/me/contact', requireAuth, (req, res) => {
+  const u = loadAuth().users.find(x => x.username === req.session.user.username);
+  res.json({ ...readContactInfo(u), displayName: (u && u.displayName) || req.session.user.username });
+});
+app.put('/api/me/contact', requireAuth, (req, res) => {
+  const b = req.body || {};
+  const info = { name: sanitizeStr(b.name, 50), phone: sanitizeStr(b.phone, 40), ext: sanitizeStr(b.ext, 10), mobile: sanitizeStr(b.mobile, 30) };
+  for (const [k, label] of [['phone', '電話'], ['ext', '分機'], ['mobile', '手機']]) {
+    if (!CONTACT_PHONE_RE.test(info[k])) return res.status(400).json({ error: label + '格式不正確（僅限數字與 + - ( ) # . , 與空白）' });
+  }
+  const auth = loadAuth();
+  const idx = auth.users.findIndex(x => x.username === req.session.user.username);
+  if (idx === -1) return res.status(404).json({ error: '找不到使用者' });
+  auth.users[idx].contactInfo = info;
+  saveAuth(auth);
+  writeLog('UPDATE_CONTACT_INFO', req.session.user.username, req.session.user.username, '更新報價單聯絡資訊', req);
+  res.json({ success: true, ...info });
+});
+
 // ── 報價單 CRUD ───────────────────────────────────────────
 app.get('/api/quotations', requireAuth, (req, res) => {
   const data  = db.load();
@@ -9295,7 +9330,7 @@ app.post('/api/quotations', requireAuth, (req, res) => {
     phone:       sanitizeStr(req.body.phone,        50),
     mobile:      sanitizeStr(req.body.mobile,       50),
     address:     sanitizeStr(req.body.address,     200),
-    quoteDate:   sanitizeStr(req.body.quoteDate,    10),
+    quoteDate:   sanitizeStr(req.body.quoteDate,    10) || taipeiToday(),
     projectName: sanitizeStr(req.body.projectName, 200),
     projectNo:   sanitizeStr(req.body.projectNo,    50),
     items,
@@ -9373,7 +9408,7 @@ app.get('/api/quotations/:id/export', requireAuth, async (req, res) => {
     return res.status(500).json({ error: '報價單範本不存在，請聯繫管理員' });
   }
   try {
-    const buf   = await buildQuoteWorkbook(q, QUOTE_TEMPLATE);
+    const buf   = await buildQuoteWorkbook(q, QUOTE_TEMPLATE, { issueDate: taipeiToday(), issuer: resolveIssuer(q.owner) });
     const fname = encodeURIComponent(`${q.quoteNo}_${q.company || '報價單'}.xlsx`);
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -9382,6 +9417,16 @@ app.get('/api/quotations/:id/export', requireAuth, async (req, res) => {
     console.error('[QuoteExport]', e.message, e.stack);
     res.status(500).json({ error: '報價單產生失敗：' + e.message });
   }
+});
+
+// 預覽用：這張報價單「現在送出」會蓋的日期（台灣當天）與業務聯絡資訊
+app.get('/api/quotations/:id/issue-info', requireAuth, (req, res) => {
+  const data   = db.load();
+  const q      = (data.quotations || []).find(q => q.id === req.params.id);
+  if (!q) return res.status(404).json({ error: '找不到此報價單' });
+  const owners = getViewableOwners(req, 'quotations');
+  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
+  res.json({ issueDate: taipeiToday(), issuer: resolveIssuer(q.owner), ownerIsMe: q.owner === req.session.user.username });
 });
 
 // 毛利分析（內部用）：含成本與毛利率，與給客戶的報價單分開匯出
