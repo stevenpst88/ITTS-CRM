@@ -3501,16 +3501,17 @@
           return;
         }
         const rows = logs.map(l => {
+          // 稽核欄位含使用者可控文字（報價單公司名稱、集團名稱、lead 公司等）→ 一律跳脫後才進 innerHTML，否則業務可對管理員做儲存型 XSS
           const device = parseUA(l.userAgent);
           const deviceHtml = [
-            l.ip ? `🌐 ${l.ip}` : '',
-            device ? `💻 ${device}` : '',
+            l.ip ? `🌐 ${escH(l.ip)}` : '',
+            device ? `💻 ${escH(device)}` : '',
           ].filter(Boolean).join('<br>');
           return `<tr>
-            <td class="log-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</td>
-            <td><span class="log-action-badge log-${l.action}">${ACTION_LABELS[l.action] || l.action}</span></td>
-            <td class="log-operator">${l.operator}</td>
-            <td class="log-detail">${l.target ? `<span style="color:#888;margin-right:4px">${l.target}</span>` : ''}${l.detail || ''}</td>
+            <td class="log-time">${escH(new Date(l.timestamp).toLocaleString('zh-TW'))}</td>
+            <td><span class="log-action-badge log-${escH(l.action)}">${escH(ACTION_LABELS[l.action] || l.action)}</span></td>
+            <td class="log-operator">${escH(l.operator)}</td>
+            <td class="log-detail">${l.target ? `<span style="color:#888;margin-right:4px">${escH(l.target)}</span>` : ''}${escH(l.detail || '')}</td>
             <td class="log-device">${deviceHtml}</td>
           </tr>`;
         }).join('');
@@ -4003,33 +4004,34 @@
         }
         $('auditList').innerHTML = logs.map(l => {
           const color = AUDIT_ACTION_COLORS[l.action] || '#888';
-          const label = AUDIT_ACTION_LABELS[l.action] || l.action;
+          const label = escH(AUDIT_ACTION_LABELS[l.action] || l.action);
+          // 以下欄位（聯絡人姓名/公司/欄位新舊值）都是業務可輸入的文字 → 一律跳脫後才進 innerHTML
           const changesHtml = l.changes && l.changes.length
             ? `<div class="audit-changes">${l.changes.map(c =>
                 `<div class="audit-change-row">
-                  <span class="audit-field">${c.fieldLabel}</span>
-                  <span class="audit-old">${c.oldValue || '（空）'}</span>
+                  <span class="audit-field">${escH(c.fieldLabel)}</span>
+                  <span class="audit-old">${escH(c.oldValue) || '（空）'}</span>
                   <span class="audit-arrow">→</span>
-                  <span class="audit-new">${c.newValue || '（空）'}</span>
+                  <span class="audit-new">${escH(c.newValue) || '（空）'}</span>
                 </div>`
               ).join('')}</div>`
             : '';
           return `
             <div class="audit-item">
               <div class="audit-header">
-                <span class="audit-time">${new Date(l.timestamp).toLocaleString('zh-TW')}</span>
+                <span class="audit-time">${escH(new Date(l.timestamp).toLocaleString('zh-TW'))}</span>
                 <span class="audit-badge" style="background:${color}20;color:${color};border:1px solid ${color}40">${label}</span>
-                <span class="audit-user">👤 ${l.userName}</span>
+                <span class="audit-user">👤 ${escH(l.userName)}</span>
               </div>
               <div class="audit-target">
-                <strong>${l.targetName || '（無姓名）'}</strong>
-                ${l.targetCompany ? `<span style="color:#888;margin-left:8px">${l.targetCompany}</span>` : ''}
+                <strong>${escH(l.targetName) || '（無姓名）'}</strong>
+                ${l.targetCompany ? `<span style="color:#888;margin-left:8px">${escH(l.targetCompany)}</span>` : ''}
               </div>
               ${changesHtml}
             </div>`;
         }).join('');
       } catch (e) {
-        $('auditList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${e.message}</div>`;
+        $('auditList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${escH(e.message)}</div>`;
       }
     }
 
@@ -4050,22 +4052,24 @@
             </tr></thead>
             <tbody>${list.map(c => `
               <tr>
-                <td>${c.name || '-'}</td>
-                <td>${c.company || '-'}</td>
-                <td>${c.title || '-'}</td>
-                <td style="font-size:12px;color:#888">${c.deletedAt ? new Date(c.deletedAt).toLocaleString('zh-TW') : '-'}</td>
-                <td>${c.deletedByName || c.deletedBy || '-'}</td>
+                <td>${escH(c.name) || '-'}</td>
+                <td>${escH(c.company) || '-'}</td>
+                <td>${escH(c.title) || '-'}</td>
+                <td style="font-size:12px;color:#888">${c.deletedAt ? escH(new Date(c.deletedAt).toLocaleString('zh-TW')) : '-'}</td>
+                <td>${escH(c.deletedByName || c.deletedBy) || '-'}</td>
                 <td>
                   <button class="btn btn-sm" style="background:#34a853;color:#fff;margin-right:6px"
-                    onclick="restoreContact('${c.id}', '${(c.name||'').replace(/'/g,'')}')">還原</button>
+                    data-id="${escH(c.id)}" data-name="${escH(c.name || '')}"
+                    onclick="restoreContact(this.dataset.id, this.dataset.name)">還原</button>
                   <button class="btn btn-sm" style="background:#ea4335;color:#fff"
-                    onclick="permanentDelete('${c.id}', '${(c.name||'').replace(/'/g,'')}')">永久刪除</button>
+                    data-id="${escH(c.id)}" data-name="${escH(c.name || '')}"
+                    onclick="permanentDelete(this.dataset.id, this.dataset.name)">永久刪除</button>
                 </td>
               </tr>`).join('')}
             </tbody>
           </table>`;
       } catch (e) {
-        $('deletedList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${e.message}</div>`;
+        $('deletedList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${escH(e.message)}</div>`;
       }
     }
 
@@ -4477,7 +4481,7 @@
               return `
                 <div style="display:flex;align-items:center;justify-content:space-between;
                             padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px">
-                  <span style="color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px" title="${f.name}">🖼️ ${f.name}</span>
+                  <span style="color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px" title="${escapeAttr(f.name)}">🖼️ ${escapeAttr(f.name)}</span>
                   <span style="color:#bbb;flex-shrink:0;margin-left:8px">${fmtBytes(f.size)} · ${ts}</span>
                 </div>`;
             }).join('');
@@ -4572,10 +4576,10 @@
         result.style.border = '1px solid #a8d5b0';
         const debugHtml = allDebugSamples.slice(0, 8).map(s =>
           `<div style="font-size:11px;color:#666;border-top:1px dashed #ccc;padding:4px 0">
-            <strong>${s.company || '?'}</strong> ${s.taxId ? '統編:'+s.taxId : ''}
-            ${s.stockCode ? '股票:'+s.stockCode+'('+s.listedType+')' : ''}<br>
-            ${s.website ? '<span style="color:#1a73e8">✓ ' + s.website + '</span>' : '<span style="color:#999">未找到</span>'}
-            <span style="color:#aaa">| ${s.debug || s.err || ''}</span>
+            <strong>${escapeAttr(s.company || '?')}</strong> ${s.taxId ? '統編:'+escapeAttr(s.taxId) : ''}
+            ${s.stockCode ? '股票:'+escapeAttr(s.stockCode)+'('+escapeAttr(s.listedType)+')' : ''}<br>
+            ${s.website ? '<span style="color:#1a73e8">✓ ' + escapeAttr(s.website) + '</span>' : '<span style="color:#999">未找到</span>'}
+            <span style="color:#aaa">| ${escapeAttr(s.debug || s.err || '')}</span>
           </div>`).join('');
         result.innerHTML = `
           <strong style="color:#1a5c2a">✅ 批次作業完成</strong><br>
@@ -4588,7 +4592,7 @@
       } catch (e) {
         result.style.background = '#fce8e6';
         result.style.border = '1px solid #e8b4b0';
-        result.innerHTML = `<strong style="color:#c5352a">❌ 執行失敗</strong>：${e.message}`;
+        result.innerHTML = `<strong style="color:#c5352a">❌ 執行失敗</strong>：${escapeAttr(e.message)}`;
         hint.textContent = '請稍後再試';
       } finally {
         btn.disabled = false;
@@ -6272,15 +6276,17 @@
         if (num >= 10000) return 'NT$ ' + Math.round(num / 10000) + ' 萬';
         return 'NT$ ' + num.toLocaleString();
       };
+      // 企業主檔欄位（地址、統編、產業…）是業務建立名片時自行輸入、由 ensureCompanyMaster 原樣複製進主檔 → 全部跳脫後才進 innerHTML
+      // （只有「官網」那一格本身就是組好的 HTML，內部已自行跳脫）
       const info = [
-        ['統一編號', c.taxId || '無'],
-        ['資本額', fmtCap2(c.capital)],
-        ['產業', c.industry || '—'],
-        ['BU', (c.bu && c.bu.length) ? c.bu.join('、') : '—'],
-        ['區域', c.region || '—'],
-        ['客戶代號', c.customerCode || '—'],
-        ['負責人', c.representative || '—'],
-        ['地址', c.address || '—'],
+        ['統一編號', escapeAttr(c.taxId || '無')],
+        ['資本額', escapeAttr(fmtCap2(c.capital))],
+        ['產業', escapeAttr(c.industry || '—')],
+        ['BU', escapeAttr((c.bu && c.bu.length) ? c.bu.join('、') : '—')],
+        ['區域', escapeAttr(c.region || '—')],
+        ['客戶代號', escapeAttr(c.customerCode || '—')],
+        ['負責人', escapeAttr(c.representative || '—')],
+        ['地址', escapeAttr(c.address || '—')],
         ['官網', c.website ? `<a href="${escapeAttr(c.website)}" target="_blank" rel="noopener">${escapeAttr(c.website)}</a>` : '—'],
       ].map(([k, v]) => `<div style="min-width:200px"><span style="color:#9ca3af;font-size:12px">${k}</span><br><span style="font-size:13px">${v}</span></div>`).join('');
 
@@ -6301,7 +6307,7 @@
       </tr>`);
       const oppRows = d.opps.map(o => `<tr>
         <td style="font-size:12px">${escapeAttr(o.product || '')}</td>
-        <td style="font-size:12px">${STAGE_LABEL_MAP[o.stage] || o.stage || ''}</td>
+        <td style="font-size:12px">${escapeAttr(STAGE_LABEL_MAP[o.stage] || o.stage || '')}</td>
         <td style="text-align:right">${fmtK(o.amount)}</td>
         <td style="font-size:12px">${escapeAttr(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || ''))}</td>
         <td style="font-size:12px">${escapeAttr(o.ownerDisplay || '')}</td>
@@ -6695,10 +6701,10 @@
         } else {
           const rows = data.fixedCompanies.map(f => `
             <tr>
-              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${f.owner}</td>
-              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${f.company}</td>
-              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right">${f.promoted}</td>
-              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:center"><span style="background:#e8f0fe;color:#1a73e8;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600">${f.productLine}</span></td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${escapeAttr(f.owner)}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6">${escapeAttr(f.company)}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right">${Number(f.promoted) || 0}</td>
+              <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:center"><span style="background:#e8f0fe;color:#1a73e8;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600">${escapeAttr(f.productLine)}</span></td>
             </tr>`).join('');
           resultEl.innerHTML = `
             <div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:14px;color:#166534;margin-bottom:12px">
@@ -6718,7 +6724,7 @@
             </table>`;
         }
       } catch (e) {
-        resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:14px;color:#c5221f">❌ 修復失敗：${e.message}</div>`;
+        resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #ef4444;border-radius:8px;padding:14px;color:#c5221f">❌ 修復失敗：${escapeAttr(e.message)}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🔧 開始修復';
       }
