@@ -3436,7 +3436,7 @@ async function initUser() {
     // 頂部工具列也顯示角色 + BU 徽章（方便快速核對權限狀態）
     const topbarBadge = document.getElementById('topbarUserBadge');
     if (topbarBadge) {
-      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）', groupsales:'集團業務' };
+      const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）', groupsales:'集團業務', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
       const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
       // 集團範圍角色：badge 顯示集團名稱（取代 BU 徽章）
       if (user.role === 'tecopm' || user.role === 'groupsales') {
@@ -3457,7 +3457,7 @@ async function initUser() {
           ${buHtml}`;
       }
     }
-    const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'', marketing:'行銷人員' };
+    const ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'', marketing:'行銷人員', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
     const roleLabel = ROLE_LABEL[user.role] || '';
     const isCrossBu = user.role === 'admin' || user.role === 'executive';
     if (roleLabel || myBus.length || isCrossBu) {

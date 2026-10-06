@@ -305,7 +305,7 @@ const FEATURE_REGISTRY = [
   { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
   { key: 'quotations',      label: '報價單',                icon: '📋', navId: 'navQuotations' },
 ];
-const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','groupsales','marketing','user','accounting_manager','finance_manager'];
+const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','groupsales','marketing','user','accounting_manager','finance_manager','consult_manager_south','consult_manager_north'];
 const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 // 跨 BU 全公司視角的角色（不受 BU 隔離限制）
 const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manager'];
@@ -321,6 +321,10 @@ const DEFAULT_ROLE_PERMISSIONS = {
   user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
   finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
+  // 南區／北區顧問主管：目前只開「首頁」與「報價單」（主要用途是擔任報價單的成本填寫人，名單在報價單頁的簽核設定維護）。
+  // 資料可視範圍沿用「未列舉角色」的預設＝只看自己；要放寬（例如看顧問團隊）需另外決定，管理員可在「功能權限」頁調整導覽。
+  consult_manager_south: ['home','quotations'],
+  consult_manager_north: ['home','quotations'],
 };
 
 function getRolePermissions() {
@@ -432,6 +436,16 @@ function _ensurePoolUser(auth) {
     }
   }
   return auth;
+}
+
+/**
+ * 人名顯示規則（報表、篩選下拉、通知、匯出的「業務」欄）：暱稱（後台統一設定）> 顯示名稱 > 帳號。
+ * 用途：不同 BU 有同名業務（例如 MDM 與 ERP 各有一位 Steven）時，由管理員在後台設不同暱稱來區分。
+ * 不可用在「對客戶的文件」（報價單廠商資料的我方業務姓名）：那裡維持業務自填的聯絡資訊／顯示名稱，避免內部暱稱外流。
+ * fallback：找不到使用者物件時回傳 fallback（通常是 owner 帳號字串）。
+ */
+function userLabel(u, fallback) {
+  return (u && (u.nickname || u.displayName || u.username)) || fallback || '';
 }
 
 function loadAuth() {
@@ -1721,6 +1735,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
   const users = auth.users.map(u => ({
     username: u.username,
     displayName: u.displayName,
+    nickname: u.nickname || '',   // 後台統一設定的暱稱（報表／下拉優先顯示；空＝沿用顯示名稱）
     role: u.role || 'user',
     bu: normalizeBu(u.bu),
     canDownloadContacts: u.canDownloadContacts || false,
@@ -1756,6 +1771,24 @@ function validateSupervisor(users, username, supervisorInput) {
   return { supervisor: sup };
 }
 
+/**
+ * 校驗暱稱：由後台統一設定，用來在報表與下拉選單區分「同名」的業務（例如 MDM 與 ERP 各有一位 Steven）。
+ * 空白＝清除（沿用顯示名稱）；最多 20 字；不可含 < > & " ' 與控制字元（暱稱會被許多畫面用 innerHTML 顯示）；
+ * 全站唯一：不分大小寫與前後空白，不得與「其他」帳號的帳號、顯示名稱、暱稱相同（自己的不算）。
+ * 只在送入暱稱時才檢查，所以既有的重複顯示名稱（兩位 Steven）不會讓其他欄位的修改被卡住。
+ */
+function validateNickname(users, nicknameInput, selfUsername) {
+  const raw = String(nicknameInput == null ? '' : nicknameInput).trim();
+  if (!raw) return { nickname: '' };
+  if (raw.length > 20) return { error: '暱稱最多 20 個字' };
+  if (/[<>&"'\u0000-\u001f]/.test(raw)) return { error: '暱稱不可包含 < > & " \' 或控制字元' };
+  const key = raw.toLowerCase();
+  const clash = (users || []).find(u => u.username !== selfUsername && u.role !== 'pool'
+    && [u.username, u.displayName, u.nickname].some(x => x && String(x).trim().toLowerCase() === key));
+  if (clash) return { error: `暱稱「${raw}」已被帳號 ${clash.username}（${clash.displayName || ''}）使用，或與其顯示名稱相同；暱稱必須全站唯一才能區分同名` };
+  return { nickname: raw };
+}
+
 // 校驗並回傳 finalBu（陣列）；錯誤時回傳 { error }
 function validateBuInput(role, buInput) {
   if (CROSS_BU_ROLES.includes(role)) return { bu: null }; // 跨 BU 角色一律 null
@@ -1770,7 +1803,7 @@ function validateBuInput(role, buInput) {
 
 // ── Admin: create user ───────────────────────────────────
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
-  const { username, password, displayName, role, bu, canDownloadContacts, canSetTargets,
+  const { username, password, displayName, nickname, role, bu, canDownloadContacts, canSetTargets,
           accessMode, viewOwnerScope, viewGroupId, supervisor, pureSupervisor } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
@@ -1779,6 +1812,9 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   if (auth.users.find(u => u.username === username)) return res.status(400).json({ error: '帳號已存在' });
 
   const finalRole = role || 'user';
+  if (!KNOWN_ROLES.includes(finalRole)) return res.status(400).json({ error: `未知的角色代碼：${String(finalRole).slice(0, 40)}` });
+  const nickCheck = validateNickname(auth.users, nickname, username.trim());
+  if (nickCheck.error) return res.status(400).json({ error: nickCheck.error });
   const buCheck = validateBuInput(finalRole, bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
 
@@ -1805,6 +1841,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     username: username.trim(),
     password: hashedPassword,
     displayName: displayName || username,
+    ...(nickCheck.nickname ? { nickname: nickCheck.nickname } : {}),
     role: finalRole,
     bu: buCheck.bu,
     canDownloadContacts: !!canDownloadContacts,
@@ -1821,7 +1858,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
   const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}）BU=${buLabel}${scopeLabel}`, req);
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}`, req);
   res.json({ success: true });
 });
 
@@ -1830,14 +1867,24 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
-  const { displayName, role, bu, canDownloadContacts, canSetTargets, active,
+  const { displayName, nickname, role, bu, canDownloadContacts, canSetTargets, active,
           accessMode, viewOwnerScope, viewGroupId, supervisor, pureSupervisor } = req.body;
+  // 先驗證再改動：auth 在雲端模式是共用快取，驗證失敗不能留下半套修改
+  if (role !== undefined && !KNOWN_ROLES.includes(role)) return res.status(400).json({ error: `未知的角色代碼：${String(role).slice(0, 40)}` });
+  let nickCheck = null;
+  if (nickname !== undefined) {
+    nickCheck = validateNickname(auth.users, nickname, req.params.username);
+    if (nickCheck.error) return res.status(400).json({ error: nickCheck.error });
+  }
+  const nickBefore = auth.users[idx].nickname || '';
+  const roleBefore = auth.users[idx].role || 'user';
   if (supervisor !== undefined) {
     const supCheck = validateSupervisor(auth.users, req.params.username, supervisor);
     if (supCheck.error) return res.status(400).json({ error: supCheck.error });
     auth.users[idx].supervisor = supCheck.supervisor;
   }
   if (displayName !== undefined)        auth.users[idx].displayName = displayName;
+  if (nickCheck) { if (nickCheck.nickname) auth.users[idx].nickname = nickCheck.nickname; else delete auth.users[idx].nickname; }
   if (role !== undefined)               auth.users[idx].role = role;
   const effectiveRole = auth.users[idx].role;
   if (bu !== undefined || role !== undefined) {
@@ -1880,7 +1927,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
 
   saveAuth(auth);
   const buLabel = auth.users[idx].bu ? auth.users[idx].bu.join('+') : '全公司';
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）`, req);
+  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (auth.users[idx].role !== roleBefore ? `；角色 ${roleBefore}→${auth.users[idx].role}` : ''), req);
   res.json({ success: true });
 });
 
@@ -2026,7 +2073,7 @@ app.get('/api/admin/contact-completeness', requireAdmin, (req, res) => {
   });
 
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); });
 
   const byOwner = Object.entries(byOwnerMap).map(([username, cs]) => {
     const ownerFields = CORE_FIELDS.map(f => {
@@ -2326,7 +2373,7 @@ function creatorFields(req) {
   const myBus = getMyBus(req);
   return {
     createdBy: u.username,
-    createdByName: u.displayName || u.username,
+    createdByName: userLabel(u),
     createdByBu: myBus.length ? myBus.join('/') : '',
   };
 }
@@ -2406,7 +2453,7 @@ app.get('/api/birthday-reminders', requireAuth, (req, res) => {
       title:            c.title  || '',
       personalBirthday: c.personalBirthday,
       owner:            c.owner,
-      ownerName:        ownerUser?.displayName || c.owner,
+      ownerName:        userLabel(ownerUser, c.owner),
       daysLeft:         diffDays,
       birthdayFull:     `${bDate.getFullYear()}/${String(mm).padStart(2,'0')}/${String(dd).padStart(2,'0')}`
     });
@@ -2431,7 +2478,7 @@ app.get('/api/key-accounts', requireAuth, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const usernameToDisplay = {};
-  (auth.users || []).forEach(u => { usernameToDisplay[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { usernameToDisplay[u.username] = userLabel(u); });
 
   // 全公司可見；同公司可能有歷史重複資料 → 依 company dedupe，取最早 createdAt 為 Account Owner
   const byCompany = new Map();
@@ -2469,7 +2516,7 @@ app.post('/api/key-accounts', requireAuth, (req, res) => {
       error: '此公司已是 Key Account',
       id: dup.id,
       existingOwner: dup.owner,
-      existingOwnerDisplayName: dupOwner?.displayName || dup.owner
+      existingOwnerDisplayName: userLabel(dupOwner, dup.owner)
     });
   }
   const ka = {
@@ -2642,7 +2689,7 @@ function notifyKaCrossDeptOpp(req, data, opp, ownerUsername) {
     const ownerUser = (auth.users || []).find(u => u.username === ownerUsername);
     const ownerBus = normalizeBu(ownerUser && ownerUser.bu);
     if (ownerBus.includes(cat)) return 0;   // 類別=建立者部門 → 非跨部門，不通知
-    const ownerName = (ownerUser && ownerUser.displayName) || ownerUsername;
+    const ownerName = userLabel(ownerUser, ownerUsername);
     const recipients = (auth.users || []).filter(u =>
       u.username !== ownerUsername && u.active !== false &&
       ['user', 'manager1', 'manager2'].includes(u.role) &&
@@ -2680,7 +2727,7 @@ app.get('/api/contacts', requireAuth, (req, res) => {
   const role = req.session.user.role;
   const _auth = loadAuth();
   const _ownerNameMap = {};
-  (_auth.users || []).forEach(u => { _ownerNameMap[u.username] = u.displayName || u.username; });
+  (_auth.users || []).forEach(u => { _ownerNameMap[u.username] = userLabel(u); });
   let contacts = [];
   if (role !== 'secretary') {
     const owners = getViewableOwners(req, 'contacts');
@@ -3164,7 +3211,7 @@ app.post('/api/visits', requireAuth, (req, res) => {
   // 商機日報 → 通知建立者（協作者填的）
   if (_notifyOppOwner) {
     const auth = loadAuth();
-    const meName = (auth.users.find(u => u.username === owner) || {}).displayName || owner;
+    const meName = userLabel(auth.users.find(u => u.username === owner), owner);
     try {
       pushNotification(_notifyOppOwner, 'ka_opp_report', '⭐ KA 商機新增日報',
         `${meName} 針對你的 KA 商機填了一筆日報：${visit.topic || visit.content || visit.visitType}`, oppId);
@@ -3303,7 +3350,7 @@ app.get('/api/manager/achievement', requireAuth, (req, res) => {
       ? `${u.username}:team` : `${u.username}:individual`;
     return {
       username:    u.username,
-      displayName: u.displayName || u.username,
+      displayName: userLabel(u),
       role:        effRole,
       actualRole:  u.role,        // 原始角色（給前端參考；不影響顯示）
       viewMode,                   // 'team' = 部屬加總（一級主管或唯讀掛名主管），'individual' = 本人業績
@@ -3647,7 +3694,7 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
     filtered = filtered.map(o => {
       if (!_kaSet.has((o.company || '').trim()) || !viewerCanCrossDeptOpp(req, data, _auth, o)) return o;
       const ownerU = (_auth.users || []).find(u => u.username === o.owner);
-      return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: (ownerU && ownerU.displayName) || o.owner };
+      return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: userLabel(ownerU, o.owner) };
     });
   }
   res.json(filtered);
@@ -3716,7 +3763,7 @@ app.post('/api/opportunities/:id/ka-confirm', requireAuth, (req, res) => {
   }
   const meUser = (auth.users || []).find(u => u.username === me) || {};
   const myBu = (getMyBus(req) || [])[0] || '';
-  const meName = meUser.displayName || me;
+  const meName = userLabel(meUser, me);
   opp.kaParticipants.push({ user: me, displayName: meName, bu: myBu, confirmedAt: new Date().toISOString() });
   db.save(data);
   writeLog('KA_OPP_CONFIRM', me, opp.company, `確認接手 KA 商機（${opp.category}）`, req);
@@ -3858,7 +3905,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const ownerOptions = allOwners.length > 1
     ? allOwners.map(u => {
         const usr = auth.users.find(x => x.username === u);
-        return { username: u, displayName: usr ? (usr.displayName || u) : u };
+        return { username: u, displayName: userLabel(usr, u) };
       })
     : [];
   const opps   = filterByBu(req, (data.opportunities || []).filter(o => owners.includes(o.owner)));
@@ -4203,7 +4250,7 @@ app.get('/api/zombie-opportunities', requireAuth, (req, res) => {
         expectedDate:o.expectedDate|| '',
         createdAt:   o.createdAt   || '',
         owner:       o.owner,
-        ownerName:   u ? (u.displayName || u.username) : o.owner,
+        ownerName:   userLabel(u, o.owner),
         lastVisit:   lastAny,
         lastFace,
         lastPhone,
@@ -4268,7 +4315,7 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   const yr   = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
   const user = req.session.user;
-  const salesPerson = user ? (user.displayName || user.username) : '';
+  const salesPerson = userLabel(user);
 
   // 篩選當年度商機（依預定簽約日，依角色可視範圍）
   const auth = loadAuth();
@@ -4297,7 +4344,7 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
       o.product      || o.description || '',
       o.category     || '',
       o.expectedDate || '',
-      auth.users.find(u => u.username === o.owner)?.displayName || o.owner || salesPerson,
+      userLabel(auth.users.find(u => u.username === o.owner), o.owner) || salesPerson,
       STAGE_LABEL_EXPORT[o.stage] || '',
       gm   ? gm   + '%' : '',
       amt  || '',
@@ -4358,7 +4405,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); });
 
   const STAGE_LABELS = { A: 'Commit', B: 'Upside', C: 'Pipeline', C2: 'Pipeline', D: 'D', Won: 'Won' };
 
@@ -4412,7 +4459,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); });
 
   const headers = [
     '姓名', '英文名稱', '公司', '職稱', '電話', '分機', '手機', 'Email',
@@ -4506,6 +4553,7 @@ app.post('/api/admin/contacts/import', requireAdmin,
       const usernames = new Set((auth.users || []).map(u => u.username));
       const displayToUser = {};
       (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+      (auth.users || []).forEach(u => { if (u.nickname) displayToUser[u.nickname] = u.username; });   // 暱稱全站唯一：同名者可用暱稱指定
 
       const data = db.load();
       if (!data.contacts) data.contacts = [];
@@ -4613,6 +4661,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     // displayName → username 反查
     const displayToUser = {};
     (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+      (auth.users || []).forEach(u => { if (u.nickname) displayToUser[u.nickname] = u.username; });   // 暱稱全站唯一：同名者可用暱稱指定
 
     const VALID_STAGES = new Set(['A', 'B', 'C', 'D', 'Won']);
 
@@ -4834,7 +4883,7 @@ app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); });
 
   const headers = [
     '拜訪日期', '拜訪方式', '客戶姓名', '拜訪主題', '會談內容', '下一步行動',
@@ -4898,6 +4947,7 @@ app.post('/api/admin/visits/import', requireAdmin,
       const usernames = new Set((auth.users || []).map(u => u.username));
       const displayToUser = {};
       (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+      (auth.users || []).forEach(u => { if (u.nickname) displayToUser[u.nickname] = u.username; });   // 暱稱全站唯一：同名者可用暱稱指定
 
       const data = db.load();
       if (!data.visits) data.visits = [];
@@ -4951,7 +5001,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
   const data = db.load();
   const auth = loadAuth();
   const userMap = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); });
 
   const headers = [
     '合約編號', '客戶名稱', '聯絡人', '產品/服務', '合約開始日', '合約結束日',
@@ -5026,6 +5076,7 @@ app.post('/api/admin/contracts/import', requireAdmin,
       const usernames = new Set((auth.users || []).map(u => u.username));
       const displayToUser = {};
       (auth.users || []).forEach(u => { displayToUser[u.displayName || u.username] = u.username; });
+      (auth.users || []).forEach(u => { if (u.nickname) displayToUser[u.nickname] = u.username; });   // 暱稱全站唯一：同名者可用暱稱指定
 
       const data = db.load();
       if (!data.contracts) data.contracts = [];
@@ -5889,7 +5940,7 @@ app.get('/api/usermap', requireAuth, (req, res) => {
   viewable.add(username);
   const map = {};
   auth.users.filter(u => viewable.has(u.username)).forEach(u => {
-    map[u.username] = u.displayName || u.username;
+    map[u.username] = userLabel(u);
   });
   res.json(map);
 });
@@ -5939,7 +5990,7 @@ function notificationUrlFor(type, refId) {
 // 回傳通知到的行銷人數。
 function notifyMarketingNewCompany(req, master, ownerUsername) {
   const auth = loadAuth();
-  const ownerName = (auth.users.find(u => u.username === ownerUsername) || {}).displayName || ownerUsername;
+  const ownerName = userLabel(auth.users.find(u => u.username === ownerUsername), ownerUsername);
   const mkts = (auth.users || []).filter(u => u.role === 'marketing' && u.active !== false);
   if (!mkts.length) return 0;
   const co = master.name || '(未命名公司)';
@@ -5995,7 +6046,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
     if (!st) return;
 
     const ownerUser = auth.users.find(u => u.username === c.owner);
-    const ownerName = ownerUser?.displayName || c.owner;
+    const ownerName = userLabel(ownerUser, c.owner);
 
     let title, body, icon;
     if (st.key === 'expired') {
@@ -6083,7 +6134,7 @@ app.get('/api/poll-bundle', requireAuth, (req, res) => {
       const st = calcStatus(c);
       if (!st) return;
       const ownerUser = auth.users.find(u => u.username === c.owner);
-      const ownerName = ownerUser?.displayName || c.owner;
+      const ownerName = userLabel(ownerUser, c.owner);
       let title, body, icon;
       if (st.key === 'expired') {
         icon  = '🔴';
@@ -6143,7 +6194,7 @@ app.get('/api/poll-bundle', requireAuth, (req, res) => {
         title:            c.title  || '',
         personalBirthday: c.personalBirthday,
         owner:            c.owner,
-        ownerName:        ownerUser?.displayName || c.owner,
+        ownerName:        userLabel(ownerUser, c.owner),
         daysLeft:         diffDays,
         birthdayFull:     `${bDate.getFullYear()}/${String(mm).padStart(2,'0')}/${String(dd).padStart(2,'0')}`
       });
@@ -7461,7 +7512,7 @@ app.get('/api/admin/companies', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const ownerNameMap = {};
   const usersByName = {};
-  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
+  (auth.users || []).forEach(u => { ownerNameMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const countById = {};
   const ownersById = {};   // companyId -> Set(服務業務顯示名)，僅算「真實名片」，排除客戶池 placeholder
   const ownerUserById = {};   // companyId -> Set(owner username)，供推導 BU
@@ -7627,7 +7678,7 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const userMap = {};
   const usersByName = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
 
   // 掛在此主檔的名片
@@ -7682,7 +7733,7 @@ app.get('/api/companies', requireAuth, (req, res) => {
   const auth = loadAuth();
   const ownerNameMap = {};
   const usersByName = {};
-  (auth.users || []).forEach(u => { ownerNameMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
+  (auth.users || []).forEach(u => { ownerNameMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const ownersById = {};   // companyId -> Set(服務業務顯示名)，僅算「真實名片」
   const ownerUserById = {};   // companyId -> Set(owner username)，供推導 BU
   contacts.forEach(c => {
@@ -7875,6 +7926,7 @@ app.post('/api/companies/import', requireAuth,
     const _authImp = loadAuth();
     const _usersByName = {}; const _displayToUser = {};
     (_authImp.users || []).forEach(u => { _usersByName[u.username] = u; _displayToUser[u.displayName || u.username] = u.username; });
+    (_authImp.users || []).forEach(u => { if (u.nickname) _displayToUser[u.nickname] = u.username; });
     const out = runCompanyImport(working, dataRows, COL, { usersByName: _usersByName, displayToUser: _displayToUser });
 
     // 客戶池候選：本次處理到、但「目前沒有任何名片」的主檔（用真實 data.contacts 判斷；
@@ -8342,7 +8394,7 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
   const auth = loadAuth();
   const userMap = {};
   const usersByName = {};
-  (auth.users || []).forEach(u => { userMap[u.username] = u.displayName || u.username; usersByName[u.username] = u; });
+  (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
 
   // 可見名片（依擁有者 + BU）
@@ -8436,7 +8488,7 @@ app.get('/api/admin/pool/contacts', requireAuth, (req, res) => {
   const assignableTargets = (auth.users || [])
     .filter(u => transferViewable.has(u.username) && u.role !== 'pool' && u.active !== false)
     .filter(u => ['user','manager2','manager1'].includes(u.role))
-    .map(u => ({ username: u.username, displayName: u.displayName || u.username, role: u.role, bu: u.bu || [] }));
+    .map(u => ({ username: u.username, displayName: userLabel(u), role: u.role, bu: u.bu || [] }));
   res.json({ contacts: result, assignableTargets });
 });
 
@@ -9341,7 +9393,7 @@ function getOwnerOptions(req) {
   return allOwners.length > 1
     ? allOwners.map(u => {
         const usr = auth.users.find(x => x.username === u);
-        return { username: u, displayName: usr ? (usr.displayName || u) : u };
+        return { username: u, displayName: userLabel(usr, u) };
       })
     : [];
 }
@@ -9491,7 +9543,7 @@ app.get('/api/manager-home', requireAuth, (req, res) => {
     const auth = loadAuth();
     const ownerOptions = (auth.users || [])
       .filter(u => allOwners.includes(u.username))
-      .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
+      .map(u => ({ username: u.username, displayName: userLabel(u) }));
 
     // ── Gap 分析（年底預測達成 vs 目標）──
     const dayOfYear = (d) => {
@@ -9607,7 +9659,7 @@ app.get('/api/manager/business-type-analysis', requireAuth, (req, res) => {
     const trendMap = new Map(); // bucket → {new, recurring, expansion}
 
     const userByName = {};
-    (auth.users || []).forEach(u => { userByName[u.username] = u.displayName || u.username; });
+    (auth.users || []).forEach(u => { userByName[u.username] = userLabel(u); });
 
     const bucketOf = (d) => {
       const dt = new Date(d || 0);
@@ -9672,7 +9724,7 @@ app.get('/api/manager/business-type-analysis', requireAuth, (req, res) => {
     // owner 選單
     const ownerOptions = (auth.users || [])
       .filter(u => allOwners.includes(u.username))
-      .map(u => ({ username: u.username, displayName: u.displayName || u.username }));
+      .map(u => ({ username: u.username, displayName: userLabel(u) }));
 
     // drilldown 排序：金額 desc
     _BIZ_TYPES.forEach(t => drilldown[t].sort((a, b) => b.amount - a.amount));

@@ -521,6 +521,7 @@
                 <tr>
                   <th>帳號</th>
                   <th>顯示名稱</th>
+                  <th title="由後台統一設定；報表與下拉選單優先顯示暱稱，用來區分同名的業務">暱稱</th>
                   <th>角色</th>
                   <th>BU</th>
                   <th>狀態</th>
@@ -2027,6 +2028,11 @@
           <input type="text" id="fieldDisplayName" placeholder="顯示於系統的名稱">
         </div>
         <div class="form-group">
+          <label>暱稱（選填）</label>
+          <input type="text" id="fieldNickname" maxlength="20" placeholder="例：Steven-MDM">
+          <div style="font-size:12px;color:#8a94a3;margin-top:4px">用來區分同名的業務：報表、篩選與下拉選單會優先顯示暱稱；留空就沿用顯示名稱。全站不可重複、最多 20 字。對客戶的報價單不會使用暱稱。</div>
+        </div>
+        <div class="form-group">
           <label>角色</label>
           <select id="fieldRole" onchange="onRoleChange()">
             <option value="user">一般業務</option>
@@ -2036,6 +2042,8 @@
             <option value="manager1">一級主管</option>
             <option value="accounting_manager">會計主管</option>
             <option value="finance_manager">財務主管</option>
+            <option value="consult_manager_south">南區顧問主管</option>
+            <option value="consult_manager_north">北區顧問主管</option>
             <option value="executive">董事長/總經理</option>
             <option value="admin">系統管理員</option>
             <option value="tecopm">集團PM（唯讀）</option>
@@ -3146,9 +3154,14 @@
     }
 
     function renderUserTable() {
-      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）',groupsales:'集團業務'};
+      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）',groupsales:'集團業務',consult_manager_south:'南區顧問主管',consult_manager_north:'北區顧問主管'};
       const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+      // 同名偵測：以「實際顯示用名稱」（暱稱 > 顯示名稱）判斷，只算啟用中的帳號；有同名就在該列標 ⚠，提示管理員設定暱稱
+      const _nameCount = {};
+      allUsers.forEach(x => { if (x.active !== false) { const k = adminUserLabel(x).trim().toLowerCase(); _nameCount[k] = (_nameCount[k] || 0) + 1; } });
       $('userTableBody').innerHTML = allUsers.map(u => {
+        const _dupN = u.active !== false ? (_nameCount[adminUserLabel(u).trim().toLowerCase()] || 0) : 0;
+        const dupBadge = _dupN > 1 ? ` <span title="有 ${_dupN} 位啟用中的使用者在報表上會顯示成同一個名字，請為其中的使用者設定不同的暱稱" style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:2px 6px;border-radius:99px;cursor:help">⚠ 同名</span>` : '';
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
         // 集團PM：顯示「依集團限制」並把 viewOwnerScope 寫上
         const buCell = ['tecopm','groupsales'].includes(u.role)
@@ -3162,7 +3175,8 @@
         return `
         <tr>
           <td><strong>${u.username}</strong></td>
-          <td>${u.displayName}</td>
+          <td>${escH(u.displayName)}</td>
+          <td>${u.nickname ? '<strong>' + escH(u.nickname) + '</strong>' : '<span style="color:#b0b7c3">—</span>'}${dupBadge}</td>
           <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
           <td>${buCell}</td>
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
@@ -3240,7 +3254,7 @@
     }
 
     // 直屬主管下拉：列出所有啟用中的帳號（排除自己與系統帳號），由 admin 自由指定
-    const SUPERVISOR_ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'一般業務', marketing:'行銷人員', tecopm:'集團PM' };
+    const SUPERVISOR_ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'一般業務', marketing:'行銷人員', tecopm:'集團PM', groupsales:'集團業務', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
     function loadSupervisorOptions(selfUsername) {
       const sel = $('fieldSupervisor');
       if (!sel) return;
@@ -3250,7 +3264,7 @@
         .forEach(u => {
           const o = document.createElement('option');
           o.value = u.username;
-          o.textContent = `${u.displayName || u.username}（${u.username}・${SUPERVISOR_ROLE_LABEL[u.role] || u.role || 'user'}）`;
+          o.textContent = `${adminUserLabel(u)}（${u.username}・${SUPERVISOR_ROLE_LABEL[u.role] || u.role || 'user'}）`;
           sel.appendChild(o);
         });
     }
@@ -3263,7 +3277,7 @@
       allUsers.filter(u => u.active !== false && u.role !== 'tecopm').forEach(u => {
         const o = document.createElement('option');
         o.value = u.username;
-        o.textContent = `${u.displayName || u.username} (${u.username}, ${u.role || 'user'})`;
+        o.textContent = `${adminUserLabel(u)} (${u.username}, ${u.role || 'user'})`;
         ownerSel.appendChild(o);
       });
       // 集團清單：呼叫 /api/admin/all-groups
@@ -3292,6 +3306,7 @@
       $('fieldPassword').value = '';
       $('passwordGroup').style.display = '';
       $('fieldDisplayName').value = '';
+      $('fieldNickname').value = '';
       $('fieldRole').value = 'user';
       setBuCheckboxes([]);
       $('fieldActive').value = 'true';
@@ -3319,6 +3334,7 @@
       $('fieldUsername').disabled = true;
       $('passwordGroup').style.display = 'none';
       $('fieldDisplayName').value = u.displayName;
+      $('fieldNickname').value = u.nickname || '';
       $('fieldRole').value = u.role || 'user';
       setBuCheckboxes(u.bu || []);
       $('fieldActive').value = u.active ? 'true' : 'false';
@@ -3368,6 +3384,7 @@
       const accessMode = (role === 'admin') ? 'edit' : (accessModeRaw === 'view' ? 'view' : 'edit');
       const payload = {
         displayName: $('fieldDisplayName').value.trim() || $('fieldUsername').value.trim(),
+        nickname: $('fieldNickname').value.trim(),   // 空字串＝清除暱稱
         role,
         bu: buArr,
         active: $('fieldActive').value === 'true',
@@ -3516,6 +3533,8 @@
     let transferFromContacts = [];
     let transferToContacts   = [];
 
+    /** 人名顯示規則（與後端 userLabel 一致）：暱稱 > 顯示名稱 > 帳號。用來讓下拉選單、列表能區分同名的使用者 */
+    function adminUserLabel(u) { return (u && (u.nickname || u.displayName || u.username)) || ''; }
     function escH(s) {
       return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
@@ -3534,7 +3553,7 @@
           active.forEach(u => {
             const o = document.createElement('option');
             o.value = u.username;
-            o.textContent = `${u.displayName || u.username}`;
+            o.textContent = adminUserLabel(u);
             sel.appendChild(o);
           });
           if (cur) sel.value = cur;
@@ -3710,7 +3729,7 @@
         users.filter(u => u.active).forEach(u => {
           const o = document.createElement('option');
           o.value = u.username;
-          o.textContent = `${u.displayName || u.username}（${u.username}）`;
+          o.textContent = `${adminUserLabel(u)}（${u.username}）`;
           sel.appendChild(o);
         });
       } catch {}
@@ -3840,7 +3859,7 @@
         const sel = $('ocrTargetOwner');
         sel.innerHTML = '<option value="">-- 請選擇 --</option>';
         users.filter(u => u.role !== 'admin').forEach(u => {
-          sel.innerHTML += `<option value="${u.username}">${u.displayName || u.username}</option>`;
+          sel.innerHTML += `<option value="${u.username}">${escH(adminUserLabel(u))}</option>`;
         });
       } catch {}
     }
@@ -3948,7 +3967,7 @@
           users.forEach(u => {
             const opt = document.createElement('option');
             opt.value = u.username;
-            opt.textContent = (u.displayName || u.username) + ' (' + u.username + ')';
+            opt.textContent = adminUserLabel(u) + ' (' + u.username + ')';
             sel.appendChild(opt);
           });
         } catch {}
@@ -4485,7 +4504,7 @@
         if (!existingVals.has(u.username)) {
           const o = document.createElement('option');
           o.value = u.username;
-          o.textContent = `${u.displayName || u.username} (${u.username})`;
+          o.textContent = `${adminUserLabel(u)} (${u.username})`;
           sel.appendChild(o);
         }
       });
@@ -5193,7 +5212,7 @@
       tr.dataset.username = u.username;
       tr.innerHTML = `
         <td style="padding:10px 12px;white-space:nowrap">
-          <div style="font-weight:600;color:#1a2d52">${u.displayName || u.username}</div>
+          <div style="font-weight:600;color:#1a2d52">${escH(adminUserLabel(u))}</div>
           <div style="font-size:11px;color:#9ca3af">${rl}${hasPersonal ? '' : ' · 尚未設定'}</div>
         </td>
         ${[0,1,2,3].map(i => `
@@ -5256,7 +5275,7 @@
       const clearBtn = tr.querySelector('.qr-user-clear-btn');
       if (clearBtn) {
         clearBtn.addEventListener('click', async () => {
-          if (!confirm(`確定清除 ${u.displayName || u.username} 的個人配比？清除後此人季度目標顯示為 0（尚未設定）。`)) return;
+          if (!confirm(`確定清除 ${adminUserLabel(u)} 的個人配比？清除後此人季度目標顯示為 0（尚未設定）。`)) return;
           clearBtn.textContent = '清除中…';
           // 清除方式：送全域預設值（或實作 DELETE 端點）
           // 這裡用 PUT 送空值，server 端改為刪除該 key
@@ -5448,7 +5467,7 @@
             _mbUsers.forEach(u => {
               const o = document.createElement('option');
               o.value = u.username;
-              o.textContent = u.displayName || u.username;
+              o.textContent = adminUserLabel(u);
               sel.appendChild(o);
             });
           }
@@ -5487,7 +5506,7 @@
         wrap.innerHTML = _mbAllBudgets.map(b => {
           const revTotal = b.months.reduce((s,v) => s + v, 0);
           const gmTotal  = b.grossMargin ? b.grossMargin.reduce((s,v) => s + v, 0) : 0;
-          const userLabel = _mbUsers.find(u => u.username === b.owner)?.displayName || b.owner;
+          const userLabel = adminUserLabel(_mbUsers.find(u => u.username === b.owner)) || b.owner;
           const gmRow = gmTotal > 0 ? `
             <div style="margin-top:8px;border-top:1px solid #f3f4f6;padding-top:8px">
               <div style="font-size:11px;font-weight:600;color:#7c3aed;margin-bottom:4px">毛利金額（合計 ${gmTotal.toLocaleString()} K）</div>
@@ -5732,6 +5751,9 @@
       manager2: 'manager2（二級主管）',
       accounting_manager: 'accounting_manager（會計主管）',
       finance_manager: 'finance_manager（財務主管）',
+      consult_manager_south: 'consult_manager_south（南區顧問主管）',
+      consult_manager_north: 'consult_manager_north（北區顧問主管）',
+      groupsales: 'groupsales（集團業務）',
       secretary: 'secretary（秘書）',
       tecopm: 'tecopm（集團 PM）',
       marketing: 'marketing（行銷）',
