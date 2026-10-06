@@ -85,7 +85,8 @@ function renderQuoteList() {
       <td><span class="quote-status ${stClass}">${escapeHtml(stLabel)}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="openQuoteModal('${q.id}')">✏️ 編輯</button>
-        <button class="btn btn-sm btn-export" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}')">&#11015; Excel</button>
+        <button class="btn btn-sm btn-export" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}')" title="下載給客戶的報價單">&#11015; Excel</button>
+        <button class="btn btn-sm" onclick="exportQuote('${q.id}','${escapeHtml(q.quoteNo || '')}','pnl')" title="含成本與毛利率，僅限內部使用，請勿提供客戶">&#11015; 毛利分析(內部)</button>
         <button class="btn btn-sm btn-soft-danger" onclick="deleteQuote('${q.id}')">🗑️</button>
       </td>
     </tr>`;
@@ -111,10 +112,11 @@ function bindQuoteListHandlers() {
 }
 
 // ── 匯出 Excel ──────────────────────────────────────────────
-async function exportQuote(id, quoteNo) {
+async function exportQuote(id, quoteNo, kind) {
+  const isPnl = kind === 'pnl';
   try {
-    showToast('正在產生報價單…');
-    const r = await fetch(`${API}/quotations/${id}/export`);
+    showToast(isPnl ? '正在產生毛利分析…' : '正在產生報價單…');
+    const r = await fetch(`${API}/quotations/${id}/${isPnl ? 'export-pnl' : 'export'}`);
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
       return showToast(e.error || '匯出失敗');
@@ -123,12 +125,12 @@ async function exportQuote(id, quoteNo) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `${quoteNo || 'quotation'}.xlsx`;
+    a.download = `${quoteNo || 'quotation'}${isPnl ? '_毛利分析-內部' : ''}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    showToast('報價單 Excel 已下載');
+    showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶' : '報價單 Excel 已下載');
   } catch(e) {
     showToast('匯出失敗，請重試');
   }

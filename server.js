@@ -9121,6 +9121,7 @@ app.get('/api/admin/api-stats', requireAdmin, (req, res) => {
 
 // ── 報價單功能 ─────────────────────────────────────────────
 const QUOTE_TEMPLATE = path.join(__dirname, 'templates', 'quotation_template.xlsx');
+const { buildQuoteWorkbook } = require('./lib/quoteExcel');   // 給客戶的報價單：直接填範本，保留框線／logo／列印設定
 
 function genQuoteNo(data) {
   const d = new Date();
@@ -9131,149 +9132,15 @@ function genQuoteNo(data) {
 }
 
 /**
- * 寫入儲存格值（字串/數字/公式）
- * addr: Excel 位址字串，如 'B9'
+ * 毛利分析（PNL）Excel —— **內部用，不得給客戶**。
+ * 成本單價、成本小計、毛利、毛利率都是機密，所以與「給客戶的報價單」分開匯出
+ * （報價單本體見 lib/quoteExcel.js；兩者原本混在同一個檔案，客戶拿到的檔案會夾帶成本與內部損益表）。
  */
-function _wc(ws, addr, val) {
-  if (!ws[addr]) ws[addr] = {};
-  if (typeof val === 'string' && val.startsWith('=')) {
-    ws[addr].t = 'n';
-    ws[addr].f = val.slice(1);
-    delete ws[addr].v;
-  } else if (typeof val === 'number') {
-    ws[addr].t = 'n';
-    ws[addr].v = val;
-    delete ws[addr].f;
-  } else {
-    ws[addr].t = 's';
-    ws[addr].v = val == null ? '' : String(val);
-    delete ws[addr].f;
-  }
-}
-
-/**
- * 將 fromRow1（含，1-based）以下所有列往下移 count 列
- * 並同步更新 !merges 與 !ref
- */
-function _shiftRowsDown(ws, fromRow1, count) {
-  if (count <= 0) return;
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const fromR0 = fromRow1 - 1; // 0-based
-
-  // 從底部往上移動，避免覆蓋
-  for (let r = range.e.r; r >= fromR0; r--) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const srcAddr = XLSX.utils.encode_cell({ r, c });
-      const dstAddr = XLSX.utils.encode_cell({ r: r + count, c });
-      if (ws[srcAddr]) {
-        ws[dstAddr] = { ...ws[srcAddr] };
-        delete ws[srcAddr];
-      } else {
-        delete ws[dstAddr];
-      }
-    }
-  }
-
-  // 更新 merges
-  if (ws['!merges']) {
-    ws['!merges'] = ws['!merges'].map(m => {
-      if (m.s.r >= fromR0) {
-        return { s: { r: m.s.r + count, c: m.s.c }, e: { r: m.e.r + count, c: m.e.c } };
-      }
-      return m;
-    });
-  }
-
-  // 更新 !ref 範圍
-  range.e.r += count;
-  ws['!ref'] = XLSX.utils.encode_range(range);
-}
-
-/**
- * 以報價單範本產生 Excel Buffer
- */
-function buildQuoteExcel(q) {
-  const wb = XLSX.readFile(QUOTE_TEMPLATE);
-  const sheetName = wb.SheetNames[0]; // "報價單 "（含尾端空格）
-  const ws = wb.Sheets[sheetName];
-
+function buildQuotePnlExcel(q) {
+  const wb = XLSX.utils.book_new();
   const items = Array.isArray(q.items) && q.items.length > 0
     ? q.items
     : [{ desc: '', unit: '式', qty: 1, unitPrice: 0 }];
-  const n = items.length;
-
-  // 範本有 2 個項目列（row 17, 18），超出時往下插
-  const ITEM_START  = 17; // 1-based
-  const ORIG_ROWS   = 2;
-  const SUMMARY_ROW = ITEM_START + ORIG_ROWS; // 19（1-based）：第一個小計列
-  const extraRows   = Math.max(0, n - ORIG_ROWS);
-  const ss          = SUMMARY_ROW + extraRows; // 移位後小計列（1-based）
-
-  if (extraRows > 0) {
-    _shiftRowsDown(ws, SUMMARY_ROW, extraRows);
-  }
-
-  // ── 表頭資訊 ──
-  const dateStr = (q.quoteDate || new Date().toISOString().slice(0, 10)).replace(/-/g, '/');
-  _wc(ws, 'G6',  `表單編號：${q.quoteNo || ''}`);
-  _wc(ws, 'B9',  q.company     || '');
-  _wc(ws, 'F9',  dateStr);
-  _wc(ws, 'B10', q.contactName || '');
-  _wc(ws, 'F10', q.contactName || '');
-  _wc(ws, 'B11', q.address     || '');
-  _wc(ws, 'F11', q.mobile      || '');
-  _wc(ws, 'B12', q.phone       || '');
-
-  // ── 項目列 ──
-  const lastItemRow = ITEM_START + n - 1; // 1-based
-  for (let i = 0; i < n; i++) {
-    const row1 = ITEM_START + i;
-    const rs   = String(row1);
-    const item = items[i];
-    _wc(ws, `B${rs}`, i + 1);
-    _wc(ws, `C${rs}`, item.desc      || '');
-    _wc(ws, `F${rs}`, item.unit      || '式');
-    _wc(ws, `G${rs}`, parseFloat(item.qty)       || 1);
-    _wc(ws, `H${rs}`, parseFloat(item.unitPrice) || 0);
-    _wc(ws, `J${rs}`, `=H${rs}*G${rs}`);
-
-    // 第 2 列以後需補 C:E merge（第 1 列範本已有）
-    if (i >= ORIG_ROWS) {
-      if (!ws['!merges']) ws['!merges'] = [];
-      ws['!merges'].push({ s: { r: row1 - 1, c: 2 }, e: { r: row1 - 1, c: 4 } });
-    }
-  }
-
-  // ── 小計/優惠/稅/合計 公式（參照移位後的正確列號）──
-  const ssStr        = String(ss);
-  const discType     = q.discountType  || 'none';
-  const discValue    = parseFloat(q.discountValue) || 0;
-
-  _wc(ws, `J${ss}`, `=SUM(J${ITEM_START}:J${lastItemRow})`); // 小計
-
-  // 優惠價：依折扣類型決定公式或數值
-  if (discType === 'percent' && discValue > 0 && discValue < 100) {
-    // 例：90 → 九折 → J(ss)*90/100
-    _wc(ws, `J${ss + 1}`, `=J${ssStr}*${discValue}/100`);
-    // 在 G(ss+1) 補上折扣說明（同列已有 "優惠價：" 標籤的欄）
-    _wc(ws, `G${ss + 1}`, `優惠 ${discValue}%（${(discValue / 10).toFixed(1).replace(/\.0$/, '')} 折）`);
-  } else if (discType === 'amount' && discValue > 0) {
-    // 業務直接輸入議價金額
-    _wc(ws, `J${ss + 1}`, discValue);
-    _wc(ws, `G${ss + 1}`, '議價金額');
-  } else {
-    // 無折扣：優惠價 = 小計
-    _wc(ws, `J${ss + 1}`, `=J${ssStr}`);
-  }
-
-  _wc(ws, `J${ss + 3}`, `=J${ss + 1}*0.05`);          // 稅 5%
-  _wc(ws, `J${ss + 4}`, `=J${ss + 1}+J${ss + 3}`);    // 含稅合計
-
-  // ── 專案名稱 / 專案號碼（原本在 B28, B31，隨 extraRows 移位）──
-  const projNameRow = 28 + extraRows;
-  const projNoRow   = 31 + extraRows;
-  _wc(ws, `B${projNameRow}`, q.projectName || '');
-  _wc(ws, `B${projNoRow}`,   q.projectNo   || '');
 
   // ════════════════════════════════════════════
   // ── PNL 毛利分析工作表 ───────────────────────
@@ -9495,7 +9362,7 @@ app.delete('/api/quotations/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/quotations/:id/export', requireAuth, (req, res) => {
+app.get('/api/quotations/:id/export', requireAuth, async (req, res) => {
   const data   = db.load();
   const q      = (data.quotations || []).find(q => q.id === req.params.id);
   if (!q) return res.status(404).json({ error: '找不到此報價單' });
@@ -9506,7 +9373,7 @@ app.get('/api/quotations/:id/export', requireAuth, (req, res) => {
     return res.status(500).json({ error: '報價單範本不存在，請聯繫管理員' });
   }
   try {
-    const buf   = buildQuoteExcel(q);
+    const buf   = await buildQuoteWorkbook(q, QUOTE_TEMPLATE);
     const fname = encodeURIComponent(`${q.quoteNo}_${q.company || '報價單'}.xlsx`);
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -9514,6 +9381,25 @@ app.get('/api/quotations/:id/export', requireAuth, (req, res) => {
   } catch (e) {
     console.error('[QuoteExport]', e.message, e.stack);
     res.status(500).json({ error: '報價單產生失敗：' + e.message });
+  }
+});
+
+// 毛利分析（內部用）：含成本與毛利率，與給客戶的報價單分開匯出
+app.get('/api/quotations/:id/export-pnl', requireAuth, (req, res) => {
+  const data   = db.load();
+  const q      = (data.quotations || []).find(q => q.id === req.params.id);
+  if (!q) return res.status(404).json({ error: '找不到此報價單' });
+  const owners = getViewableOwners(req, 'quotations');
+  if (!owners.includes(q.owner)) return res.status(403).json({ error: '無權限' });
+  try {
+    const buf   = buildQuotePnlExcel(q);
+    const fname = encodeURIComponent(`${q.quoteNo}_毛利分析-內部.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (e) {
+    console.error('[QuotePnlExport]', e.message, e.stack);
+    res.status(500).json({ error: '毛利分析產生失敗：' + e.message });
   }
 });
 
