@@ -19,7 +19,8 @@ const t = (name, ok, extra) => res.push([name, !!ok, extra === undefined ? '' : 
 
 (async () => {
   // 1) 前後端句子一致
-  const src = fs.readFileSync(path.join(ROOT, '_client/quote.js'), 'utf8');
+  // 換行一律先正規化成 LF：Windows 以 autocrlf=true clone 下來的檔案是 CRLF，下面用 '\n}\n' 切函式會找不到
+  const src = fs.readFileSync(path.join(ROOT, '_client/quote.js'), 'utf8').replace(/\r\n/g, '\n');
   const i0 = src.indexOf('function quotePaymentSentence(');
   const i1 = src.indexOf('\n}\n', i0) + 3;
   if (i0 < 0 || i1 < 3) throw new Error('找不到 quotePaymentSentence');
