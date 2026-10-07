@@ -974,7 +974,10 @@ function renderPnlTab() {
   } else {
     html += `<div class="pnl-note">📌 ${mode === 'edit'
       ? '此單由業務自行填成本：請填各品項<strong>未稅單價成本</strong>；毛利以<strong>優惠後未稅報價</strong>為基準。'
-      : '以下為各品項成本與毛利（僅有權限者可見，請勿提供客戶）；毛利以<strong>優惠後未稅報價</strong>為基準。'}</div>`;
+      : (perm && perm.isOwner && need
+          ? '此單的成本由顧問填寫：你可以查看，但不能修改（顧問重新填寫後會更新）。成本與毛利僅供內部參考，請勿提供客戶；毛利以<strong>優惠後未稅報價</strong>為基準。'
+          : '以下為各品項成本與毛利（僅有權限者可見，請勿提供客戶）；毛利以<strong>優惠後未稅報價</strong>為基準。')}</div>`;
+    if (mode !== 'edit' && need) html += _qCostFlowBlock(q);
     html += `<div class="quote-items-wrap" style="margin-top:12px;overflow-x:auto"><table class="quote-items-table pnl-table">
       <thead><tr>
         <th style="width:34px">#</th><th>品項說明</th>
