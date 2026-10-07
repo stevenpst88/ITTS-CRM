@@ -226,7 +226,8 @@ function buildQuotePreviewHtml(q, info) {
 function fitQuotePreview() {
   const stage = document.getElementById('qpvStage');
   if (!stage || !stage.firstElementChild) return;
-  stage.firstElementChild.style.zoom = Math.min(1, stage.clientWidth / QPV_PAPER_WIDTH);
+  // clientWidth 為 0（視窗還沒排版或分頁在背景）時維持 1，不能把內容縮成 0 而整張消失
+  stage.firstElementChild.style.zoom = stage.clientWidth ? Math.min(1, stage.clientWidth / (parseFloat(stage.dataset.paperWidth) || QPV_PAPER_WIDTH)) : 1;
 }
 
 let _qpvCurrentId = null;   // 目前開著的預覽（儲存聯絡資訊後要刷新它）
@@ -277,6 +278,42 @@ async function refreshQuotePreview() {
   const warn = document.getElementById('qpvNotice');
   if (warn) warn.innerHTML = _qpvNotice(info, q);
   fitQuotePreview();
+}
+
+/**
+ * 毛利分析預覽（內部）：伺服器把「實際要下載的毛利分析 xlsx」轉成 HTML（GET /quotations/:id/pnl-preview），
+ * 所以看到的就是下載檔的內容；含成本與毛利，只有「看得到成本與價格」的人才有權限（與下載相同）。
+ */
+async function previewQuotePnl(id) {
+  let r, j = {};
+  try { r = await fetch(`${API}/quotations/${encodeURIComponent(id)}/pnl-preview`); j = await r.json().catch(() => ({})); } catch (e) { return showToast('毛利分析預覽載入失敗，請重試'); }
+  if (!r.ok || !j.html) return showToast(j.error || '無法預覽毛利分析');
+  _qpvEnsureStyle();
+  closeQuotePreview();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 'quotePreviewOverlay';
+  ov.innerHTML = `
+    <div class="modal qpv-modal">
+      <div class="modal-header">
+        <h2>毛利分析預覽（內部）　${escapeHtml(j.quoteNo || '')}</h2>
+        <button class="modal-close" onclick="closeQuotePreview()">&#10005;</button>
+      </div>
+      <div class="modal-body qpv-body">
+        <div class="qpv-warn qpv-unsigned"><span>內部文件：含成本與毛利率，請勿提供客戶。</span></div>
+        <div class="qpv-hint">這是「毛利分析(內部)」Excel 內容的網頁預覽（和下載檔同一份資料；範本上的簽名線、選項按鈕等圖形不會顯示），實際成品以下載的 Excel 為準。</div>
+        <div class="qpv-stage" id="qpvStage" data-paper-width="${Number(j.widthPx) || 950}"><div class="qpv-pnl-sheet" style="width:${Number(j.widthPx) || 950}px;margin:0 auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18)">${j.html}</div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeQuotePreview()">關閉</button>
+        <button class="btn btn-export" id="qpvPnlDlBtn" type="button">&#11015; 下載毛利分析 Excel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const dl = ov.querySelector('#qpvPnlDlBtn');
+  if (dl) dl.addEventListener('click', function () { exportQuote(id, j.quoteNo || '', 'pnl'); });
+  fitQuotePreview();
+  window.addEventListener('resize', fitQuotePreview);
 }
 
 async function previewQuote(id) {

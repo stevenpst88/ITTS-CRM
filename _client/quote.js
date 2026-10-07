@@ -543,6 +543,7 @@ function _qActionButtons(q) {
     out.push(b('pdf', '&#11015; PDF', 'btn-export', _qApprovalValid(q) ? '下載給客戶的正式報價單 PDF（已核准，含報價專用章）' : '下載報價單 PDF（尚未核准，不會有報價專用章）'));
   }
   // 毛利分析含報價單價與毛利：只負責填成本的顧問（看不到價格）不顯示，伺服器端也會擋
+  if (p.canSeeCost && p.canSeePrice !== false) out.push(b('pnlpreview', '👁 毛利預覽', '', '預覽毛利分析（內部）：與下載的 Excel 同一份內容，含成本與毛利率，請勿提供客戶'));
   if (p.canSeeCost && p.canSeePrice !== false) out.push(b('pnl', '&#11015; 毛利分析(內部)', '', '含成本與毛利率，僅限內部使用，請勿提供客戶'));
   if ((p.isOwner || me.isAdmin) && !_qEverSubmitted(q) && p.isCostProvider !== true) out.push(b('delete', '🗑️', 'btn-soft-danger', '刪除（送過簽的單不可刪除）'));
   return `<div class="q-actions">${out.join('')}</div>`;
@@ -648,6 +649,7 @@ function bindQuoteListHandlers() {
         case 'export':   p = exportQuote(id, q ? q.quoteNo : ''); break;
         case 'pdf':      p = exportQuotePdf(id, q ? q.quoteNo : ''); break;
         case 'pnl':      p = exportQuote(id, q ? q.quoteNo : '', 'pnl'); break;
+        case 'pnlpreview': p = previewQuotePnl(id); break;
         case 'delete':   p = deleteQuote(id); break;
       }
       Promise.resolve(p).then(done, done);
