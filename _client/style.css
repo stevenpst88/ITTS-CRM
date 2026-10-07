@@ -4613,3 +4613,27 @@ body.dark .mkt-readonly select:disabled,
 body.dark .mkt-readonly textarea:disabled,
 body.dark .mkt-readonly button:disabled { background: #161b22; color: #636e7b; }
 body.dark .mkt-readonly #industry { background: #1f1a08 !important; border-color: #f59e0b !important; color: #e6edf3 !important; }
+
+/* ── 報價單表單：Remarks 付款方式／追加條款（活的條款）── */
+.qrm-sub { font-weight: 400; font-size: 12px; color: #8a94a3; margin-left: 6px; }
+.qrm-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.qrm-row select { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; }
+.qrm-inst, .qrm-cl { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.qrm-inst .n, .qrm-cl .n { flex: 0 0 56px; font-size: 12px; color: #6b7685; text-align: right; }
+.qrm-inst input, .qrm-cl input { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+.qrm-inst .qrm-label { flex: 1 1 auto; min-width: 0; }
+.qrm-inst .qrm-pct { flex: 0 0 76px; text-align: right; }
+.qrm-cl .qrm-clause { flex: 1 1 auto; min-width: 0; }
+.qrm-del { background: none; border: none; color: #e53935; cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; }
+.qrm-del:disabled { color: #c9ced6; cursor: not-allowed; }
+.qrm-sum { font-size: 12.5px; color: #2e7d32; }
+.qrm-sum.bad { color: #c62828; font-weight: 600; }
+.qrm-preview { margin-top: 6px; padding: 8px 10px; background: #f4f6f9; border: 1px dashed #cfd6e0; border-radius: 6px; font-size: 12.5px; color: #3b4654; line-height: 1.6; word-break: break-all; }
+.qrm-fixed { margin-top: 12px; border: 1px solid #e3e7ee; border-radius: 6px; padding: 6px 10px; background: #fafbfc; }
+.qrm-fixed summary { cursor: pointer; font-size: 13px; color: #5f6b7a; }
+.qrm-fixed .qrm-fx { padding: 3px 0; font-size: 12.5px; color: #6b7685; line-height: 1.55; }
+body.dark .qrm-row select, body.dark .qrm-inst input, body.dark .qrm-cl input { background: #0d1117; border-color: #30363d; color: #e6edf3; }
+body.dark .qrm-preview { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+body.dark .qrm-fixed { background: #161b22; border-color: #30363d; }
+body.dark .qrm-fixed summary, body.dark .qrm-fixed .qrm-fx, body.dark .qrm-inst .n, body.dark .qrm-cl .n { color: #9aa4b2; }
+@media (max-width: 600px) { .qrm-inst, .qrm-cl { flex-wrap: wrap; } .qrm-inst .n, .qrm-cl .n { flex-basis: 100%; text-align: left; } }

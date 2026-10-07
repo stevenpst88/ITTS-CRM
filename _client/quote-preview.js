@@ -6,7 +6,7 @@
 // 與 lib/quoteExcel.js 保持一致的地方（改其中一邊時請一起改）：
 //   · 欄位對應（左框＝客戶資料；右框＝日期＋聯絡人＋手機）
 //   · 優惠規則（percent 僅 0<值<100 才生效；amount 需 >0）、稅金 5%
-//   · 公司抬頭與 Remarks 第 1~6 條是範本內的固定文字，範本改了這裡要同步
+//   · 公司抬頭是範本內的固定文字，範本改了這裡要同步；Remarks 條款不在這裡維護——一律用 issue-info 的 remarks（lib/quoteRemarks.js 單一來源）
 // 預覽只顯示客戶看得到的內容，不含成本與毛利。
 // ═════════════════════════════════════════════════
 
@@ -139,11 +139,20 @@ function buildQuotePreviewHtml(q, info) {
            `<td class="c">${e(it.unit || '式')}</td><td class="r">${n(price)}</td><td></td><td class="r">${n(qty * price)}</td></tr>`;
   }).join('');
 
-  const note = String(q.note || '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
-  // Remarks 第 4 條：把範本的「XXXX年XX月XX日」換成報價期限（與 Excel 一致，年月日不補零）
-  const vuM = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(q.validUntil || ''));
-  const remarkList = QPV_REMARKS.map(t => vuM ? t.replace(/X{4}年X{2}月X{2}日/, `${+vuM[1]}年${+vuM[2]}月${+vuM[3]}日`) : t);
-  const remarks = remarkList.concat(note ? ['7.' + note] : []).map(t => `<div>${e(t)}</div>`).join('');
+  // Remarks：直接用伺服器組好的條款（info.remarks，與 Excel 同一份：固定條文、付款方式、報價期限、追加條款）。
+  // 沒有（舊版伺服器）才退回本檔的固定條文＋單行備註。
+  let remarkLines;
+  if (info && Array.isArray(info.remarks) && info.remarks.length) remarkLines = info.remarks;
+  else {
+    const note = String(q.note || '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+    const vuM = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(q.validUntil || ''));
+    // 追加條款以 serialize 回傳的 q.clauses 為準（有新格式＝clauses；舊單＝單行 note）；付款方式用 quote.js 的鏡像函式
+    const extras = Array.isArray(q.clauses) ? q.clauses : (note ? [note] : []);
+    const base = QPV_REMARKS.map(t => vuM ? t.replace(/X{4}年X{2}月X{2}日/, `${+vuM[1]}年${+vuM[2]}月${+vuM[3]}日`) : t);
+    if (typeof quotePaymentSentence === 'function') base[2] = quotePaymentSentence(q.payment);
+    remarkLines = base.concat(extras.map((t, i) => (7 + i) + '.' + t));
+  }
+  const remarks = remarkLines.map(t => `<div>${e(t)}</div>`).join('');
 
   return `<div class="qpv-paper">
     <div class="qpv-head">

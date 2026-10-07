@@ -1102,7 +1102,7 @@ function renderQuoteApprovalState(q) {
   let html = `<span class="quote-status ${escapeHtml(st.cls)}">${escapeHtml(st.label)}</span>`;
   const a = q.approval;
   if (a && a.state === 'approved' && a.valid !== false) {
-    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註、報價期限、商品、品項、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
+    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
   } else if (a && a.state === 'returned') {
     const h = (a.history || []).filter(x => x && x.action === 'RETURN');
     const last = h.length ? h[h.length - 1] : null;
@@ -1118,14 +1118,14 @@ function bindQuoteValidUntil() {
   const vu = $('qValidUntil'), qd = $('qDate');
   if (vu && !vu._qBound) {
     vu._qBound = true;
-    vu.addEventListener('input', function () { _qValidUntilTouched = true; });
+    vu.addEventListener('input', function () { _qValidUntilTouched = true; if (typeof renderQuoteFixedClauses === 'function') renderQuoteFixedClauses(); });
   }
   if (qd && !qd._qBoundVu) {
     qd._qBoundVu = true;
     qd.addEventListener('change', function () {
       if (_qValidUntilTouched) return;
       const d = quoteLastWorkingDay(qd.value);
-      if (d && $('qValidUntil')) $('qValidUntil').value = d;
+      if (d && $('qValidUntil')) { $('qValidUntil').value = d; if (typeof renderQuoteFixedClauses === 'function') renderQuoteFixedClauses(); }
     });
   }
 }
@@ -1167,11 +1167,14 @@ async function openQuoteModal(idOrNull) {
     $('qAddress').value     = q ? (q.address       || '') : '';
     $('qDate').value        = q ? (q.quoteDate     || today) : today;
     $('qProjectName').value = q ? (q.projectName   || '') : '';
-    $('qNote').value        = q ? (q.note          || '') : '';
     // 報價期限：新單預設「報價日期當月最後一個工作天」，業務沒改過就跟著報價日期走；編輯舊單則尊重已存的值
     $('qValidUntil').value  = q ? (q.validUntil || quoteLastWorkingDay($('qDate').value)) : quoteLastWorkingDay($('qDate').value);
     _qValidUntilTouched     = !!q;
     bindQuoteValidUntil();
+    // Remarks 活的部分：付款方式（舊單沒存就是預設句）、追加條款（舊單的單行備註會變成第 7 條）；固定條款唯讀顯示
+    initQuotePayment(q ? q.payment : null);
+    initQuoteClauses(q ? (q.clauses || []) : []);
+    renderQuoteFixedClauses();
     renderQuoteApprovalState(q);
 
     // 公司 datalist
@@ -1268,6 +1271,178 @@ async function openQuoteModal(idOrNull) {
     console.error('openQuoteModal 錯誤:', err);
     showToast('開啟報價單失敗：' + (err.message || err));
   }
+}
+
+// ════════════════════════════════════════════════════════════
+// ── Remarks 活的部分：付款方式（第 3 條，結構化期程）與追加條款（第 7 條起）───────
+// 條文與範本來源是伺服器 lib/quoteRemarks.js（隨 /api/quote-approval/config 的 remarks 欄位下發）。
+// quotePaymentSentence 是該檔 paymentSentence 的鏡像（只用於表單即時預覽），改一邊要同步；`node scripts/check-quote-remarks.js` 會逐例比對兩邊的輸出。
+// ════════════════════════════════════════════════════════════
+function quoteRemarksCfg() { return (typeof quoteCfg === 'function' ? quoteCfg().remarks : null) || {}; }
+var QRM_ZW = new RegExp('[' + [0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF].map(function (c) { return String.fromCharCode(c); }).join('') + ']', 'g');
+function qrmOneLine(s) { return String(s == null ? '' : s).replace(QRM_ZW, '').replace(/[\u0000-\u001F\u007F\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+
+function quotePaymentSentence(payment) {
+  const okItems = payment && Array.isArray(payment.items) && payment.items.length && payment.items.every(function (it) { return it && typeof it.label === 'string' && Number.isFinite(it.pct); });
+  const p = okItems ? payment : { net: 30, items: [{ label: '簽約完成後', pct: 100 }] };
+  const net = typeof p.net === 'number' ? p.net : 30;
+  if (p.items.length === 1 && p.items[0].pct === 100) {
+    const label = p.items[0].label;
+    return net > 0 ? '3.付款方式：' + label + '付款總金額 100%，月結' + net + '天付款。' : '3.付款方式：' + label + '即付款總金額 100%。';
+  }
+  const fmt = function (n) { return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10); };
+  const parts = p.items.map(function (it, i) { return '第' + (i + 1) + '期 ' + it.label + ' ' + fmt(it.pct) + '%'; });
+  return '3.付款方式：分' + p.items.length + '期付款（比例為占付款總金額），' + parts.join('；') + '；' + (net > 0 ? '各期月結' + net + '天付款。' : '各期於付款時點成立後即付款。');
+}
+
+/** 畫面上目前的付款期程（比例空白／非數字的欄位 pct 為 NaN，交給驗證擋下） */
+function readQuotePayment() {
+  const net = parseInt(($('qPayNet') || {}).value, 10);
+  const items = Array.from(document.querySelectorAll('#qPayItems .qrm-inst')).map(function (row) {
+    const raw = row.querySelector('.qrm-pct').value.trim();
+    return { label: qrmOneLine(row.querySelector('.qrm-label').value), pct: raw === '' ? NaN : Number(raw) };
+  });
+  return { net: Number.isFinite(net) ? net : 30, items: items };
+}
+
+/** 驗證付款期程（與伺服器 normalizePayment 同規則）；回傳錯誤訊息或 ''。成功時 payment.items[].pct 已取到小數 1 位 */
+function validateQuotePayment(p) {
+  const rc = quoteRemarksCfg();
+  if (!p.items.length) return '付款方式至少要有一期';
+  if (rc.maxInstallments && p.items.length > rc.maxInstallments) return '付款期數最多 ' + rc.maxInstallments + ' 期';
+  let tenths = 0;
+  for (let i = 0; i < p.items.length; i++) {
+    const it = p.items[i];
+    if (!it.label) return '第 ' + (i + 1) + ' 期請填付款時點（例：簽約後、上線驗收後）';
+    if (rc.maxLabel && Array.from(it.label).length > rc.maxLabel) return '第 ' + (i + 1) + ' 期的付款時點最多 ' + rc.maxLabel + ' 個字';
+    if (!Number.isFinite(it.pct) || it.pct < 0.1 || it.pct > 100) return '第 ' + (i + 1) + ' 期的比例必須介於 0.1% 到 100%';
+    const t = Math.round(it.pct * 10);
+    if (Math.abs(it.pct * 10 - t) > 1e-9) return '第 ' + (i + 1) + ' 期的比例最多只能到小數 1 位';
+    tenths += t;
+  }
+  if (tenths !== 1000) return '各期比例合計必須是 100%（目前 ' + (tenths / 10) + '%）';
+  return '';
+}
+
+function renderQuotePaymentRows(items) {
+  const rc = quoteRemarksCfg();
+  const max = rc.maxInstallments || 8;
+  $('qPayItems').innerHTML = items.map(function (it, i) {
+    return '<div class="qrm-inst"><span class="n">第 ' + (i + 1) + ' 期</span>' +
+      '<input type="text" class="qrm-label" maxlength="' + (rc.maxLabel || 30) + '" placeholder="付款時點，例：簽約後" value="' + escapeHtml(it.label || '') + '">' +
+      '<input type="number" class="qrm-pct" min="0.1" max="100" step="0.1" placeholder="%" value="' + (Number.isFinite(it.pct) ? it.pct : '') + '"><span>%</span>' +
+      '<button type="button" class="qrm-del" title="移除這一期"' + (items.length <= 1 ? ' disabled' : '') + '>&#10005;</button></div>';
+  }).join('');
+  $('qPayAdd').disabled = items.length >= max;
+  updateQuotePayPreview();
+}
+
+/** 付款範本選單：依目前期程是否與某個範本完全相同，顯示該範本；否則顯示「自訂」 */
+function syncQuotePayPreset(p) {
+  const rc = quoteRemarksCfg();
+  const hit = (rc.paymentPresets || []).find(function (pr) {
+    return pr.net === p.net && pr.items.length === p.items.length && pr.items.every(function (x, i) { return x.label === p.items[i].label && x.pct === p.items[i].pct; });
+  });
+  $('qPayPreset').value = hit ? hit.key : 'custom';
+}
+
+function updateQuotePayPreview() {
+  const p = readQuotePayment();
+  const err = validateQuotePayment(p);
+  const sumEl = $('qPaySum');
+  const total = p.items.reduce(function (s, it) { return s + (Number.isFinite(it.pct) ? it.pct : 0); }, 0);
+  const totalR = Math.round(total * 10) / 10;
+  sumEl.textContent = '合計 ' + totalR + '%' + (Math.round(total * 10) === 1000 ? ' ✓' : '（需為 100%）');
+  sumEl.className = 'qrm-sum' + (Math.round(total * 10) === 1000 ? '' : ' bad');
+  $('qPayPreview').textContent = err ? ('⚠ ' + err) : ('印出的條文：' + quotePaymentSentence(p));
+  syncQuotePayPreset(p);
+}
+
+function initQuotePayment(payment) {
+  const rc = quoteRemarksCfg();
+  const presets = rc.paymentPresets || [];
+  $('qPayPreset').innerHTML = presets.map(function (pr) { return '<option value="' + escapeHtml(pr.key) + '">' + escapeHtml(pr.name) + '</option>'; }).join('') + '<option value="custom">自訂</option>';
+  $('qPayNet').innerHTML = (rc.netOptions || [30, 0, 45, 60, 90]).map(function (n) { return '<option value="' + n + '">' + (n === 0 ? '即付款（不月結）' : '月結 ' + n + ' 天') + '</option>'; }).join('');
+  const p = payment && Array.isArray(payment.items) && payment.items.length ? payment : (rc.defaultPayment || { net: 30, items: [{ label: '簽約完成後', pct: 100 }] });
+  $('qPayNet').value = String(p.net);
+  renderQuotePaymentRows(p.items.map(function (it) { return { label: it.label, pct: it.pct }; }));
+  const box = $('qPaySection');
+  if (!box._qrmBound) {
+    box._qrmBound = true;
+    $('qPayPreset').addEventListener('change', function () {
+      const pr = presets.find(function (x) { return x.key === this.value; }, this);
+      if (!pr) return;                                    // 選「自訂」＝保留目前內容
+      $('qPayNet').value = String(pr.net);
+      renderQuotePaymentRows(pr.items.map(function (it) { return { label: it.label, pct: it.pct }; }));
+    });
+    $('qPayNet').addEventListener('change', updateQuotePayPreview);
+    $('qPayItems').addEventListener('input', updateQuotePayPreview);
+    $('qPayItems').addEventListener('click', function (ev) {
+      const b = ev.target.closest('.qrm-del');
+      if (!b) return;
+      const cur = readQuotePayment().items;
+      cur.splice(Array.from(document.querySelectorAll('#qPayItems .qrm-inst')).indexOf(b.closest('.qrm-inst')), 1);
+      renderQuotePaymentRows(cur);
+    });
+    $('qPayAdd').addEventListener('click', function () {
+      const cur = readQuotePayment().items;
+      cur.push({ label: '', pct: NaN });
+      renderQuotePaymentRows(cur);
+      const inputs = document.querySelectorAll('#qPayItems .qrm-label');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+  }
+}
+
+function readQuoteClauses() {
+  return Array.from(document.querySelectorAll('#qClauses .qrm-clause')).map(function (i) { return qrmOneLine(i.value); }).filter(Boolean);
+}
+
+function renderQuoteClauseRows(list) {
+  const rc = quoteRemarksCfg();
+  const max = rc.maxClauses || 8;
+  $('qClauses').innerHTML = list.map(function (t, i) {
+    return '<div class="qrm-cl"><span class="n">第 ' + (7 + i) + ' 條</span>' +
+      '<input type="text" class="qrm-clause" maxlength="' + (rc.maxClauseLen || 200) + '" placeholder="例：本報價含一年保固…" value="' + escapeHtml(t) + '">' +
+      '<button type="button" class="qrm-del" title="移除這一條">&#10005;</button></div>';
+  }).join('');
+  $('qClauseAdd').disabled = list.length >= max;
+  $('qClauseHint').textContent = list.length ? ('共 ' + list.length + ' 條（最多 ' + max + ' 條，每條 ' + (rc.maxClauseLen || 200) + ' 字）') : ('目前沒有追加條款（最多 ' + max + ' 條，每條 ' + (rc.maxClauseLen || 200) + ' 字）');
+}
+
+function initQuoteClauses(list) {
+  renderQuoteClauseRows(list);
+  const box = $('qClauseSection');
+  if (!box._qrmBound) {
+    box._qrmBound = true;
+    box.addEventListener('click', function (ev) {
+      const b = ev.target.closest('.qrm-del');
+      if (!b) return;
+      const idx = Array.from(document.querySelectorAll('#qClauses .qrm-cl')).indexOf(b.closest('.qrm-cl'));
+      const cur = Array.from(document.querySelectorAll('#qClauses .qrm-clause')).map(function (i) { return i.value; });
+      cur.splice(idx, 1);
+      renderQuoteClauseRows(cur);
+    });
+    $('qClauseAdd').addEventListener('click', function () {
+      const cur = Array.from(document.querySelectorAll('#qClauses .qrm-clause')).map(function (i) { return i.value; });
+      cur.push('');
+      renderQuoteClauseRows(cur);
+      const inputs = document.querySelectorAll('#qClauses .qrm-clause');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
+  }
+}
+
+/** 固定條款（唯讀）：第 4 條的日期跟著「報價期限」欄位 */
+function renderQuoteFixedClauses() {
+  const fx = quoteRemarksCfg().fixed;
+  const box = $('qFixedBox');
+  if (!fx || !box) { if (box) box.style.display = 'none'; return; }
+  box.style.display = '';
+  const vu = /^(\d{4})-(\d{2})-(\d{2})$/.exec(($('qValidUntil') || {}).value || '');
+  const c4 = vu ? String(fx[4]).replace(/X{4}年X{2}月X{2}日/, +vu[1] + '年' + +vu[2] + '月' + +vu[3] + '日') : fx[4];
+  $('qFixedList').innerHTML = [fx[1], fx[2], c4, fx[5], fx[6]].map(function (t) { return '<div class="qrm-fx">' + escapeHtml(t) + '</div>'; }).join('') +
+    '<div class="qrm-fx" style="color:#8a94a3">第 1、2、5、6 條為固定條文，不可修改；第 4 條的日期請在「報價期限」欄設定；第 3 條請用上方「付款方式」設定。</div>';
 }
 
 // ── 優惠模式切換 UI ───────────────────────────────────────────
@@ -1474,6 +1649,12 @@ async function saveQuote() {
   if (!validUntil) { switchQuoteTab('info'); $('qValidUntil').focus(); showToast('請輸入報價期限'); return; }
   if (validUntil < quoteDate) { switchQuoteTab('info'); $('qValidUntil').focus(); showToast('報價期限不能早於建立日期'); return; }
 
+  // 付款方式：期數／比例（合計必須 100%）要先過，才不會存到「各期加起來不是 100%」的條款
+  const payment = readQuotePayment();
+  const payErr = validateQuotePayment(payment);
+  if (payErr) { switchQuoteTab('info'); const pe = $('qPaySection'); if (pe) pe.scrollIntoView({ block: 'center' }); showToast(payErr); return; }
+  const extraClauses = readQuoteClauses();
+
   const products = readSelectedProducts();
   if (!products.length) { switchQuoteTab('info'); showToast('請至少勾選一項商品'); return; }
   const needC  = quoteNeedsConsultant(products);
@@ -1523,7 +1704,8 @@ async function saveQuote() {
     items:         payloadItems,
     discountType:  discountType,
     discountValue: discountValue,
-    note:          $('qNote').value.trim(),
+    payment:       payment,
+    extraClauses:  extraClauses,
     products:      products,
     costBy:        needC ? costBy : null,
     costNote:      needC ? $('qCostNote').value.trim() : '',
@@ -1545,7 +1727,7 @@ async function saveQuote() {
     if (!res.r.ok && res.j.code === 'WILL_VOID') {
       const ok = await qDialog({
         title: '修改會使核准作廢',
-        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註、報價期限、商品、品項、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
+        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
         buttons: [
           { text: '儲存並作廢核准', value: true, cls: 'btn-danger' },
           { text: '取消', value: false, cls: 'btn-secondary' },

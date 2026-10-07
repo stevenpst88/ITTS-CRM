@@ -2787,11 +2787,32 @@
           </div>
         </div>
 
-        <!-- 備註 -->
-        <div class="form-group" style="margin-top:12px">
-          <label>備註</label>
-          <textarea id="qNote" rows="2" placeholder="報價備注、特殊條款..."></textarea>
+        <!-- Remarks（備註條款）：第 3 條付款方式與第 7 條起追加條款是「活的」，其餘固定 -->
+        <div class="form-group" style="margin-top:14px" id="qPaySection">
+          <label>付款方式<span class="qrm-sub">（印在報價單 Remarks 第 3 條）</span></label>
+          <div class="qrm-row">
+            <select id="qPayPreset" title="選一個常用付款範本再微調；也可以自訂期數與比例"></select>
+            <select id="qPayNet" title="付款期限（各期共用）"></select>
+          </div>
+          <div id="qPayItems"></div>
+          <div class="qrm-row">
+            <button type="button" class="btn btn-secondary btn-sm" id="qPayAdd">&#43; 新增一期</button>
+            <span id="qPaySum" class="qrm-sum"></span>
+          </div>
+          <div class="qrm-preview" id="qPayPreview"></div>
         </div>
+        <div class="form-group" style="margin-top:12px" id="qClauseSection">
+          <label>追加條款<span class="qrm-sub">（第 7 條起；議價時新增，一條一列，自動編號）</span></label>
+          <div id="qClauses"></div>
+          <div class="qrm-row">
+            <button type="button" class="btn btn-secondary btn-sm" id="qClauseAdd">&#43; 新增條款</button>
+            <span id="qClauseHint" class="qrm-sum"></span>
+          </div>
+        </div>
+        <details class="qrm-fixed" id="qFixedBox">
+          <summary>固定條款（不可修改）</summary>
+          <div id="qFixedList"></div>
+        </details>
       </div><!-- end quoteTabContentInfo -->
 
       <!-- ── TAB 2：毛利與簽核路徑（唯讀摘要；成本由顧問填寫，業務自填時才可編輯成本） ── -->
