@@ -386,12 +386,21 @@ function buildItemsSection(q) {
   if (showPrice) head += '<th class="r">單價</th><th class="r">金額</th>';
   if (showCost) head += '<th class="r">成本</th>';
   if (showPrice && showCost) head += '<th class="r">逐列毛利率</th>';
-  let subtotal = 0;
-  const rows = items.map((it, i) => {
+  let subtotal = 0, seq = 0, seg = 0;   // seq：項目編號只算一般品項；seg：目前這一段的小計（分的整數）
+  const colCount = 4 + (showPrice ? 2 : 0) + (showCost ? 1 : 0) + (showPrice && showCost ? 1 : 0);
+  const rows = items.map((it) => {
+    // 分組標題／小計列（kind）：標題是一列標題；小計列只在看得到價格時顯示該段合計。都不是品項（不計入總價、不編號）
+    if (it.kind === 'title') { seg = 0; return `<tr><td colspan="${colCount}" class="desc" style="font-weight:700;background:rgba(127,127,127,.12)">${e(it.desc || '')}</td></tr>`; }
+    if (it.kind === 'subtotal') {
+      const label = String(it.desc || '').trim() || '小計';
+      const tr = showPrice ? `<tr><td colspan="${colCount - (showCost ? 3 : 1)}" class="r" style="font-weight:700">${e(label)}</td><td class="r" style="font-weight:700">${e(fmtCents(seg))}</td>${showCost ? '<td></td>' + (showPrice ? '<td></td>' : '') : ''}</tr>` : '';
+      seg = 0; return tr;
+    }
     const qty = parseFloat(it.qty) || 1;
     const price = parseFloat(it.unitPrice) || 0;
     subtotal += Math.round(qty * price * 100);
-    let tr = `<tr><td class="c">${i + 1}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
+    seg += Math.round(qty * price * 100);
+    let tr = `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
     if (showPrice) tr += `<td class="r">${e(fmtNum(price))}</td><td class="r">${e(fmtNum(qty * price))}</td>`;
     if (showCost) tr += `<td class="r">${it.cost === undefined || it.cost === null ? '—' : e(fmtNum(it.cost))}</td>`;
     if (showPrice && showCost) tr += `<td class="r">${e(lineMarginText(it))}</td>`;
@@ -772,10 +781,18 @@ function buildBoardPrintHtml(q) {
   const reasons = Array.isArray(d.reasons) ? d.reasons.map((x) => `<li>${e(x)}</li>`).join('') : '';
   const items = Array.isArray(q.items) ? q.items : [];
   const showPrice = !!perm.canSeePrice;
-  const itemRows = items.map((it, i) => {
+  let seq = 0, seg = 0;   // 項目編號只算一般品項；seg＝目前這一段的小計（分）
+  const memoCols = 4 + (showPrice ? 2 : 0);
+  const itemRows = items.map((it) => {
+    if (it.kind === 'title') { seg = 0; return `<tr><td colspan="${memoCols}" style="font-weight:700;background:#f2f2f2">${e(it.desc || '')}</td></tr>`; }
+    if (it.kind === 'subtotal') {
+      const tr = showPrice ? `<tr><td colspan="${memoCols - 1}" class="r" style="font-weight:700">${e(String(it.desc || '').trim() || '小計')}</td><td class="r" style="font-weight:700">${e(fmtCents(seg))}</td></tr>` : '';
+      seg = 0; return tr;
+    }
     const qty = parseFloat(it.qty) || 1;
     const price = parseFloat(it.unitPrice) || 0;
-    return `<tr><td class="c">${i + 1}</td><td>${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>${showPrice ? `<td class="r">${e(fmtNum(price))}</td><td class="r">${e(fmtNum(qty * price))}</td>` : ''}</tr>`;
+    seg += Math.round(qty * price * 100);
+    return `<tr><td class="c">${++seq}</td><td>${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>${showPrice ? `<td class="r">${e(fmtNum(price))}</td><td class="r">${e(fmtNum(qty * price))}</td>` : ''}</tr>`;
   }).join('');
   const b = ap.board || {};
   const resDate = b.resolutionDate ? e(b.resolutionDate) : '________ 年 ____ 月 ____ 日';
@@ -885,10 +902,13 @@ function renderCostFill(s) {
     notice = '<div class="qap-alert info">你已完成過這張單的成本；如需修改，改完請再按「完成並通知業務」。只按「儲存」會讓這張單回到「未完成」，業務就無法送簽。</div>';
   }
   // 只列說明／單位／數量與成本；刻意不讀取 unitPrice、折扣、金額
-  const rows = (Array.isArray(q.items) ? q.items : []).map((it, i) => {
+  let seq = 0;   // 項目編號只算一般品項；分組標題當段落標題顯示（沒有成本欄），小計列不顯示（顧問看不到價格）
+  const rows = (Array.isArray(q.items) ? q.items : []).map((it) => {
+    if (it.kind === 'title') return `<tr><td colspan="5" class="desc" style="font-weight:700;background:rgba(127,127,127,.12)">${e(it.desc || '')}</td></tr>`;
+    if (it.kind === 'subtotal') return '';
     const lid = it.lid;
     const v = Object.prototype.hasOwnProperty.call(s.draft, lid) ? s.draft[lid] : (it.cost === undefined || it.cost === null ? '' : String(it.cost));
-    return `<tr><td class="c">${i + 1}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td>
+    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td>
       <td class="r"><input type="number" class="qap-input qap-cin" inputmode="decimal" min="0" step="any" data-lid="${e(lid)}" value="${e(v)}"${can && !s.busy ? '' : ' disabled'}></td></tr>`;
   }).join('');
   // 風險預留：負責填成本的顧問主管依專案風險選 0/5/10/15/20（%）；尚未設定過顯示「請選擇…」，按「完成並通知業務」前必須選

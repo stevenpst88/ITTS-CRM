@@ -59,6 +59,9 @@ const QPV_CSS = `
 .qpv-items td.r { text-align: right; }
 .qpv-items td.desc { white-space: pre-wrap; word-break: break-word; }
 .qpv-items td.blank { color: #333; }
+.qpv-items tr.qpv-grp td { background: #f2f2f2; font-weight: 700; text-align: left; padding: 5px 10px; white-space: pre-wrap; word-break: break-word; }
+.qpv-items tr.qpv-sub td { font-weight: 700; }
+.qpv-items tr.qpv-sub td.lbl { text-align: right; padding-right: 8px; }
 .qpv-sum { display: flex; justify-content: space-between; align-items: flex-start; }
 .qpv-sum .note { padding: 4px 0 0 8%; }
 .qpv-sumt { width: 40%; border-collapse: collapse; table-layout: fixed; margin-top: -1.5px; }
@@ -103,10 +106,25 @@ function _qpvApprovalNotice(q) {
     '下載的 PDF 不會有報價專用章（Excel 一律不蓋章）。</span></div>';
 }
 
+/**
+ * 分組標題／小計列（kind，與 lib/quoteItems.js 一致；舊單沒有 kind＝一般品項）。
+ * 小計值＝「上一個標題或小計列之後」的品項（數量空→1）合計，鏡像 lib/quoteItems.js 的 subtotalValues；scripts/check-quote-items.js 會逐例比對。
+ */
+function _qpvIsKindRow(it) { return !!it && (it.kind === 'title' || it.kind === 'subtotal'); }
+function _qpvSubtotals(items) {
+  const out = [];
+  let acc = 0;
+  (items || []).forEach((it) => {
+    if (_qpvIsKindRow(it)) { out.push(it.kind === 'subtotal' ? acc : null); acc = 0; }
+    else { out.push(null); acc += (parseFloat(it && it.qty) || 1) * (parseFloat(it && it.unitPrice) || 0); }
+  });
+  return out;
+}
+
 /** 金額與優惠：規則與 lib/quoteExcel.js 一致 */
 function _qpvTotals(q) {
   const items = Array.isArray(q.items) ? q.items.slice(0, 50) : [];
-  const sub = items.reduce((s, it) => s + (parseFloat(it.qty) || 1) * (parseFloat(it.unitPrice) || 0), 0);
+  const sub = items.reduce((s, it) => _qpvIsKindRow(it) ? s : s + (parseFloat(it.qty) || 1) * (parseFloat(it.unitPrice) || 0), 0);
   const dv = parseFloat(q.discountValue) || 0;
   let disc = sub, note = '';
   if (q.discountType === 'percent' && dv > 0 && dv < 100) {
@@ -132,10 +150,17 @@ function buildQuotePreviewHtml(q, info) {
   const date = String((info && info.issueDate) || taipeiTodayClient()).replace(/-/g, '/');
   const row = (label, val) => `<div class="qpv-row"><span class="qpv-l">${label}</span><span class="qpv-v">${e(val || '')}</span></div>`;
 
+  const subVals = _qpvSubtotals(T.items);
+  let seq = 0;   // 項目編號只算一般品項（標題／小計列不編號），與 Excel 一致
   const itemRows = (T.items.length ? T.items : [null]).map((it, i) => {
     if (!it) return '<tr><td class="c">&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
+    if (it.kind === 'title') return `<tr class="qpv-grp"><td colspan="7">${e(it.desc || '')}</td></tr>`;
+    if (it.kind === 'subtotal') {
+      const label = String(it.desc || '').replace(/\s+/g, ' ').trim() || '小計';
+      return `<tr class="qpv-sub"><td colspan="6" class="lbl">${e(label)}</td><td class="r">${n(subVals[i])}</td></tr>`;
+    }
     const qty = parseFloat(it.qty) || 1, price = parseFloat(it.unitPrice) || 0;
-    return `<tr><td class="c">${i + 1}</td><td class="desc">${e(it.desc || '')}</td><td class="c">${e(String(qty))}</td>` +
+    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="c">${e(String(qty))}</td>` +
            `<td class="c">${e(it.unit || '式')}</td><td class="r">${n(price)}</td><td></td><td class="r">${n(qty * price)}</td></tr>`;
   }).join('');
 

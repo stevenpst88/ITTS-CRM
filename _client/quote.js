@@ -67,6 +67,12 @@ const QUOTE_CSS = `
 .q-pg .s.pending  { background:#e3f2fd; border-color:#9ec5f4; color:#0b57d0; font-weight:700; }
 .q-pg .s.returned { background:#fce8e6; border-color:#f3b8b2; color:#c62828; font-weight:700; }
 .q-pg:hover .s { filter:brightness(.97); }
+/* 報價項目表：分組標題列／小計列（表單內） */
+.quote-items-table tbody tr.qi-title td { background:#eef2fb; }
+.quote-items-table tbody tr.qi-subrow td { background:#f6f8fc; }
+.quote-items-table .qi-up:disabled, .quote-items-table .qi-down:disabled { opacity:.25; cursor:default !important; }
+body.dark .quote-items-table tbody tr.qi-title td { background:#1c2433; }
+body.dark .quote-items-table tbody tr.qi-subrow td { background:#161d29; }
 .q-cost { font-size:12px; white-space:nowrap; color:#5f6b7a; }
 .q-cost.warn { color:#e65100; font-weight:600; }
 .q-cost.ok { color:#188038; font-weight:600; }
@@ -149,13 +155,22 @@ function _qEnsureStyle() {
 _qEnsureStyle();
 
 /**
+ * 報價項目表有三種「列」（與伺服器 lib/quoteItems.js 一致；舊單沒有 kind＝一般品項）：
+ *   品項（無 kind）／分組標題（kind:'title'，例：Part A：系統建置）／小計列（kind:'subtotal'，金額＝上一個標題或小計列之後的品項合計）。
+ * 標題與小計列沒有數量、單價、成本、毛利分類；列數上限 50 含這兩種列。
+ */
+const QUOTE_MAX_ROWS = 50;
+function quoteIsKindRow(it) { return !!it && (it.kind === 'title' || it.kind === 'subtotal'); }
+
+/**
  * 計算報價合計（僅供畫面即時顯示；簽核用的毛利/金額一律以伺服器試算為準）
  * discountType: 'none' | 'percent' | 'amount'
  * discountValue: percent 時為百分比（90 = 九折）；amount 時為議價後未稅金額
  */
 function quoteTotal(items, discountType, discountValue) {
+  // 分組標題／小計列（kind）不是品項：不計入總價（小計列只是顯示該段合計，計入會重複）
   const sub = (items || []).reduce(
-    (s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.unitPrice) || 0), 0
+    (s, it) => quoteIsKindRow(it) ? s : s + (parseFloat(it.qty) || 0) * (parseFloat(it.unitPrice) || 0), 0
   );
   let discounted = sub;
   let discountAmt = 0;
@@ -1026,9 +1041,10 @@ function renderPnlTab() {
         <th style="width:80px;text-align:right">毛利率</th>
       </tr></thead><tbody id="pnlItemsBody">` +
       items.map(function (it, i) {
+        if (quoteIsKindRow(it)) return '';   // 分組標題／小計列不是品項：沒有成本也沒有毛利（data-idx 仍用原陣列索引，與表單列順序對得上）
         const costVal = it.cost === undefined ? '' : it.cost;
         return `<tr data-idx="${i}">
-          <td style="text-align:center;color:#999;font-size:12px">${i + 1}</td>
+          <td style="text-align:center;color:#999;font-size:12px">${items.slice(0, i + 1).filter(function (x) { return !quoteIsKindRow(x); }).length}</td>
           <td style="font-size:13px">${e(it.desc || '（未填）')}</td>
           <td style="text-align:right;font-size:13px">${e(String(it.qty))} ${e(it.unit || '')}</td>
           <td style="text-align:right;font-size:13px">${e(fmtMoney(it.unitPrice))}</td>
@@ -1138,7 +1154,7 @@ function renderQuoteApprovalState(q) {
   let html = `<span class="quote-status ${escapeHtml(st.cls)}">${escapeHtml(st.label)}</span>`;
   const a = q.approval;
   if (a && a.state === 'approved' && a.valid !== false) {
-    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
+    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
   } else if (a && a.state === 'returned') {
     const h = (a.history || []).filter(x => x && x.action === 'RETURN');
     const last = h.length ? h[h.length - 1] : null;
@@ -1258,12 +1274,37 @@ async function openQuoteModal(idOrNull) {
       });
       $('qDiscountValue').addEventListener('input', updateQuoteTotals);
 
-      // 新增項目
-      $('addQuoteItemBtn').addEventListener('click', function() {
+      // 新增項目／分組標題／小計列：三種列共用 50 列上限（客戶版範本的列數；標題與小計也佔列）
+      var addRow = function (build) {
         var current = readQuoteItems();
-        current.push({ desc: '', unit: '式', qty: 1, unitPrice: 0 });
+        if (current.length >= QUOTE_MAX_ROWS) { showToast('報價單最多 ' + QUOTE_MAX_ROWS + ' 列（含分組標題與小計列），請精簡或拆成多張報價單'); return; }
+        current.push(build(current));
         renderQuoteItems(current);
         updateQuoteTotals();
+        var rows = $('quoteItemsBody').querySelectorAll('tr');
+        var focusEl = rows.length ? rows[rows.length - 1].querySelector('.qi-desc') : null;
+        if (focusEl) { focusEl.focus(); if (focusEl.scrollIntoView) focusEl.scrollIntoView({ block: 'nearest' }); }
+      };
+      $('addQuoteItemBtn').addEventListener('click', function() {
+        addRow(function () { return { desc: '', unit: '式', qty: 1, unitPrice: 0 }; });
+      });
+      // 分組標題：預設「Part A」「Part B」…（依已有的標題數；可自行改名）
+      $('addQuoteGroupBtn').addEventListener('click', function() {
+        addRow(function (cur) {
+          var n = cur.filter(function (x) { return x.kind === 'title'; }).length;
+          return { kind: 'title', desc: 'Part ' + (n < 26 ? String.fromCharCode(65 + n) : (n + 1)) };
+        });
+      });
+      // 小計列：預設標籤「<最近的分組標題> 小計」（該標題之後還沒有小計列時）；沒有標題就用「小計」
+      $('addQuoteSubtotalBtn').addEventListener('click', function() {
+        addRow(function (cur) {
+          var label = '';
+          for (var i = cur.length - 1; i >= 0; i--) {
+            if (cur[i].kind === 'subtotal') break;
+            if (cur[i].kind === 'title') { label = cur[i].desc ? cur[i].desc.split(/[：:]/)[0].trim() + ' 小計' : ''; break; }
+          }
+          return { kind: 'subtotal', desc: label };
+        });
       });
 
       // 公司輸入時篩聯絡人
@@ -1553,13 +1594,39 @@ function autoFillFromContact() {
 // 成本不在這張表單顯示或編輯：顧問填、或業務自填時到「毛利與簽核路徑」頁籤。
 function renderQuoteItems(items) {
   const tbody = $('quoteItemsBody');
+  let seq = 0;   // 項目編號只算一般品項（分組標題、小計列不編號），與客戶版 Excel／預覽的編號一致
+  const last = items.length - 1;
+  const ctrl = function (i) {
+    const b = 'background:none;border:none;cursor:pointer;line-height:1;padding:2px 3px;font-size:13px;';
+    return '<td style="text-align:center;white-space:nowrap">' +
+      '<button type="button" class="qi-up" title="上移" style="' + b + 'color:#5f6b7a"' + (i === 0 ? ' disabled' : '') + '>&#9650;</button>' +
+      '<button type="button" class="qi-down" title="下移" style="' + b + 'color:#5f6b7a"' + (i === last ? ' disabled' : '') + '>&#9660;</button>' +
+      '<button type="button" class="qi-remove" title="移除此列" style="' + b + 'color:#e53935;font-size:16px">&#10005;</button></td>';
+  };
+  const inputBase = 'width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box;';
   tbody.innerHTML = items.map(function (it, i) {
+    const lidAttr = it.lid ? ' data-lid="' + escapeHtml(it.lid) + '"' : '';
+    if (it.kind === 'title') {
+      return '<tr data-idx="' + i + '" data-kind="title"' + lidAttr + ' class="qi-kindrow qi-title">' +
+        '<td style="text-align:center;color:#8a94a3;font-size:12px" title="分組標題">&#167;</td>' +
+        '<td colspan="6"><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" maxlength="200" ' +
+          'placeholder="分組標題（例：Part A：系統建置）" style="' + inputBase + 'font-weight:700"></td>' + ctrl(i) + '</tr>';
+    }
+    if (it.kind === 'subtotal') {
+      return '<tr data-idx="' + i + '" data-kind="subtotal"' + lidAttr + ' class="qi-kindrow qi-subrow">' +
+        '<td></td>' +
+        '<td colspan="4"><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" maxlength="200" ' +
+          'placeholder="小計" style="' + inputBase + 'text-align:right;font-weight:700"></td>' +
+        '<td class="qi-subtotal" style="text-align:right;font-size:13px;font-weight:700;padding-right:6px;white-space:nowrap">' + fmtMoney(0) + '</td>' +
+        '<td></td>' + ctrl(i) + '</tr>';
+    }
+    seq++;
     const qty   = parseFloat(it.qty)       || 1;
     const price = parseFloat(it.unitPrice) || 0;
-    const attrs = (it.lid ? ' data-lid="' + escapeHtml(it.lid) + '"' : '') +
+    const attrs = lidAttr +
       (it.cost !== undefined && it.cost !== null && it.cost !== '' ? ' data-cost="' + escapeHtml(String(it.cost)) + '"' : '');
     return '<tr data-idx="' + i + '"' + attrs + '>' +
-      '<td style="text-align:center;color:#999;font-size:12px">' + (i + 1) + '</td>' +
+      '<td style="text-align:center;color:#999;font-size:12px">' + seq + '</td>' +
       '<td><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" ' +
         'placeholder="品項說明" style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box"></td>' +
       '<td><input type="text" class="qi-unit" value="' + escapeHtml(it.unit || '式') + '" ' +
@@ -1574,38 +1641,59 @@ function renderQuoteItems(items) {
         'style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 2px;font-size:12px">' +
         QUOTE_ITEM_CATS.map(function (c) {
           return '<option value="' + c[0] + '"' + ((it.cat || '') === c[0] ? ' selected' : '') + '>' + c[1] + '</option>';
-        }).join('') + '</select></td>' +
-      '<td style="text-align:center"><button type="button" class="qi-remove" ' +
-        'title="移除此項目" style="background:none;border:none;color:#e53935;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px">&#10005;</button></td>' +
-      '</tr>';
+        }).join('') + '</select></td>' + ctrl(i) + '</tr>';
   }).join('');
 
-  // 輸入事件：即時更新小計
+  // 輸入事件：即時更新品項小計與各小計列（標題／小計列的輸入框沒有數量與單價，只需重算合計）
   tbody.querySelectorAll('input').forEach(function (inp) {
-    inp.addEventListener('input', function () {
-      const row   = inp.closest('tr');
-      const qty   = parseFloat(row.querySelector('.qi-qty').value)   || 0;
-      const price = parseFloat(row.querySelector('.qi-price').value) || 0;
-      row.querySelector('.qi-subtotal').textContent = fmtMoney(qty * price);
-      updateQuoteTotals();
-    });
+    inp.addEventListener('input', function () { updateQuoteTotals(); });
   });
 
   // 毛利分類：只影響毛利分析（內部），提示多類別商品時請逐列指定
   tbody.querySelectorAll('.qi-cat').forEach(function (sel) { sel.addEventListener('change', updateQuoteCatHint); });
 
-  // 移除按鈕
+  // 移除／上移／下移：一律「讀回目前列 → 改陣列 → 重畫」，lid 與成本隨列的 data 屬性保留
   tbody.querySelectorAll('.qi-remove').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var current = readQuoteItems();
-      if (current.length <= 1) { showToast('至少需保留一個報價項目'); return; }
       var idx = parseInt(btn.closest('tr').dataset.idx, 10);
+      var removingItem = !quoteIsKindRow(current[idx]);
+      if (removingItem && current.filter(function (x) { return !quoteIsKindRow(x); }).length <= 1) { showToast('至少需保留一個報價項目'); return; }
       current.splice(idx, 1);
       renderQuoteItems(current);
       updateQuoteTotals();
     });
   });
+  const move = function (btn, d) {
+    var current = readQuoteItems();
+    var idx = parseInt(btn.closest('tr').dataset.idx, 10);
+    var to = idx + d;
+    if (to < 0 || to >= current.length) return;
+    var tmp = current[idx]; current[idx] = current[to]; current[to] = tmp;
+    renderQuoteItems(current);
+    updateQuoteTotals();
+    var moved = $('quoteItemsBody').querySelectorAll('tr')[to];
+    var again = moved && moved.querySelector(d < 0 ? '.qi-up' : '.qi-down');
+    var fb = again && !again.disabled ? again : (moved && moved.querySelector(d < 0 ? '.qi-down' : '.qi-up'));
+    if (fb && !fb.disabled) fb.focus();
+  };
+  tbody.querySelectorAll('.qi-up').forEach(function (btn) { btn.addEventListener('click', function () { move(btn, -1); }); });
+  tbody.querySelectorAll('.qi-down').forEach(function (btn) { btn.addEventListener('click', function () { move(btn, 1); }); });
   updateQuoteCatHint();
+}
+
+/** 依畫面上的列順序重算各列小計與「各小計列」的金額：從最近的標題或小計列之後累加品項小計（與伺服器／預覽／Excel 同規則） */
+function updateQuoteSubtotalRows() {
+  let acc = 0;
+  Array.from($('quoteItemsBody').querySelectorAll('tr')).forEach(function (row) {
+    const kind = row.dataset.kind;
+    if (kind === 'title') { acc = 0; return; }
+    if (kind === 'subtotal') { const c = row.querySelector('.qi-subtotal'); if (c) c.textContent = fmtMoney(acc); acc = 0; return; }
+    const qty   = parseFloat(row.querySelector('.qi-qty').value)   || 0;
+    const price = parseFloat(row.querySelector('.qi-price').value) || 0;
+    row.querySelector('.qi-subtotal').textContent = fmtMoney(qty * price);
+    acc += qty * price;
+  });
 }
 
 // ── 品項「毛利分類」（毛利分析 PNL 表用）─────────────────────────
@@ -1629,6 +1717,12 @@ function updateQuoteCatHint() {
 // 回傳 { lid?, desc, unit, qty, unitPrice, cost? }；lid/cost 只在列上有值時才出現
 function readQuoteItems() {
   return Array.from($('quoteItemsBody').querySelectorAll('tr')).map(function (row) {
+    // 分組標題／小計列：只有 kind 與文字（沒有數量、單價、成本、分類）
+    if (row.dataset.kind) {
+      const k = { kind: row.dataset.kind, desc: row.querySelector('.qi-desc').value.trim() };
+      if (row.dataset.lid) k.lid = row.dataset.lid;
+      return k;
+    }
     const it = {
       desc:      row.querySelector('.qi-desc').value.trim(),
       unit:      row.querySelector('.qi-unit').value.trim() || '式',
@@ -1645,6 +1739,7 @@ function readQuoteItems() {
 
 // ── 更新合計顯示 ─────────────────────────────────────────────
 function updateQuoteTotals() {
+  updateQuoteSubtotalRows();
   const items = readQuoteItems();
   const { discountType, discountValue } = readQuoteDiscount();
   const { sub, discounted, discountAmt, tax, total } = quoteTotal(items, discountType, discountValue);
@@ -1721,6 +1816,11 @@ async function saveQuote() {
   // 成本只在「業務自填」時才送（伺服器端也只接受有權者的成本）；沒動過成本的列不送，避免誤蓋成 0
   const selfCost = !needC;
   const payloadItems = items.map(function (it) {
+    if (quoteIsKindRow(it)) {   // 分組標題／小計列：只送 kind 與文字
+      const k = { kind: it.kind, desc: it.desc };
+      if (it.lid) k.lid = it.lid;
+      return k;
+    }
     const o = { desc: it.desc, unit: it.unit, qty: it.qty, unitPrice: it.unitPrice, cat: it.cat || '' };
     if (it.lid) o.lid = it.lid;
     if (selfCost && it.cost !== undefined) o.cost = it.cost;
@@ -1738,6 +1838,7 @@ async function saveQuote() {
     projectName:   $('qProjectName').value.trim(),
     validUntil:    validUntil,
     items:         payloadItems,
+    rowKinds:      1,   // 本畫面認得分組標題／小計列（舊版畫面沒有這個旗標，伺服器會拒絕覆蓋含這類列的單）
     discountType:  discountType,
     discountValue: discountValue,
     payment:       payment,
@@ -1763,7 +1864,7 @@ async function saveQuote() {
     if (!res.r.ok && res.j.code === 'WILL_VOID') {
       const ok = await qDialog({
         title: '修改會使核准作廢',
-        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
+        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
         buttons: [
           { text: '儲存並作廢核准', value: true, cls: 'btn-danger' },
           { text: '取消', value: false, cls: 'btn-secondary' },

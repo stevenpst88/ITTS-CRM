@@ -102,7 +102,12 @@ async function _qpdfBuildDoc(q, info) {
     // 可以切頁的位置：紙張的各個區塊、品項表的每一列、Remarks 的每一條（標題「Remarks ：」不單獨留在頁尾）
     const cand = [];
     Array.prototype.forEach.call(paper.children, function (el) { cand.push(rel(el)); });
-    Array.prototype.forEach.call(paper.querySelectorAll('.qpv-items tbody tr'), function (el) { cand.push(rel(el)); });
+    // 分組標題列之後不切（標題不能孤零零留在頁尾）；小計列的上一列之後也不切（小計不能孤立在下一頁頁首、離開它加總的品項）
+    Array.prototype.forEach.call(paper.querySelectorAll('.qpv-items tbody tr:not(.qpv-grp)'), function (el) {
+      const nx = el.nextElementSibling;
+      if (nx && nx.classList.contains('qpv-sub')) return;
+      cand.push(rel(el));
+    });
     Array.prototype.forEach.call(paper.querySelectorAll('.qpv-remarks > div'), function (el, i) { if (i > 0) cand.push(rel(el)); });
 
     const scale = Math.max(0.5, Math.min(QPDF_SCALE, Math.sqrt(QPDF_MAX_PIXELS / (QPV_PAPER_WIDTH * total)), QPDF_MAX_SIDE / total));
