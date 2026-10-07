@@ -93,14 +93,14 @@ function _qpvStamped(q) {
 }
 let _qpvSealVer = Date.now();   // 每次開預覽換一個，避免瀏覽器快取到舊章
 
-/** 預覽上方的簽核警示條：未核准／核准已失效時提醒「下載檔案不會有報價專用章」 */
+/** 預覽上方的簽核警示條：未核准／核准已失效時提醒「下載的 PDF 不會有報價專用章」（Excel 則一律不蓋章） */
 function _qpvApprovalNotice(q) {
   if (_qpvStamped(q)) return '';
   const a = q && q.approval;
   const voided = a && a.state === 'approved' && a.valid === false;
   return '<div class="qpv-warn qpv-unsigned"><span>' +
     (voided ? '核准已失效（核准後報價內容被修改）：' : '主管尚未簽核完成：') +
-    '下載檔案不會有報價專用章。</span></div>';
+    '下載的 PDF 不會有報價專用章（Excel 一律不蓋章）。</span></div>';
 }
 
 /** 金額與優惠：規則與 lib/quoteExcel.js 一致 */
@@ -284,18 +284,25 @@ async function previewQuote(id) {
       </div>
       <div class="modal-body qpv-body">
         <div id="qpvNotice">${_qpvNotice(info, q)}</div>
-        <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；實際成品以「下載 Excel」為準。</div>
+        <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；實際成品以下載的檔案為準。報價專用章只會出現在 PDF 與此預覽，Excel 一律不蓋章。</div>
         <div class="qpv-stage" id="qpvStage">${buildQuotePreviewHtml(q, info)}</div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeQuotePreview()">關閉</button>
         <button class="btn btn-export" id="qpvExportBtn" type="button">&#11015; 下載 Excel</button>
+        <button class="btn btn-export" id="qpvPdfBtn" type="button">&#11015; 下載 PDF</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
   // 不把 id/單號拼進 inline JS（HTML 屬性的實體解碼會讓單引號跳脫失效）→ 用 listener 帶閉包值
   const exBtn = ov.querySelector('#qpvExportBtn');
   if (exBtn) exBtn.addEventListener('click', function () { exportQuote(q.id, q.quoteNo || ''); });
+  const pdfBtn = ov.querySelector('#qpvPdfBtn');
+  if (pdfBtn) pdfBtn.addEventListener('click', function () {
+    if (pdfBtn.disabled) return;
+    pdfBtn.disabled = true;   // 產生需要幾秒，避免連按產生多份
+    Promise.resolve(exportQuotePdf(q.id, q.quoteNo || '')).then(function () { pdfBtn.disabled = false; }, function () { pdfBtn.disabled = false; });
+  });
   fitQuotePreview();
   window.addEventListener('resize', fitQuotePreview);
 }

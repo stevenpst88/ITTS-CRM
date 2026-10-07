@@ -200,6 +200,8 @@ const _ACCESS_VIEW_EXEMPT_PATHS = new Set([
 app.use((req, res, next) => {
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
+  // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
+  if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
   if (!req.session || !req.session.user) return next(); // 未登入交由後續 requireAuth 處理
   try {
     const auth = loadAuth();
@@ -989,6 +991,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-pdf\.js"/g,     `src="quote-pdf.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
     res.setHeader('Cache-Control', 'no-store');

@@ -552,7 +552,7 @@ function renderApproval(s) {
   const perm = q.perm || {};
   let html = '';
   if (ap && ap.state === 'approved' && !ap.valid) {
-    html += '<div class="qap-alert bad">此報價單的核准已失效（核准後內容被修改）。下載的檔案不會有報價專用章，需重新送簽。</div>';
+    html += '<div class="qap-alert bad">此報價單的核准已失效（核准後內容被修改）。下載的 PDF 不會有報價專用章，需重新送簽。</div>';
   }
   if (ap && ap.state === 'returned') {
     const h = Array.isArray(ap.history) ? ap.history.filter((x) => x.action === 'RETURN') : [];
@@ -1182,7 +1182,7 @@ function buildRulesTab(s) {
     </ul>`);
   const me = cfg.me || {};
   if (me.isAdmin || me.isSealManager) {
-    html += sec('報價專用章', `<div class="qap-muted" style="margin-bottom:8px">已核准的報價單，Excel 與預覽右下「Prepared by」簽名欄會蓋上此章。僅限 PNG／JPEG，檔案不得超過 300KB。</div>
+    html += sec('報價專用章', `<div class="qap-muted" style="margin-bottom:8px">已核准的報價單，PDF 與預覽右下「Prepared by」簽名欄會蓋上此章；Excel 一律不蓋章（可編輯檔，正式有章的報價單只有 PDF）。僅限 PNG／JPEG，檔案不得超過 300KB。</div>
       <div class="qap-seal-box"><div class="qap-seal-img" id="qapSealImg"></div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
         <input type="file" id="qapSealFile" accept="image/png,image/jpeg" style="display:none">
@@ -1303,7 +1303,7 @@ async function uploadSeal(s, file) {
 
 async function deleteSeal(s) {
   if (s.sealBusy || !s.hasSeal) return;
-  const ok = await qapConfirm({ title: '刪除報價專用章', message: '刪除後，已核准報價單的 Excel 與預覽將不再蓋章（需重新上傳）。\n\n確定要刪除嗎？', okText: '刪除', danger: true });
+  const ok = await qapConfirm({ title: '刪除報價專用章', message: '刪除後，已核准報價單的 PDF 與預覽將不再蓋章（需重新上傳）。\n\n確定要刪除嗎？', okText: '刪除', danger: true });
   if (!ok || s.closed) return;
   s.sealBusy = true;
   renderSettings(s);

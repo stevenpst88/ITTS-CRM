@@ -60,6 +60,13 @@ const QUOTE_CSS = `
 .quote-st-void    { background:#fff1e0; color:#b25e00; border:1px solid #f5c98b; }
 .quote-status.q-wrap { white-space:normal; line-height:1.5; display:inline-block; max-width:230px; }
 .q-legacy { display:block; font-size:11px; color:#8a94a3; margin-top:2px; }
+/* 列表狀態欄下方的簽核進度條：一關一個小標籤（✔已簽／●輪到／○未到／✕駁回），整條可點開「簽核進度」視窗 */
+.q-pg { display:flex; flex-wrap:wrap; gap:3px 4px; margin-top:5px; max-width:230px; cursor:pointer; }
+.q-pg .s { font-size:11px; line-height:1.4; padding:0 6px; border-radius:9px; border:1px solid #d5dae3; background:#f6f7fa; color:#7b8494; white-space:nowrap; }
+.q-pg .s.approved { background:#e6f4ea; border-color:#b7dfc2; color:#188038; }
+.q-pg .s.pending  { background:#e3f2fd; border-color:#9ec5f4; color:#0b57d0; font-weight:700; }
+.q-pg .s.returned { background:#fce8e6; border-color:#f3b8b2; color:#c62828; font-weight:700; }
+.q-pg:hover .s { filter:brightness(.97); }
 .q-cost { font-size:12px; white-space:nowrap; color:#5f6b7a; }
 .q-cost.warn { color:#e65100; font-weight:600; }
 .q-cost.ok { color:#188038; font-weight:600; }
@@ -110,6 +117,10 @@ body.dark .quote-st-pending { background:#0d2040; color:#8ecfff; }
 body.dark .quote-st-returned { background:#2a0d0d; color:#ff8080; }
 body.dark .quote-st-approved { background:#0a1f10; color:#4ade80; }
 body.dark .quote-st-void { background:#2a1500; color:#f0a050; border-color:#5a3000; }
+body.dark .q-pg .s { background:#161b22; border-color:#30363d; color:#8b949e; }
+body.dark .q-pg .s.approved { background:#0a1f10; border-color:#1b5230; color:#4ade80; }
+body.dark .q-pg .s.pending  { background:#0d2040; border-color:#1c3a5f; color:#8ecfff; }
+body.dark .q-pg .s.returned { background:#2a0d0d; border-color:#5a1f1f; color:#ff8080; }
 body.dark .q-cost { color:#8b949e; }
 body.dark .q-cost.warn { color:#d4a84e; }
 body.dark .q-cost.ok { color:#4ade80; }
@@ -399,6 +410,29 @@ function quoteStageInfo(q) {
   return { key: 'draft', cls: 'quote-st-draft', label: '草稿', title: '' };
 }
 
+/**
+ * 簽核進度條（列表狀態欄用）：每關一個小標籤，業務不必點進視窗就看得到「簽到哪一關、誰簽過」。
+ * 游標移上去顯示該關的簽核人、時間、意見；整條可點開完整的「簽核進度」視窗。
+ */
+function quoteProgressHtml(q) {
+  const a = q && q.approval;
+  const steps = a && Array.isArray(a.steps) ? a.steps : [];
+  if (!steps.length || !['pending', 'approved', 'returned'].includes(a.state)) return '';
+  if (a.state === 'approved' && a.valid === false) return '';   // 核准已失效：標籤是「核准已失效」，不能再顯示整排 ✔
+  const icon = { approved: '✔', pending: '●', returned: '✕', waiting: '○' };
+  const word = { approved: '已簽核', pending: '待簽核', returned: '已駁回', waiting: '尚未輪到' };
+  const chips = steps.map(function (s) {
+    const name = s.label || QUOTE_TIER_LABEL[s.tier] || '';
+    const done = s.status === 'approved' || s.status === 'returned';
+    const who = done ? (s.byName || s.assigneeName || '') : (s.assigneeName || '');
+    const when = _qFmtTime(s.at);
+    const tip = name + '：' + (word[s.status] || '') + (who ? '\n' + who : '') + (when ? '　' + when : '') + (s.comment ? '\n' + s.comment : '');
+    const st = ['approved', 'pending', 'returned'].includes(s.status) ? s.status : 'waiting';
+    return '<span class="s ' + st + '" title="' + escapeHtml(tip) + '">' + (icon[st] || '') + ' ' + escapeHtml(name) + '</span>';
+  }).join('');
+  return '<div class="q-pg" data-qact="approve" data-id="' + escapeHtml(q.id) + '" title="點一下查看完整簽核進度與歷程">' + chips + '</div>';
+}
+
 function _qStageMatches(q, filter) {
   const k = quoteStageInfo(q).key;
   if (filter === 'draft') return k === 'draft' || k === 'ready';
@@ -489,7 +523,9 @@ function _qActionButtons(q) {
   if (p.isCostProvider && p.canEditCost) out.push(b('cost', '💲 填成本', 'btn-primary', '填寫各品項成本'));
   if (p.canSeePrice !== false) {
     out.push(b('preview', '👁 預覽', '', '下載前先預覽報價單長相'));
-    out.push(b('export', '&#11015; Excel', 'btn-export', _qApprovalValid(q) ? '下載給客戶的報價單（已核准，會蓋報價專用章）' : '下載報價單（尚未核准，不會有報價專用章）'));
+    // Excel 一律不蓋報價專用章（可編輯檔）；有章的正式版只有 PDF（已核准且核准仍有效時）
+    out.push(b('export', '&#11015; Excel', 'btn-export', '下載可編輯的報價單 Excel（不會蓋報價專用章；正式有章的報價單請下載 PDF）'));
+    out.push(b('pdf', '&#11015; PDF', 'btn-export', _qApprovalValid(q) ? '下載給客戶的正式報價單 PDF（已核准，含報價專用章）' : '下載報價單 PDF（尚未核准，不會有報價專用章）'));
   }
   // 毛利分析含報價單價與毛利：只負責填成本的顧問（看不到價格）不顯示，伺服器端也會擋
   if (p.canSeeCost && p.canSeePrice !== false) out.push(b('pnl', '&#11015; 毛利分析(內部)', '', '含成本與毛利率，僅限內部使用，請勿提供客戶'));
@@ -537,7 +573,7 @@ function renderQuoteList() {
       <td>${escapeHtml(q.ownerName || q.owner || '')}</td>
       <td>${escapeHtml(q.quoteDate || '')}</td>
       <td style="text-align:right;font-weight:600;font-size:13px">${totalCell}</td>
-      <td><span class="quote-status q-wrap ${escapeHtml(st.cls)}"${st.title ? ` title="${escapeHtml(st.title)}"` : ''}>${escapeHtml(st.label)}</span>${legacy}</td>
+      <td><span class="quote-status q-wrap ${escapeHtml(st.cls)}"${st.title ? ` title="${escapeHtml(st.title)}"` : ''}>${escapeHtml(st.label)}</span>${legacy}${quoteProgressHtml(q)}</td>
       <td>${quoteCostCell(q)}</td>
       <td>${_qActionButtons(q)}</td>
     </tr>`;
@@ -595,6 +631,7 @@ function bindQuoteListHandlers() {
         case 'cost':     p = qOpenCostFill(id); break;
         case 'preview':  p = previewQuote(id); break;
         case 'export':   p = exportQuote(id, q ? q.quoteNo : ''); break;
+        case 'pdf':      p = exportQuotePdf(id, q ? q.quoteNo : ''); break;
         case 'pnl':      p = exportQuote(id, q ? q.quoteNo : '', 'pnl'); break;
         case 'delete':   p = deleteQuote(id); break;
       }
@@ -603,25 +640,28 @@ function bindQuoteListHandlers() {
   }
 }
 
+/** 未核准／核准已失效的單下載前的警示（Excel 與 PDF 共用）；回 true＝使用者仍要下載 */
+async function _qConfirmUnapproved(q) {
+  if (!q || _qApprovalValid(q)) return true;
+  const voided = q.approval && q.approval.state === 'approved' && q.approval.valid === false;
+  return qDialog({
+    title: '尚未簽核完成',
+    message: (voided ? '（此報價單核准後內容已被修改，原核准已失效。）\n' : '') +
+      '此報價單主管尚未簽核完成，下載的檔案不會有報價專用章，不可視為正式報價單。仍要下載？',
+    buttons: [
+      { text: '仍要下載', value: true, cls: 'btn-primary' },
+      { text: '取消', value: false, cls: 'btn-secondary' },
+    ],
+  });
+}
+
 // ── 匯出 Excel ──────────────────────────────────────────────
 async function exportQuote(id, quoteNo, kind) {
   const isPnl = kind === 'pnl';
   if (!isPnl) {
     // 下載前確認最新簽核狀態；未核准或核准已失效 → 警示（自訂 modal，不用 confirm）
     const q = (await _qFetchQuote(id)) || _qFind(id);
-    if (q && !_qApprovalValid(q)) {
-      const voided = q.approval && q.approval.state === 'approved' && q.approval.valid === false;
-      const ok = await qDialog({
-        title: '尚未簽核完成',
-        message: (voided ? '（此報價單核准後內容已被修改，原核准已失效。）\n' : '') +
-          '此報價單主管尚未簽核完成，下載的檔案不會有報價專用章，不可視為正式報價單。仍要下載？',
-        buttons: [
-          { text: '仍要下載', value: true, cls: 'btn-primary' },
-          { text: '取消', value: false, cls: 'btn-secondary' },
-        ],
-      });
-      if (!ok) return;
-    }
+    if (!(await _qConfirmUnapproved(q))) return;
   }
   try {
     showToast(isPnl ? '正在產生毛利分析…' : '正在產生報價單…');
@@ -631,8 +671,6 @@ async function exportQuote(id, quoteNo, kind) {
       return showToast(e.error || '匯出失敗');
     }
     const approvedFile = r.headers.get('X-Quote-Approval') === 'approved';
-    const sealState = r.headers.get('X-Quote-Seal') || (approvedFile ? 'applied' : 'none');   // applied 已蓋章／missing 已核准但章缺漏／none 未核准
-    const stamped = sealState === 'applied';
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -642,11 +680,9 @@ async function exportQuote(id, quoteNo, kind) {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    // Excel 一律不蓋報價專用章；已核准的單提醒「正式有章的版本是 PDF」
     showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶'
-      : (stamped ? '報價單 Excel 已下載（已蓋報價專用章）'
-        : (approvedFile && sealState === 'missing'
-          ? '⚠ 此單已核准，但系統尚未上傳有效的報價專用章，下載的檔案沒有章，請聯絡管理部秘書'
-          : '報價單 Excel 已下載（未蓋報價專用章）')));
+      : (approvedFile ? '報價單 Excel 已下載（Excel 不蓋報價專用章；要給客戶的正式報價單請下載 PDF）' : '報價單 Excel 已下載（未核准，不蓋報價專用章）'));
   } catch(e) {
     showToast('匯出失敗，請重試');
   }
