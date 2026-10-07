@@ -882,7 +882,7 @@ function renderCostFill(s) {
       ? '<div class="qap-alert warn">此報價單已送簽或核准，成本已鎖定，目前只能檢視。</div>'
       : '<div class="qap-alert warn">你目前沒有填寫此單成本的權限，只能檢視。</div>';
   } else if (q.costFlow && q.costFlow.state === 'filled') {
-    notice = '<div class="qap-alert info">你已完成過這張單的成本；如需修改，儲存或再次按「完成」即可更新。</div>';
+    notice = '<div class="qap-alert info">你已完成過這張單的成本；如需修改，改完請再按「完成並通知業務」。只按「儲存」會讓這張單回到「未完成」，業務就無法送簽。</div>';
   }
   // 只列說明／單位／數量與成本；刻意不讀取 unitPrice、折扣、金額
   const rows = (Array.isArray(q.items) ? q.items : []).map((it, i) => {
@@ -891,6 +891,10 @@ function renderCostFill(s) {
     return `<tr><td class="c">${i + 1}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td>
       <td class="r"><input type="number" class="qap-input qap-cin" inputmode="decimal" min="0" step="any" data-lid="${e(lid)}" value="${e(v)}"${can && !s.busy ? '' : ' disabled'}></td></tr>`;
   }).join('');
+  // 風險預留：負責填成本的顧問主管依專案風險選 0/5/10/15/20（%）；尚未設定過顯示「請選擇…」，按「完成並通知業務」前必須選
+  const riskNow = costRiskValue(s);
+  const riskOpts = [['', '請選擇…']].concat(QAP_CONTINGENCY_PCTS.map((n) => [String(n), n + '%']))
+    .map((o) => `<option value="${o[0]}"${o[0] === riskNow ? ' selected' : ''}>${o[1]}</option>`).join('');
   const note = q.costFlow && q.costFlow.note
     ? `<div class="qap-sec"><h3>業務備註</h3><div style="white-space:pre-wrap;word-break:break-word;font-size:13px">${e(q.costFlow.note)}</div></div>` : '';
   s.body.innerHTML = notice + `
@@ -905,6 +909,12 @@ function renderCostFill(s) {
     <div class="qap-sec"><h3>請填寫每一列的成本（單位成本，未稅）</h3>
       <div class="qap-tablewrap"><table class="qap-table"><thead><tr><th class="c">#</th><th>品項說明</th><th class="r">數量</th><th>單位</th><th class="r">成本</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="qap-muted">（沒有品項）</td></tr>'}</tbody></table></div>
       <div class="qap-muted" style="margin-top:8px">成本合計（數量 × 成本）：<b id="qapCfTotal"></b>　贈品或不計價的列可填 0。</div>
+    </div>
+    <div class="qap-sec"><h3>風險預留（Contingency）</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <select class="qap-input" data-risk="1" style="width:auto;min-width:110px"${can && !s.busy ? '' : ' disabled'}>${riskOpts}</select>
+        <span class="qap-muted">依這個專案的風險預估；毛利分析（內部）會把「顧問服務成本 × 此比例」另計為成本（基準是業務在報價單上把品項歸為「顧問服務」的成本；若沒有這類品項，風險預留會是 0）。沒有風險請選 0%。</span>
+      </div>
     </div>`;
   let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="sp"></span>`;
   if (can) {
@@ -913,6 +923,15 @@ function renderCostFill(s) {
   }
   s.foot.innerHTML = f;
   updateCostTotal(s);
+}
+
+/** 風險預留可選值（%）；與 lib/quoteRoutes.js 的 CONTINGENCY_PCTS 一致 */
+const QAP_CONTINGENCY_PCTS = [0, 5, 10, 15, 20];
+/** 目前畫面上的風險預留值（字串，'' ＝尚未選）：使用者改過就用草稿，否則用伺服器上已存的值 */
+function costRiskValue(s) {
+  if (Object.prototype.hasOwnProperty.call(s, 'risk')) return s.risk;
+  const v = s.q && s.q.contingencyPct;
+  return typeof v === 'number' ? String(v) : '';
 }
 
 function updateCostTotal(s) {
@@ -952,8 +971,10 @@ async function submitCostFill(s, done) {
   if (s.busy || !s.q || !(s.q.perm || {}).canEditCost) return;
   const c = collectCosts(s);
   if (c.invalidEl) { toast('成本必須是大於等於 0 的數字'); c.invalidEl.focus(); return; }
+  const risk = costRiskValue(s);
   if (done) {
     if (c.blanks > 0) { toast('還有 ' + c.blanks + ' 列沒有填成本，請全部填完（贈品列可填 0）'); return; }
+    if (risk === '') { toast('請選擇風險預留（依專案風險預估；沒有風險請選 0%）'); return; }
     let msg = '完成後會通知業務，你仍可在送簽前修改。';
     if (c.zeros > 0) msg = '有 ' + c.zeros + ' 列成本填的是 0。若該列是有收費的品項，送簽時系統會擋下。\n\n' + msg;
     const ok = await qapConfirm({ title: '完成並通知業務', message: msg, okText: '完成' });
@@ -961,11 +982,12 @@ async function submitCostFill(s, done) {
   }
   s.busy = true;
   renderCostFill(s);
-  const res = await apiCall('PUT', '/quotations/' + encodeURIComponent(s.id) + '/costs', { costs: c.costs, done: !!done });
+  const res = await apiCall('PUT', '/quotations/' + encodeURIComponent(s.id) + '/costs', { costs: c.costs, done: !!done, contingencyPct: risk === '' ? null : Number(risk) });
   if (s.closed) { if (res.ok) afterMutation(); return; }
   if (res.ok) {
     s.dirty = false;
     s.draft = {};
+    delete s.risk;
     if (done) {
       toast('已完成，已通知業務');
       closeCostFill();
@@ -1005,6 +1027,10 @@ async function openQuoteCostFill(id) {
     if (act === 'close') requestCloseCostFill(s);
     else if (act === 'save') submitCostFill(s, false);
     else if (act === 'done') submitCostFill(s, true);
+  });
+  s.ov.addEventListener('change', (ev) => {
+    const t = ev.target;
+    if (t && t.dataset && t.dataset.risk !== undefined) { s.risk = t.value; s.dirty = true; }
   });
   s.ov.addEventListener('input', (ev) => {
     const t = ev.target;

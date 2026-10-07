@@ -873,6 +873,8 @@ function onQuoteProductsChanged() {
     warn.textContent = '';
   }
 
+  updateQuoteCatHint();
+
   const hint = document.getElementById('qItemsHint');
   const filled = _qEditing && _qEditing.costFlow && _qEditing.costFlow.state === 'filled';
   if (hint) {
@@ -1001,6 +1003,9 @@ function renderPnlTab() {
         </tr>`;
       }).join('') + `</tbody></table></div>
       <div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>
+      ${(q && typeof q.contingencyPct === 'number')
+        ? `<div class="q-infobar" style="margin-top:8px">🛡 風險預留（顧問主管依專案風險預估）：<b>${e(String(q.contingencyPct))}%</b>。毛利分析（內部）會把「顧問服務成本 × ${e(String(q.contingencyPct))}%」另計為成本（基準是品項「毛利分類」為顧問服務者的成本；沒有這類品項就是 0）；此頁與簽核用的毛利率不含風險預留。</div>`
+        : ''}
       <div class="pnl-summary-bar"><div class="pnl-sum-grid">
         <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div></div>
         <div class="pnl-sum-card"><div class="pnl-sum-label">成本合計</div><div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div></div>
@@ -1351,6 +1356,11 @@ function renderQuoteItems(items) {
         'style="width:104px;border:1px solid #ddd;border-radius:4px;padding:5px 6px;font-size:13px;text-align:right"></td>' +
       '<td class="qi-subtotal" style="text-align:right;font-size:13px;padding-right:6px;white-space:nowrap">' +
         fmtMoney(qty * price) + '</td>' +
+      '<td><select class="qi-cat" title="毛利分析（內部）用的分類；不會印在客戶報價單上" ' +
+        'style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 2px;font-size:12px">' +
+        QUOTE_ITEM_CATS.map(function (c) {
+          return '<option value="' + c[0] + '"' + ((it.cat || '') === c[0] ? ' selected' : '') + '>' + c[1] + '</option>';
+        }).join('') + '</select></td>' +
       '<td style="text-align:center"><button type="button" class="qi-remove" ' +
         'title="移除此項目" style="background:none;border:none;color:#e53935;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px">&#10005;</button></td>' +
       '</tr>';
@@ -1367,6 +1377,9 @@ function renderQuoteItems(items) {
     });
   });
 
+  // 毛利分類：只影響毛利分析（內部），提示多類別商品時請逐列指定
+  tbody.querySelectorAll('.qi-cat').forEach(function (sel) { sel.addEventListener('change', updateQuoteCatHint); });
+
   // 移除按鈕
   tbody.querySelectorAll('.qi-remove').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -1378,6 +1391,24 @@ function renderQuoteItems(items) {
       updateQuoteTotals();
     });
   });
+  updateQuoteCatHint();
+}
+
+// ── 品項「毛利分類」（毛利分析 PNL 表用）─────────────────────────
+// 空字串＝自動：伺服器匯出時依勾選商品的類別判斷（單一類別就全歸該類，否則依單位推測，仍無法判斷歸「其他」）。
+const QUOTE_ITEM_CATS = [['', '自動'], ['consult', '顧問服務'], ['software', '軟體'], ['hardware', '硬體'], ['other', '其他']];
+const QUOTE_CLASS_TO_CAT = { consult: 'consult', software: 'software', hardware: 'hardware', crm: 'other', mdm: 'other', ot: 'other', other: 'other' };
+/** 勾選的商品涵蓋 2 種以上類別、又有品項選「自動」時提醒：自動無法分辨，毛利分析會把它們歸入「其他」 */
+function updateQuoteCatHint() {
+  const hint = document.getElementById('qCatHint');
+  if (!hint) return;
+  const pc = (typeof quoteCfg === 'function' ? quoteCfg().productClasses : null) || {};
+  const cats = new Set();
+  readSelectedProducts().forEach(function (n) { const c = pc[n] && pc[n].cls; if (c && QUOTE_CLASS_TO_CAT[c]) cats.add(QUOTE_CLASS_TO_CAT[c]); });
+  const auto = Array.from(document.querySelectorAll('#quoteItemsBody .qi-cat')).filter(function (s) { return !s.value; }).length;
+  const show = cats.size >= 2 && auto > 0;
+  hint.style.display = show ? '' : 'none';
+  hint.textContent = show ? '此單的商品涵蓋多種類別，請在「毛利分類」欄替每個品項指定類別（顧問服務／軟體／硬體／其他）；選「自動」時，毛利分析（內部）只能依單位猜（人天→顧問服務、台/組→硬體、授權/套→軟體），猜不出來就歸入「其他」，不一定準確。' : '';
 }
 
 // ── 讀取目前項目列表 ──────────────────────────────────────────
@@ -1392,6 +1423,8 @@ function readQuoteItems() {
     };
     if (row.dataset.lid) it.lid = row.dataset.lid;
     if (row.dataset.cost !== undefined) it.cost = parseFloat(row.dataset.cost) || 0;
+    const catSel = row.querySelector('.qi-cat');
+    if (catSel) it.cat = catSel.value;            // ''＝自動；一律送出，伺服器才知道使用者把分類清回「自動」
     return it;
   });
 }
@@ -1468,7 +1501,7 @@ async function saveQuote() {
   // 成本只在「業務自填」時才送（伺服器端也只接受有權者的成本）；沒動過成本的列不送，避免誤蓋成 0
   const selfCost = !needC;
   const payloadItems = items.map(function (it) {
-    const o = { desc: it.desc, unit: it.unit, qty: it.qty, unitPrice: it.unitPrice };
+    const o = { desc: it.desc, unit: it.unit, qty: it.qty, unitPrice: it.unitPrice, cat: it.cat || '' };
     if (it.lid) o.lid = it.lid;
     if (selfCost && it.cost !== undefined) o.cost = it.cost;
     return o;
