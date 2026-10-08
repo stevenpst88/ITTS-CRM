@@ -2,8 +2,9 @@
 /**
  * lib/xlsxSheetHtml.js（毛利分析預覽用的「xlsx 工作表 → HTML」）檢查。用法：node scripts/check-xlsx-sheet-html.js
  *   1) 數字格式：千分位、小數、百分比、NT$、會計格式（零顯示 -）、括號負數、日期
- *   2) 用 lib/quotePnlExcel.js 產一份毛利分析 xlsx 再轉 HTML：隱藏列不出現、合併儲存格有 colspan、數值與格式正確、
- *      使用者輸入的文字一律跳脫（品項說明含 <img onerror>）、顏色（theme＋tint／indexed）有轉成 CSS
+ *   2) 用 lib/quotePnlExcel.js 產毛利分析 xlsx（舊式＝items[].cost、新式＝成本明細 costLines 各一份）再轉 HTML：
+ *      列印範圍 A1:H126 共 126 列（新範本沒有隱藏列）、合併儲存格有 colspan、折後金額與百分比格式正確、沒有 ####、
+ *      委外廠商／說明／差旅／交際費／印花稅都在預覽內、使用者輸入的文字一律跳脫（品項／廠商／說明含 <img onerror>）、顏色（theme＋tint／indexed）有轉成 CSS
  */
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
@@ -32,20 +33,42 @@ const F = I.formatNumber;
   const buf = await buildQuotePnlExcel(q, { classCodes: ['software', 'consult'], requestedBy: '業務<小明>', issueDate: '2026-10-07', contingencyPct: 5 });
   const v = await sheetToHtml(buf);
   const rows = (v.html.match(/<tr /g) || []).length;
-  t('2a. 範圍＝列印範圍 A1:H106；隱藏列不輸出（列數 < 106）', v.range === 'A1:H106' && rows > 50 && rows < 106, `range=${v.range} rows=${rows}`);
+  t('2a. 範圍＝列印範圍 A1:H126；新範本沒有隱藏列，126 列全部輸出', v.range === 'A1:H126' && rows === 126, `range=${v.range} rows=${rows}`);
   t('2b. 有合併儲存格（colspan／rowspan）', /colspan="\d+"/.test(v.html));
   t('2c. 使用者輸入一律跳脫（沒有原始的 <img、<b>、<小明>）', !/<img/i.test(v.html) && !/<b>/.test(v.html) && !/<小明>/.test(v.html) && v.html.includes('&lt;img src=x onerror=alert(1)&gt;'));
-  t('2d. 數值與格式：定價收入 1,000,000＋100,000＝1,100,000 折後 990,000（NT$）出現在表內', /NT\$990,000/.test(v.html) || /990,000/.test(v.html), (v.html.match(/NT\$[\d,]+/g) || []).slice(0, 8).join(' '));
+  // 折扣後：軟體 10×100,000＋顧問 5×20,000＝1,100,000 → 九折 990,000（軟體 900,000、顧問 90,000）；每類只寫一個總額格（H23／H14），總收入 H13
+  t('2d. 折後金額（NT$ 格式）：總收入 NT$990,000、軟體 NT$900,000、顧問 NT$90,000 出現在表內', /NT\$990,000/.test(v.html) && /NT\$900,000/.test(v.html) && /NT\$90,000/.test(v.html), (v.html.match(/NT\$[\d,]+/g) || []).slice(0, 8).join(' '));
   t('2e. 毛利率百分比有格式（xx.xx%）', /\d+\.\d\d%/.test(v.html));
+  t('2e2. 沒有 ####（數值格不會因欄寬被顯示成 ####）、沒有 NaN／undefined／[object', !/#{3,}/.test(v.html) && !/NaN|undefined|\[object/.test(v.html));
   t('2f. 填色與文字色轉成 CSS（background / color 出現多種色）', new Set(v.html.match(/background:#[0-9A-F]{6}/g) || []).size >= 3 && new Set(v.html.match(/color:#[0-9A-F]{6}/g) || []).size >= 2);
   t('2g. 沒有 <script>、事件屬性（onerror 等，限標籤內；跳脫後的文字不算）、javascript: 連結', !/<script/i.test(v.html) && !/<[^>]*\son\w+\s*=/i.test(v.html) && !/href\s*=\s*"?javascript:/i.test(v.html));
   t('2h. 寬度為欄寬總和、不是 0', v.widthPx > 300 && v.widthPx < 3000, v.widthPx);
+
+  // 2b) 新式單（成本明細 costLines）：委外廠商／供應商、說明、差旅、交際費、印花稅、Contingency 都要出現在預覽，且使用者文字一律跳脫
+  const q2 = { quoteNo: 'QU-CHK-2', company: '新式預覽', discountType: 'none', products: ['P'],
+    items: [{ desc: '導入顧問', unit: '人天', qty: 10, unitPrice: 50000, cat: 'consult' }, { desc: '授權', unit: '套', qty: 1, unitPrice: 500000, cat: 'software' }],
+    costLines: [
+      { lid: 'a', cat: 'consult', desc: 'PM <b>粗體</b>', vendor: 'Vendor-A <i>x</i>', note: '每人天', unit: '人天', qty: 10, unitCost: 8000 },
+      { lid: 'b', cat: 'software', desc: '<img src=x onerror=alert(2)>', vendor: 'Supplier-S', note: '含維護 "全年" & 保固', unit: '套', qty: 1, unitCost: 300000 },
+      { lid: 'c', cat: 'hw', desc: '主機', vendor: '', note: '', unit: '台', qty: 2, unitCost: 45000 },
+      { lid: 'd', cat: 'travel', desc: '差旅交通', vendor: '', note: '往返 & 住宿', unit: '次', qty: 4, unitCost: 2500 },
+      { lid: 'e', cat: 'other', desc: '交際費', vendor: '', note: '', unit: '式', qty: 1, unitCost: 10000 },
+      { lid: 'f', cat: 'other', desc: '印花稅', auto: 'stamp', vendor: '', note: '', unit: '式', qty: 1, unitCost: 0 }] };
+  const buf2 = await buildQuotePnlExcel(q2, { classCodes: ['consult', 'software'], requestedBy: '業務<小華>', issueDate: '2026-10-08', contingencyPct: 10 });
+  const v2 = await sheetToHtml(buf2);
+  const rows2 = (v2.html.match(/<tr /g) || []).length;
+  t('2i. 新式單：範圍 A1:H126、126 列、沒有 ####', v2.range === 'A1:H126' && rows2 === 126 && !/#{3,}/.test(v2.html), `range=${v2.range} rows=${rows2}`);
+  t('2j. 新式單：委外廠商、供應商、說明、差旅、交際費、印花稅都在預覽內', ['Supplier-S', '含維護', '保固', '差旅交通', '交際費', '印花稅', '主機'].every(s => v2.html.includes(s)) && v2.html.includes('Vendor-A') && v2.html.includes('往返 &amp; 住宿'));
+  t('2k. 新式單：使用者文字跳脫（沒有原始 <b>／<i>／<img／<小華>；有 &lt;img src=x onerror=alert(2)&gt;、&amp;、&quot;）', !/<img|<b>|<i>|<小華>/i.test(v2.html) && v2.html.includes('&lt;img src=x onerror=alert(2)&gt;') && v2.html.includes('&lt;b&gt;粗體&lt;/b&gt;') && v2.html.includes('&quot;全年&quot;') && v2.html.includes('含維護 &quot;全年&quot; &amp; 保固'));
+  // 收入 1,000,000；顧問成本 80,000；Contingency 10%＝8,000；印花稅＝1,000；其他費用 10,000＋1,000；總成本 80,000＋300,000＋90,000＋10,000＋11,000＋8,000＝499,000
+  t('2l. 新式單：金額格式（NT$）：收入 NT$1,000,000、顧問成本 NT$80,000、Contingency NT$8,000、總成本 NT$499,000、單價 NT$300,000', ['NT$1,000,000', 'NT$80,000', 'NT$8,000', 'NT$499,000', 'NT$300,000'].every(s => v2.html.includes(s)), (v2.html.match(/NT\$[\d,]+/g) || []).slice(0, 14).join(' '));
+  t('2m. 新式單：沒有 script／事件屬性／javascript: 連結', !/<script/i.test(v2.html) && !/<[^>]*\son\w+\s*=/i.test(v2.html) && !/href\s*=\s*"?javascript:/i.test(v2.html));
 
   // 3) 審查後補強：四捨五入、時間、[Red]、列印範圍、注音、隱藏列中的合併儲存格、空白保留、溢出裁切
   t('3a. 百分比／金額四捨五入與 Excel 相同（0.02055→2.06%、0.02175→2.18%、150.075→150.08、0.0515→5.2%）', F(0.02055, '0.00%') === '2.06%' && F(0.02175, '0.00%') === '2.18%' && F(150.075, '#,##0.00') === '150.08' && F(0.0515, '0.0%') === '5.2%', [F(0.02055, '0.00%'), F(0.02175, '0.00%'), F(150.075, '#,##0.00'), F(0.0515, '0.0%')].join(' '));
   t('3b. 時間：h:mm 的 mm 是分鐘、日期的 mm 是月份', F(46302.5, 'yyyy/m/d h:mm') === '2026/10/7 12:00' && F(46302.75, 'h:mm') === '18:00' && F(46302, 'yyyy/mm/dd') === '2026/10/07', F(46302.5, 'yyyy/m/d h:mm'));
   t('3c. [Red] 負數格式回傳紅色', I.formatNumberEx(-5, '#,##0_);[Red]\\(#,##0\\)').color === '#FF0000' && I.formatNumberEx(5, '#,##0_);[Red]\\(#,##0\\)').color === null);
-  t('3d. 列印範圍：多段取第一段、含空白與括號的工作表名、整欄範圍回 null（改用 dimension）', I.firstRange("'PNL (C)'!$A$1:$H$106") === 'A1:H106' && I.firstRange('Sheet1!$B$2:$D$4,Sheet1!$A$8:$C$10') === 'B2:D4' && I.firstRange('Sheet1!$A:$C') === null);
+  t('3d. 列印範圍：多段取第一段、含空白與括號的工作表名、整欄範圍回 null（改用 dimension）', I.firstRange("'PNL (C)'!$A$1:$H$106") === 'A1:H106' && I.firstRange('PNL!$A$1:$H$126') === 'A1:H126' && I.firstRange('Sheet1!$B$2:$D$4,Sheet1!$A$8:$C$10') === 'B2:D4' && I.firstRange('Sheet1!$A:$C') === null);
   const JSZip = require('jszip');
   const mini = async (sheetRows, merges, extra) => {
     const z = new JSZip();
