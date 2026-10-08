@@ -73,6 +73,14 @@ const QUOTE_CSS = `
 .quote-items-table .qi-up:disabled, .quote-items-table .qi-down:disabled { opacity:.25; cursor:default !important; }
 body.dark .quote-items-table tbody tr.qi-title td { background:#1c2433; }
 body.dark .quote-items-table tbody tr.qi-subrow td { background:#161d29; }
+/* 報價項目表：拖曳把手（⋮⋮，只有按住它才會拖曳；拖曳中的浮影、插入線、半透明列用 quote-costlines.js 注入的 qcl-dnd-* 樣式） */
+.quote-items-table th.qi-dragth, .quote-items-table td.qi-dragtd { width:24px; min-width:24px; padding-left:2px; padding-right:0; text-align:center; }
+.quote-items-table .qi-drag { background:none; border:none; cursor:grab; touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  width:22px; height:28px; padding:0; font-size:14px; line-height:1; letter-spacing:-2px; color:#8a94a3; border-radius:4px; }
+.quote-items-table .qi-drag:hover { color:#1a73e8; background:#e8f0fe; }
+.quote-items-table .qi-drag:focus-visible { outline:2px solid #1a73e8; outline-offset:1px; }
+body.dark .quote-items-table .qi-drag { color:#8b949e; }
+body.dark .quote-items-table .qi-drag:hover { color:#58a6ff; background:#14283f; }
 .q-cost { font-size:12px; white-space:nowrap; color:#5f6b7a; }
 .q-cost.warn { color:#e65100; font-weight:600; }
 .q-cost.ok { color:#188038; font-weight:600; }
@@ -535,7 +543,7 @@ function _qActionButtons(q) {
   } else if (a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) {
     out.push(b('approve', '📜 簽核進度', '', '檢視簽核進度與歷程'));
   }
-  if (p.isCostProvider && p.canEditCost) out.push(b('cost', '💲 填成本', 'btn-primary', '填寫各品項成本'));
+  if (p.isCostProvider && p.canEditCost) out.push(b('cost', '💲 填成本', 'btn-primary', '填寫專案成本明細'));
   if (p.canSeePrice !== false) {
     out.push(b('preview', '👁 預覽', '', '下載前先預覽報價單長相'));
     // Excel 一律不蓋報價專用章（可編輯檔）；有章的正式版只有 PDF（已核准且核准仍有效時）
@@ -950,6 +958,9 @@ function switchQuoteTab(tabName) {
     content.style.display = (t === tabName) ? '' : 'none';
     btn.classList.toggle('active', t === tabName);
   });
+  // 毛利與簽核路徑頁籤放成本明細（欄位多：項目／廠商／說明／單位／數量／單價／小計／控制鈕），表單加寬；報價資訊頁籤維持原寬度
+  const modal = document.querySelector('#quoteModalOverlay > .modal');
+  if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : '860px';
   if (tabName === 'pnl') renderPnlTab();
 }
 
@@ -992,6 +1003,126 @@ function _qCostFlowBlock(q) {
   return `<div class="q-infobar">${txt}</div>`;
 }
 
+// ── 成本明細編輯器（QCL）接線 ─────────────────────────────────
+// 業務自填成本（本頁籤 edit mode）與顧問「填寫成本」對話框共用 _client/quote-costlines.js 的 QCL 與資料模型 q.costLines。
+// 編輯器實例跨頁籤切換保留：切到「報價資訊」改了品項、再切回來時用 setItems／setRevenue 更新，不覆蓋已編輯的明細
+// （新品項用編輯器上的「＋補入新品項」補入）；只在開啟／關閉表單時重置（_qClReset）。
+// 成本不再從報價品項列送出（items[].cost 不再由這張表單寫入；品項列的 data-cost 只用來帶入舊單成本當種子、與舊式單的唯讀顯示）。
+// unBase：儲存前確認「有品項沒有對應的成本列」的基準＝表單載入時就沒有成本列涵蓋的有價品項鍵（lid；沒有 lid 的新品項是暫時代號 nid）陣列。
+// 編輯既有的新式單才有（openQuoteModal 載入後記一次）；null＝沒有基準（新單、舊式單）→ 任何未涵蓋品項都算新出現。
+const _qCl = { inst: null, host: null, opts: null, touched: false, unBase: null };
+let _qPnlMode = 'hidden';   // 最近一次 renderPnlTab 的模式：edit／view／hidden
+
+function _qClReset() {
+  if (_qCl.inst) { try { _qCl.inst.destroy(); } catch (err) { /* 容器已移除，忽略 */ } }
+  _qCl.inst = null; _qCl.host = null; _qCl.opts = null; _qCl.touched = false; _qCl.unBase = null;
+}
+
+/**
+ * 這張單的成本明細此刻是否可編輯（＝毛利頁籤是編輯模式）：新單，或已載入的單 perm.canEditCost／perm.isOwner。
+ * renderPnlTab（決定頁籤模式）與 saveQuote（儲存前的「有品項沒有對應的成本列」確認）共用同一個判斷：
+ * 管理員編輯他人自填單時頁籤是唯讀、無處可補成本，就不該問「取消，回去補成本」。
+ * 注意不能只看 canEditCost：已核准單的擁有者 canEditCost 為 false，但頁籤仍是編輯模式（改成本會走作廢確認）。
+ */
+function _qCostEditableFor(q) {
+  const perm = (q && q.perm) || null;
+  return !q || !!(perm && (perm.canEditCost === true || perm.isOwner === true));
+}
+
+/** 儲存前確認的基準（見 _qCl.unBase）：已載入的新式單，目前沒有成本列涵蓋的有價品項鍵；其他情況回 null */
+function _qUnmatchedBaseline(q) {
+  if (!q || !Array.isArray(q.costLines) || typeof QCL === 'undefined' || typeof QCL.unmatchedKeys !== 'function') return null;
+  try { return QCL.unmatchedKeys(q.costLines, readQuoteItems()); } catch (err) { return null; }
+}
+
+/** 勾選商品的類別代碼（鏡像伺服器「單一類別就全歸該區」的規則，給 QCL 種子用） */
+function _qClClassCodes() {
+  const pc = (typeof quoteCfg === 'function' ? quoteCfg().productClasses : null) || {};
+  return readSelectedProducts().map(function (n) { return pc[n] && pc[n].cls; }).filter(Boolean);
+}
+
+/**
+ * 目前表單上的客戶品項（成本明細的「參考品項」）。整份列表原樣交給 QCL：種子／重新帶入／補入新品項（seedItemLines）自己會略過
+ * 分組標題／小計列與沒填說明的空白列；「有價品項沒有成本列」提醒與「原報價品項已刪除」徽章則需要看到全部品項（含說明空白的有價列、
+ * 以及與伺服器一致的陣列位置），所以這裡不再先過濾。
+ */
+function _qClItems() {
+  return readQuoteItems();
+}
+
+/**
+ * 折扣後未稅營收（元）：與伺服器 computeFinancials 的 revenueCents/100 完全一致（逐列取整到分→加總→折扣取整到分，half-up），
+ * 印花稅、成本、毛利摘要都用它（quoteTotal 算出的 discounted 是未取整的浮點，印花稅會差 1 元）。QCL 沒載入時退回 quoteTotal。
+ */
+function _qRevenue(items, discountType, discountValue) {
+  if (typeof QCL !== 'undefined' && typeof QCL.revenueOf === 'function') return QCL.revenueOf(items, discountType, discountValue);
+  return quoteTotal(items, discountType, discountValue).discounted;
+}
+
+/** 目前表單的營收（元）：讓印花稅即時重算 */
+function _qClRevenue() {
+  const d = readQuoteDiscount();
+  return _qRevenue(readQuoteItems(), d.discountType, d.discountValue);
+}
+
+/** 目前成本明細的合計（元，含印花稅）：編輯中讀編輯器，唯讀就用已載入的 q.costLines */
+function _qClCostTotal(revenue) {
+  if (typeof QCL === 'undefined') return 0;
+  const q = _qEditing;
+  let lines = [];
+  if (_qPnlMode === 'edit' && _qCl.inst && !_qCl.inst.dead) lines = _qCl.inst.getLines();
+  else if (q && Array.isArray(q.costLines)) lines = q.costLines;
+  return QCL.totals(lines, revenue).total;
+}
+
+/** 在 #pnlClSlot 掛上成本明細：edit＝可編輯（實例保留）、view＝唯讀 */
+function _qPnlMountLines(mode, q, hasLines) {
+  const slot = $('pnlClSlot');
+  if (!slot) return;
+  if (typeof QCL === 'undefined') {
+    slot.innerHTML = '<div class="q-errbar">成本明細編輯器沒有載入成功，請重新整理頁面（Ctrl+F5）後再試。</div>';
+    return;
+  }
+  const revenue = _qClRevenue();
+  if (mode === 'view') {
+    QCL.mount(slot, { mode: 'view', lines: q.costLines, revenue: revenue, items: readQuoteItems() });   // items：讓「原報價品項已刪除」徽章有依據
+    return;
+  }
+  const items = _qClItems();
+  if (!_qCl.host) { _qCl.host = document.createElement('div'); _qCl.host.id = 'pnlCostEditor'; }
+  slot.appendChild(_qCl.host);
+  if (_qCl.inst && !_qCl.inst.dead) {
+    _qCl.opts.classCodes = _qClClassCodes();   // 商品勾選可能改過：重新帶入／補入新品項要用最新的類別
+    _qCl.inst.setItems(items);
+    _qCl.inst.setRevenue(revenue);
+    return;
+  }
+  // 初始明細：已儲存的成本明細；沒有（新單／舊式單）就由目前的客戶品項產生種子（舊單的 items[].cost 帶入成為成本單價）
+  const classCodes = _qClClassCodes();
+  // 已存在、還沒有成本明細的舊式單：種子不含印花稅（核取方塊未勾選）——沒動編輯器就存檔不會帶成本明細，伺服器的成本不含印花稅，
+  // 畫面毛利才會和存檔後一致；使用者勾選印花稅（動了編輯器）才轉成新式。新單照預設種入印花稅。
+  const lines = hasLines ? q.costLines : QCL.seedFromItems(items, { classCodes: classCodes, includeStamp: !q });
+  _qCl.touched = false;
+  _qCl.opts = {
+    mode: 'edit', lines: lines, items: items, revenue: revenue, classCodes: classCodes,
+    confirm: function (msg) {
+      return qDialog({ title: '請確認', message: msg, buttons: [{ text: '確定', value: true, cls: 'btn-primary' }, { text: '取消', value: false, cls: 'btn-secondary' }] });
+    },
+    onChange: function () { _qCl.touched = true; updatePnlNumbers(); },
+  };
+  _qCl.inst = QCL.mount(_qCl.host, _qCl.opts);
+}
+
+/** 毛利摘要四張卡（id 供 updatePnlNumbers 填值） */
+function _qPnlSummaryHtml(marginTop) {
+  return `<div class="pnl-summary-bar" style="margin-top:${marginTop}px"><div class="pnl-sum-grid">
+        <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div></div>
+        <div class="pnl-sum-card"><div class="pnl-sum-label">成本合計</div><div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div></div>
+        <div class="pnl-sum-card"><div class="pnl-sum-label">毛利</div><div class="pnl-sum-value pnl-gp-val" id="pnlGrossProfit">NT$ 0</div></div>
+        <div class="pnl-sum-card pnl-margin-card"><div class="pnl-sum-label">整體毛利率（畫面試算）</div><div class="pnl-sum-value pnl-margin-val" id="pnlMarginPct">—</div></div>
+      </div></div>`;
+}
+
 function renderPnlTab() {
   const box = $('pnlBody');
   if (!box) return;
@@ -1002,12 +1133,15 @@ function renderPnlTab() {
   const need = quoteNeedsConsultant(products);
   const items = readQuoteItems();
   const { discountType, discountValue } = readQuoteDiscount();
-  const totals = quoteTotal(items, discountType, discountValue);
+  const revenueNow = _qRevenue(items, discountType, discountValue);
+  const hasLines = !!q && Array.isArray(q.costLines);   // 新式成本（成本明細）；沒有這個欄位＝舊式單，成本在 items[].cost
 
   let mode;   // edit＝業務自填成本；view＝有權者唯讀；hidden＝成本由顧問填
-  if (products.length && !need && (!q || (perm && (perm.canEditCost === true || perm.isOwner === true)))) mode = 'edit';
-  else if (perm && perm.canSeeCost === true && items.some(it => it.cost !== undefined)) mode = 'view';
+  if (products.length && !need && _qCostEditableFor(q)) mode = 'edit';
+  else if (perm && perm.canSeeCost === true && (hasLines || items.some(it => it.cost !== undefined))) mode = 'view';
   else mode = 'hidden';
+  _qPnlMode = mode;
+  const linesView = mode === 'edit' || (mode === 'view' && hasLines);   // 成本明細畫面（編輯器／唯讀）；否則是舊式單的唯讀表格
 
   let html = '';
   if (!products.length) {
@@ -1020,18 +1154,31 @@ function renderPnlTab() {
             : '成本資料目前不顯示。') + '</div>';
     html += _qCostFlowBlock(q);
     html += `<div class="pnl-summary-bar"><div class="pnl-sum-grid" style="grid-template-columns:repeat(2,1fr)">
-      <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value">${e(fmtMoney(totals.discounted))}</div></div>
+      <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value">${e(fmtMoney(revenueNow))}</div></div>
       <div class="pnl-sum-card pnl-margin-card"><div class="pnl-sum-label">毛利率（伺服器試算）</div>
         <div class="pnl-sum-value pnl-margin-val">${q && q.preview && q.preview.marginText != null ? e(q.preview.marginText) + '%' : '—'}</div></div>
     </div></div>`;
   } else {
     html += `<div class="pnl-note">📌 ${mode === 'edit'
-      ? '此單由業務自行填成本：請填各品項<strong>未稅單價成本</strong>；毛利以<strong>優惠後未稅報價</strong>為基準。'
+      ? '此單由業務自行填成本：請在下方填寫<strong>專案成本明細</strong>（顧問服務／軟體／硬體／差旅／其他費用，差旅交通、交際費與印花稅也計入專案成本與簽核毛利）。成本明細與客戶看到的報價品項各自獨立；毛利以<strong>優惠後未稅報價</strong>為基準。'
       : (perm && perm.isOwner && need
           ? '此單的成本由顧問填寫：你可以查看，但不能修改（顧問重新填寫後會更新）。成本與毛利僅供內部參考，請勿提供客戶；毛利以<strong>優惠後未稅報價</strong>為基準。'
-          : '以下為各品項成本與毛利（僅有權限者可見，請勿提供客戶）；毛利以<strong>優惠後未稅報價</strong>為基準。')}</div>`;
+          : '以下為專案成本與毛利（僅有權限者可見，請勿提供客戶）；毛利以<strong>優惠後未稅報價</strong>為基準。')}</div>`;
     if (mode !== 'edit' && need) html += _qCostFlowBlock(q);
-    html += `<div class="quote-items-wrap" style="margin-top:12px;overflow-x:auto"><table class="quote-items-table pnl-table">
+    const contingency = (q && typeof q.contingencyPct === 'number')
+      ? `<div class="q-infobar" style="margin-top:8px">🛡 風險預留（顧問主管依專案風險預估）：<b>${e(String(q.contingencyPct))}%</b>。毛利分析（內部）會把「顧問服務成本 × ${e(String(q.contingencyPct))}%」另計為成本（${linesView ? '基準是成本明細「顧問服務成本」區的小計' : '基準是品項「毛利分類」為顧問服務者的成本；沒有這類品項就是 0'}）；此頁與簽核用的毛利率不含風險預留。</div>`
+      : '';
+    if (linesView) {
+      // 新式成本：摘要放最上面（成本明細很長，編輯時看得到毛利變化），下面是成本明細（編輯器或唯讀）
+      html += _qPnlSummaryHtml(12);
+      html += '<div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>';
+      // 有價品項沒有成本列涵蓋的常駐提醒（只在業務自填的編輯模式有內容；純提醒、不擋；由 updatePnlNumbers 即時更新）
+      html += '<div id="pnlUnmatchedNote" class="q-warnbar" role="status" style="display:none;margin-top:10px"></div>';
+      html += '<div id="pnlClSlot" style="margin-top:14px"></div>';
+      html += contingency;
+    } else {
+      // 舊式單（沒有成本明細）：維持改版前的逐品項唯讀表格
+      html += `<div class="quote-items-wrap" style="margin-top:12px;overflow-x:auto"><table class="quote-items-table pnl-table">
       <thead><tr>
         <th style="width:34px">#</th><th>品項說明</th>
         <th style="width:60px;text-align:right">數量</th>
@@ -1044,78 +1191,65 @@ function renderPnlTab() {
       </tr></thead><tbody id="pnlItemsBody">` +
       items.map(function (it, i) {
         if (quoteIsKindRow(it)) return '';   // 分組標題／小計列不是品項：沒有成本也沒有毛利（data-idx 仍用原陣列索引，與表單列順序對得上）
-        const costVal = it.cost === undefined ? '' : it.cost;
         return `<tr data-idx="${i}">
           <td style="text-align:center;color:#999;font-size:12px">${items.slice(0, i + 1).filter(function (x) { return !quoteIsKindRow(x); }).length}</td>
           <td style="font-size:13px">${e(it.desc || '（未填）')}</td>
           <td style="text-align:right;font-size:13px">${e(String(it.qty))} ${e(it.unit || '')}</td>
           <td style="text-align:right;font-size:13px">${e(fmtMoney(it.unitPrice))}</td>
           <td style="text-align:right;font-size:13px;font-weight:500">${e(fmtMoney(it.qty * it.unitPrice))}</td>
-          <td style="text-align:right">${mode === 'edit'
-            ? `<input type="number" class="pnl-cost-input" data-idx="${i}" value="${e(String(costVal))}" min="0" step="1" placeholder="輸入成本">`
-            : `<span style="font-size:13px">${e(fmtMoney(it.cost || 0))}</span>`}</td>
+          <td style="text-align:right"><span style="font-size:13px">${e(fmtMoney(it.cost || 0))}</span></td>
           <td class="pnl-cst-sub" style="text-align:right;font-size:13px"></td>
           <td class="pnl-gp-cell" style="text-align:right;font-size:13px;font-weight:600"></td>
           <td class="pnl-pct-cell" style="text-align:right;font-size:13px;font-weight:700"></td>
         </tr>`;
       }).join('') + `</tbody></table></div>
       <div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>
-      ${(q && typeof q.contingencyPct === 'number')
-        ? `<div class="q-infobar" style="margin-top:8px">🛡 風險預留（顧問主管依專案風險預估）：<b>${e(String(q.contingencyPct))}%</b>。毛利分析（內部）會把「顧問服務成本 × ${e(String(q.contingencyPct))}%」另計為成本（基準是品項「毛利分類」為顧問服務者的成本；沒有這類品項就是 0）；此頁與簽核用的毛利率不含風險預留。</div>`
-        : ''}
-      <div class="pnl-summary-bar"><div class="pnl-sum-grid">
-        <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div></div>
-        <div class="pnl-sum-card"><div class="pnl-sum-label">成本合計</div><div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div></div>
-        <div class="pnl-sum-card"><div class="pnl-sum-label">毛利</div><div class="pnl-sum-value pnl-gp-val" id="pnlGrossProfit">NT$ 0</div></div>
-        <div class="pnl-sum-card pnl-margin-card"><div class="pnl-sum-label">整體毛利率（畫面試算）</div><div class="pnl-sum-value pnl-margin-val" id="pnlMarginPct">—</div></div>
-      </div></div>`;
+      ${contingency}
+      ${_qPnlSummaryHtml(18)}`;
+    }
   }
 
   html += _qPreviewBlock(q);
   box.innerHTML = html;
 
   if (mode !== 'hidden') {
-    box.querySelectorAll('.pnl-cost-input').forEach(function (inp) {
-      inp.addEventListener('input', function () {
-        const idx = parseInt(this.dataset.idx, 10);
-        const row = $('quoteItemsBody').querySelectorAll('tr')[idx];
-        if (row) {
-          if (this.value === '') row.removeAttribute('data-cost');
-          else row.dataset.cost = String(parseFloat(this.value) || 0);
-        }
-        updatePnlNumbers();
-      });
-    });
+    if (linesView) _qPnlMountLines(mode, q, hasLines);
     updatePnlNumbers();
   }
 }
 
-/** 重算 PNL 表格各列與匯總（成本取自品項列的 data-cost） */
+/** 重算毛利摘要（舊式單：各列與匯總，成本取自品項列的 data-cost；新式成本：成本取自成本明細合計，含差旅／交際費／印花稅） */
 function updatePnlNumbers() {
   const items = readQuoteItems();
   const { discountType, discountValue } = readQuoteDiscount();
-  const totals = quoteTotal(items, discountType, discountValue);
-  const revenue = totals.discounted;
+  const revenue = _qRevenue(items, discountType, discountValue);
   let totalCost = 0;
 
-  document.querySelectorAll('#pnlItemsBody tr').forEach(function (tr) {
-    const i = parseInt(tr.dataset.idx, 10);
-    const it = items[i];
-    if (!it) return;
-    const cost = parseFloat(it.cost) || 0;
-    const revSub = it.qty * it.unitPrice;
-    const costSub = it.qty * cost;
-    const gp = revSub - costSub;
-    const pct = revSub > 0 ? (gp / revSub * 100) : 0;
-    totalCost += costSub;
-    tr.querySelector('.pnl-cst-sub').textContent = fmtMoney(costSub);
-    const g = tr.querySelector('.pnl-gp-cell');
-    g.textContent = fmtMoney(gp);
-    g.style.color = gp >= 0 ? '#2e7d32' : '#c62828';
-    const p = tr.querySelector('.pnl-pct-cell');
-    p.textContent = revSub > 0 ? pct.toFixed(1) + '%' : '—';
-    p.style.color = pct >= 30 ? '#2e7d32' : pct >= 15 ? '#e65100' : '#c62828';
-  });
+  const legacyBody = document.getElementById('pnlItemsBody');
+  if (legacyBody) {
+    legacyBody.querySelectorAll('tr').forEach(function (tr) {
+      const i = parseInt(tr.dataset.idx, 10);
+      const it = items[i];
+      if (!it) return;
+      const cost = parseFloat(it.cost) || 0;
+      const revSub = it.qty * it.unitPrice;
+      const costSub = it.qty * cost;
+      const gp = revSub - costSub;
+      const pct = revSub > 0 ? (gp / revSub * 100) : 0;
+      totalCost += costSub;
+      tr.querySelector('.pnl-cst-sub').textContent = fmtMoney(costSub);
+      const g = tr.querySelector('.pnl-gp-cell');
+      g.textContent = fmtMoney(gp);
+      g.style.color = gp >= 0 ? '#2e7d32' : '#c62828';
+      const p = tr.querySelector('.pnl-pct-cell');
+      p.textContent = revSub > 0 ? pct.toFixed(1) + '%' : '—';
+      p.style.color = pct >= 30 ? '#2e7d32' : pct >= 15 ? '#e65100' : '#c62828';
+    });
+  } else if (document.getElementById('pnlClSlot')) {
+    totalCost = _qClCostTotal(revenue);
+  } else {
+    return;
+  }
 
   const gpAll = revenue - totalCost;
   $('pnlRevenue').textContent   = fmtMoney(revenue);
@@ -1139,12 +1273,24 @@ function updatePnlNumbers() {
       discNote.style.display = 'none';
     }
   }
+
+  // 有價品項沒有成本列涵蓋的常駐提醒（業務自填、成本明細編輯中才有；純文字、只提醒不擋；整包的成本已含在其他列時可忽略）
+  const unNote = document.getElementById('pnlUnmatchedNote');
+  if (unNote) {
+    let msg = '';
+    if (_qPnlMode === 'edit' && _qCl.inst && !_qCl.inst.dead && typeof QCL !== 'undefined' && typeof QCL.unmatchedPricedNote === 'function') {
+      try { msg = QCL.unmatchedPricedNote(_qCl.inst.getLines(), items); } catch (err) { msg = ''; }
+    }
+    unNote.textContent = msg;
+    unNote.style.display = msg ? '' : 'none';
+  }
 }
 
 // ── 關閉 Modal ───────────────────────────────────────────────
 function closeQuoteModal() {
   $('quoteModalOverlay').style.display = 'none';
   _qEditing = null;
+  _qClReset();
 }
 
 /** 表單上方「簽核狀態」唯讀區 */
@@ -1156,7 +1302,7 @@ function renderQuoteApprovalState(q) {
   let html = `<span class="quote-status ${escapeHtml(st.cls)}">${escapeHtml(st.label)}</span>`;
   const a = q.approval;
   if (a && a.state === 'approved' && a.valid !== false) {
-    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
+    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
   } else if (a && a.state === 'returned') {
     const h = (a.history || []).filter(x => x && x.action === 'RETURN');
     const last = h.length ? h[h.length - 1] : null;
@@ -1211,6 +1357,7 @@ async function openQuoteModal(idOrNull) {
       }
     }
     _qEditing = q;
+    _qClReset();   // 成本明細編輯器每次開表單都從頭來（沿用上一張單的編輯內容會寫錯單）
     const today = taipeiTodayClient();
 
     $('quoteModalTitle').textContent = q ? ('編輯報價單 ' + (q.quoteNo || '')) : '新增報價單';
@@ -1251,6 +1398,8 @@ async function openQuoteModal(idOrNull) {
       ? q.items
       : [{ desc: '', unit: '式', qty: 1, unitPrice: 0 }];
     renderQuoteItems(items);
+    // 儲存前確認的基準：載入當時就沒有成本列涵蓋的有價品項（整包成本等合法情境）不必每次儲存都再問一次；之後只對基準以外新出現的未涵蓋品項確認
+    _qCl.unBase = _qUnmatchedBaseline(q);
 
     // ── 優惠設定還原 ──
     var discType  = (q && q.discountType)  ? q.discountType  : 'none';
@@ -1592,8 +1741,8 @@ function autoFillFromContact() {
 }
 
 // ── 項目列表渲染 ─────────────────────────────────────────────
-// 每列帶 data-lid（伺服器指派的穩定列代號）與 data-cost（成本；只在有權者/業務自填時存在）。
-// 成本不在這張表單顯示或編輯：顧問填、或業務自填時到「毛利與簽核路徑」頁籤。
+// 每列帶 data-lid（伺服器指派的穩定列代號）與 data-cost（舊式單的 items[].cost，只在有權者看得到成本時存在）。
+// data-cost 只是舊單成本的載體（帶入成本明細種子、舊式單的唯讀顯示）；不再送出，成本由顧問或業務在成本明細編輯器（QCL）填。
 function renderQuoteItems(items) {
   const tbody = $('quoteItemsBody');
   let seq = 0;   // 項目編號只算一般品項（分組標題、小計列不編號），與客戶版 Excel／預覽的編號一致
@@ -1606,16 +1755,20 @@ function renderQuoteItems(items) {
       '<button type="button" class="qi-remove" title="移除此列" style="' + b + 'color:#e53935;font-size:16px">&#10005;</button></td>';
   };
   const inputBase = 'width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box;';
+  // 拖曳把手欄（第一欄）：QCL.dragSort 不存在時不啟用拖曳，欄位留空（▲▼ 照常）
+  const dragTd = quoteDragEnabled()
+    ? '<td class="qi-dragtd"><button type="button" class="qi-drag" title="拖曳排序（也可用鍵盤：按空白鍵拿起，上下鍵移動，空白鍵放下，Esc 取消）" aria-label="拖曳排序">&#8942;&#8942;</button></td>'
+    : '<td class="qi-dragtd"></td>';
   tbody.innerHTML = items.map(function (it, i) {
     const lidAttr = it.lid ? ' data-lid="' + escapeHtml(it.lid) + '"' : '';
     if (it.kind === 'title') {
-      return '<tr data-idx="' + i + '" data-kind="title"' + lidAttr + ' class="qi-kindrow qi-title">' +
+      return '<tr data-idx="' + i + '" data-kind="title"' + lidAttr + ' class="qi-kindrow qi-title">' + dragTd +
         '<td style="text-align:center;color:#8a94a3;font-size:12px" title="分組標題">&#167;</td>' +
         '<td colspan="6"><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" maxlength="200" ' +
           'placeholder="分組標題（例：Part A：系統建置）" style="' + inputBase + 'font-weight:700"></td>' + ctrl(i) + '</tr>';
     }
     if (it.kind === 'subtotal') {
-      return '<tr data-idx="' + i + '" data-kind="subtotal"' + lidAttr + ' class="qi-kindrow qi-subrow">' +
+      return '<tr data-idx="' + i + '" data-kind="subtotal"' + lidAttr + ' class="qi-kindrow qi-subrow">' + dragTd +
         '<td></td>' +
         '<td colspan="4"><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" maxlength="200" ' +
           'placeholder="小計" style="' + inputBase + 'text-align:right;font-weight:700"></td>' +
@@ -1625,9 +1778,11 @@ function renderQuoteItems(items) {
     seq++;
     const qty   = parseFloat(it.qty)       || 1;
     const price = parseFloat(it.unitPrice) || 0;
-    const attrs = lidAttr +
+    // 還沒存檔的新品項沒有 lid：data-nid 是畫面給它的暫時代號（成本明細的列用它指向這個品項；存檔時伺服器換成真正的 lid）。移動／刪除其他列重畫時要跟著列保留
+    const nidAttr = !it.lid && it.nid ? ' data-nid="' + escapeHtml(it.nid) + '"' : '';
+    const attrs = lidAttr + nidAttr +
       (it.cost !== undefined && it.cost !== null && it.cost !== '' ? ' data-cost="' + escapeHtml(String(it.cost)) + '"' : '');
-    return '<tr data-idx="' + i + '"' + attrs + '>' +
+    return '<tr data-idx="' + i + '"' + attrs + '>' + dragTd +
       '<td style="text-align:center;color:#999;font-size:12px">' + seq + '</td>' +
       '<td><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" ' +
         'placeholder="品項說明" style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box"></td>' +
@@ -1667,13 +1822,9 @@ function renderQuoteItems(items) {
     });
   });
   const move = function (btn, d) {
-    var current = readQuoteItems();
     var idx = parseInt(btn.closest('tr').dataset.idx, 10);
     var to = idx + d;
-    if (to < 0 || to >= current.length) return;
-    var tmp = current[idx]; current[idx] = current[to]; current[to] = tmp;
-    renderQuoteItems(current);
-    updateQuoteTotals();
+    if (!quoteReorder(idx, to)) return;   // 與拖曳排序共用同一條路徑
     var moved = $('quoteItemsBody').querySelectorAll('tr')[to];
     var again = moved && moved.querySelector(d < 0 ? '.qi-up' : '.qi-down');
     var fb = again && !again.disabled ? again : (moved && moved.querySelector(d < 0 ? '.qi-down' : '.qi-up'));
@@ -1681,7 +1832,43 @@ function renderQuoteItems(items) {
   };
   tbody.querySelectorAll('.qi-up').forEach(function (btn) { btn.addEventListener('click', function () { move(btn, -1); }); });
   tbody.querySelectorAll('.qi-down').forEach(function (btn) { btn.addEventListener('click', function () { move(btn, 1); }); });
+  ensureQuoteDrag(tbody);   // 拖曳排序（事件委派在 tbody 上，只裝一次；重畫列不必重綁）
   updateQuoteCatHint();
+}
+
+/** 拖曳排序是否可用：QCL（quote-costlines.js，載入順序在本檔之前）有提供 dragSort 才啟用；沒有就只剩 ▲▼ */
+function quoteDragEnabled() { return typeof QCL === 'object' && QCL !== null && typeof QCL.dragSort === 'function'; }
+
+/**
+ * 把第 from 列移到第 to 列的位置（to＝移動後的最終索引）。▲▼ 與拖曳共用這一條路徑：
+ * 讀回目前畫面的列（含已輸入、還沒存檔的值，lid／nid／成本代號隨列保留）→ 陣列 splice → 重畫 → 重算各列小計、小計列與合計。回傳是否真的移動了。
+ */
+function quoteReorder(from, to) {
+  var current = readQuoteItems();
+  if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return false;
+  current.splice(to, 0, current.splice(from, 1)[0]);
+  renderQuoteItems(current);
+  updateQuoteTotals();
+  return true;
+}
+
+/** 拖曳時浮影與螢幕閱讀器播報用的列名稱 */
+function quoteRowLabel(row) {
+  var d = row.querySelector('.qi-desc');
+  var t = d ? d.value.trim() : '';
+  if (row.dataset.kind === 'title') return '分組標題：' + (t || '(未命名)');
+  if (row.dataset.kind === 'subtotal') return '小計：' + (t || '小計');
+  return t || '(未填品項說明)';
+}
+
+function ensureQuoteDrag(tbody) {
+  if (tbody._qDnd || !quoteDragEnabled()) return;
+  tbody._qDnd = QCL.dragSort(tbody, {
+    rowSelector: 'tr',
+    handleSelector: '.qi-drag',
+    onMove: function (from, to) { quoteReorder(from, to); },
+    labelOf: quoteRowLabel,
+  });
 }
 
 /** 依畫面上的列順序重算各列小計與「各小計列」的金額：從最近的標題或小計列之後累加品項小計（與伺服器／預覽／Excel 同規則） */
@@ -1716,7 +1903,10 @@ function updateQuoteCatHint() {
 }
 
 // ── 讀取目前項目列表 ──────────────────────────────────────────
-// 回傳 { lid?, desc, unit, qty, unitPrice, cost? }；lid/cost 只在列上有值時才出現
+let _qNidSeq = 0;
+/** 新品項的暫時代號（'nid-' 開頭，與伺服器 lib/quoteCostLines.js 的 TMP_REF_PREFIX 一致；長度遠小於 64） */
+function _qNewNid() { return 'nid-' + Date.now().toString(36) + '-' + (++_qNidSeq).toString(36) + Math.random().toString(36).slice(2, 6); }
+// 回傳 { lid?, nid?, desc, unit, qty, unitPrice, cost? }；lid/cost 只在列上有值時才出現；nid（暫時代號）只有還沒存檔、沒有 lid 的一般品項才有
 function readQuoteItems() {
   return Array.from($('quoteItemsBody').querySelectorAll('tr')).map(function (row) {
     // 分組標題／小計列：只有 kind 與文字（沒有數量、單價、成本、分類）
@@ -1732,6 +1922,12 @@ function readQuoteItems() {
       unitPrice: parseFloat(row.querySelector('.qi-price').value) || 0,
     };
     if (row.dataset.lid) it.lid = row.dataset.lid;
+    else {
+      // 還沒存檔的新品項：給一個穩定的暫時代號 nid（第一次讀到就配發、之後跟著列走）。成本明細編輯器的列用它指向這個品項，
+      // 這樣「合併為一列」「改名」「補入」在第一次儲存前也算得出哪些品項有成本列；送出時帶在 items 的 nid 欄位，伺服器換成真正的 lid，不存檔。
+      if (!row.dataset.nid) row.dataset.nid = _qNewNid();
+      it.nid = row.dataset.nid;
+    }
     if (row.dataset.cost !== undefined) it.cost = parseFloat(row.dataset.cost) || 0;
     const catSel = row.querySelector('.qi-cat');
     if (catSel) it.cat = catSel.value;            // ''＝自動；一律送出，伺服器才知道使用者把分類清回「自動」
@@ -1767,7 +1963,7 @@ function updateQuoteTotals() {
 
   // 毛利與簽核路徑頁籤開著時同步
   const pnl = document.getElementById('quoteTabContentPnl');
-  if (pnl && pnl.style.display !== 'none' && document.getElementById('pnlItemsBody')) updatePnlNumbers();
+  if (pnl && pnl.style.display !== 'none' && document.getElementById('pnlRevenue')) updatePnlNumbers();
 }
 
 // ── 儲存報價單 ──────────────────────────────────────────────
@@ -1815,8 +2011,33 @@ async function saveQuote() {
     showToast('議價總額需大於 0 且低於小計（未稅）'); return;
   }
 
-  // 成本只在「業務自填」時才送（伺服器端也只接受有權者的成本）；沒動過成本的列不送，避免誤蓋成 0
+  // 成本只在「業務自填」時才送（伺服器端也只接受有權者的成本）。
+  // 成本明細（新式成本 costLines）：自填成本、且成本明細編輯器曾掛載過 → 帶 QCL.collect 的結果。
+  // 新單（還沒有 id）一律帶成本明細：沒開過毛利頁籤（編輯器沒掛載）就用目前品項產生種子（含印花稅），新單一律是新式，不再長出舊式單。
+  // 已存在的單沒掛載過 → 不帶（伺服器沿用原本的成本）。
+  // 例外：已存在的舊式單（沒有成本明細）開過毛利頁籤但沒動成本 → 不帶，避免只是看一眼就被轉成新式（會多一筆印花稅、已核准的單還會被作廢核准）。
+  // 品項列不再送 items[].cost（成本不再綁在報價品項上；沿用舊值由伺服器處理）。
   const selfCost = !needC;
+  let costLinesPayload;   // undefined＝不帶
+  if (selfCost && _qCl.inst && !_qCl.inst.dead && typeof QCL !== 'undefined') {
+    const hadLines = !!_qEditing && Array.isArray(_qEditing.costLines);
+    if (!_qEditing || hadLines || _qCl.touched) {
+      const cc = _qCl.inst.collect();
+      if (cc.invalid > 0 || cc.blankDesc > 0) {
+        switchQuoteTab('pnl');
+        const slot = $('pnlClSlot');
+        const bad = slot && slot.querySelector('.qcl-bad');
+        if (bad) { if (bad.scrollIntoView) bad.scrollIntoView({ block: 'center' }); bad.focus(); }
+        showToast(cc.invalid > 0
+          ? '成本明細有 ' + cc.invalid + ' 個欄位不是有效的數字（需為 0 以上），請修正標紅的欄位'
+          : '成本明細有 ' + cc.blankDesc + ' 列沒有填「項目」，請填寫或刪除該列');
+        return;
+      }
+      costLinesPayload = cc.lines;
+    }
+  } else if (selfCost && !_qEditing && typeof QCL !== 'undefined') {
+    costLinesPayload = QCL.seedFromItems(_qClItems(), { classCodes: _qClClassCodes() });
+  }
   const payloadItems = items.map(function (it) {
     if (quoteIsKindRow(it)) {   // 分組標題／小計列：只送 kind 與文字
       const k = { kind: it.kind, desc: it.desc };
@@ -1825,7 +2046,7 @@ async function saveQuote() {
     }
     const o = { desc: it.desc, unit: it.unit, qty: it.qty, unitPrice: it.unitPrice, cat: it.cat || '' };
     if (it.lid) o.lid = it.lid;
-    if (selfCost && it.cost !== undefined) o.cost = it.cost;
+    else if (it.nid) o.nid = it.nid;   // 暫時代號：伺服器用它把成本明細裡指向這個新品項的 forLid／forLids 換成剛指派的 lid（不存檔）
     return o;
   });
 
@@ -1841,6 +2062,7 @@ async function saveQuote() {
     validUntil:    validUntil,
     items:         payloadItems,
     rowKinds:      1,   // 本畫面認得分組標題／小計列（舊版畫面沒有這個旗標，伺服器會拒絕覆蓋含這類列的單）
+    costModel:     2,   // 本畫面認得成本明細（舊版畫面沒有這個旗標，伺服器會拒絕覆蓋已改用成本明細的單，避免把成本寫回 items[].cost）
     discountType:  discountType,
     discountValue: discountValue,
     payment:       payment,
@@ -1849,11 +2071,38 @@ async function saveQuote() {
     costBy:        needC ? costBy : null,
     costNote:      needC ? $('qCostNote').value.trim() : '',
   };
+  if (costLinesPayload !== undefined) {
+    payload.costLines = costLinesPayload;
+    // 過期分頁保護：帶上表單載入時的成本明細摘要，伺服器發現別的視窗已改過就回 409 STALE_COSTS（新單、舊畫面沒有摘要就不帶）
+    if (_qEditing && typeof _qEditing.costLinesSig === 'string') payload.costLinesSig = _qEditing.costLinesSig;
+  }
+
+  // 有價品項沒有成本列涵蓋（自填成本、新式成本才檢查）：只提醒、不擋——整包成本是合法情境，確認後照常儲存，取消則回毛利頁籤補成本。
+  // 用這次要送出的成本明細；沒送（已存在的單沒開過成本明細）就用已儲存的那份；舊式單（沒有成本明細）不檢查（逐列「有價品項成本需 > 0」仍有伺服器把關）。
+  // 只對「出現基準以外的未涵蓋品項」確認（H1）：基準＝表單載入時就未涵蓋的品項（_qCl.unBase；新單沒有基準＝空），
+  //   整包成本（刪列做整包、品名對不上又沒有 forLid）的單不會每次儲存都被問；毛利頁籤的常駐提醒不受影響（永遠顯示全部）。
+  // 成本明細此刻不可編輯（例如管理員編輯他人自填單，頁籤唯讀）就不檢查（H2）：使用者無處可補，只會看到一個無法回應的「取消，回去補成本」。
+  let unmatchedNote = '';
+  if (selfCost && _qCostEditableFor(_qEditing) && typeof QCL !== 'undefined' && typeof QCL.unmatchedNewNote === 'function') {
+    const knownLines = costLinesPayload !== undefined ? costLinesPayload : (_qEditing && Array.isArray(_qEditing.costLines) ? _qEditing.costLines : null);
+    if (knownLines) unmatchedNote = QCL.unmatchedNewNote(knownLines, items, _qEditing ? _qCl.unBase : null);
+  }
 
   const saveBtn = $('quoteModalSave');
   _qSaving = true;
   saveBtn.disabled = true;
   try {
+    if (unmatchedNote) {
+      const goOn = await qDialog({
+        title: '有品項沒有對應的成本列',
+        message: unmatchedNote + '\n\n仍要儲存嗎？',
+        buttons: [
+          { text: '仍要儲存', value: true, cls: 'btn-primary' },
+          { text: '取消，回去補成本', value: false, cls: 'btn-secondary' },
+        ],
+      });
+      if (!goOn) { switchQuoteTab('pnl'); return; }
+    }
     const method = id ? 'PUT'  : 'POST';
     const url    = id ? (API + '/quotations/' + encodeURIComponent(id)) : (API + '/quotations');
     const send = async function (body) {
@@ -1866,7 +2115,7 @@ async function saveQuote() {
     if (!res.r.ok && res.j.code === 'WILL_VOID') {
       const ok = await qDialog({
         title: '修改會使核准作廢',
-        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
+        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
         buttons: [
           { text: '儲存並作廢核准', value: true, cls: 'btn-danger' },
           { text: '取消', value: false, cls: 'btn-secondary' },
@@ -1882,12 +2131,18 @@ async function saveQuote() {
         loadQuotationsView();
         return;
       }
+      if (res.j.code === 'STALE_COSTS') {
+        // 別的視窗已更新過成本明細：這次的內容沒有存，畫面維持原樣（輸入保留），使用者要先複製需要的內容、關閉重新整理後再改
+        showToast('成本明細已在其他視窗被更新，這次沒有儲存（畫面上的輸入仍保留）。請關閉後重新整理再修改。', 7000);
+        return;
+      }
       showToast(res.j.error || '儲存失敗');
       return;
     }
     const saved = (res.j && res.j.quote) ? res.j.quote : res.j;
     $('quoteModalOverlay').style.display = 'none';
     _qEditing = null;
+    _qClReset();
     let msg = id ? '報價單已更新' : '報價單已建立 ✅';
     if (saved && saved.costFlow && saved.costFlow.state === 'requested') msg += '，已通知顧問填寫成本';
     else if (saved && saved.approval && saved.approval.state === 'none' && _qLastHistory(saved) && _qLastHistory(saved).action === 'INVALIDATE') msg += '，原核准已作廢，請重新送簽';

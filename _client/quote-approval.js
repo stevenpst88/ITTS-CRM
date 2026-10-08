@@ -2,7 +2,7 @@
 // ── 報價單簽核面板與設定 (quote-approval.js) ───────────────
 // 對外全域函式（由 quote.js / index.html 呼叫）：
 //   openQuoteApproval(id)        簽核面板（核准／駁回／送簽／撤回／改派／董事會列印與決議登錄）
-//   openQuoteCostFill(id)        顧問填成本（看不到單價、折扣、營收、毛利率）
+//   openQuoteCostFill(id)        顧問填成本（成本明細編輯器 QCL；看不到品項單價、折扣與毛利率；v1.1 起看得到印花稅金額，營收可由它約略推算，業主已確認可接受）
 //   openQuoteApprovalSettings()  簽核設定（名冊／商品歸類表／核決門檻與報價專用章）
 //   refreshQuoteInbox()          更新工具列「待我處理」徽章（#quoteInboxBadge）
 //
@@ -46,6 +46,7 @@ const ROSTER_GROUPS = [
 const QAP_CSS = `
 .qap-modal { width: 940px; max-width: 96vw; }
 .qap-modal.qap-sm { width: 640px; }
+.qap-modal.qap-wide { width: 1180px; max-width: 96vw; }
 .qap-body { background: #f6f7f9; padding: 16px 20px; }
 .qap-sec { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
 .qap-sec h3 { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: #111; }
@@ -97,6 +98,16 @@ const QAP_CSS = `
 .qap-cin.bad { border-color: #ea4335 !important; background: #fde8e8; }
 .qap-footer { flex-wrap: wrap; }
 .qap-footer .sp { flex: 1; }
+.qap-ref > summary { cursor: pointer; font-size: 14px; font-weight: 700; color: #111; }
+.qap-ref[open] > summary { margin-bottom: 8px; }
+.qap-cf-head { margin: 0 0 8px; }
+.qap-cf-head h3 { font-size: 14px; font-weight: 700; margin: 0 0 4px; color: #111; }
+.qap-fs { border: 0; margin: 0; padding: 0; min-width: 0; }
+.qap-cf-tot { font-size: 13px; margin-left: 12px; color: #4a5560; }
+.qap-cf-tot b { font-size: 15px; color: #1a73e8; }
+.qap-cf-note { font-size: 12px; color: #6b7684; margin-left: 6px; }
+.qap-cdwrap { margin-bottom: 12px; }
+.qap-cdh { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: #111; }
 .qap-tabs { display: flex; gap: 4px; border-bottom: 1px solid #e3e6ea; padding: 0 20px; background: #fff; flex-wrap: wrap; }
 .qap-tab { border: none; background: transparent; padding: 10px 14px; cursor: pointer; font-size: 13.5px; color: #6b7684; border-bottom: 2px solid transparent; }
 .qap-tab.on { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
@@ -142,6 +153,10 @@ body.dark .qap-tabs { background: #161b22; border-bottom-color: #30363d; }
 body.dark .qap-tab { color: #8b949e; }
 body.dark .qap-tab.on { color: #58a6ff; border-bottom-color: #58a6ff; }
 body.dark .qap-seal-img { background-color: #fff; border-color: #30363d; }
+body.dark .qap-ref > summary, body.dark .qap-cf-head h3, body.dark .qap-cdh { color: #e6edf3; }
+body.dark .qap-cf-tot { color: #8b949e; }
+body.dark .qap-cf-tot b { color: #58a6ff; }
+body.dark .qap-cf-note { color: #8b949e; }
 `;
 
 function ensureStyle() {
@@ -381,7 +396,8 @@ function buildItemsSection(q) {
   const perm = q.perm || {};
   const items = Array.isArray(q.items) ? q.items : [];
   const showPrice = !!perm.canSeePrice && items.some((it) => it.unitPrice !== undefined && it.unitPrice !== null);
-  const showCost = !!perm.canSeeCost && items.some((it) => it.cost !== undefined && it.cost !== null);
+  // 新式單（有成本明細）：items[].cost 已歸 0、沒有逐列成本與逐列毛利的意義 → 隱藏這兩欄，改看下方「專案成本明細」；舊式單完全維持原樣
+  const showCost = !!perm.canSeeCost && !Array.isArray(q.costLines) && items.some((it) => it.cost !== undefined && it.cost !== null);
   let head = '<th class="c">#</th><th>品項說明</th><th class="r">數量</th><th>單位</th>';
   if (showPrice) head += '<th class="r">單價</th><th class="r">金額</th>';
   if (showCost) head += '<th class="r">成本</th>';
@@ -417,6 +433,28 @@ function buildItemsSection(q) {
     `<div class="qap-tablewrap"><table class="qap-table"><thead><tr>${head}</tr></thead><tbody>${rows || '<tr><td colspan="8" class="qap-muted">（沒有品項）</td></tr>'}</tbody></table></div>${extra}`);
 }
 
+/** 專案成本明細（新式單且看得到成本的人）：QCL 唯讀（分區小計、合計與印花稅、廠商欄）＋伺服器算的分區彙總；內容在 renderApproval 掛載 */
+function buildCostDetailSection(q) {
+  const perm = q.perm || {};
+  if (!perm.canSeeCost || !Array.isArray(q.costLines)) return '';
+  let extra = '';
+  const cb = q.costBreakdown;
+  if (cb && typeof cb === 'object') {
+    const one = (k, label) => `<span>${label}<b>${e(fmtCents(cb[k]))}</b></span>`;
+    extra = '<div class="qap-sum">' + one('consult', '顧問服務') + one('software', '軟體') + one('hw', '硬體') + one('travel', '差旅') + one('other', '其他（含印花稅）') + '</div>';
+  }
+  const risk = typeof q.contingencyPct === 'number'
+    ? `<div class="qap-muted" style="margin-top:6px">風險預留 ${e(q.contingencyPct)}%：毛利分析（內部）另計，不計入簽核用的毛利率。</div>` : '';
+  return `<div class="qap-cdwrap"><div class="qap-cdh">專案成本明細（僅有權者可見，請勿提供客戶）</div><div id="qapCostDetail"></div>${extra}${risk}</div>`;
+}
+
+function mountCostDetail(body, q) {
+  const host = body.querySelector('#qapCostDetail');
+  if (!host) return;
+  if (typeof QCL === 'undefined') { host.innerHTML = '<div class="qap-alert bad">成本明細元件沒有載入成功，請重新整理頁面（Ctrl+F5）。</div>'; return; }
+  QCL.mount(host, { mode: 'view', lines: q.costLines, items: q.items });   // items：「原報價品項已刪除」徽章的依據
+}
+
 function buildJudgeSection(q) {
   const pk = pickDerived(q);
   const perm = q.perm || {};
@@ -449,6 +487,11 @@ function buildJudgeSection(q) {
   if (!warns.length && Array.isArray(d.unclassified) && d.unclassified.length) {   // 伺服器 warnings 通常已含同樣訊息，避免重複
     warns.push('尚未歸類的商品：' + d.unclassified.join('、') + '（已視為「其他」）');
   }
+  // 建議性警告：有價品項在成本明細沒有對應的成本列（送簽當時凍結的 derived.costWarnings；即時試算時 preview.warnings 已含同一句，依文字去重）。純提醒、不擋
+  (Array.isArray(d.costWarnings) ? d.costWarnings : []).forEach((w) => {
+    const m = w && typeof w.message === 'string' ? w.message : '';
+    if (m && warns.indexOf(m) < 0) warns.push(m);
+  });
   if (warns.length) {
     html += '<div class="qap-alert warn" style="margin-top:8px">' + warns.map((w) => e(w)).join('<br>') + '</div>';
   }
@@ -579,12 +622,14 @@ function renderApproval(s) {
       <div><span class="k">商品</span>${(q.products || []).map((p) => `<span class="qap-chip">${e(p)}</span>`).join(' ') || '<span class="qap-muted">（未勾選）</span>'}</div>
     </div>`);
   html += buildItemsSection(q);
+  html += buildCostDetailSection(q);
   html += buildJudgeSection(q);
   html += buildCostSection(q);
   html += buildStepsSection(q);
   html += buildActionSection(s);
   html += buildHistorySection(q);
   s.body.innerHTML = html;
+  mountCostDetail(s.body, q);
   s.body.scrollTop = keep;
 
   // 頁尾按鈕：顯示與否完全由 perm 決定
@@ -859,7 +904,7 @@ function printBoardMemo(q) {
 }
 
 // ═════════════════════════════════════════════════
-// 顧問填成本
+// 顧問填成本（成本明細編輯器 QCL：與業務自填成本共用同一套編輯器與資料模型 q.costLines）
 // ═════════════════════════════════════════════════
 let _cf = null;
 
@@ -869,16 +914,70 @@ function closeCostFill() {
   _cf = null;
   s.closed = true;
   document.removeEventListener('keydown', s.onKey);
+  if (s.ed) { try { s.ed.destroy(); } catch (err) { /* 容器隨 overlay 一起移除 */ } s.ed = null; }
   s.ov.remove();
 }
 
 async function requestCloseCostFill(s) {
   if (s.closed) return;
   if (s.dirty) {
-    const ok = await qapConfirm({ title: '尚未儲存', message: '你輸入的成本還沒有儲存，確定要關閉嗎？', okText: '放棄並關閉', danger: true });
+    const ok = await qapConfirm({ title: '尚未儲存', message: '你輸入的成本明細還沒有儲存，確定要關閉嗎？', okText: '放棄並關閉', danger: true });
     if (!ok || s.closed) return;
   }
   closeCostFill();
+}
+
+/** 勾選商品的類別代碼（鏡像伺服器「單一類別就全歸該區」的規則，給 QCL 種子用）；取不到商品歸類設定就回空陣列 */
+function costClassCodes(q) {
+  let pc = null;
+  try { pc = (typeof quoteCfg === 'function' ? quoteCfg().productClasses : null); } catch (err) { pc = null; }
+  pc = pc || {};
+  return (Array.isArray(q.products) ? q.products : []).map((n) => pc[n] && pc[n].cls).filter(Boolean);
+}
+
+/**
+ * 把伺服器給的印花稅金額補回列。QCL 的 getLines／collect 輸出的印花稅列不帶金額（伺服器會自己算），
+ * 但重畫時要補回去，編輯器才不會退回顯示「系統依合約金額自動計算」。
+ */
+function withServerStamp(lines, serverLines) {
+  const st = (Array.isArray(serverLines) ? serverLines : []).find((l) => l && l.auto === 'stamp' && typeof l.unitCost === 'number');
+  return (lines || []).map((l) => (l && l.auto === 'stamp' && st && typeof l.unitCost !== 'number' ? Object.assign({}, l, { unitCost: st.unitCost }) : l));
+}
+
+/** 上方「報價品項（參考，無價格）」：只列說明／數量／單位；分組標題當段落標題、小計列不顯示（顧問看不到品項單價） */
+function buildCostRefItems(q, open) {
+  const items = Array.isArray(q.items) ? q.items : [];
+  let seq = 0;
+  const rows = items.map((it) => {
+    if (it.kind === 'title') return `<tr><td colspan="4" class="desc" style="font-weight:700;background:rgba(127,127,127,.12)">${e(it.desc || '')}</td></tr>`;
+    if (it.kind === 'subtotal') return '';
+    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td></tr>`;
+  }).join('');
+  return `<details class="qap-sec qap-ref"${open ? ' open' : ''}>
+    <summary>報價品項（參考，無價格）<span class="qap-muted">　共 ${seq} 項。這是客戶看到的品項；下方成本明細不必和它一一對應</span></summary>
+    <div class="qap-tablewrap"><table class="qap-table"><thead><tr><th class="c">#</th><th>品項說明</th><th class="r">數量</th><th>單位</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="qap-muted">（沒有品項）</td></tr>'}</tbody></table></div>
+  </details>`;
+}
+
+/** 舊式單（沒有成本明細）而且不能編輯時的唯讀成本表（維持改版前的樣子） */
+function buildCostLegacyTable(q) {
+  let seq = 0;
+  const rows = (Array.isArray(q.items) ? q.items : []).map((it) => {
+    if (it.kind === 'title') return `<tr><td colspan="5" class="desc" style="font-weight:700;background:rgba(127,127,127,.12)">${e(it.desc || '')}</td></tr>`;
+    if (it.kind === 'subtotal') return '';
+    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td>
+      <td class="r">${it.cost === undefined || it.cost === null ? '—' : e(fmtNum(it.cost))}</td></tr>`;
+  }).join('');
+  return `<div class="qap-tablewrap"><table class="qap-table"><thead><tr><th class="c">#</th><th>品項說明</th><th class="r">數量</th><th>單位</th><th class="r">成本</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="qap-muted">（沒有品項）</td></tr>'}</tbody></table></div>`;
+}
+
+/** 重畫前先收起編輯器裡尚未儲存的明細（儲存失敗後重畫，使用者輸入要保留），再銷毀舊編輯器 */
+function stashCostDraft(s) {
+  if (s.ed && !s.ed.dead) {
+    if (s.dirty) s.draftLines = withServerStamp(s.ed.getLines(), s.q && s.q.costLines);
+    try { s.ed.destroy(); } catch (err) { /* ignore */ }
+  }
+  s.ed = null;
 }
 
 function renderCostFill(s) {
@@ -889,34 +988,43 @@ function renderCostFill(s) {
     s.foot.innerHTML = '<button class="btn btn-secondary" type="button" data-act="close">關閉</button>';
     return;
   }
+  const keep = s.body.scrollTop;
   const perm = q.perm || {};
   const can = !!perm.canEditCost;
+  if (!can) { s.dirty = false; s.draftLines = null; }   // 已不能編輯（被鎖定或沒權限）：沒有東西可存，關閉不必再確認「尚未儲存」
+  stashCostDraft(s);
   const dis = s.busy ? ' disabled' : '';
   const ap = q.approval;
+  const hasLines = Array.isArray(q.costLines);
+  const qcl = typeof QCL !== 'undefined';
+  const useEditor = qcl && (can || hasLines);   // 可編輯：一律走新編輯器（舊式單第一次儲存即轉為新式）；不可編輯：有成本明細就唯讀顯示
   let notice = '';
   if (!can) {
     notice = (ap && (ap.state === 'pending' || ap.state === 'approved'))
       ? '<div class="qap-alert warn">此報價單已送簽或核准，成本已鎖定，目前只能檢視。</div>'
-      : '<div class="qap-alert warn">你目前沒有填寫此單成本的權限，只能檢視。</div>';
+      : '<div class="qap-alert warn">你目前沒有填寫此單成本的權限（若這張單已送簽或核准，成本會被鎖定），只能檢視。</div>';
   } else if (q.costFlow && q.costFlow.state === 'filled') {
     notice = '<div class="qap-alert info">你已完成過這張單的成本；如需修改，改完請再按「完成並通知業務」。只按「儲存」會讓這張單回到「未完成」，業務就無法送簽。</div>';
   }
-  // 只列說明／單位／數量與成本；刻意不讀取 unitPrice、折扣、金額
-  let seq = 0;   // 項目編號只算一般品項；分組標題當段落標題顯示（沒有成本欄），小計列不顯示（顧問看不到價格）
-  const rows = (Array.isArray(q.items) ? q.items : []).map((it) => {
-    if (it.kind === 'title') return `<tr><td colspan="5" class="desc" style="font-weight:700;background:rgba(127,127,127,.12)">${e(it.desc || '')}</td></tr>`;
-    if (it.kind === 'subtotal') return '';
-    const lid = it.lid;
-    const v = Object.prototype.hasOwnProperty.call(s.draft, lid) ? s.draft[lid] : (it.cost === undefined || it.cost === null ? '' : String(it.cost));
-    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(parseFloat(it.qty) || 1))}</td><td>${e(it.unit || '式')}</td>
-      <td class="r"><input type="number" class="qap-input qap-cin" inputmode="decimal" min="0" step="any" data-lid="${e(lid)}" value="${e(v)}"${can && !s.busy ? '' : ' disabled'}></td></tr>`;
-  }).join('');
   // 風險預留：負責填成本的顧問主管依專案風險選 0/5/10/15/20（%）；尚未設定過顯示「請選擇…」，按「完成並通知業務」前必須選
   const riskNow = costRiskValue(s);
   const riskOpts = [['', '請選擇…']].concat(QAP_CONTINGENCY_PCTS.map((n) => [String(n), n + '%']))
     .map((o) => `<option value="${o[0]}"${o[0] === riskNow ? ' selected' : ''}>${o[1]}</option>`).join('');
   const note = q.costFlow && q.costFlow.note
     ? `<div class="qap-sec"><h3>業務備註</h3><div style="white-space:pre-wrap;word-break:break-word;font-size:13px">${e(q.costFlow.note)}</div></div>` : '';
+  let editorBlock;
+  if (!qcl) {
+    editorBlock = '<div class="qap-alert bad">成本明細編輯器沒有載入成功，請重新整理頁面（Ctrl+F5）後再試。</div>';
+  } else if (useEditor) {
+    editorBlock = `<div class="qap-cf-head"><h3>成本明細</h3>
+        <div class="qap-muted">${can
+          ? '請填寫這個專案實際的成本。可以新增／刪除列、改單位與數量，輸入成本單價會自動換算小計；委外的顧問請填「委外廠商」；差旅交通、交際費與印花稅也計入專案成本。贈品或不計價的列成本可填 0。'
+          : '以下為這張單的成本明細，目前只能檢視。'}</div></div>
+      <fieldset class="qap-fs" id="qapCfFs"${s.busy ? ' disabled' : ''}><div id="qapCfMount"></div></fieldset>`;
+  } else {
+    editorBlock = `<div class="qap-sec"><h3>成本（舊格式）</h3>${buildCostLegacyTable(q)}</div>`;
+  }
+  if (s.stale) notice = '<div class="qap-alert bad" id="qapCfStale" role="alert">' + e(s.stale) + '</div>' + notice;
   s.body.innerHTML = notice + `
     <div class="qap-sec"><h3>案件</h3><div class="qap-grid">
       <div><span class="k">報價單號</span><b>${e(q.quoteNo || '')}</b></div>
@@ -926,23 +1034,35 @@ function renderCostFill(s) {
       ${q.validUntil ? `<div><span class="k">報價期限</span>${e(q.validUntil)}</div>` : ''}
     </div></div>
     ${note}
-    <div class="qap-sec"><h3>請填寫每一列的成本（單位成本，未稅）</h3>
-      <div class="qap-tablewrap"><table class="qap-table"><thead><tr><th class="c">#</th><th>品項說明</th><th class="r">數量</th><th>單位</th><th class="r">成本</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="qap-muted">（沒有品項）</td></tr>'}</tbody></table></div>
-      <div class="qap-muted" style="margin-top:8px">成本合計（數量 × 成本）：<b id="qapCfTotal"></b>　贈品或不計價的列可填 0。</div>
-    </div>
+    ${buildCostRefItems(q, s.refOpen !== false)}
+    ${editorBlock}
     <div class="qap-sec"><h3>風險預留（Contingency）</h3>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <select class="qap-input" data-risk="1" style="width:auto;min-width:110px"${can && !s.busy ? '' : ' disabled'}>${riskOpts}</select>
-        <span class="qap-muted">依這個專案的風險預估；毛利分析（內部）會把「顧問服務成本 × 此比例」另計為成本（基準是業務在報價單上把品項歸為「顧問服務」的成本；若沒有這類品項，風險預留會是 0）。沒有風險請選 0%。</span>
+        <span class="qap-muted">依這個專案的風險預估；毛利分析（內部）會把成本明細「顧問服務成本」區的小計 × 此比例另計為成本（風險預留不計入簽核用的毛利）。沒有風險請選 0%。</span>
       </div>
     </div>`;
-  let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="sp"></span>`;
-  if (can) {
+  let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="qap-cf-tot">成本合計 <b id="qapCfTotal"></b><span class="qap-cf-note" id="qapCfNote"></span></span><span class="sp"></span>`;
+  if (can && qcl) {
     f += `<button class="btn btn-secondary" type="button" data-act="save"${dis}>儲存</button>`;
     f += `<button class="btn btn-primary" type="button" data-act="done"${dis}>完成並通知業務</button>`;
   }
   s.foot.innerHTML = f;
-  updateCostTotal(s);
+  if (useEditor) {
+    let lines = can && Array.isArray(s.draftLines) ? s.draftLines : (hasLines ? q.costLines : null);
+    if (!can) s.draftLines = null;
+    if (!lines) lines = QCL.seedFromItems(q.items, { classCodes: costClassCodes(q) });   // 舊式單：舊 items[].cost 帶入成為成本單價
+    s.ed = QCL.mount(s.ov.querySelector('#qapCfMount'), {
+      lines, items: q.items, mode: can ? 'edit' : 'view', classCodes: costClassCodes(q),
+      confirm: (msg) => qapConfirm({ title: '請確認', message: msg, okText: '確定' }),
+      onChange: (ls, t) => { s.dirty = true; showCostTotal(s, t); },
+    });
+    showCostTotal(s, QCL.totals(lines));
+  } else {
+    const tot = s.ov.querySelector('.qap-cf-tot');
+    if (tot) tot.style.display = 'none';
+  }
+  s.body.scrollTop = keep;
 }
 
 /** 風險預留可選值（%）；與 lib/quoteRoutes.js 的 CONTINGENCY_PCTS 一致 */
@@ -954,59 +1074,105 @@ function costRiskValue(s) {
   return typeof v === 'number' ? String(v) : '';
 }
 
-function updateCostTotal(s) {
+/** 頁底合計（含印花稅）。t 是 QCL.totals() 的結果（元） */
+function showCostTotal(s, t) {
   const out = s.ov.querySelector('#qapCfTotal');
-  if (!out || !s.q) return;
-  let total = 0;
-  const items = Array.isArray(s.q.items) ? s.q.items : [];
-  s.ov.querySelectorAll('input[data-lid]').forEach((inp) => {
-    const it = items.find((x) => String(x.lid) === inp.dataset.lid);
-    const c = Number(inp.value);
-    if (it && inp.value.trim() !== '' && isFinite(c) && c >= 0) total += Math.round((parseFloat(it.qty) || 1) * c * 100);
-  });
-  out.textContent = fmtCents(total);
+  if (!out || !t) return;
+  out.textContent = fmtNum(t.total);
+  const note = s.ov.querySelector('#qapCfNote');
+  if (note) note.textContent = t.stampUnknown ? '（不含印花稅：系統依合約金額自動計算）' : (t.stamp > 0 ? '（含印花稅 ' + fmtNum(t.stamp) + '）' : '');
 }
 
-/** 收集輸入。回傳 {costs, blanks, zeros, invalidEl} */
-function collectCosts(s) {
-  const costs = [];
-  let blanks = 0, zeros = 0, invalidEl = null;
-  s.ov.querySelectorAll('input[data-lid]').forEach((inp) => {
-    inp.classList.remove('bad');
-    const raw = inp.value.trim();
-    if (raw === '') { blanks++; return; }
-    const c = Number(raw);
-    if (!isFinite(c) || c < 0 || c > 1e12) {
-      inp.classList.add('bad');
-      if (!invalidEl) invalidEl = inp;
-      return;
-    }
-    if (c === 0) zeros++;
-    costs.push({ lid: inp.dataset.lid, cost: c });
-  });
-  return { costs, blanks, zeros, invalidEl };
+/** 送出期間鎖住按鈕、風險預留與整個編輯器（fieldset disabled），不重畫、輸入內容原封不動 */
+function setCostBusy(s) {
+  const dis = !!s.busy;
+  const can = !!(s.q && s.q.perm && s.q.perm.canEditCost);
+  s.ov.querySelectorAll('.qap-footer button[data-act]').forEach((b) => { b.disabled = dis; });
+  const fs = s.ov.querySelector('#qapCfFs');
+  if (fs) fs.disabled = dis;
+  const sel = s.ov.querySelector('select[data-risk]');
+  if (sel) sel.disabled = dis || !can;
+}
+
+/**
+ * 過期分頁保護：載入（或成功儲存後重新載入）時記下伺服器給的 itemsSig（品項結構摘要）、costLinesSig（成本明細內容摘要），
+ * 存檔時帶回；伺服器發現不是最新的就回 409 STALE_ITEMS／STALE_COSTS。伺服器沒給（沒有成本權限）就不帶。
+ */
+function costSigsOf(q) {
+  const o = {};
+  if (q && typeof q.itemsSig === 'string') o.itemsSig = q.itemsSig;
+  if (q && typeof q.costLinesSig === 'string') o.costLinesSig = q.costLinesSig;
+  return o;
+}
+
+const COST_STALE_CODES = ['STALE_ITEMS', 'STALE_COSTS'];
+
+/** 過期提示條（不重畫編輯器，輸入內容原封不動）：已存在就更新文字，沒有就加在最上面 */
+function showCostStale(s, msg) {
+  s.stale = msg;
+  let el = s.body.querySelector('#qapCfStale');
+  if (!el) {
+    s.body.insertAdjacentHTML('afterbegin', '<div class="qap-alert bad" id="qapCfStale" role="alert"></div>');
+    el = s.body.querySelector('#qapCfStale');
+  }
+  el.textContent = msg;
+  s.body.scrollTop = 0;
+}
+
+/** 儲存失敗的人話提示（伺服器的 code 對照） */
+function costErrMsg(res) {
+  const d = res.data || {};
+  const m = errMsg(res);
+  switch (d.code) {
+    case 'STALE_ITEMS': return '報價品項已被業務修改，這次沒有儲存（你輸入的內容仍保留在畫面上）。請關閉後重新整理，確認成本明細後再送出。';
+    case 'STALE_COSTS': return '成本明細已在其他視窗被更新，這次沒有儲存（你輸入的內容仍保留在畫面上）。請關閉後重新整理。';
+    case 'CLIENT_OUTDATED': return '畫面版本過舊，請重新整理頁面（Ctrl+F5）後再填寫；這次輸入的內容沒有儲存。';
+    case 'LOCKED_PENDING': return '這張報價單已送簽或核准，成本已鎖定，無法儲存。';
+    case 'MISSING_COST': return '尚未填寫成本明細：請至少填一列成本（不含印花稅的總成本需大於 0）。';
+    case 'BAD_COST_LINE': return '成本明細有誤：' + m;
+    default: return m;
+  }
 }
 
 async function submitCostFill(s, done) {
-  if (s.busy || !s.q || !(s.q.perm || {}).canEditCost) return;
-  const c = collectCosts(s);
-  if (c.invalidEl) { toast('成本必須是大於等於 0 的數字'); c.invalidEl.focus(); return; }
+  if (s.busy || !s.q || !(s.q.perm || {}).canEditCost || !s.ed || typeof QCL === 'undefined') return;
+  const mountEl = s.ov.querySelector('#qapCfMount');
+  const c = QCL.collect(mountEl);
+  const focusMark = (sel) => { const b = mountEl.querySelector(sel); if (b) { b.scrollIntoView({ block: 'center' }); b.focus(); } };
+  if (c.invalid > 0) { toast('成本明細有 ' + c.invalid + ' 個欄位不是有效的數字（需為 0 以上），請修正標紅的欄位'); focusMark('.qcl-bad'); return; }
+  if (c.blankDesc > 0) { toast('有 ' + c.blankDesc + ' 列沒有填「項目」，請填寫或刪除該列'); focusMark('.qcl-bad'); return; }
   const risk = costRiskValue(s);
   if (done) {
-    if (c.blanks > 0) { toast('還有 ' + c.blanks + ' 列沒有填成本，請全部填完（贈品列可填 0）'); return; }
+    if (c.zeroQty > 0) { toast('有 ' + c.zeroQty + ' 列數量是 0，請填寫數量或刪除該列'); focusMark('.qcl-warn'); return; }
+    const nonStamp = c.lines.filter((l) => l.auto !== 'stamp');
+    if (!nonStamp.length || !(QCL.totals(c.lines).subtotalExStamp > 0)) { toast('尚未填寫成本明細：請至少填一列成本（不含印花稅的總成本需大於 0）'); return; }
     if (risk === '') { toast('請選擇風險預留（依專案風險預估；沒有風險請選 0%）'); return; }
     let msg = '完成後會通知業務，你仍可在送簽前修改。';
-    if (c.zeros > 0) msg = '有 ' + c.zeros + ' 列成本填的是 0。若該列是有收費的品項，送簽時系統會擋下。\n\n' + msg;
+    if (c.zeroCost > 0) msg = '有 ' + c.zeroCost + ' 列成本單價填的是 0（贈品或不計成本的列可以是 0；若不是，請先回去填寫）。\n\n' + msg;
+    // 成本明細與報價品項不必一一對應（整包、一式拆多列）：找不到對應列的品項只提醒、不擋（可能是已包含在其他列，也可能是漏填，例如業務事後新增品項）
+    const un = typeof QCL.unmatchedItemsNote === 'function' ? QCL.unmatchedItemsNote(c.lines, s.q.items, { classCodes: costClassCodes(s.q) }) : '';
+    if (un) msg = un + '\n\n' + msg;
     const ok = await qapConfirm({ title: '完成並通知業務', message: msg, okText: '完成' });
     if (!ok || s.closed) return;
   }
   s.busy = true;
-  renderCostFill(s);
-  const res = await apiCall('PUT', '/quotations/' + encodeURIComponent(s.id) + '/costs', { costs: c.costs, done: !!done, contingencyPct: risk === '' ? null : Number(risk) });
+  setCostBusy(s);
+  const body = { costLines: c.lines, done: !!done, contingencyPct: risk === '' ? null : Number(risk), costModel: 2 };
+  Object.assign(body, s.sigs || {});   // itemsSig／costLinesSig：載入時的版本，伺服器發現已過期就擋下（409 STALE_*）
+  const res = await apiCall('PUT', '/quotations/' + encodeURIComponent(s.id) + '/costs', body);
   if (s.closed) { if (res.ok) afterMutation(); return; }
+  if (!res.ok && res.data && COST_STALE_CODES.indexOf(res.data.code) >= 0) {
+    // 過期分頁：不重新載入、不重畫（輸入內容保留，簽章也維持舊值，再按一次儲存仍會被擋，使用者必須重新開啟）
+    const m = costErrMsg(res);
+    toast(m, 8000);
+    showCostStale(s, m);
+    s.busy = false;
+    setCostBusy(s);
+    return;
+  }
   if (res.ok) {
     s.dirty = false;
-    s.draft = {};
+    s.draftLines = null;
     delete s.risk;
     if (done) {
       toast('已完成，已通知業務');
@@ -1017,12 +1183,15 @@ async function submitCostFill(s, done) {
     toast('已儲存');
     afterMutation();
   } else {
-    toast(errMsg(res), 4500);
+    toast(costErrMsg(res), 6000);
   }
-  // 成敗都重載最新狀態（409 代表鎖定或結構已變）；使用者已輸入但未成功儲存的值保留在 s.draft
+  // 成敗都重載最新狀態（409 代表鎖定或版本已變）並重畫；使用者已輸入但未成功儲存的明細由 stashCostDraft 保留（s.draftLines）
   const r = await apiCall('GET', '/quotations/' + encodeURIComponent(s.id));
   if (s.closed) return;
-  if (r.ok && r.data && r.data.id) s.q = r.data;
+  if (r.ok && r.data && r.data.id) {
+    s.q = r.data;
+    if (!s.dirty) s.sigs = costSigsOf(r.data);   // 沒有保留中的草稿＝畫面會用最新資料重畫，簽章一併更新；有草稿（儲存失敗）就維持載入時的簽章
+  }
   s.busy = false;
   renderCostFill(s);
 }
@@ -1030,8 +1199,8 @@ async function submitCostFill(s, done) {
 async function openQuoteCostFill(id) {
   ensureStyle();
   closeCostFill();
-  const m = mountModal('quoteCostFillOverlay', '填寫成本', 'qap-sm', true);
-  const s = { id, q: null, busy: true, dirty: false, closed: false, ov: m.ov, body: m.body, foot: m.foot, draft: {} };
+  const m = mountModal('quoteCostFillOverlay', '填寫成本', 'qap-wide', true);
+  const s = { id, q: null, busy: true, dirty: false, closed: false, ov: m.ov, body: m.body, foot: m.foot, draftLines: null, ed: null, refOpen: true };
   _cf = s;
   s.onKey = (ev) => {
     if (ev.key !== 'Escape') return;
@@ -1043,6 +1212,7 @@ async function openQuoteCostFill(id) {
   s.ov.addEventListener('click', (ev) => {
     const t = ev.target.closest('[data-act]');
     if (!t || !s.ov.contains(t) || t.disabled) return;
+    if (t.closest('.qcl-root')) return;   // 編輯器自己的按鈕（新增／移動／刪除…）由 QCL 處理
     const act = t.dataset.act;
     if (act === 'close') requestCloseCostFill(s);
     else if (act === 'save') submitCostFill(s, false);
@@ -1052,20 +1222,17 @@ async function openQuoteCostFill(id) {
     const t = ev.target;
     if (t && t.dataset && t.dataset.risk !== undefined) { s.risk = t.value; s.dirty = true; }
   });
-  s.ov.addEventListener('input', (ev) => {
+  // 參考品項區收合狀態：重畫時維持使用者的選擇
+  s.ov.addEventListener('toggle', (ev) => {
     const t = ev.target;
-    if (t && t.dataset && t.dataset.lid !== undefined) {
-      s.draft[t.dataset.lid] = t.value;
-      s.dirty = true;
-      t.classList.remove('bad');
-      updateCostTotal(s);
-    }
-  });
+    if (t && t.classList && t.classList.contains('qap-ref')) s.refOpen = t.open;
+  }, true);
   renderCostFill(s);
   const r = await apiCall('GET', '/quotations/' + encodeURIComponent(id));
   if (s.closed) return;
   if (!r.ok || !r.data || !r.data.id) { toast(errMsg(r)); closeCostFill(); return; }
   s.q = r.data;
+  s.sigs = costSigsOf(r.data);
   s.busy = false;
   renderCostFill(s);
 }

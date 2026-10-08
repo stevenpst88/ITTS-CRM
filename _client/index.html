@@ -2714,7 +2714,7 @@
             </div>
           </div>
         </div>
-        <div id="qSelfCostHint" class="q-infobar" style="display:none">此單的商品都由業務自行填成本（例如 SAP 軟體授權），不需要顧問。請到「毛利與簽核路徑」頁籤填寫各品項成本。</div>
+        <div id="qSelfCostHint" class="q-infobar" style="display:none">此單的商品都由業務自行填成本（例如 SAP 軟體授權），不需要顧問。請到「毛利與簽核路徑」頁籤填寫專案成本明細（顧問／軟體／硬體／差旅／其他費用，含印花稅）。</div>
 
         <!-- 報價項目 -->
         <div class="quote-section-title" style="margin-top:20px">📦 報價項目</div>
@@ -2722,6 +2722,7 @@
           <table class="quote-items-table">
             <thead>
               <tr>
+                <th class="qi-dragth" style="width:24px" aria-label="拖曳排序"></th>
                 <th style="width:36px">#</th>
                 <th>品項說明</th>
                 <th style="width:60px">單位</th>
@@ -3057,6 +3058,7 @@
           integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
           crossorigin="anonymous"></script>
   <script src="app.js"></script>
+  <script src="quote-costlines.js"></script>
   <script src="quote.js"></script>
   <script src="quote-preview.js"></script>
   <script src="quote-pdf.js"></script>
