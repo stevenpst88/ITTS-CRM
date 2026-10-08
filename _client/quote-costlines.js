@@ -18,7 +18,8 @@
 //   QCL.totals(lines, revenue)              各分區小計、印花稅估算、合計（元、浮點，僅顯示用；金額以伺服器為準）
 //   QCL.revenueOf(items, type, value)       折扣後未稅營收（元）：與伺服器 computeFinancials 的 revenueCents/100 完全一致（逐列取整到分→加總→折扣取整到分）；
 //                                           畫面上所有「營收」（印花稅、毛利摘要）都用它，不要用 quote.js 的 quoteTotal 算出的 discounted（未取整的浮點）
-//   QCL.mount(el, opts)                     掛載編輯器（mode: 'edit' | 'view' | 'consultant'）→ {getLines, setLines, setItems, setRevenue, setLinkInfo, setNames, peek, collect, destroy}
+//   QCL.mount(el, opts)                     掛載編輯器（mode: 'edit' | 'view' | 'consultant'）→ {getLines, setLines, setItems, setRevenue, setLinkInfo, setNames, peek, peekCat, collect, destroy}
+//                                           peekCat(cat)＝只看某一分區的列數／小計／各項檢查（逐步填寫 quote-coststeps.js 用）
 //                                           mode:'consultant'＝顧問對話框：edit 加上每列「對應」欄（連動報價數量／拆項／不對應）與孤兒對應提示；opts.consultantNames＝顧問姓名欄的建議清單
 //   cost-sync（顧問成本畫面連動業務報價，與伺服器 lib/quoteCostLines.js 逐例鏡像，scripts/check-quote-costsync-ui.js 以 vm 隨機比對）：
 //   QCL.applyLinks(items, lines, newItems) / materializeItems / decimalSum   連動計算：rel='link' 的列把 Σ數量／單位寫回對應的報價品項（單位不一致＝衝突、加總 0＝zero）
@@ -886,7 +887,7 @@ function readDom(inst, markBlank) {
         tr.querySelector('.qcl-qty').classList.toggle('qcl-warn', !q.bad && l.qty === 0);
       }
       res.lines.push(l);
-      res.rows.push({ tr, line: l, bad: q.bad || c.bad });
+      res.rows.push({ tr, line: l, bad: q.bad || c.bad, qBad: q.bad, cBad: c.bad, badTarget: badT });
     });
   });
   // 印花稅列：勾選＝列存在。輸出的 stamp 列不帶 unitCost（伺服器忽略並自行計算）；
@@ -2369,6 +2370,29 @@ function mount(el, opts) {
     if (inst.dead || !inst.root || mode !== 'edit') return null;
     const rd = readDom(inst, false);
     return { lines: rd.lines, invalid: rd.invalid, blankDesc: rd.blankDesc, zeroQty: rd.zeroQty, badTarget: rd.badTarget };
+  };
+  /**
+   * 逐步填寫（顧問填成本，quote-coststeps.js）用：只看某一分區（cat）的列與檢查結果，不標記空白項目、不動焦點；唯讀模式回 null。
+   * 回傳 { n, cents, lines, invalid, blankDesc, zeroQty, badTarget, zeroCost, rows }：invalid／blankDesc／zeroQty／badTarget 是「列號（該區內 1 起算）」陣列，
+   * zeroCost 是成本單價為 0 的列數，rows 是 [{ no, rel, ids（forLid＋forLids） }]（呼叫端用來對照單位衝突）。檢查規則與 readDom／collect 完全相同（同一個函式讀出來）。
+   */
+  inst.peekCat = function (cat) {
+    if (inst.dead || !inst.root || mode !== 'edit' || !CAT_BY_KEY[cat]) return null;
+    const rd = readDom(inst, false);
+    const out = { n: 0, cents: 0, lines: [], invalid: [], blankDesc: [], zeroQty: [], badTarget: [], zeroCost: 0, rows: [] };
+    rd.rows.forEach((r) => {
+      const l = r.line;
+      if (!l || l.auto === 'stamp' || l.cat !== cat) return;
+      const no = ++out.n;
+      out.lines.push(l);
+      out.rows.push({ no, rel: l.rel || '', ids: lineLidList(l) });
+      if (r.bad) out.invalid.push(no); else out.cents += lineCents(l);
+      if (!l.desc) out.blankDesc.push(no);
+      if (!r.qBad && l.qty === 0) out.zeroQty.push(no);
+      if (r.badTarget) out.badTarget.push(no);
+      if (!r.cBad && l.unitCost === 0) out.zeroCost++;
+    });
+    return out;
   };
   inst.destroy = function () {
     if (inst.dead) return;

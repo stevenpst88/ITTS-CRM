@@ -577,10 +577,16 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
     els = {};
   }
 
+  /** 注入共用樣式（只注入一次）；顧問填成本的逐步畫面（quote-coststeps.js）沿用同一組 qs-* 樣式，所以也從這裡取 */
+  function ensureStyle() {
+    if (styleDone || (document.getElementById && document.getElementById('quoteStepsStyle'))) { styleDone = true; return; }
+    var st = document.createElement('style'); st.id = 'quoteStepsStyle'; st.textContent = CSS; document.head.appendChild(st); styleDone = true;
+  }
+
   function setup() {
     var body = el('quoteTabContentInfo'), main = el('qsMain'), rail = el('qsRail'), modal = modalEl();
     if (!body || !main || !rail || !modal) return;   // 標記不齊就不分步（維持完整表單）
-    if (!styleDone) { var st = document.createElement('style'); st.id = 'quoteStepsStyle'; st.textContent = CSS; document.head.appendChild(st); styleDone = true; }
+    ensureStyle();
     bindOnce(body);
     confirmed = {}; editing = null; review = false; touched = new Set(); lastWork = null; railSig = '';
     hadNeed = needsConsultant();
@@ -670,6 +676,8 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
     },
     /** 品項／優惠／商品勾選變動後呼叫（合併成一次重算） */
     refresh: function () { schedule(); },
+    /** 共用樣式注入（顧問填成本的逐步畫面用；不影響新增報價單的流程） */
+    ensureStyle: ensureStyle,
     /** 測試與除錯用：目前的步驟狀態（唯讀快照） */
     state: function () {
       if (!active || !snap) return { active: false };

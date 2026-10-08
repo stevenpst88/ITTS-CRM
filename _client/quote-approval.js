@@ -1142,6 +1142,7 @@ function cfRecalc(s, lines) {
   cfPaint(s, live);
   cfUpdateItems(s, live, lines);
   cfMarkChanged(s);
+  if (s.cst && typeof CostSteps !== 'undefined') CostSteps.refresh(s);   // 逐步填寫：成本明細或新增報價項目變了，重算各步驟的完成狀態（合併成一次）
   return live;
 }
 
@@ -1552,7 +1553,7 @@ function renderCostFill(s) {
     ${sync ? cfLiveHtml() : ''}
     ${sync ? cfItemsSectionHtml(s) : buildCostRefItems(q, s.refOpen !== false)}
     ${editorBlock}
-    <div class="qap-sec"><h3>風險預留（Contingency）</h3>
+    <div class="qap-sec" id="qapCfRisk"><h3>風險預留（Contingency）</h3>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <select class="qap-input" data-risk="1" style="width:auto;min-width:110px"${can && !s.busy ? '' : ' disabled'}>${riskOpts}</select>
         <span class="qap-muted">依這個專案的風險預估；毛利分析（內部）會把成本明細「顧問服務成本」區的小計 × 此比例另計為成本（風險預留不計入簽核用的毛利）。沒有風險請選 0%。</span>
@@ -1578,12 +1579,22 @@ function renderCostFill(s) {
     });
     if (sync) cfRecalc(s);
     else showCostTotal(s, QCL.totals(lines));
+    // 逐步填寫：只有「可編輯＋看得到價格的完整連動畫面」才分步（舊格式、唯讀、沒有編輯器維持原樣）；測試開關 window.__qNoSteps 見 quote-coststeps.js
+    if (sync && can && typeof CostSteps !== 'undefined' && CostSteps.allowed(s)) CostSteps.attach(s, CF_STEPS_API);
   } else {
     const tot = s.ov.querySelector('.qap-cf-tot');
     if (tot) tot.style.display = 'none';
   }
   s.body.scrollTop = keep;
 }
+
+/** 交給逐步填寫（quote-coststeps.js）的函式：這個檔案整個包在 IIFE 內，外面看不到這些函式，所以 attach 時當參數交出去 */
+const CF_STEPS_API = {
+  riskValue: (s) => costRiskValue(s),
+  newItemsProblem: (s, mark) => cfNewItemsProblem(s, mark),
+  doneMessage: (s, c, live, sync) => cfDoneMessage(s, c, live, sync),
+  rerender: (s) => renderCostFill(s),
+};
 
 /** 風險預留可選值（%）；與 lib/quoteRoutes.js 的 CONTINGENCY_PCTS 一致 */
 const QAP_CONTINGENCY_PCTS = [0, 5, 10, 15, 20];
@@ -1613,6 +1624,7 @@ function setCostBusy(s) {
   s.ov.querySelectorAll('#qapCfLive button, #qapCfItems input, #qapCfItems button, #qapCfAddItem').forEach((b) => { b.disabled = dis; });
   const sel = s.ov.querySelector('select[data-risk]');
   if (sel) sel.disabled = dis || !can;
+  if (s.cst && typeof CostSteps !== 'undefined') CostSteps.syncFooter(s);   // 逐步填寫：「完成並通知業務」在步驟沒走完前維持停用（上面的迴圈會把它一起放開）
 }
 
 /**
@@ -1664,8 +1676,36 @@ function cfDraftFromQuote(q) {
   return arr.map((n) => ({ nid: String(n.nid), desc: String(n.desc || ''), unit: String(n.unit || '式'), qty: Number(n.qty) || 0 }));
 }
 
+/**
+ * 按「完成並通知業務」前的確認視窗文字。submitCostFill 與逐步畫面的「確認並完成」（quote-coststeps.js）共用同一份，內容完全相同。
+ * c＝{ zeroCost（成本單價為 0 的列數）, lines（目前的成本列）}；live＝連動試算結果（沒有連動畫面時 null）；sync＝是否走完整連動畫面。
+ */
+function cfDoneMessage(s, c, live, sync) {
+  let msg = '完成後會通知業務，你仍可在送簽前修改。';
+  if (c.zeroCost > 0) msg = '有 ' + c.zeroCost + ' 列成本單價填的是 0（贈品或不計成本的列可以是 0；若不是，請先回去填寫）。\n\n' + msg;
+  const syncTxt = live ? QCL.syncConfirmText(live.changes) : '';
+  if (syncTxt) msg = syncTxt + '\n\n' + msg;
+  // 連動寫回後報價合計會變多少：顧問當下就看到前後金額（連動選錯會讓金額成倍變動）；與議價折扣衝突時一併警告
+  if (live && live.changes && live.changes.length && typeof QCL.revenueOf === 'function') {
+    const before = QCL.revenueOf(s.q.items, s.q.discountType, s.q.discountValue), after = live.revenue;
+    if (isFinite(before) && isFinite(after) && Math.round(before * 100) !== Math.round(after * 100)) {
+      const ntd = (n) => 'NT$ ' + Math.round(n).toLocaleString('en-US');
+      const pct = before > 0 ? '（' + (after >= before ? '+' : '') + ((after - before) / before * 100).toFixed(1) + '%）' : '';
+      msg = '報價合計將由 ' + ntd(before) + ' 變為 ' + ntd(after) + pct + '。\n\n' + msg;
+    }
+    const dc = ((s.sum && s.sum.preview && s.sum.preview.blockers) || []).filter((b) => b && /DISCOUNT/.test(String(b.code || ''))).map((b) => b.message || b.code);
+    if (dc.length) msg = '⚠ 連動後報價合計與議價折扣衝突（' + dc.join('；') + '），業務需先調整折扣才能送簽。\n\n' + msg;
+  }
+  // 成本明細與報價品項不必一一對應（整包、一式拆多列）：找不到對應列的品項只提醒、不擋（可能是已包含在其他列，也可能是漏填，例如業務事後新增品項）
+  const un = typeof QCL.unmatchedItemsNote === 'function' ? QCL.unmatchedItemsNote(c.lines, sync ? cfEditorItems(s) : s.q.items, { classCodes: costClassCodes(s.q), link: sync }) : '';
+  if (un) msg = un + '\n\n' + msg;
+  return msg;
+}
+
 async function submitCostFill(s, done) {
   if (s.busy || !s.q || !(s.q.perm || {}).canEditCost || !s.ed || typeof QCL === 'undefined') return;
+  // 逐步填寫（quote-coststeps.js）：步驟沒走完不能「完成並通知業務」（按鈕本來就停用，這裡是第二道防線）；「儲存」草稿不受影響
+  if (done && s.cst && typeof CostSteps !== 'undefined' && !CostSteps.canFinish(s)) { toast('還有步驟沒完成，請先走完所有步驟再按「完成並通知業務」（可以先按「儲存」存成草稿）'); return; }
   const sync = cfCanSync(s);
   const mountEl = s.ov.querySelector('#qapCfMount');
   const c = QCL.collect(mountEl);
@@ -1692,24 +1732,7 @@ async function submitCostFill(s, done) {
       if (live.zero.length) { toast('連動後的報價品項數量需大於 0：' + nm(live.zero) + '。請填數量，或把連動的列改成「拆項」', 8000); focusMark('#qapCfMount .qcl-warn, #qapCfMount .qcl-linknote.bad'); return; }
       if ((s.q.items || []).length + (s.newItems || []).length > 50) { toast('新增報價項目後總列數會超過 50 列（含分組標題與小計列），請減少新增的項目'); return; }
     }
-    let msg = '完成後會通知業務，你仍可在送簽前修改。';
-    if (c.zeroCost > 0) msg = '有 ' + c.zeroCost + ' 列成本單價填的是 0（贈品或不計成本的列可以是 0；若不是，請先回去填寫）。\n\n' + msg;
-    const syncTxt = live ? QCL.syncConfirmText(live.changes) : '';
-    if (syncTxt) msg = syncTxt + '\n\n' + msg;
-    // 連動寫回後報價合計會變多少：顧問當下就看到前後金額（連動選錯會讓金額成倍變動）；與議價折扣衝突時一併警告
-    if (live && live.changes && live.changes.length && typeof QCL.revenueOf === 'function') {
-      const before = QCL.revenueOf(s.q.items, s.q.discountType, s.q.discountValue), after = live.revenue;
-      if (isFinite(before) && isFinite(after) && Math.round(before * 100) !== Math.round(after * 100)) {
-        const ntd = (n) => 'NT$ ' + Math.round(n).toLocaleString('en-US');
-        const pct = before > 0 ? '（' + (after >= before ? '+' : '') + ((after - before) / before * 100).toFixed(1) + '%）' : '';
-        msg = '報價合計將由 ' + ntd(before) + ' 變為 ' + ntd(after) + pct + '。\n\n' + msg;
-      }
-      const dc = ((s.sum && s.sum.preview && s.sum.preview.blockers) || []).filter((b) => b && /DISCOUNT/.test(String(b.code || ''))).map((b) => b.message || b.code);
-      if (dc.length) msg = '⚠ 連動後報價合計與議價折扣衝突（' + dc.join('；') + '），業務需先調整折扣才能送簽。\n\n' + msg;
-    }
-    // 成本明細與報價品項不必一一對應（整包、一式拆多列）：找不到對應列的品項只提醒、不擋（可能是已包含在其他列，也可能是漏填，例如業務事後新增品項）
-    const un = typeof QCL.unmatchedItemsNote === 'function' ? QCL.unmatchedItemsNote(c.lines, sync ? cfEditorItems(s) : s.q.items, { classCodes: costClassCodes(s.q), link: sync }) : '';
-    if (un) msg = un + '\n\n' + msg;
+    const msg = cfDoneMessage(s, c, live, sync);
     const ok = await qapConfirm({ title: '完成並通知業務', message: msg, okText: '完成' });
     if (!ok || s.closed) return;
   }
