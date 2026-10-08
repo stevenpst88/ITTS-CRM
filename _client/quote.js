@@ -147,8 +147,22 @@ body.dark .q-chip.dim { background:#21262d; color:#8b949e; }
 body.dark .q-pv ul { color:#c9d1d9; }
 body.dark .q-dlg-body { color:#c9d1d9; }
 
+/* cost-sync：顧問調整報價品項的橫幅、待補單價 */
+.q-cs-banner { margin:0; padding:10px 20px; background:#e8f0fe; border-bottom:1px solid #c6dafc; color:#174ea6; font-size:13px; line-height:1.7; }
+.q-cs-banner b { font-weight:700; }
+.q-cs-banner .q-cs-list { margin:4px 0 0 18px; padding:0; }
+.q-cs-banner .q-cs-need { margin-top:6px; padding:5px 10px; border-radius:6px; background:#fff4e5; color:#8a4b00; border:1px solid #f5c98b; }
+.q-cs-banner .q-cs-need[hidden] { display:none; }
+.qi-needchip { display:inline-block; margin-top:3px; padding:0 8px; font-size:11.5px; line-height:1.7; border-radius:9px; font-weight:600; background:#fff4e5; color:#8a4b00; border:1px solid #f5c98b; white-space:nowrap; }
+.qi-needchip[hidden] { display:none; }
+input.qi-price.qi-need { border-color:#f29900 !important; background:#fff8e6; box-shadow:0 0 0 2px rgba(242,153,0,.25); }
+body.dark .q-cs-banner { background:#0d2040; border-bottom-color:#1c3a5f; color:#8ecfff; }
+body.dark .q-cs-banner .q-cs-need, body.dark .qi-needchip { background:#2a2000; border-color:#5a4000; color:#d4a84e; }
+body.dark input.qi-price.qi-need { background:#2a2000; border-color:#d4a84e !important; }
+
 @media (max-width: 620px) {
   .q-actions { min-width:0; max-width:none; }
+  .q-cs-banner { padding:10px 14px; }
   .qp-list { max-height:200px; }
 }
 `;
@@ -1043,14 +1057,27 @@ function _qClRevenue() {
   return _qRevenue(readQuoteItems(), d.discountType, d.discountValue);
 }
 
+/** 目前的成本明細列：編輯中讀編輯器，唯讀就用已載入的 q.costLines */
+function _qClLines() {
+  const q = _qEditing;
+  if (_qPnlMode === 'edit' && _qCl.inst && !_qCl.inst.dead) return _qCl.inst.getLines();
+  if (q && Array.isArray(q.costLines)) return q.costLines;
+  return [];
+}
+
 /** 目前成本明細的合計（元，含印花稅）：編輯中讀編輯器，唯讀就用已載入的 q.costLines */
 function _qClCostTotal(revenue) {
   if (typeof QCL === 'undefined') return 0;
-  const q = _qEditing;
-  let lines = [];
-  if (_qPnlMode === 'edit' && _qCl.inst && !_qCl.inst.dead) lines = _qCl.inst.getLines();
-  else if (q && Array.isArray(q.costLines)) lines = q.costLines;
-  return QCL.totals(lines, revenue).total;
+  return QCL.totals(_qClLines(), revenue).total;
+}
+
+/** 「顧問姓名」欄的建議清單（datalist）：簽核設定的顧問名單顯示名＋這張單的支援顧問；取不到就沒有建議，不影響填寫 */
+function _qConsultantNames() {
+  const out = [];
+  const add = function (x) { const t = String(x || '').trim(); if (t && out.indexOf(t) < 0) out.push(t); };
+  try { (quoteCfg().costProviders || []).forEach(function (p) { add(p && p.displayName); }); } catch (err) { /* 沒有名單就沒有建議 */ }
+  if (_qEditing) add(_qEditing.costByName);
+  return out;
 }
 
 /** 在 #pnlClSlot 掛上成本明細：edit＝可編輯（實例保留）、view＝唯讀 */
@@ -1082,7 +1109,7 @@ function _qPnlMountLines(mode, q, hasLines) {
   const lines = hasLines ? q.costLines : QCL.seedFromItems(items, { classCodes: classCodes, includeStamp: !q });
   _qCl.touched = false;
   _qCl.opts = {
-    mode: 'edit', lines: lines, items: items, revenue: revenue, classCodes: classCodes,
+    mode: 'edit', lines: lines, items: items, revenue: revenue, classCodes: classCodes, consultantNames: _qConsultantNames(),
     confirm: function (msg) {
       return qDialog({ title: '請確認', message: msg, buttons: [{ text: '確定', value: true, cls: 'btn-primary' }, { text: '取消', value: false, cls: 'btn-secondary' }] });
     },
@@ -1091,13 +1118,15 @@ function _qPnlMountLines(mode, q, hasLines) {
   _qCl.inst = QCL.mount(_qCl.host, _qCl.opts);
 }
 
-/** 毛利摘要四張卡（id 供 updatePnlNumbers 填值） */
-function _qPnlSummaryHtml(marginTop) {
-  return `<div class="pnl-summary-bar" style="margin-top:${marginTop}px"><div class="pnl-sum-grid">
+/** 毛利摘要四張卡（id 供 updatePnlNumbers 填值）；withOs（新式成本）另加第五張「委外佔比」卡（cost-sync §7.2，與四張卡同一排） */
+function _qPnlSummaryHtml(marginTop, withOs) {
+  const os = withOs && typeof QCL !== 'undefined' && typeof QCL.outsourcedCardHtml === 'function' ? QCL.outsourcedCardHtml(QCL.outsourcedCardModel(null), 'pnlOsCard') : '';
+  return `<div class="pnl-summary-bar" style="margin-top:${marginTop}px"><div class="pnl-sum-grid${os ? ' qcl-g5' : ''}">
         <div class="pnl-sum-card"><div class="pnl-sum-label">報價合計（未稅，折扣後）</div><div class="pnl-sum-value" id="pnlRevenue">NT$ 0</div></div>
         <div class="pnl-sum-card"><div class="pnl-sum-label">成本合計</div><div class="pnl-sum-value" id="pnlCostTotal">NT$ 0</div></div>
         <div class="pnl-sum-card"><div class="pnl-sum-label">毛利</div><div class="pnl-sum-value pnl-gp-val" id="pnlGrossProfit">NT$ 0</div></div>
         <div class="pnl-sum-card pnl-margin-card"><div class="pnl-sum-label">整體毛利率（畫面試算）</div><div class="pnl-sum-value pnl-margin-val" id="pnlMarginPct">—</div></div>
+        ${os}
       </div></div>`;
 }
 
@@ -1148,7 +1177,7 @@ function renderPnlTab() {
       : '';
     if (linesView) {
       // 新式成本：摘要放最上面（成本明細很長，編輯時看得到毛利變化），下面是成本明細（編輯器或唯讀）
-      html += _qPnlSummaryHtml(12);
+      html += _qPnlSummaryHtml(12, true);
       html += '<div id="pnlDiscountNote" class="pnl-discount-note" style="display:none"></div>';
       // 有價品項沒有成本列涵蓋的常駐提醒（只在業務自填的編輯模式有內容；純提醒、不擋；由 updatePnlNumbers 即時更新）
       html += '<div id="pnlUnmatchedNote" class="q-warnbar" role="status" style="display:none;margin-top:10px"></div>';
@@ -1240,6 +1269,12 @@ function updatePnlNumbers() {
   pctEl.textContent = t === null ? '—' : t + '%';
   pctEl.className = 'pnl-sum-value pnl-margin-val ' + (t === null ? '' : marginClass(parseFloat(t)));
 
+  // 委外佔比卡（新式成本才有）：與成本合計同一份成本列與營收，所以兩者永遠對得上
+  const osCard = document.getElementById('pnlOsCard');
+  if (osCard && typeof QCL !== 'undefined' && typeof QCL.outsourcedStats === 'function') {
+    try { QCL.paintOutsourcedCard(osCard, QCL.outsourcedCardModel(QCL.outsourcedStats(_qClLines(), revenue))); } catch (err) { /* 卡片算不出來不影響其他數字 */ }
+  }
+
   const discNote = $('pnlDiscountNote');
   if (discNote) {
     if (discountType !== 'none' && discountValue) {
@@ -1269,6 +1304,39 @@ function closeQuoteModal() {
   $('quoteModalOverlay').style.display = 'none';
   _qEditing = null;
   _qClReset();
+}
+
+/**
+ * 表單頂部橫幅（cost-sync）：顧問最近一次「完成」時同步到報價的品項異動（q.costFlow.itemChanges：品名、數量／單位前後值、新增的品項），
+ * 另有一行「尚有 N 個待補單價」（即時隨表單更新）。沒有異動也沒有待補單價就整個隱藏。業務存檔後橫幅不清除，直到顧問下次完成才換新內容。
+ */
+function renderCostSyncBanner(q) {
+  const box = document.getElementById('qCostSyncBanner');
+  if (!box) return;
+  const cf = q && q.costFlow;
+  const ch = cf && Array.isArray(cf.itemChanges) ? cf.itemChanges : [];
+  const needN = q && Array.isArray(q.items) ? q.items.filter(function (it) { return it && it.needPrice === true; }).length : 0;
+  if (!ch.length && !needN) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const nm = function (d) { const s = String(d || '').trim() || '（未命名）'; return '「' + escapeHtml(s.length > 24 ? s.slice(0, 24) + '…' : s) + '」'; };
+  const num = function (v) { const n = Number(v); return escapeHtml(isFinite(n) ? String(Math.round(n * 10000) / 10000) : String(v === undefined || v === null ? '' : v)); };
+  let html = '';
+  if (ch.length) {
+    const who = cf.itemChangesByName || cf.byName || q.costByName || '顧問';
+    const rows = ch.slice(0, 12).map(function (c) {
+      if (c.field === 'new') return '<li>新增品項' + nm(c.desc) + '：數量 ' + num(c.to) + (c.unit ? ' ' + escapeHtml(c.unit) : '') + '（單價待你補填）</li>';
+      if (c.field === 'unit') return '<li>' + nm(c.desc) + '：單位 ' + escapeHtml(String(c.from === undefined || c.from === null || c.from === '' ? '（空白）' : c.from)) + ' → <b>' + escapeHtml(String(c.to)) + '</b></li>';
+      return '<li>' + nm(c.desc) + '：數量 ' + num(c.from) + ' → <b>' + num(c.to) + '</b></li>';
+    }).join('');
+    const more = ch.length - 12 + (Number(cf.itemChangesMore) || 0);
+    html += '<div><b>' + escapeHtml(who) + '</b> 於 ' + escapeHtml(cf.itemChangesAt ? _qFmtTime(cf.itemChangesAt) : '') + ' 調整了報價品項（依顧問填寫的成本明細同步）：</div><ul class="q-cs-list">' + rows + (more > 0 ? '<li>…另 ' + more + ' 項</li>' : '') + '</ul>';
+  }
+  if (ch.length && cf.itemChangesRev && isFinite(Number(cf.itemChangesRev.from)) && isFinite(Number(cf.itemChangesRev.to))) {
+    const ntd = function (c) { return 'NT$ ' + Math.round(Number(c) / 100).toLocaleString('en-US'); };
+    html += '<div class="q-cs-rev" style="margin-top:4px">報價合計：<b>' + escapeHtml(ntd(cf.itemChangesRev.from)) + ' → ' + escapeHtml(ntd(cf.itemChangesRev.to)) + '</b></div>';
+  }
+  html += '<div class="q-cs-need" id="qCostSyncNeed"' + (needN ? '' : ' hidden') + '>' + (needN ? '尚有 ' + needN + ' 個顧問新增的品項待補單價，補完單價之前無法送簽。' : '') + '</div>';
+  box.innerHTML = html;
+  box.style.display = '';
 }
 
 /** 表單上方「簽核狀態」唯讀區 */
@@ -1380,6 +1448,7 @@ async function openQuoteModal(idOrNull) {
       ? q.items
       : [{ desc: '', unit: '式', qty: 1, unitPrice: 0 }];
     renderQuoteItems(items);
+    renderCostSyncBanner(q);
     // 儲存前確認的基準：載入當時就沒有成本列涵蓋的有價品項（整包成本等合法情境）不必每次儲存都再問一次；之後只對基準以外新出現的未涵蓋品項確認
     _qCl.unBase = _qUnmatchedBaseline(q);
 
@@ -1762,17 +1831,21 @@ function renderQuoteItems(items) {
     const price = parseFloat(it.unitPrice) || 0;
     // 還沒存檔的新品項沒有 lid：data-nid 是畫面給它的暫時代號（成本明細的列用它指向這個品項；存檔時伺服器換成真正的 lid）。移動／刪除其他列重畫時要跟著列保留
     const nidAttr = !it.lid && it.nid ? ' data-nid="' + escapeHtml(it.nid) + '"' : '';
-    const attrs = lidAttr + nidAttr +
+    // 顧問新增、待業務補單價的品項（cost-sync）：整列帶 data-needprice，補了單價（>0）就自動取消標示；旗標由伺服器維護，送出時伺服器忽略
+    const needAttr = it.needPrice === true ? ' data-needprice="1"' : '';
+    const needOn = it.needPrice === true && !(price > 0);
+    const attrs = lidAttr + nidAttr + needAttr +
       (it.cost !== undefined && it.cost !== null && it.cost !== '' ? ' data-cost="' + escapeHtml(String(it.cost)) + '"' : '');
     return '<tr data-idx="' + i + '"' + attrs + '>' + dragTd +
       '<td style="text-align:center;color:#999;font-size:12px">' + seq + '</td>' +
       '<td><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" ' +
-        'placeholder="品項說明" style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box"></td>' +
+        'placeholder="品項說明" style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box">' +
+        (it.needPrice === true ? '<span class="qi-needchip"' + (needOn ? '' : ' hidden') + ' title="這個品項是顧問新增的，單價要由你補填；補完單價前不能送簽">待補單價</span>' : '') + '</td>' +
       '<td><input type="text" class="qi-unit" value="' + escapeHtml(it.unit || '式') + '" ' +
         'style="width:54px;border:1px solid #ddd;border-radius:4px;padding:5px 6px;font-size:13px;text-align:center"></td>' +
       '<td><input type="number" class="qi-qty" value="' + qty + '" min="0.001" step="1" ' +
         'style="width:64px;border:1px solid #ddd;border-radius:4px;padding:5px 6px;font-size:13px;text-align:right"></td>' +
-      '<td><input type="number" class="qi-price" value="' + price + '" min="0" step="1" ' +
+      '<td><input type="number" class="qi-price' + (needOn ? ' qi-need' : '') + '" value="' + price + '" min="0" step="1" ' +
         'style="width:104px;border:1px solid #ddd;border-radius:4px;padding:5px 6px;font-size:13px;text-align:right"></td>' +
       '<td class="qi-subtotal" style="text-align:right;font-size:13px;padding-right:6px;white-space:nowrap">' +
         fmtMoney(qty * price) + '</td>' +
@@ -1864,7 +1937,26 @@ function updateQuoteSubtotalRows() {
     const price = parseFloat(row.querySelector('.qi-price').value) || 0;
     row.querySelector('.qi-subtotal').textContent = fmtMoney(qty * price);
     acc += qty * price;
+    if (row.dataset.needprice === '1') {   // 待補單價標示：單價補到 > 0 就取消
+      const on = !(price > 0);
+      row.querySelector('.qi-price').classList.toggle('qi-need', on);
+      const chip = row.querySelector('.qi-needchip');
+      if (chip) chip.hidden = !on;
+    }
   });
+  updateQuoteNeedPriceBanner();
+}
+
+/** 橫幅裡「尚有 N 項待補單價」那一行：依目前表單上的列即時更新（補完單價就消失） */
+function updateQuoteNeedPriceBanner() {
+  const el = document.getElementById('qCostSyncNeed');
+  if (!el) return;
+  const n = Array.from(document.querySelectorAll('#quoteItemsBody tr[data-needprice="1"]')).filter(function (row) {
+    const p = row.querySelector('.qi-price');
+    return !(p && parseFloat(p.value) > 0);
+  }).length;
+  el.hidden = n === 0;
+  el.textContent = n ? '尚有 ' + n + ' 個顧問新增的品項待補單價，補完單價之前無法送簽。' : '';
 }
 
 // ── 品項「毛利分類」（毛利分析 PNL 表用）─────────────────────────
@@ -1911,6 +2003,7 @@ function readQuoteItems() {
       it.nid = row.dataset.nid;
     }
     if (row.dataset.cost !== undefined) it.cost = parseFloat(row.dataset.cost) || 0;
+    if (row.dataset.needprice === '1') it.needPrice = true;   // 只讓重畫（移動、刪除其他列）時旗標跟著列走；伺服器依 lid 自己維護，忽略送上去的值
     const catSel = row.querySelector('.qi-cat');
     if (catSel) it.cat = catSel.value;            // ''＝自動；一律送出，伺服器才知道使用者把分類清回「自動」
     return it;

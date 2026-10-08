@@ -383,12 +383,20 @@ function run() {
     const withItems = (fn) => mkQ({ items: fn(mkItems()) });
     t('7.3 itemsSig 對「價格金額」變動不變（單價 123456→1、維持有價；cost 改值；折扣；costLines 改動）', QA.itemsSig(withItems((x) => { x[0].unitPrice = 1; return x; })) === iS
       && QA.itemsSig(withItems((x) => { x[0].cost = 99999; x[1].cost = 0; return x; })) === iS && QA.itemsSig(mkQ({ discountType: 'percent', discountValue: 90 })) === iS
-      && QA.itemsSig(mkQ({ costLines: [] })) === iS && QA.itemsSig(mkQ({ costLines: undefined })) === iS);
+      && QA.itemsSig(mkQ({ costLines: [] })) === iS);   // cost-sync：沒有 costLines 的舊式單 itemsSig 仍含有價位元（格式不同，見 7.5b），所以不拿來跟新式的 iS 比
     // itemsSig：結構變動會變
     const chg = (fn) => QA.itemsSig(withItems(fn)) !== iS;
     t('7.4 itemsSig 對結構變動會變：新增品項、刪除品項、改說明、改數量、改單位、改 lid', chg((x) => x.concat([{ lid: 'c', desc: '新', unit: '式', qty: 1, unitPrice: 5 }])) && chg((x) => x.slice(1)) && chg((x) => { x[0].desc = '品項甲2'; return x; })
       && chg((x) => { x[0].qty = 3; return x; }) && chg((x) => { x[0].unit = '套'; return x; }) && chg((x) => { x[0].lid = 'a2'; return x; }));
-    t('7.5 itemsSig：有價↔無價（單價 0）會變（贈品列改成有價必須讓顧問重看），與 lineStructureSig 同一條規則', chg((x) => { x[0].unitPrice = 0; return x; }) && chg((x) => { x[1].unitPrice = '0'; return x; }));
+    // cost-sync（規格 §3.3）：新式成本（有 costLines）的結構簽章不再含「是否有價」位元——業務幫顧問新增的品項補單價，不該讓已完成的成本退回、也不該讓顧問畫面過期
+    t('7.5 itemsSig（新式成本，有 costLines）：有價↔無價（單價 0）不會變；結構（說明／數量／單位／增刪）改變仍會變（cost-sync 改變：以前會變）', !chg((x) => { x[0].unitPrice = 0; return x; }) && !chg((x) => { x[1].unitPrice = '0'; return x; }) && !chg((x) => { x[0].unitPrice = ''; return x; }));
+    {
+      // 舊式單（沒有 costLines）維持原規則：有價位元要進簽章（贈品列改成有價必須讓顧問重看）
+      const oldQ = (fn) => ({ id: 'q-sig-1', items: fn(mkItems()), discountType: 'none', discountValue: 0 });
+      const oS = QA.itemsSig(oldQ((x) => x));
+      t('7.5b itemsSig（舊式單，沒有 costLines）：有價↔無價會變（與改版前相同）；單價金額改變（維持有價）不變；與新式單的簽章格式不同', QA.itemsSig(oldQ((x) => { x[0].unitPrice = 0; return x; })) !== oS && QA.itemsSig(oldQ((x) => { x[1].unitPrice = '0'; return x; })) !== oS
+        && QA.itemsSig(oldQ((x) => { x[0].unitPrice = 1; return x; })) === oS && oS !== iS && QA.lineStructureSig(mkItems()).split(String.fromCharCode(10))[0].split('|').length === 5 && QA.lineStructureSig(mkItems(), { newStyle: true }).split(String.fromCharCode(10))[0].split('|').length === 4);
+    }
     t('7.6 itemsSig：分組標題／小計列增減不影響（與 lineStructureSig 一致）；列順序不影響', QA.itemsSig(withItems((x) => [{ lid: 't', kind: 'title', desc: 'Part A' }].concat(x, [{ lid: 's', kind: 'subtotal', desc: '小計' }]))) === iS
       && QA.itemsSig(withItems((x) => x.slice().reverse())) === iS);
     // costLinesSig

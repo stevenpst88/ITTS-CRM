@@ -18,7 +18,13 @@
 //   QCL.totals(lines, revenue)              各分區小計、印花稅估算、合計（元、浮點，僅顯示用；金額以伺服器為準）
 //   QCL.revenueOf(items, type, value)       折扣後未稅營收（元）：與伺服器 computeFinancials 的 revenueCents/100 完全一致（逐列取整到分→加總→折扣取整到分）；
 //                                           畫面上所有「營收」（印花稅、毛利摘要）都用它，不要用 quote.js 的 quoteTotal 算出的 discounted（未取整的浮點）
-//   QCL.mount(el, opts)                     掛載編輯器（mode: 'edit' | 'view'）→ {getLines, setLines, destroy, …}
+//   QCL.mount(el, opts)                     掛載編輯器（mode: 'edit' | 'view' | 'consultant'）→ {getLines, setLines, setItems, setRevenue, setLinkInfo, setNames, peek, collect, destroy}
+//                                           mode:'consultant'＝顧問對話框：edit 加上每列「對應」欄（連動報價數量／拆項／不對應）與孤兒對應提示；opts.consultantNames＝顧問姓名欄的建議清單
+//   cost-sync（顧問成本畫面連動業務報價，與伺服器 lib/quoteCostLines.js 逐例鏡像，scripts/check-quote-costsync-ui.js 以 vm 隨機比對）：
+//   QCL.applyLinks(items, lines, newItems) / materializeItems / decimalSum   連動計算：rel='link' 的列把 Σ數量／單位寫回對應的報價品項（單位不一致＝衝突、加總 0＝zero）
+//   QCL.isOutsourced / outsourcedStats / outsourcedFromBreakdown              委外占比：顧問服務區有填委外廠商的列；委外 ÷ 專案總成本（含差旅／交際費／印花稅，不含風險預留）、委外 ÷ 顧問服務成本
+//   QCL.liveSummary / outsourcedCardModel / outsourcedCardHtml / paintOutsourcedCard   顧問對話框頂端卡片的數字（與伺服器草稿試算逐分相同）與第五張「委外佔比」卡
+//   QCL.syncConfirmText(changes)            按「完成」前的「將同步更新業務的報價」清單文字
 //   QCL.collect(el)                         從 DOM 讀回 {lines, invalid, blankDesc, zeroCost, zeroQty}
 //   QCL.dragSort(container, opts)           拖曳排序核心（Pointer Events 滑鼠／觸控＋鍵盤移動模式）。編輯模式每列有把手（⋮⋮），只能在同一分區內拖；
 //                                           報價項目表（quote.js）也用同一個函式。純函式 QCL.dragTargetIndex(rects, y[, fromIdx])／QCL.dragLineY(rects, slot)
@@ -41,20 +47,27 @@
 const MAX_LINES = 60;
 const MAX_FOR_LIDS = 60;   // forLids（合併為一列後所涵蓋的品項代碼）上限，與伺服器相同
 const DESC_MAX = 120, VENDOR_MAX = 60, NOTE_MAX = 200, UNIT_MAX = 10, LID_MAX = 64;
+const CONSULTANT_MAX = 40;   // 顧問姓名（只有顧問服務區），與伺服器 LIMITS.consultant 相同
 const QTY_MAX = 1e9, COST_MAX = 1e12;
 const DEFAULT_UNIT = '式';
 const STAMP_DESC = '印花稅(合約金額×0.1%)';
 const STAMP_RATE = 0.001;
 const SEED_TRAVEL_DESC = '差旅交通';
 const SEED_ENTERTAIN_DESC = '交際費';
+// 成本列與報價品項的對應方式（cost-sync，規格 §2）：link＝顧問改這列的單位／數量，按「完成」時寫回對應的報價品項；split＝對應某品項但不連動；none＝純成本
+const RELS = Object.freeze(['link', 'split', 'none']);
+const REL_LABELS = Object.freeze({ link: '連動報價數量', split: '拆項（報價不動）', none: '不對應（純成本）' });
+const MIN_ITEM_QTY = 0.001;   // 與伺服器／業務存檔的報價品項數量下限相同
+const MAX_NEW_ITEMS = 20;     // 顧問在草稿裡新增的報價項目上限（伺服器 MAX_NEW_ITEMS）
 
 // 五區（對應 PNL 的 1 顧問成本／2 軟體成本／3 硬體成本／4 差旅／5 其他費用）
+// hasConsultant：只有顧問服務區有「顧問姓名」欄（自家顧問填姓名、委外填「委外廠商」；兩欄可同時有值）
 const CATS = Object.freeze([
-  Object.freeze({ key: 'consult',  name: '顧問服務成本', hasVendor: true,  vendorLabel: '委外廠商', vendorHint: '自有顧問免填', hasNote: true, descHint: '角色（例：PM）' }),
-  Object.freeze({ key: 'software', name: '軟體成本',     hasVendor: true,  vendorLabel: '供應商',   vendorHint: '供應商',       hasNote: true, descHint: '品名' }),
-  Object.freeze({ key: 'hw',       name: '硬體成本',     hasVendor: true,  vendorLabel: '供應商',   vendorHint: '供應商',       hasNote: true, descHint: '品名' }),
-  Object.freeze({ key: 'travel',   name: '差旅費用',     hasVendor: false, vendorLabel: '',         vendorHint: '',             hasNote: true, descHint: '項目（例：差旅交通）' }),
-  Object.freeze({ key: 'other',    name: '其他費用',     hasVendor: false, vendorLabel: '',         vendorHint: '',             hasNote: true, descHint: '項目' }),
+  Object.freeze({ key: 'consult',  name: '顧問服務成本', hasVendor: true,  hasConsultant: true,  vendorLabel: '委外廠商', vendorHint: '自家顧問免填', hasNote: true, descHint: '角色（例：PM）' }),
+  Object.freeze({ key: 'software', name: '軟體成本',     hasVendor: true,  hasConsultant: false, vendorLabel: '供應商',   vendorHint: '供應商',       hasNote: true, descHint: '品名' }),
+  Object.freeze({ key: 'hw',       name: '硬體成本',     hasVendor: true,  hasConsultant: false, vendorLabel: '供應商',   vendorHint: '供應商',       hasNote: true, descHint: '品名' }),
+  Object.freeze({ key: 'travel',   name: '差旅費用',     hasVendor: false, hasConsultant: false, vendorLabel: '',         vendorHint: '',             hasNote: true, descHint: '項目（例：差旅交通）' }),
+  Object.freeze({ key: 'other',    name: '其他費用',     hasVendor: false, hasConsultant: false, vendorLabel: '',         vendorHint: '',             hasNote: true, descHint: '項目' }),
 ]);
 const CAT_BY_KEY = Object.create(null);
 CATS.forEach((c) => { CAT_BY_KEY[c.key] = c; });
@@ -115,9 +128,17 @@ function lineAmount(l) {
   return +(q * c).toPrecision(12);
 }
 
-/** 單列金額（分，整數）：與伺服器同規則——每列先取整到分再加總 */
+/**
+ * 單列金額（分，整數）：與伺服器同規則——每列先取整到分再加總。
+ * 有 BigInt 時用十進位精確運算（＝伺服器 centsOf：round-half-up(qty×unitCost×100)），與伺服器逐分相同（卡片上的成本／毛利／委外占比要和伺服器試算一致）；
+ * 沒有 BigInt 的舊瀏覽器退回浮點估算。
+ */
 function lineCents(l) {
   const q = clampNum(l && l.qty, QTY_MAX, 0), c = clampNum(l && l.unitCost, COST_MAX, 0);
+  if (HAS_BIGINT) {
+    const a = decParts(q), b = decParts(c);
+    if (a && b) return Number(divRound(a.n * b.n * BigInt(100), pow10(a.s + b.s)));
+  }
   return roundClean(q * c * 100);
 }
 
@@ -244,12 +265,14 @@ function cleanLine(raw) {
     o.qty = clampNum(raw.qty, QTY_MAX, 1);
     o.unitCost = clampNum(raw.unitCost, COST_MAX, 0);
   }
-  const forLid = text(raw.forLid, LID_MAX);
+  // rel：對應方式（只認 link／split／none；印花稅列固定不對應）。none＝純成本，沒有對應目標：forLid／forLids 一律丟掉（同伺服器）
+  const rel = !stamp && typeof raw.rel === 'string' && RELS.indexOf(raw.rel) >= 0 ? raw.rel : '';
+  const forLid = rel === 'none' ? '' : text(raw.forLid, LID_MAX);
   if (forLid) o.forLid = forLid;
   if (!stamp) {
     // forLids：合併為一列時帶著被併各列的 forLid∪forLids，只供涵蓋判定（與伺服器同規則：字串、去頭尾空白、截 64、去空白與重複、剔除與 forLid 相同者、上限 60）
     const fl = [];
-    if (Array.isArray(raw.forLids)) {
+    if (rel !== 'none' && Array.isArray(raw.forLids)) {
       const seen = Object.create(null);
       for (let i = 0; i < raw.forLids.length && fl.length < MAX_FOR_LIDS; i++) {
         const e = raw.forLids[i];
@@ -259,6 +282,9 @@ function cleanLine(raw) {
       }
     }
     if (fl.length) o.forLids = fl;
+    // 顧問姓名：只有顧問服務區的列保留（其他分類丟掉）；有值才輸出，沒用到的列與改版前的輸出位元級相同
+    if (cat === 'consult') { const c = text(raw.consultant, CONSULTANT_MAX); if (c) o.consultant = c; }
+    if (rel) o.rel = rel;
   }
   return o;
 }
@@ -350,6 +376,9 @@ function seedItemLines(items, opts) {
   ((opts && Array.isArray(opts.classCodes)) ? opts.classCodes : []).forEach((c) => { const k = CLASS_TO_CAT[str(c)]; if (k) set.add(k); });
   const classCats = Array.from(set);
   const out = [];
+  // opts.link（顧問對話框）：品項帶出的列預設「連動報價數量」（種子列的品名、單位本來就和品項相同＝規格 §1 的預設規則）；固定列（差旅、交際費）預設「不對應」。
+  // 沒開 link（業務自填成本）時不寫 rel，輸出與改版前相同
+  const rel = isLinkOpts(opts) ? 'link' : undefined;
   (Array.isArray(items) ? items : []).forEach((it) => {
     if (!it || typeof it !== 'object' || it.kind === 'title' || it.kind === 'subtotal') return;
     const q = toNum(it.qty);
@@ -360,17 +389,22 @@ function seedItemLines(items, opts) {
       qty: q > 0 ? q : 1,                  // 數量空／0 當 1（與伺服器、Excel 一致）
       unitCost: it.cost,                   // 舊式單的 items[].cost 帶入；成本與報價單價各自獨立（顧問看不到品項單價），所以不讀 unitPrice
       forLid: it.lid || it.nid,            // 還沒存檔的新品項沒有 lid：用畫面給的暫時代號 nid 指向它，存檔時伺服器換成真正的 lid（見 lib/quoteCostLines.js resolveItemRefs）
+      rel,
     });
-    if (line && line.desc) out.push(line);
+    if (line && line.desc && !(rel && !line.forLid)) out.push(line);   // link 列一定要有對應目標：沒有 lid／nid 的品項（舊資料）不產生連動列
   });
   return out;
 }
 
-/** 固定種子列：差旅「差旅交通」1 列＋其他「交際費」＋（includeStamp）印花稅 auto 列 */
-function seedFixedLines(includeStamp) {
+/** 顧問對話框（mode:'consultant' 或 link:true）：種子的品項列預設「連動」、固定列預設「不對應」 */
+function isLinkOpts(opts) { return !!(opts && (opts.link === true || opts.mode === 'consultant')); }
+
+/** 固定種子列：差旅「差旅交通」1 列＋其他「交際費」＋（includeStamp）印花稅 auto 列；link＝顧問對話框（固定列預設「不對應」） */
+function seedFixedLines(includeStamp, link) {
+  const rel = link ? 'none' : undefined;
   const out = [
-    cleanLine({ cat: 'travel', desc: SEED_TRAVEL_DESC }),
-    cleanLine({ cat: 'other', desc: SEED_ENTERTAIN_DESC }),
+    cleanLine({ cat: 'travel', desc: SEED_TRAVEL_DESC, rel }),
+    cleanLine({ cat: 'other', desc: SEED_ENTERTAIN_DESC, rel }),
   ];
   if (includeStamp) out.push(cleanLine({ cat: 'other', auto: 'stamp' }));
   return out;
@@ -385,7 +419,7 @@ function seedFixedLines(includeStamp) {
  * opts.revenueKnown：保留參數——印花稅列沒有金額欄位，金額由 mount 的 revenue 即時算或伺服器序列化時給。
  */
 function seedFromItems(items, opts) {
-  const fixed = seedFixedLines(!(opts && opts.includeStamp === false));
+  const fixed = seedFixedLines(!(opts && opts.includeStamp === false), isLinkOpts(opts));
   return seedItemLines(items, opts).slice(0, MAX_LINES - fixed.length).concat(fixed);
 }
 
@@ -406,6 +440,10 @@ body.dark .qcl-root { --qcl-bg: #161b22; --qcl-bd: #30363d; --qcl-th: #21262d; -
 .qcl-limit { border-radius: 8px; padding: 7px 12px; font-size: 13px; margin-bottom: 8px; line-height: 1.6;
   background: var(--qcl-warn-bg); color: var(--qcl-warn); border: 1px solid var(--qcl-warn-bd); }
 .qcl-limit[hidden] { display: none; }
+.qcl-orphbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; border-radius: 8px; padding: 7px 12px; font-size: 13px; margin-bottom: 8px; line-height: 1.6;
+  background: var(--qcl-bad-bg); color: var(--qcl-bad); border: 1px solid var(--qcl-bad); }
+.qcl-orphbar[hidden] { display: none; }
+.qcl-linknote .qcl-btn.sm { padding: 1px 8px; font-size: 11.5px; }
 .qcl-msg { min-height: 0; color: var(--qcl-pri); font-size: 12.5px; margin-bottom: 6px; }
 .qcl-msg:empty { display: none; }
 .qcl-btn { border: 1px solid var(--qcl-in-bd); background: var(--qcl-in-bg); color: var(--qcl-tx); border-radius: 8px; padding: 5px 12px;
@@ -483,6 +521,55 @@ body.qcl-dnd-on, body.qcl-dnd-on * { -webkit-user-select: none !important; user-
 .qcl-grand-k { font-weight: 700; color: var(--qcl-h); }
 .qcl-grand-v { font-size: 18px; font-weight: 700; color: var(--qcl-pri); font-variant-numeric: tabular-nums; }
 .qcl-grand-n { color: var(--qcl-mu); font-size: 12.5px; }
+/* cost-sync：顧問姓名欄、委外標籤、對應欄（顧問對話框）、委外佔比卡片 */
+.qcl-table.cn { min-width: 1010px; }
+.qcl-table.cnv { min-width: 890px; }   /* 唯讀：沒有控制欄與對應欄，和其他唯讀表格同寬 */
+.qcl-table.lk { min-width: 1120px; }
+.qcl-table.nv.lk { min-width: 1020px; }
+.qcl-table.cn.lk { min-width: 1260px; }
+.qcl-table col.qcl-c-rel { width: 240px; }
+.qcl-ostag { display: block; width: fit-content; margin: 0 0 3px; padding: 0 7px; font-size: 11px; line-height: 1.6; border-radius: 9px; font-weight: 600;
+  color: #3949ab; background: #eef0fb; border: 1px solid #c5cae9; }
+.qcl-ostag[hidden] { display: none; }
+.qcl-t .qcl-ostag { display: inline-block; margin: 0 6px 0 0; }
+.qcl-reltd .qcl-in { margin-bottom: 4px; padding: 4px 6px; font-size: 12.5px; }
+.qcl-reltd .qcl-in[hidden] { display: none; }
+.qcl-linknote { display: block; font-size: 11.5px; line-height: 1.5; color: var(--qcl-mu); }
+.qcl-linknote:empty { display: none; }
+.qcl-linknote.chg { color: var(--qcl-pri); font-weight: 600; }
+.qcl-linknote.bad { color: var(--qcl-bad); font-weight: 600; }
+.qcl-in.qcl-conf { border-color: var(--qcl-bad); background: var(--qcl-bad-bg); }
+.pnl-sum-grid.qcl-g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.qcl-os-card { text-align: center; }
+.qcl-os-card:focus-visible { outline: 2px solid var(--qcl-pri, #1a73e8); outline-offset: 2px; }
+.qcl-os-pct { font-variant-numeric: tabular-nums; }
+.qcl-os-bar { height: 6px; border-radius: 3px; background: #dfe3ea; overflow: hidden; margin: 6px auto; max-width: 170px; }
+.qcl-os-fill { display: block; height: 100%; width: 0; border-radius: 3px; background: #5c6bc0; transition: width .25s ease; }
+.qcl-os-l1, .qcl-os-l2 { font-size: 11.5px; line-height: 1.55; color: #6b7684; font-variant-numeric: tabular-nums; }
+.qcl-os-solo { max-width: 320px; margin: 0 0 10px; }
+body.dark .qcl-os-bar { background: #30363d; }
+body.dark .qcl-os-fill { background: #8c9eff; }
+body.dark .qcl-os-l1, body.dark .qcl-os-l2 { color: #8b949e; }
+body.dark .qcl-ostag { color: #aab4ff; background: #1c2240; border-color: #323d73; }
+/* 沒資料的分區收合成只剩標題列；說明文字改成一行＋可展開 */
+.qcl-sec.qcl-collapsed { padding-top: 7px; padding-bottom: 7px; }
+.qcl-sec.qcl-collapsed .qcl-wrap { display: none; }
+.qcl-sec.qcl-collapsed .qcl-sec-h { margin-bottom: 0; }
+.qcl-sec.qcl-collapsed .qcl-sec-h h4 { font-weight: 500; color: var(--qcl-mu); }
+.qcl-help { margin: 0 0 8px; font-size: 12.5px; color: var(--qcl-mu); }
+.qcl-help summary { cursor: pointer; }
+.qcl-help summary u { color: var(--qcl-pri); text-decoration: none; margin-left: 4px; }
+.qcl-help .qcl-help-b { margin: 6px 0 0; line-height: 1.6; }
+/* 對應欄：兩個下拉並排，說明文字在下一行（列高從 3 行降到 2 行） */
+.qcl-reltd .qcl-in { display: inline-block; width: calc(50% - 3px); margin-right: 3px; margin-bottom: 2px; vertical-align: top; }
+.qcl-reltd .qcl-in:nth-of-type(2) { margin-right: 0; }
+@media (max-width: 900px) {
+  .pnl-sum-grid.qcl-g5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .pnl-sum-grid.qcl-g5 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pnl-sum-grid.qcl-g5 > .qcl-os-card { grid-column: 1 / -1; }
+}
 @media (max-width: 640px) {
   .qcl-sec { padding: 8px; }
   /* 表格最小寬度 790/890px 要橫向捲動：空分區的提示文字改成靠左、釘在可視區左緣、寬度＝可視寬並自動換行，不必捲動就看得到 */
@@ -527,62 +614,134 @@ function isOrphanLine(l, lidSet) {
   return ids.length > 0 && !ids.some((k) => lidSet.has(k));
 }
 
-function editRowHtml(l, def, ids) {
+// ── 對應（cost-sync）：目標下拉的選項 ─────────────────────────
+/**
+ * 報價品項 → 對應目標清單 [{key, seq, name, isNew}]：key＝品項 lid（還沒存檔／顧問草稿新增的品項用暫時代號 nid；舊資料沒有 lid 用 'legacy-'+索引，同伺服器），
+ * seq＝畫面上的項目編號（標題／小計列不編號），isNew＝顧問在草稿裡新增的報價項目（items 裡的 isDraftNew 旗標）。
+ */
+function targetEntries(items) {
+  const out = [];
+  let seq = 0;
+  (Array.isArray(items) ? items : []).forEach((it, i) => {
+    if (!it || typeof it !== 'object' || isKindRow(it)) return;
+    seq++;
+    out.push({ key: lidKey(it.lid) || lidKey(it.nid) || ('legacy-' + i), seq, name: nameKey(it.desc), isNew: !!it.isDraftNew });
+  });
+  return out;
+}
+
+const TARGET_LABEL_MAX = 36;
+function targetLabel(e) {
+  const nm = e.name || '（未命名）';
+  return e.seq + '. ' + (nm.length > TARGET_LABEL_MAX ? nm.slice(0, TARGET_LABEL_MAX) + '…' : nm) + (e.isNew ? '　＋新增' : '');
+}
+
+/** 對應目標下拉的 <option> 們；selected 不在清單裡（品項已被業務刪除）時多放一個已選取的「已刪除」選項，讓畫面看得出來而不是默默跳到別的品項 */
+function targetOptionsHtml(entries, selected) {
+  const sel = lidKey(selected);
+  const list = Array.isArray(entries) ? entries : [];
+  let h = '<option value=""' + (sel ? '' : ' selected') + '>請選擇報價品項…</option>';
+  h += list.map((e) => '<option value="' + esc(e.key) + '"' + (e.key === sel ? ' selected' : '') + '>' + esc(targetLabel(e)) + '</option>').join('');
+  if (sel && !list.some((e) => e.key === sel)) h += '<option value="' + esc(sel) + '" selected>（原報價品項已刪除）</option>';
+  return h;
+}
+
+/** 下拉選項只顯示短字（連動／拆項／不對應），完整說明放 title（滑鼠停留可看）；確認視窗等訊息文字仍用完整的 REL_LABELS */
+const REL_SHORT = Object.freeze({ link: '連動', split: '拆項', none: '不對應' });
+function relOptionsHtml(rel) {
+  return RELS.map((r) => '<option value="' + r + '"' + (r === rel ? ' selected' : '') + ' title="' + esc(REL_LABELS[r]) + '">' + esc(REL_SHORT[r]) + '</option>').join('');
+}
+
+/** 畫面上這列的對應方式：有 rel 用 rel；舊資料沒有 rel：有 forLid／forLids 視為拆項、沒有視為不對應（規格 §2） */
+function displayRel(l) { return l.rel || (lineLidList(l).length ? 'split' : 'none'); }
+
+// ── 列／分區 HTML ───────────────────────────────────
+const OS_TAG_TITLE = '有填委外廠商的顧問列：計入委外占比';
+/** 委外標籤（列首小標籤）；非委外列在編輯模式先放一個隱藏的，refresh 依廠商欄切換 */
+function osTagHtml(on, hiddenSlot) {
+  if (!on && !hiddenSlot) return '';
+  return '<span class="qcl-ostag"' + (on ? '' : ' hidden') + ' title="' + OS_TAG_TITLE + '">委外</span>';
+}
+
+/**
+ * 編輯列。ctx（選填）＝{ link: 顧問對話框（顯示「對應」欄）, entries: targetEntries(items), ids: datalist 代號 }；沒給 ctx 的輸出與改版前相同（沒有對應欄、顧問區多一個「顧問姓名」欄與委外標籤）。
+ */
+function editRowHtml(l, def, ids, ctx) {
+  const link = !!(ctx && ctx.link);
   const attrs = (l.lid ? ' data-lid="' + esc(l.lid) + '"' : '') + (l.forLid ? ' data-forlid="' + esc(l.forLid) + '"' : '') +
-    (l.forLids && l.forLids.length ? ' data-forlids="' + esc(JSON.stringify(l.forLids)) + '"' : '');
+    (l.forLids && l.forLids.length ? ' data-forlids="' + esc(JSON.stringify(l.forLids)) + '"' : '') + (l.rel ? ' data-rel="' + esc(l.rel) + '"' : '');
   const lab = (label) => ' aria-label="' + esc(def.name + '：' + label) + '"';
-  return '<tr class="qcl-row"' + attrs + '>' +
-    '<td><input type="text" class="qcl-in qcl-desc" maxlength="' + DESC_MAX + '" value="' + esc(l.desc) + '" placeholder="' + esc(def.descHint) + '"' +
-      (def.key === 'consult' ? ' list="' + ids.desc + '"' : '') + lab('項目') + '>' + ORPHAN_BADGE_HIDDEN + '</td>' +
-    (def.hasVendor
-      ? '<td><input type="text" class="qcl-in qcl-vendor" maxlength="' + VENDOR_MAX + '" value="' + esc(l.vendor) + '" placeholder="' + esc(def.vendorHint) + '"' + lab(def.vendorLabel) + '></td>'
-      : '') +
-    '<td><input type="text" class="qcl-in qcl-note" maxlength="' + NOTE_MAX + '" value="' + esc(l.note) + '" placeholder="說明（選填）"' + lab('說明') + '></td>' +
+  let h = '<tr class="qcl-row"' + attrs + '>' +
+    '<td>' + (def.hasConsultant ? osTagHtml(isOutsourced(l), true) : '') +
+      '<input type="text" class="qcl-in qcl-desc" maxlength="' + DESC_MAX + '" value="' + esc(l.desc) + '" placeholder="' + esc(def.descHint) + '"' +
+      (def.key === 'consult' ? ' list="' + ids.desc + '"' : '') + lab('項目') + '>' + ORPHAN_BADGE_HIDDEN + '</td>';
+  if (def.hasConsultant) {
+    h += '<td><input type="text" class="qcl-in qcl-consultant" maxlength="' + CONSULTANT_MAX + '" value="' + esc(l.consultant || '') + '" placeholder="自家顧問姓名"' +
+      (ids.names ? ' list="' + ids.names + '"' : '') + lab('顧問姓名') + '></td>';
+  }
+  if (def.hasVendor) {
+    h += '<td><input type="text" class="qcl-in qcl-vendor" maxlength="' + VENDOR_MAX + '" value="' + esc(l.vendor) + '" placeholder="' + esc(def.vendorHint) + '"' + lab(def.vendorLabel) + '></td>';
+  }
+  h += '<td><input type="text" class="qcl-in qcl-note" maxlength="' + NOTE_MAX + '" value="' + esc(l.note) + '" placeholder="說明（選填）"' + lab('說明') + '></td>' +
     '<td><input type="text" class="qcl-in qcl-unit" maxlength="' + UNIT_MAX + '" value="' + esc(l.unit) + '" list="' + ids.unit + '"' + lab('單位') + '></td>' +
     '<td><input type="number" class="qcl-in qcl-qty" min="0" step="any" inputmode="decimal" value="' + esc(String(l.qty)) + '"' + lab('數量') + '></td>' +
     '<td><input type="number" class="qcl-in qcl-cost" min="0" step="any" inputmode="decimal" placeholder="0" value="' + (l.unitCost ? esc(String(l.unitCost)) : '') + '"' + lab('成本單價') + '></td>' +
-    '<td class="r qcl-sub">' + fmtMoney(lineAmount(l)) + '</td>' +
-    '<td class="qcl-ctl">' +
+    '<td class="r qcl-sub">' + fmtMoney(lineAmount(l)) + '</td>';
+  if (link) {
+    const disp = displayRel(l);
+    const tgt = l.forLid || (l.forLids && l.forLids[0]) || '';
+    h += '<td class="qcl-reltd"><select class="qcl-in qcl-rel"' + lab('對應方式') + '>' + relOptionsHtml(disp) + '</select>' +
+      '<select class="qcl-in qcl-target"' + (disp === 'none' ? ' hidden' : '') + lab('對應的報價品項') + '>' + targetOptionsHtml(ctx.entries, tgt) + '</select>' +
+      '<span class="qcl-linknote" aria-live="polite"></span></td>';
+  }
+  return h + '<td class="qcl-ctl">' +
       '<button type="button" class="qcl-drag" title="拖曳排序（區內）；也可用鍵盤：按空白鍵拿起，上下鍵移動，空白鍵放下，Esc 取消" aria-label="拖曳排序">&#8942;&#8942;</button>' +
       '<button type="button" class="qcl-mv" data-act="up" title="上移" aria-label="上移">&#9650;</button>' +
       '<button type="button" class="qcl-mv" data-act="down" title="下移" aria-label="下移">&#9660;</button>' +
       '<button type="button" class="qcl-mv del" data-act="del" title="移除此列" aria-label="移除此列">&#10005;</button></td></tr>';
 }
 
-/** 欄寬定義（fixed layout）：文字欄均分剩餘寬度，單位／數量／單價／小計／控制欄固定寬，各分區的數字欄上下對齊 */
-function colGroup(def, withCtl) {
-  return '<colgroup><col>' + (def.hasVendor ? '<col>' : '') + '<col><col class="qcl-c-unit"><col class="qcl-c-qty"><col class="qcl-c-cost"><col class="qcl-c-sub">' +
-    (withCtl ? '<col class="qcl-c-ctl">' : '') + '</colgroup>';
+/** 到「小計」欄之前的欄數：項目［顧問姓名］［廠商］說明 單位 數量 成本單價 */
+function leadCols(def) { return 1 + (def.hasConsultant ? 1 : 0) + (def.hasVendor ? 1 : 0) + 4; }
+
+/** 欄寬定義（fixed layout）：文字欄均分剩餘寬度，單位／數量／單價／小計／對應／控制欄固定寬，各分區的數字欄上下對齊 */
+function colGroup(def, withCtl, link) {
+  return '<colgroup><col>' + (def.hasConsultant ? '<col>' : '') + (def.hasVendor ? '<col>' : '') + '<col><col class="qcl-c-unit"><col class="qcl-c-qty"><col class="qcl-c-cost"><col class="qcl-c-sub">' +
+    (withCtl && link ? '<col class="qcl-c-rel">' : '') + (withCtl ? '<col class="qcl-c-ctl">' : '') + '</colgroup>';
 }
 
-function tableHead(def) {
-  return '<thead><tr><th>項目</th>' + (def.hasVendor ? '<th>' + esc(def.vendorLabel) + '</th>' : '') +
-    '<th>說明</th><th>單位</th><th class="r">數量</th><th class="r">成本單價</th><th class="r">小計</th><th class="qcl-ctl-h"></th></tr></thead>';
+function tableHead(def, link) {
+  return '<thead><tr><th>項目</th>' + (def.hasConsultant ? '<th>顧問姓名</th>' : '') + (def.hasVendor ? '<th>' + esc(def.vendorLabel) + '</th>' : '') +
+    '<th>說明</th><th>單位</th><th class="r">數量</th><th class="r">成本單價</th><th class="r">小計</th>' + (link ? '<th>對應</th>' : '') + '<th class="qcl-ctl-h"></th></tr></thead>';
 }
 
-function editSectionHtml(def, rows, stamp, ids) {
-  const cols = def.hasVendor ? 6 : 5;
+function tableClass(def, link, view) { return 'qcl-table' + (def.hasVendor ? '' : ' nv') + (def.hasConsultant ? (view ? ' cnv' : ' cn') : '') + (link ? ' lk' : ''); }
+
+function editSectionHtml(def, rows, stamp, ids, ctx) {
+  const link = !!(ctx && ctx.link);
+  const cols = leadCols(def);
   let h = '<section class="qcl-sec" data-sec="' + def.key + '">' +
     '<div class="qcl-sec-h"><h4>' + esc(def.name) + '</h4><span class="qcl-sec-n"></span><span class="qcl-sec-tot"></span><span class="qcl-sp"></span>' +
     '<button type="button" class="qcl-btn sm" data-act="merge" data-cat="' + def.key + '" title="把這一區的所有列合併成 1 列（成本合計不變），例如整包" disabled>合併為一列</button>' +
     '<button type="button" class="qcl-btn sm" data-act="add" data-cat="' + def.key + '">＋新增</button></div>' +
-    '<div class="qcl-wrap"><table class="qcl-table' + (def.hasVendor ? '' : ' nv') + '">' + colGroup(def, true) + tableHead(def) +
-    '<tbody data-cat="' + def.key + '">' + rows.map((l) => editRowHtml(l, def, ids)).join('') + '</tbody>';
+    '<div class="qcl-wrap"><table class="' + tableClass(def, link) + '">' + colGroup(def, true, link) + tableHead(def, link) +
+    '<tbody data-cat="' + def.key + '">' + rows.map((l) => editRowHtml(l, def, ids, ctx)).join('') + '</tbody>';
   if (def.key === 'other') {
     h += '<tbody class="qcl-stampbody"><tr class="qcl-stamprow"' + (stamp && stamp.lid ? ' data-lid="' + esc(stamp.lid) + '"' : '') +
       (stamp && typeof stamp.unitCost === 'number' ? ' data-amt="' + esc(String(stamp.unitCost)) + '"' : '') + '>' +
       '<td colspan="' + cols + '"><span class="qcl-stamp-name">印花稅</span>' +
       '<label><input type="checkbox" class="qcl-stampchk"' + (stamp ? ' checked' : '') + '>計入（依合約金額×0.1%自動計算）</label>' +
       '<span class="qcl-mu qcl-stamphint"></span></td>' +
-      '<td class="r qcl-stampamt">—</td><td></td></tr></tbody>';
+      '<td class="r qcl-stampamt">—</td>' + (link ? '<td></td>' : '') + '<td></td></tr></tbody>';
   }
-  return h + '<tfoot><tr><td colspan="' + cols + '">小計</td><td class="r qcl-secsub">0</td><td></td></tr></tfoot></table></div></section>';
+  return h + '<tfoot><tr><td colspan="' + cols + '">小計</td><td class="r qcl-secsub">0</td>' + (link ? '<td></td>' : '') + '<td></td></tr></tfoot></table></div></section>';
 }
 
 function viewRowHtml(l, def, lidSet) {
   const dash = '<span class="qcl-mu">—</span>';
   return '<tr class="qcl-row">' +
-    '<td class="qcl-t">' + (esc(l.desc) || dash) + (isOrphanLine(l, lidSet) ? ORPHAN_BADGE : '') + '</td>' +
+    '<td class="qcl-t">' + (def.hasConsultant ? osTagHtml(isOutsourced(l), false) : '') + (esc(l.desc) || dash) + (isOrphanLine(l, lidSet) ? ORPHAN_BADGE : '') + '</td>' +
+    (def.hasConsultant ? '<td class="qcl-t">' + (esc(l.consultant) || dash) + '</td>' : '') +
     (def.hasVendor ? '<td class="qcl-t">' + (esc(l.vendor) || dash) + '</td>' : '') +
     '<td class="qcl-t">' + (esc(l.note) || dash) + '</td>' +
     '<td>' + esc(l.unit) + '</td>' +
@@ -592,8 +751,8 @@ function viewRowHtml(l, def, lidSet) {
 }
 
 function viewSectionHtml(def, rows, stamp, eff, lidSet) {
-  const cols = def.hasVendor ? 6 : 5;
-  const head = '<thead><tr><th>項目</th>' + (def.hasVendor ? '<th>' + esc(def.vendorLabel) + '</th>' : '') +
+  const cols = leadCols(def);
+  const head = '<thead><tr><th>項目</th>' + (def.hasConsultant ? '<th>顧問姓名</th>' : '') + (def.hasVendor ? '<th>' + esc(def.vendorLabel) + '</th>' : '') +
     '<th>說明</th><th>單位</th><th class="r">數量</th><th class="r">成本單價</th><th class="r">小計</th></tr></thead>';
   let body = rows.map((l) => viewRowHtml(l, def, lidSet)).join('');
   if (def.key === 'other') {
@@ -605,7 +764,7 @@ function viewSectionHtml(def, rows, stamp, eff, lidSet) {
     body = '<tr class="qcl-empty"><td colspan="' + (cols + 1) + '"><span class="qcl-emptytxt">（無）</span></td></tr>';
   }
   return '<section class="qcl-sec" data-sec="' + def.key + '"><div class="qcl-sec-h"><h4>' + esc(def.name) + '</h4><span class="qcl-sec-n"></span><span class="qcl-sec-tot"></span></div>' +
-    '<div class="qcl-wrap"><table class="qcl-table' + (def.hasVendor ? '' : ' nv') + '">' + colGroup(def, false) + head + '<tbody>' + body + '</tbody>' +
+    '<div class="qcl-wrap"><table class="' + tableClass(def, false, true) + '">' + colGroup(def, false, false) + head + '<tbody>' + body + '</tbody>' +
     '<tfoot><tr><td colspan="' + cols + '">小計</td><td class="r qcl-secsub">0</td></tr></tfoot></table></div></section>';
 }
 
@@ -651,7 +810,11 @@ function paint(inst, lines) {
     const subText = fmtMoney(t.byCat[def.key] + (def.key === 'other' ? t.stamp : 0));
     sec.querySelector('.qcl-secsub').textContent = subText;
     sec.querySelector('.qcl-sec-tot').textContent = '小計 ' + subText;
-    sec.querySelector('.qcl-sec-n').textContent = counts[def.key] ? '（' + counts[def.key] + ' 列）' : '';
+    // 沒資料的分區先收合成只剩標題列（「其他費用」區固定有印花稅勾選列，不收合）；按「＋新增」加入第一列時由這裡自動展開
+    const empty = !counts[def.key] && def.key !== 'other';
+    sec.classList.toggle('qcl-collapsed', empty);
+    const isEdit = root.getAttribute('data-mode') === 'edit';
+    sec.querySelector('.qcl-sec-n').textContent = counts[def.key] ? '（' + counts[def.key] + ' 列）' : (empty ? (isEdit ? '（尚無項目，按「＋新增」加入）' : '（無）') : '');
   });
   const hasStamp = lines.some((l) => l.auto === 'stamp');
   root.querySelector('.qcl-grand-v').textContent = fmtMoney(t.total);
@@ -677,7 +840,8 @@ function numField(inp, max) {
  */
 function readDom(inst, markBlank) {
   const root = inst.root;
-  const res = { lines: [], rows: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0 };
+  const res = { lines: [], rows: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0, badTarget: 0 };
+  const lidSet = itemLidSet(inst.items);   // 沒給 items → null（不檢查對應目標是否還在）
   CATS.forEach((def) => {
     const tb = root.querySelector('tbody[data-cat="' + def.key + '"]');
     if (!tb) return;
@@ -688,10 +852,28 @@ function readDom(inst, markBlank) {
       let forLids;
       const flRaw = tr.getAttribute('data-forlids');
       if (flRaw) { try { forLids = JSON.parse(flRaw); } catch (_) { forLids = undefined; } }
+      // 對應方式：顧問對話框用下拉的值（列上有 data-rel 才算「明確指定」：舊資料沒有 rel、使用者沒動過就維持沒有 rel，不會因為打開畫面就被改成拆項）；其他模式原樣帶著列上的 rel
+      const relSel = tr.querySelector('.qcl-rel');
+      const relRaw = relSel ? (tr.hasAttribute('data-rel') ? relSel.value : '') : tr.getAttribute('data-rel');
       const l = cleanLine({
-        lid: tr.getAttribute('data-lid'), cat: def.key, desc: val('.qcl-desc'), vendor: val('.qcl-vendor'), note: val('.qcl-note'), unit: val('.qcl-unit'),
-        qty: q.n, unitCost: c.n, forLid: tr.getAttribute('data-forlid'), forLids,
+        lid: tr.getAttribute('data-lid'), cat: def.key, desc: val('.qcl-desc'), vendor: val('.qcl-vendor'), consultant: val('.qcl-consultant'), note: val('.qcl-note'), unit: val('.qcl-unit'),
+        qty: q.n, unitCost: c.n, forLid: tr.getAttribute('data-forlid'), forLids, rel: relRaw,
       });
+      // 明確選了「連動／拆項」的列一定要有有效的報價品項（伺服器 checkTargets 同規則：對應的品項不存在 → 400）。
+      // 部分目標已被刪除（合併過的列）就剔除已不存在的，剩下的當目標；全部不存在或根本沒選 → 擋（badTarget）
+      let badT = false;
+      if (l.rel === 'link' || l.rel === 'split') {
+        const ids = lineLidList(l);
+        if (!ids.length) badT = true;
+        else if (lidSet) {
+          const ok = ids.filter((k) => lidSet.has(k));
+          if (!ok.length) badT = true;
+          else if (ok.length !== ids.length) { l.forLid = ok[0]; if (ok.length > 1) l.forLids = ok.slice(1); else delete l.forLids; }
+        }
+      }
+      const ts = tr.querySelector('.qcl-target');
+      if (ts) ts.classList.toggle('qcl-bad', badT);
+      if (badT) res.badTarget++;
       tr.querySelector('.qcl-qty').classList.toggle('qcl-bad', q.bad);
       tr.querySelector('.qcl-cost').classList.toggle('qcl-bad', c.bad);
       if (q.bad) res.invalid++;
@@ -718,6 +900,74 @@ function readDom(inst, markBlank) {
   return res;
 }
 
+/** 編輯器目前的對應目標清單變了（品項改名、新增、刪除）就重建每列「對應」下拉的選項（保留目前選的值）；沒變就不動 */
+function syncTargetOptions(inst) {
+  if (!inst.link) return;
+  inst.entries = targetEntries(inst.items);
+  const sig = JSON.stringify(inst.entries.map((e) => [e.key, targetLabel(e)]));
+  if (sig === inst.targetSig) return;
+  inst.targetSig = sig;
+  Array.prototype.forEach.call(inst.root.querySelectorAll('select.qcl-target'), (sel) => {
+    const tr = sel.closest('tr.qcl-row');
+    const cur = tr ? (tr.getAttribute('data-forlid') || '') : sel.value;
+    sel.innerHTML = targetOptionsHtml(inst.entries, cur);
+  });
+}
+
+/** 連動標示（每個連動列旁的小字）：依 setLinkInfo(applyLinks 結果) 顯示「→ 報價 業務原值 → 新值」／單位衝突／數量為 0；單位衝突的列把單位欄標紅 */
+function paintLinkNotes(inst, rd) {
+  if (!inst.link) return;
+  rd = rd || readDom(inst, false);
+  const info = inst.linkInfo;
+  const lidSet = itemLidSet(inst.items);
+  let orph = 0;
+  rd.rows.forEach((r) => {
+    const l = r.line;
+    const note = r.tr.querySelector('.qcl-linknote');
+    const unitIn = r.tr.querySelector('.qcl-unit');
+    let msg = '', cls = 'qcl-linknote', conf = false;
+    // 孤兒對應：連動／拆項的列，對應的報價品項已不在（業務刪了品項、或顧問移除了自己新增的品項）。伺服器會擋（400 BAD_COST_LINE），所以在這裡提示並給「改成不對應」一鍵處理
+    const tids = (l.rel === 'link' || l.rel === 'split') ? lineLidList(l) : [];
+    if (tids.length && lidSet && !tids.some((k) => lidSet.has(k))) {
+      orph++;
+      if (note) {
+        note.className = 'qcl-linknote bad';
+        const k = 'orph';
+        if (note.getAttribute('data-k') !== k) {
+          note.setAttribute('data-k', k);
+          note.innerHTML = '對應的報價品項已不存在（可能被業務刪除）。請重新選擇對應的品項，或 <button type="button" class="qcl-btn sm" data-act="relNone">改成不對應</button>';
+        }
+      }
+      if (unitIn) unitIn.classList.remove('qcl-conf');
+      return;
+    }
+    if (note && note.getAttribute('data-k')) note.removeAttribute('data-k');
+    if (l.rel === 'link') {
+      const e = info && info.get(l.forLid);
+      if (e) {
+        if (e.conflict) { msg = '單位衝突：同一個報價品項的連動列單位需一致（目前有 ' + (e.units || []).join('、') + '）'; cls += ' bad'; conf = true; }
+        else if (e.zero) { msg = '連動後數量為 0，請填數量或改成「拆項」'; cls += ' bad'; }
+        else if (e.qtyChanged || e.unitChanged) {
+          msg = '→ 報價 ' + fmtNum(Number(e.qtyFrom), 4) + (e.unitFrom ? ' ' + e.unitFrom : '') + ' → ' + fmtNum(Number(e.qty), 4) + (e.unit ? ' ' + e.unit : '');
+          cls += ' chg';
+        } else msg = '→ 報價 ' + fmtNum(Number(e.qty), 4) + (e.unit ? ' ' + e.unit : '') + '（同業務原值）';
+        if (e.linkCount > 1 && !e.conflict && !e.zero) msg += '　共 ' + e.linkCount + ' 列連動';
+      }
+    } else if (l.rel === 'split') {
+      const n = lineLidList(l).length;
+      msg = '報價不動' + (n > 1 ? '（另涵蓋 ' + (n - 1) + ' 個品項）' : '');
+    }
+    if (note) { note.className = cls; if (note.textContent !== msg) note.textContent = msg; }
+    if (unitIn) unitIn.classList.toggle('qcl-conf', conf);
+  });
+  const bar = inst.root.querySelector('.qcl-orphbar');
+  if (bar) {
+    bar.hidden = !orph;
+    const n = bar.querySelector('.qcl-orphn');
+    if (n && n.textContent !== String(orph)) n.textContent = String(orph);
+  }
+}
+
 /** 重新計算畫面：列小計、區小計、合計、計數、列控制鈕與新增鈕的停用狀態、空區提示 */
 function refresh(inst, rd) {
   const root = inst.root;
@@ -726,13 +976,17 @@ function refresh(inst, rd) {
   // 「原報價品項已刪除」徽章：items 有提供才會顯示（沒提供＝null＝全部隱藏）
   const orphSet = itemLidSet(inst.items);
   rd.rows.forEach((r) => { const b = r.tr.querySelector('.qcl-orph'); if (b) b.hidden = !isOrphanLine(r.line, orphSet); });
+  // 委外標籤：顧問服務區有填委外廠商的列（廠商欄改了就即時切換）
+  rd.rows.forEach((r) => { const g = r.tr.querySelector('.qcl-ostag'); if (g) g.hidden = !isOutsourced(r.line); });
+  syncTargetOptions(inst);
+  paintLinkNotes(inst, rd);
   const t = paint(inst, rd.calcLines);
 
   CATS.forEach((def) => {
     const tb = root.querySelector('tbody[data-cat="' + def.key + '"]');
     const rows = tb.querySelectorAll('tr.qcl-row');
     const ph = tb.querySelector('tr.qcl-empty');
-    if (!rows.length && !ph) tb.insertAdjacentHTML('beforeend', '<tr class="qcl-empty"><td colspan="' + ((def.hasVendor ? 6 : 5) + 2) + '"><span class="qcl-emptytxt">尚無項目，按「＋新增」加入</span></td></tr>');
+    if (!rows.length && !ph) tb.insertAdjacentHTML('beforeend', '<tr class="qcl-empty"><td colspan="' + (leadCols(def) + 2 + (inst.link ? 1 : 0)) + '"><span class="qcl-emptytxt">尚無項目，按「＋新增」加入</span></td></tr>');
     if (rows.length && ph) ph.remove();
     Array.prototype.forEach.call(rows, (tr, i) => {
       tr.querySelector('[data-act="up"]').disabled = i === 0;
@@ -756,7 +1010,7 @@ function refresh(inst, rd) {
   root.querySelector('[data-act="supplement"]').disabled = atLimit || !hasItems;
   root.querySelector('[data-act="reseed"]').disabled = !hasItems;
   if (chk) chk.disabled = atLimit && !chk.checked;
-  return { lines: rd.lines, totals: t };
+  return { lines: rd.lines, totals: t, badTarget: rd.badTarget };
 }
 
 function setMsg(inst, m) {
@@ -771,22 +1025,33 @@ function emitChange(inst) {
   }
 }
 
+/** 列 HTML 用的共同參數：link（顧問對話框的「對應」欄）、目前的對應目標清單 */
+function rowCtx(inst) { return { link: inst.link, entries: inst.entries || [] }; }
+
 function renderEdit(inst, lines) {
   ensureStyle();
-  const ids = { desc: 'qclDlDesc' + inst.id, unit: 'qclDlUnit' + inst.id };
+  const ids = { desc: 'qclDlDesc' + inst.id, unit: 'qclDlUnit' + inst.id, names: 'qclDlNames' + inst.id };
   const sp = splitLines(lines);
-  inst.el.innerHTML = '<div class="qcl-root" data-mode="edit">' +
+  inst.entries = inst.link ? targetEntries(inst.items) : [];
+  inst.targetSig = inst.link ? JSON.stringify(inst.entries.map((e) => [e.key, targetLabel(e)])) : null;
+  const ctx = rowCtx(inst);
+  const names = inst.names || [];
+  inst.el.innerHTML = '<div class="qcl-root" data-mode="edit"' + (inst.link ? ' data-link="1"' : '') + '>' +
     '<div class="qcl-tools">' +
       '<button type="button" class="qcl-btn" data-act="reseed" title="丟掉目前的成本明細，依客戶報價品項重新產生預設列">↻ 由報價品項重新帶入</button>' +
       '<button type="button" class="qcl-btn" data-act="supplement" title="只補入「還沒有對應成本列」的新品項，不動既有列">＋補入新品項</button>' +
       '<span class="qcl-sp"></span><span class="qcl-count"></span></div>' +
-    '<p class="qcl-hint">金額單位：新台幣元（未稅）。小計＝數量×成本單價；成本明細與客戶報價品項各自獨立、不必一一對應：多個品項的成本可以併成一列（整包），一個品項也可以拆成多列。</p>' +
+    '<details class="qcl-help"><summary>金額單位：新台幣元（未稅）；小計＝數量×成本單價。<u>更多說明</u></summary>' +
+      '<p class="qcl-help-b">成本明細與客戶報價品項各自獨立、不必一一對應：多個品項的成本可以併成一列（整包），一個品項也可以拆成多列。' +
+      '顧問服務區：自家顧問填「顧問姓名」；委外請在「委外廠商」填廠商名稱（有填廠商的列會標示「委外」並計入委外佔比）。</p></details>' +
     '<div class="qcl-limit" hidden>已達成本明細列數上限（' + inst.max + ' 列），無法再新增；請刪除不需要的列。</div>' +
+    (inst.link ? '<div class="qcl-orphbar" hidden role="alert"><span>有 <b class="qcl-orphn">0</b> 列成本明細對應的報價品項已不存在（可能被業務刪除），這種對應無法儲存，請重新選擇對應的品項或改成「不對應」。</span><button type="button" class="qcl-btn sm" data-act="relNoneAll">全部改成不對應</button></div>' : '') +
     '<div class="qcl-msg" role="status" aria-live="polite"></div>' +
-    CATS.map((def) => editSectionHtml(def, sp.groups[def.key], def.key === 'other' ? sp.stamp : null, ids)).join('') +
+    CATS.map((def) => editSectionHtml(def, sp.groups[def.key], def.key === 'other' ? sp.stamp : null, ids, ctx)).join('') +
     grandHtml() +
     '<datalist id="' + ids.desc + '">' + DESC_SUGGEST.map((s) => '<option value="' + esc(s) + '"></option>').join('') + '</datalist>' +
     '<datalist id="' + ids.unit + '">' + UNIT_SUGGEST.map((s) => '<option value="' + esc(s) + '"></option>').join('') + '</datalist>' +
+    '<datalist id="' + ids.names + '">' + names.map((s) => '<option value="' + esc(s) + '"></option>').join('') + '</datalist>' +
     '</div>';
   inst.root = inst.el.firstElementChild;
   inst.ids = ids;
@@ -794,16 +1059,17 @@ function renderEdit(inst, lines) {
 }
 
 function appendRows(inst, lines) {
+  const ctx = rowCtx(inst);
   lines.forEach((l) => {
     const def = CAT_BY_KEY[l.cat];
-    inst.root.querySelector('tbody[data-cat="' + def.key + '"]').insertAdjacentHTML('beforeend', editRowHtml(l, def, inst.ids));
+    inst.root.querySelector('tbody[data-cat="' + def.key + '"]').insertAdjacentHTML('beforeend', editRowHtml(l, def, inst.ids, ctx));
   });
 }
 
 function addRow(inst, cat) {
   const def = CAT_BY_KEY[cat];
   if (!def || readDom(inst, false).lines.length >= inst.max) return;
-  appendRows(inst, [emptyLine(cat)]);
+  appendRows(inst, [cleanLine({ cat, rel: inst.link ? 'none' : undefined })]);   // 顧問對話框手動新增的列預設「不對應」（要連動／拆項再自己選品項）
   setMsg(inst, '');
   emitChange(inst);
   const rows = inst.root.querySelectorAll('tbody[data-cat="' + cat + '"] tr.qcl-row');
@@ -852,7 +1118,7 @@ function mergeRows(inst, cat) {
   const rows = pick(rd);
   if (rows.length < 2) return Promise.resolve();
   const total = rows.reduce((s, l) => s + lineCents(l), 0) / 100;
-  return ask(inst, '要把「' + def.name + '」的 ' + rows.length + ' 列合併成 1 列嗎？\n成本合計不變（' + fmtMoney(total) + ' 元），但各列的項目、廠商、說明與數量／單價會併成一列（單位「式」、數量 1），合併後可再改名。').then((ok) => {
+  return ask(inst, mergeConfirmText(def, rows, total)).then((ok) => {
     if (!ok || inst.dead) return;
     const rd2 = readDom(inst, false);   // 確認期間畫面可能已變動：以按下確定當下的列為準
     const rows2 = pick(rd2);
@@ -868,6 +1134,21 @@ function mergeRows(inst, cat) {
   });
 }
 
+/** 合併前的確認文字（純函式）：說明合併後的單位／數量、對應方式與委外判定的變化 */
+function mergeConfirmText(def, rows, total) {
+  const m = mergeLines(rows);
+  const linked = !!m && m.rel === 'link';
+  let msg = '要把「' + def.name + '」的 ' + rows.length + ' 列合併成 1 列嗎？\n成本合計不變（' + fmtMoney(total) + ' 元），但各列的項目、' + (def.hasConsultant ? '顧問姓名、' : '') + '廠商、說明與數量／單價會併成一列（' +
+    (linked ? '單位「' + m.unit + '」、數量 ' + fmtNum(m.qty, 4) + '（各列數量加總）' : '單位「式」、數量 1') + '），合併後可再改名。';
+  if (rows.some((l) => l.rel === 'link')) {
+    msg += linked ? '\n這幾列都連動同一個報價品項：合併後維持「連動報價數量」，數量為各列加總。'
+      : '\n這幾列原本有「連動報價數量」：合併後改為「拆項（報價不動）」，報價品項的數量不再由它們連動。';
+  }
+  if (def.hasConsultant && rows.some(isOutsourced) && rows.some((l) => !isOutsourced(l))) {
+    msg += '\n注意：這幾列有委外也有自家顧問，合併後只要廠商欄有值整列都算委外，委外佔比會以合併後的列判定。';
+  }
+  return msg;
+}
 function reseed(inst) {
   if (!Array.isArray(inst.items)) return Promise.resolve();
   return ask(inst, '要依報價品項重新帶入嗎？\n目前編輯中的成本明細（含已填的成本、廠商與新增的列）會被取代。').then((ok) => {
@@ -941,6 +1222,7 @@ function uncovered(lines, entries, cands) {
   const free = new Map();
   (Array.isArray(lines) ? lines : []).forEach((l) => {
     if (!l || typeof l !== 'object' || l.auto === 'stamp') return;
+    if (l.rel === 'none') return;   // cost-sync：「不對應（純成本）」的列（差旅、交際費…）不參與涵蓋判定——既不涵蓋指定品項，也不進同名比對池（＝伺服器）
     const hit = lineLidList(l).filter((k) => lidSet.has(k));
     if (hit.length) { hit.forEach((k) => covered.add(k)); return; }
     const d = nameKey(l.desc);
@@ -1000,6 +1282,293 @@ function unmatchedNewNote(lines, items, baseline) {
   return fresh.length ? unmatchedMessage(fresh.map((x) => x.name)) : '';
 }
 
+// ═════════════════════════════════════════════════
+// ── cost-sync：連動計算、委外占比、卡片數字（純函式）────────────────────────
+// ⚠ applyLinks／materializeItems／decimalSum／pctText／marginText／outsourcedStats 與伺服器 lib/quoteCostLines.js、lib/quoteApproval.js 的同名函式逐例鏡像：
+//   scripts/check-quote-costsync-ui.js 以 vm 載入本檔，隨機輸入逐組比對（applyLinks ≥5000 組、委外占比／卡片數字對照伺服器試算）。改一邊必須同步改另一邊。
+// ═════════════════════════════════════════════════
+const unitOf = (v) => (String(v === undefined || v === null ? '' : v).trim() || DEFAULT_UNIT);
+
+/** 精確的十進位加總（number 陣列 → number）：不經浮點累加（0.1+0.2 不會變 0.30000000000000004）；非有限數、非正數當 0 */
+function decimalSum(nums) {
+  const arr = Array.isArray(nums) ? nums : [];
+  if (!HAS_BIGINT) return arr.reduce((s, x) => s + (typeof x === 'number' && isFinite(x) && x > 0 ? x : 0), 0);
+  const parts = [];
+  let maxS = 0;
+  arr.forEach((x) => {
+    const d = decParts(typeof x === 'number' && isFinite(x) && x > 0 ? x : 0);
+    if (!d) return;
+    parts.push(d);
+    if (d.s > maxS) maxS = d.s;
+  });
+  let total = BigInt(0);
+  parts.forEach((d) => { total += d.n * pow10(maxS - d.s); });
+  if (maxS === 0) return Number(total);
+  const s = total.toString().padStart(maxS + 1, '0');
+  return Number(s.slice(0, s.length - maxS) + '.' + s.slice(s.length - maxS));
+}
+
+/**
+ * 連動計算（＝伺服器 CL.applyLinks）：對每個報價品項，取所有 rel==='link' 且 forLid／forLids 命中它的成本列（印花稅列不參與）：
+ *   數量 ＝ Σ 各列 qty（十進位精確加總；>0 時至少 0.001）；各列單位（去空白、空白當「式」）必須相同才算 unit，否則「單位衝突」（該品項維持原樣並列入 conflicts）。
+ *   沒有連動列的品項完全不變。連動加總 ≤0 的品項列入 zero。newItems（暫時品項 [{nid,desc,unit,qty}]）接在既有一般品項之後，同樣被連動列命中時改用連動結果。
+ * 回傳 { items:[{lid|nid, index, isNew, desc, unit, qty, unitFrom, qtyFrom, changed, qtyChanged, unitChanged, linkCount, conflict, zero}], changes, conflicts, zero }
+ */
+function applyLinks(items, lines, newItems) {
+  const src = Array.isArray(items) ? items : [];
+  const entries = [];
+  const byKey = new Map();
+  src.forEach((it, i) => {
+    if (!it || typeof it !== 'object' || it.kind === 'title' || it.kind === 'subtotal') return;
+    const key = lidKey(it.lid) || ('legacy-' + i);
+    if (byKey.has(key)) return;   // 重複的 lid 只認第一個
+    const e = { key, isNew: false, index: i, desc: String(it.desc === undefined || it.desc === null ? '' : it.desc), unit: it.unit, qty: it.qty, unitFrom: it.unit, qtyFrom: it.qty, links: [], linkCount: 0, conflict: false, zero: false };
+    entries.push(e); byKey.set(key, e);
+  });
+  (Array.isArray(newItems) ? newItems : []).forEach((n) => {
+    if (!n || typeof n !== 'object' || typeof n.nid !== 'string' || !n.nid || byKey.has(n.nid)) return;
+    const e = { key: n.nid, isNew: true, index: -1, desc: String(n.desc === undefined || n.desc === null ? '' : n.desc), unit: unitOf(n.unit), qty: n.qty, unitFrom: unitOf(n.unit), qtyFrom: n.qty, links: [], linkCount: 0, conflict: false, zero: false };
+    entries.push(e); byKey.set(n.nid, e);
+  });
+  (Array.isArray(lines) ? lines : []).forEach((l) => {
+    if (!l || typeof l !== 'object' || l.auto === 'stamp' || l.rel !== 'link') return;
+    const seen = new Set();
+    lineLidList(l).forEach((k) => {
+      if (seen.has(k)) return;
+      seen.add(k);
+      const e = byKey.get(k);
+      if (e) e.links.push(l);
+    });
+  });
+  const changes = [], conflicts = [], zero = [];
+  const idOf = (e) => (e.isNew ? { nid: e.key } : { lid: e.key });
+  const out = entries.map((e) => {
+    let qtyChanged = false, unitChanged = false;
+    if (e.links.length) {
+      e.linkCount = e.links.length;
+      const units = [];
+      e.links.forEach((l) => { const u = unitOf(l.unit); if (units.indexOf(u) < 0) units.push(u); });
+      if (units.length > 1) {
+        e.conflict = true;
+        conflicts.push(Object.assign(idOf(e), { desc: e.desc, units }));
+      } else {
+        const sum = decimalSum(e.links.map((l) => l.qty));
+        const newQty = sum > 0 ? Math.max(MIN_ITEM_QTY, sum) : 0;
+        if (!(newQty > 0)) e.zero = true;
+        qtyChanged = Number(e.qtyFrom) !== newQty;
+        unitChanged = String(e.unitFrom === undefined || e.unitFrom === null ? '' : e.unitFrom).trim() !== units[0];
+        e.qty = newQty; e.unit = units[0];
+      }
+    } else if (e.isNew && !(Number(e.qty) > 0)) e.zero = true;
+    if (e.zero) zero.push(Object.assign(idOf(e), { desc: e.desc }));
+    return Object.assign(idOf(e), {
+      index: e.index, isNew: e.isNew, desc: e.desc, unit: e.unit, qty: e.qty, unitFrom: e.unitFrom, qtyFrom: e.qtyFrom,
+      changed: e.isNew || qtyChanged || unitChanged, qtyChanged, unitChanged, linkCount: e.linkCount, conflict: e.conflict, zero: e.zero,
+    });
+  });
+  out.forEach((o) => {
+    const id = o.isNew ? { nid: o.nid } : { lid: o.lid };
+    if (o.isNew) { changes.push(Object.assign(id, { desc: o.desc, field: 'new', from: null, to: o.qty, unit: o.unit })); return; }
+    if (o.zero || o.conflict) return;
+    if (o.qtyChanged) changes.push(Object.assign({}, id, { desc: o.desc, field: 'qty', from: o.qtyFrom, to: o.qty }));
+    if (o.unitChanged) changes.push(Object.assign({}, id, { desc: o.desc, field: 'unit', from: o.unitFrom === undefined || o.unitFrom === null ? '' : o.unitFrom, to: o.unit }));
+  });
+  return { items: out, changes, conflicts, zero };
+}
+
+/** 把 applyLinks 的結果套到報價品項陣列，回傳新陣列（不改輸入；＝伺服器 CL.materializeItems）：有 qtyChanged／unitChanged 的複製後改 qty／unit；暫時品項依序接在最後，由 makeNew(entry) 產生 */
+function materializeItems(items, al, makeNew) {
+  const src = Array.isArray(items) ? items : [];
+  const byIndex = new Map();
+  (al && al.items ? al.items : []).forEach((e) => { if (!e.isNew) byIndex.set(e.index, e); });
+  const out = src.map((it, i) => {
+    const e = byIndex.get(i);
+    if (!e || e.conflict || e.zero || !(e.qtyChanged || e.unitChanged)) return it;
+    return Object.assign({}, it, { qty: e.qty, unit: e.unit });
+  });
+  (al && al.items ? al.items : []).forEach((e) => { if (e.isNew) out.push(makeNew(e)); });
+  return out;
+}
+
+/** 單一報價品項的金額（分）＝round-half-up(數量×單價×100)，數量／單價套用伺服器的儲存規則（同 revenueOf 的逐列取整）；標題／小計列 0 */
+function itemCents(it) {
+  if (!it || typeof it !== 'object' || isKindRow(it)) return 0;
+  if (!HAS_BIGINT) return roundClean(storedQty(it.qty) * storedPrice(it.unitPrice) * 100);
+  const q = decParts(storedQty(it.qty)), p = decParts(storedPrice(it.unitPrice));
+  if (!q || !p) return 0;
+  return Number(divRound(q.n * p.n * BigInt(100), pow10(q.s + p.s)));
+}
+
+// ── 委外占比 ──
+/** 「委外」列＝顧問服務區（cat==='consult'）、非印花稅，且委外廠商（vendor）去頭尾空白後非空。軟體／硬體的 vendor 是「供應商」，不算委外（＝伺服器 CL.isOutsourced） */
+function isOutsourced(l) {
+  return !!l && typeof l === 'object' && l.auto !== 'stamp' && l.cat === 'consult' && typeof l.vendor === 'string' && l.vendor.trim() !== '';
+}
+
+/** 百分比文字 num/den×100：小數兩位、向 0 截斷（＝伺服器 CL.pctText）；num、den 要是安全整數、num>=0、den>0，否則 null */
+function pctText(num, den) {
+  if (!Number.isSafeInteger(num) || !Number.isSafeInteger(den) || num < 0 || den <= 0) return null;
+  if (!HAS_BIGINT) {
+    const h = Math.floor(num * 10000 / den);
+    return Math.floor(h / 100) + '.' + (h % 100 < 10 ? '0' : '') + (h % 100);
+  }
+  const h = (BigInt(num) * BigInt(10000)) / BigInt(den);
+  const frac = h % BigInt(100);
+  return (h / BigInt(100)).toString() + '.' + (frac < BigInt(10) ? '0' : '') + frac.toString();
+}
+
+/** 毛利率文字（＝伺服器 QA.marginText）：gp／revenue 皆為「分」，兩位小數向 0 截斷；revenue<=0 或非安全整數回 null */
+function marginTextOf(gpCents, revenueCents) {
+  if (!Number.isSafeInteger(gpCents) || !Number.isSafeInteger(revenueCents) || revenueCents <= 0) return null;
+  if (!HAS_BIGINT) {
+    const a = Math.floor(Math.abs(gpCents) * 10000 / revenueCents);
+    return (gpCents < 0 && a !== 0 ? '-' : '') + Math.floor(a / 100) + '.' + (a % 100 < 10 ? '0' : '') + (a % 100);
+  }
+  const gp = BigInt(gpCents), rev = BigInt(revenueCents);
+  const neg = gp < BigInt(0);
+  const hundredths = ((neg ? -gp : gp) * BigInt(10000)) / rev;
+  const whole = hundredths / BigInt(100), frac = hundredths % BigInt(100);
+  return (neg && hundredths !== BigInt(0) ? '-' : '') + whole.toString() + '.' + (frac < BigInt(10) ? '0' : '') + frac.toString();
+}
+
+/**
+ * 成本統計（分，整數）。revenue：折扣後未稅營收（元），用來算印花稅（沒有營收才採印花稅列上伺服器給的金額，見 resolveStamp）。
+ * 回傳 { byCat:{consult,software,hw,travel,other（不含印花稅）}, stampCents, totalCents（含印花稅、不含風險預留）, consultCents, outsourcedCents, stampUnknown }
+ */
+function costStats(lines, revenue) {
+  const byCat = { consult: 0, software: 0, hw: 0, travel: 0, other: 0 };
+  let hasStamp = false, serverAmt = null, outs = 0;
+  (Array.isArray(lines) ? lines : []).forEach((raw) => {
+    const l = cleanLine(raw);
+    if (!l) return;
+    if (l.auto === 'stamp') {
+      if (!hasStamp && typeof l.unitCost === 'number') serverAmt = l.unitCost;
+      hasStamp = true;
+      return;
+    }
+    const c = lineCents(l);
+    byCat[l.cat] += c;
+    if (isOutsourced(l)) outs += c;
+  });
+  const amt = resolveStamp(revenue, serverAmt);
+  const stampCents = hasStamp && amt !== null ? amt * 100 : 0;
+  const sum = byCat.consult + byCat.software + byCat.hw + byCat.travel + byCat.other;
+  return { byCat, stampCents, totalCents: sum + stampCents, consultCents: byCat.consult, outsourcedCents: outs, stampUnknown: hasStamp && amt === null };
+}
+
+/** 委外占比指標（＝伺服器 CL.outsourcedStats）：委外 ÷ 專案總成本（含差旅／交際費／印花稅，不含風險預留；總成本 0 → '0.00'）、委外 ÷ 顧問服務區成本（沒有顧問成本 → null） */
+function outsourcedStats(lines, revenue) {
+  const cs = costStats(lines, revenue);
+  return {
+    outsourcedCents: cs.outsourcedCents, totalCents: cs.totalCents, consultCents: cs.consultCents,
+    outsourcedPctOfCost: cs.totalCents > 0 ? pctText(cs.outsourcedCents, cs.totalCents) : '0.00',
+    outsourcedPctOfConsult: cs.consultCents > 0 ? pctText(cs.outsourcedCents, cs.consultCents) : null,
+  };
+}
+
+/** 由伺服器序列化的 costBreakdown（分；consult/software/hw/travel/other(含印花稅)/outsourced）算出委外占比指標，不重算（核准面板用：數字就是伺服器的） */
+function outsourcedFromBreakdown(cb) {
+  if (!cb || typeof cb !== 'object') return null;
+  const n = (k) => (Number.isFinite(Number(cb[k])) ? Number(cb[k]) : 0);
+  const total = n('consult') + n('software') + n('hw') + n('travel') + n('other');
+  const o = n('outsourced'), c = n('consult');
+  return {
+    outsourcedCents: o, totalCents: total, consultCents: c,
+    outsourcedPctOfCost: total > 0 ? pctText(o, total) : '0.00',
+    outsourcedPctOfConsult: c > 0 ? pctText(o, c) : null,
+  };
+}
+
+const OS_TITLE = '委外占比＝委外成本 ÷ 專案總成本（含差旅／交際費／印花稅，不含風險預留）。委外成本＝顧問服務成本區裡有填「委外廠商」的列；自家顧問（只填顧問姓名）不算委外。';
+
+/** 委外佔比卡片的顯示模型（純函式）：大數字、進度條寬度（0–100）、兩行小字、hover／aria 說明 */
+function outsourcedCardModel(st) {
+  const s = st || {};
+  const pct = (typeof s.outsourcedPctOfCost === 'string' && s.outsourcedPctOfCost) ? s.outsourcedPctOfCost : '0.00';
+  const pc = typeof s.outsourcedPctOfConsult === 'string' && s.outsourcedPctOfConsult ? s.outsourcedPctOfConsult : null;
+  const oc = Number(s.outsourcedCents) || 0;
+  const bar = Math.max(0, Math.min(100, parseFloat(pct) || 0));
+  const line1 = '委外成本 NT$ ' + fmtMoney(oc / 100);
+  const line2 = '占顧問服務成本 ' + (pc === null ? '—' : pc + '%');
+  return {
+    pct, pctLabel: pct + '%', bar, pctOfConsult: pc, outsourcedCents: oc, line1, line2,
+    title: OS_TITLE,
+    aria: '委外佔比 ' + pct + '%。' + line1 + '；' + line2 + '。' + OS_TITLE,
+  };
+}
+
+/** 委外佔比卡片 HTML（與毛利摘要卡同樣式：pnl-sum-card）；內容由 paintOutsourcedCard 填。idAttr：選填的 id（e2e／定位用） */
+function outsourcedCardHtml(model, idAttr) {
+  ensureStyle();
+  const m = model || outsourcedCardModel(null);
+  return '<div class="pnl-sum-card qcl-os-card"' + (idAttr ? ' id="' + esc(idAttr) + '"' : '') + ' tabindex="0" role="group" title="' + esc(m.title) + '" aria-label="' + esc(m.aria) + '">' +
+    '<div class="pnl-sum-label">委外佔比</div>' +
+    '<div class="pnl-sum-value qcl-os-pct">' + esc(m.pctLabel) + '</div>' +
+    '<div class="qcl-os-bar" role="progressbar" aria-label="委外佔比" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + esc(String(m.bar)) + '"><i class="qcl-os-fill" style="width:' + esc(String(m.bar)) + '%"></i></div>' +
+    '<div class="qcl-os-l1">' + esc(m.line1) + '</div>' +
+    '<div class="qcl-os-l2">' + esc(m.line2) + '</div></div>';
+}
+
+/** 把模型寫進已存在的卡片（root 內第一張 .qcl-os-card）；沒有卡片就略過 */
+function paintOutsourcedCard(root, model) {
+  const card = root && root.querySelector ? (root.classList && root.classList.contains('qcl-os-card') ? root : root.querySelector('.qcl-os-card')) : null;
+  if (!card) return false;
+  const m = model || outsourcedCardModel(null);
+  const set = (sel, v) => { const el = card.querySelector(sel); if (el && el.textContent !== v) el.textContent = v; };
+  set('.qcl-os-pct', m.pctLabel); set('.qcl-os-l1', m.line1); set('.qcl-os-l2', m.line2);
+  const bar = card.querySelector('.qcl-os-bar'), fill = card.querySelector('.qcl-os-fill');
+  if (bar) bar.setAttribute('aria-valuenow', String(m.bar));
+  if (fill) fill.style.width = m.bar + '%';
+  card.setAttribute('title', m.title);
+  card.setAttribute('aria-label', m.aria);
+  return true;
+}
+
+/**
+ * 顧問對話框頂端卡片的數字（純函式）：
+ *   input = { items（報價品項，含單價）, lines（成本列）, newItems（草稿新增的報價項目）, discountType, discountValue }
+ *   連動後的報價（applyLinks＋materializeItems）→ 折扣後未稅營收（revenueOf）→ 成本（含印花稅）→ 毛利／毛利率／委外占比。
+ *   數字與伺服器 POST /cost-draft/summary、以及按「完成」之後的實際結果一致（以分為單位逐筆相同）。
+ */
+function liveSummary(input) {
+  const inp = input || {};
+  const items = Array.isArray(inp.items) ? inp.items : [];
+  const lines = Array.isArray(inp.lines) ? inp.lines : [];
+  const al = applyLinks(items, lines, inp.newItems);
+  const eff = materializeItems(items, al, (e) => ({ lid: e.nid, nid: e.nid, desc: e.desc, unit: e.unit, qty: e.qty, unitPrice: 0, needPrice: true, isNew: true }));
+  const revenue = revenueOf(eff, inp.discountType, inp.discountValue);
+  const revenueCents = Math.round(revenue * 100);
+  const cs = costStats(lines, revenue);
+  const gpCents = revenueCents - cs.totalCents;
+  const os = outsourcedStats(lines, revenue);
+  return {
+    al, items: eff, revenue, revenueCents, costCents: cs.totalCents, gpCents, marginText: marginTextOf(gpCents, revenueCents),
+    byCat: cs.byCat, stampCents: cs.stampCents, outsourced: os, card: outsourcedCardModel(os),
+    changes: al.changes, conflicts: al.conflicts, zero: al.zero,
+  };
+}
+
+/**
+ * 按「完成」前的確認清單文字（純函式）：changes＝applyLinks 的 changes（qty／unit／new）。沒有異動回 ''。
+ * 最多列 SYNC_LIST_MAX 項（超過接「…另 N 項」）；有新增品項時另加一句「補完單價前業務不能送簽」。
+ */
+const SYNC_LIST_MAX = 10;
+function syncConfirmText(changes) {
+  const arr = Array.isArray(changes) ? changes : [];
+  if (!arr.length) return '';
+  const nm = (d) => { const s = text(d, DESC_MAX); return '「' + (s.length > 20 ? s.slice(0, 20) + '…' : s) + '」'; };
+  const f = (v) => fmtNum(Number(v), 4);
+  const lines = arr.slice(0, SYNC_LIST_MAX).map((c) => {
+    if (c.field === 'new') return '・新增報價項目' + nm(c.desc) + '　數量 ' + f(c.to) + (c.unit ? ' ' + c.unit : '') + '（單價由業務補填）';
+    if (c.field === 'unit') return '・' + nm(c.desc) + '　單位 ' + (c.from === '' || c.from === null || c.from === undefined ? '（空白）' : c.from) + ' → ' + c.to;
+    return '・' + nm(c.desc) + '　數量 ' + f(c.from) + ' → ' + f(c.to);
+  });
+  const rest = arr.length - lines.length;
+  const news = arr.filter((c) => c.field === 'new').length;
+  return '將同步更新業務的報價：\n' + lines.join('\n') + (rest > 0 ? '\n…另 ' + rest + ' 項' : '') +
+    (news ? '\n（新增的 ' + news + ' 個品項單價是空的，業務補完單價之前不能送簽。）' : '');
+}
+
 /** 補入確認視窗最多列出幾個品名；超過的以「…另 N 個」帶過 */
 const SUPPLEMENT_LIST_MAX = 8;
 /** 確認視窗裡單一品名最長字數（品名最長 120 字，列 8 個會變成一整面牆） */
@@ -1041,9 +1610,40 @@ function unmatchedItemsNote(lines, items, opts) {
 }
 
 /**
- * 把同一分區的多列合併成 1 列（純函式，可單獨測）：單位「式」、數量 1、成本單價＝各列小計（取整到分）的合計，所以成本合計不變。
- * 項目＝「合併 N 項：A、B、C」（可再改名）；廠商只有 1 種就帶入，多種就改記在說明；沿用第一列的 lid 與 forLid，
- * 並把所有被併列的 forLid∪forLids 放進 forLids（涵蓋判定因此把被併的每個品項都當已有成本列）。
+ * 合併欄位（顧問姓名／委外廠商）：全部相同才原樣保留（含「都是空白」）；不同就把不重複的非空值以「、」串接，超過 max 字截斷（規格 §7.1）。
+ * 例：['甲','甲',''] → '甲'；['甲','乙'] → '甲、乙'；['',''] → ''。
+ */
+function mergeField(values, max) {
+  const uniq = Array.from(new Set(values));
+  if (uniq.length <= 1) return uniq.length ? uniq[0] : '';
+  return uniq.filter(Boolean).join('、').slice(0, max);
+}
+
+/**
+ * 「全部連動、同一個品項、同單位」的合併：保持連動，數量加總（unit＝共同單位、qty＝各列數量的十進位精確加總），成本單價＝合計成本 ÷ 數量，
+ * 讓成本合計（分）不變。算不出剛好的單價（數量為 0、無 BigInt、除不盡造成差一分）就回 null，由呼叫端退回「拆項」。
+ */
+function mergeLinked(ls, cents) {
+  if (!HAS_BIGINT || ls.length < 2) return null;
+  if (!ls.every((l) => l.rel === 'link' && l.forLid && !(l.forLids && l.forLids.length))) return null;
+  if (!ls.every((l) => l.forLid === ls[0].forLid && l.unit === ls[0].unit)) return null;
+  const qty = decimalSum(ls.map((l) => l.qty));
+  const qp = decParts(qty);
+  if (!(qty > 0) || !qp || qp.n === BigInt(0)) return null;
+  const P = 12;   // 單價最多 12 位小數
+  const x = divRound(BigInt(cents) * pow10(qp.s + P), BigInt(100) * qp.n);   // 成本單價 × 10^P（整數）
+  const s = x.toString().padStart(P + 1, '0');
+  const unitCost = Number(s.slice(0, s.length - P) + '.' + s.slice(s.length - P));
+  if (!(unitCost >= 0) || unitCost > COST_MAX || lineCents({ qty, unitCost }) !== cents) return null;
+  return { qty, unitCost };
+}
+
+/**
+ * 把同一分區的多列合併成 1 列（純函式，可單獨測）：預設單位「式」、數量 1、成本單價＝各列小計（取整到分）的合計，所以成本合計不變。
+ * 項目＝「合併 N 項：A、B、C」（可再改名）；顧問姓名／委外廠商依 mergeField（相同才保留，不同以「、」串接；廠商串接超過 60 字時完整名單另記在說明）；
+ * 沿用第一列的 lid 與 forLid，並把所有被併列的 forLid∪forLids 放進 forLids（涵蓋判定因此把被併的每個品項都當已有成本列）。
+ * 對應方式（rel，cost-sync）：所有列都沒有 rel＝維持舊行為（輸出沒有 rel）；全部「不對應」→ 不對應；全部「連動」且同一個品項、同單位 → 保持連動並把數量加總
+ * （單位沿用、數量＝加總、單價＝合計 ÷ 數量，成本合計不變）；其餘（混合）→ 改為「拆項」（報價不動）。
  * 傳入的列要同一分類、不含印花稅列；空陣列回 null。
  */
 function mergeLines(rows) {
@@ -1051,21 +1651,39 @@ function mergeLines(rows) {
   if (!ls.length) return null;
   const first = ls[0];
   const names = ls.map((l) => l.desc).filter(Boolean);
-  const vendors = Array.from(new Set(ls.map((l) => l.vendor).filter(Boolean)));
+  const vendorsAll = Array.from(new Set(ls.map((l) => l.vendor).filter(Boolean)));
   const cents = ls.reduce((s, l) => s + lineCents(l), 0);
+  // 顧問服務區（有「委外」判定）：不同廠商以「、」串接（合併後仍是委外，委外占比不會因合併而掉到 0）；廠商欄放得下就不另記，被截斷（超過 60 字）才把完整名單記在說明。
+  // 其他分區（供應商）維持改版前的行為：只有 1 種就帶入，多種就欄位留白、記在說明
+  const isConsult = first.cat === 'consult';
   const o = {
     cat: first.cat,
     desc: ls.length > 1 ? '合併 ' + ls.length + ' 項：' + names.join('、') : (names[0] || ''),
-    vendor: vendors.length === 1 ? vendors[0] : '',
-    note: vendors.length > 1 ? '廠商：' + vendors.join('、') : '',
+    vendor: isConsult ? mergeField(ls.map((l) => l.vendor), VENDOR_MAX) : (vendorsAll.length === 1 ? vendorsAll[0] : ''),
+    note: isConsult ? (vendorsAll.join('、').length > VENDOR_MAX && vendorsAll.length > 1 ? '廠商：' + vendorsAll.join('、') : '') : (vendorsAll.length > 1 ? '廠商：' + vendorsAll.join('、') : ''),
     unit: DEFAULT_UNIT, qty: 1, unitCost: cents / 100,
   };
+  if (first.cat === 'consult') { const c = mergeField(ls.map((l) => l.consultant || ''), CONSULTANT_MAX); if (c) o.consultant = c; }
   if (first.lid) o.lid = first.lid;
   if (first.forLid) o.forLid = first.forLid;
   // 被併各列所涵蓋的品項（forLid∪forLids）全部帶著：整包後「補入新品項」與完成／儲存前的提醒仍認得這些品項已有成本列（cleanLine 會剔除與 forLid 相同者、去重、上限 60）
   const all = [];
   ls.forEach((l) => lineLidList(l).forEach((k) => { if (all.indexOf(k) < 0) all.push(k); }));
   if (all.length) o.forLids = all;
+  if (ls.some((l) => l.rel)) {
+    const eff = ls.map((l) => l.rel || (lineLidList(l).length ? 'split' : 'none'));
+    if (eff.every((r) => r === 'none') || !all.length) {
+      o.rel = 'none';
+    } else {
+      const lk = eff.every((r) => r === 'link') ? mergeLinked(ls, cents) : null;
+      if (lk) { o.rel = 'link'; o.unit = first.unit; o.qty = lk.qty; o.unitCost = lk.unitCost; delete o.forLids; }
+      else {
+        o.rel = 'split';
+        // 第一列沒有 forLid（例如它是「不對應」）但其他列有：提升一個當 forLid，讓拆項一定有對應目標（伺服器對 link／split 沒有目標會 400）
+        if (!o.forLid && all.length) { o.forLid = all[0]; if (all.length > 1) o.forLids = all.slice(1); else delete o.forLids; }
+      }
+    }
+  }
   return cleanLine(o);
 }
 
@@ -1106,19 +1724,85 @@ function onClick(inst, ev) {
   else if (act === 'reseed') reseed(inst);
   else if (act === 'supplement') supplement(inst);
   else if (act === 'merge') mergeRows(inst, b.getAttribute('data-cat'));
+  else if (act === 'relNone') relNone(inst, b.closest('tr.qcl-row'));
+  else if (act === 'relNoneAll') relNone(inst, null);
+}
+
+/** 孤兒對應的一鍵處理：把該列（tr 為 null＝全部孤兒列）改成「不對應（純成本）」，清掉對應目標，成本金額不動 */
+function relNone(inst, tr) {
+  if (inst.dead || !inst.link) return;
+  const lidSet = itemLidSet(inst.items);
+  const rows = tr ? [tr] : Array.prototype.slice.call(inst.root.querySelectorAll('tr.qcl-row'));
+  let n = 0;
+  rows.forEach((row) => {
+    const rel = row.getAttribute('data-rel');
+    if (rel !== 'link' && rel !== 'split') return;
+    const ids = [row.getAttribute('data-forlid') || ''];
+    try { const fl = row.getAttribute('data-forlids'); if (fl) ids.push.apply(ids, JSON.parse(fl)); } catch (_) { /* 壞資料當沒有 */ }
+    const live = ids.map(lidKey).filter(Boolean);
+    if (!tr && lidSet && live.some((k) => lidSet.has(k))) return;   // 全部處理只動孤兒列
+    row.setAttribute('data-rel', 'none');
+    row.removeAttribute('data-forlid'); row.removeAttribute('data-forlids');
+    const rs = row.querySelector('.qcl-rel'); if (rs) rs.value = 'none';
+    const ts = row.querySelector('.qcl-target'); if (ts) { ts.hidden = true; ts.innerHTML = targetOptionsHtml(inst.entries, ''); }
+    n++;
+  });
+  if (n) { setMsg(inst, '已把 ' + n + ' 列改成「不對應（純成本）」，成本金額不變'); emitChange(inst); }
 }
 
 function onInput(inst, ev) {
   const t = ev.target;
   if (!t || !t.classList || !t.classList.contains('qcl-in')) return;
+  if (t.classList.contains('qcl-rel') || t.classList.contains('qcl-target')) return;   // 下拉由 change 事件處理（先更新列上的 data-* 再重算，避免用到舊值）
   if (t.classList.contains('qcl-desc') && t.value.trim()) t.classList.remove('qcl-bad');
   if (t.classList.contains('qcl-qty')) t.classList.remove('qcl-warn');
   setMsg(inst, '');
   emitChange(inst);   // 只更新文字，不重畫表格（輸入框維持焦點）
 }
 
+/** 「對應方式」下拉改了：同步列上的 data-rel／data-forlid(s)；選連動或拆項時自動預選一個目標（品名相同的品項，沒有就第一個）；選不對應時清掉目標 */
+function onRelChange(inst, sel) {
+  const tr = sel.closest('tr.qcl-row');
+  if (!tr) return;
+  const r = RELS.indexOf(sel.value) >= 0 ? sel.value : 'none';
+  tr.setAttribute('data-rel', r);
+  const ts = tr.querySelector('.qcl-target');
+  if (r === 'none') {
+    tr.removeAttribute('data-forlid'); tr.removeAttribute('data-forlids');
+    if (ts) { ts.hidden = true; ts.innerHTML = targetOptionsHtml(inst.entries, ''); }
+  } else {
+    if (r === 'link') tr.removeAttribute('data-forlids');   // 連動只對應單一品項（合併過的多目標列選連動時只留第一個目標）
+    let cur = tr.getAttribute('data-forlid') || '';
+    if (!cur) {
+      const d = tr.querySelector('.qcl-desc');
+      const nm = nameKey(d ? d.value : '');
+      const ent = (nm && inst.entries.find((e) => e.name === nm)) || inst.entries[0];
+      cur = ent ? ent.key : '';
+      if (cur) tr.setAttribute('data-forlid', cur);
+    }
+    if (ts) { ts.hidden = false; ts.innerHTML = targetOptionsHtml(inst.entries, cur); }
+  }
+  setMsg(inst, '');
+  emitChange(inst);
+}
+
+/** 「對應的報價品項」下拉改了：同步列上的 data-forlid（連動列同時清掉多目標的 data-forlids） */
+function onTargetChange(inst, sel) {
+  const tr = sel.closest('tr.qcl-row');
+  if (!tr) return;
+  const v = lidKey(sel.value);
+  if (v) tr.setAttribute('data-forlid', v); else tr.removeAttribute('data-forlid');
+  if (tr.getAttribute('data-rel') === 'link') tr.removeAttribute('data-forlids');
+  setMsg(inst, '');
+  emitChange(inst);
+}
+
 function onChangeEv(inst, ev) {
-  if (ev.target && ev.target.classList && ev.target.classList.contains('qcl-stampchk')) emitChange(inst);
+  const t = ev.target;
+  if (!t || !t.classList) return;
+  if (t.classList.contains('qcl-stampchk')) emitChange(inst);
+  else if (t.classList.contains('qcl-rel')) onRelChange(inst, t);
+  else if (t.classList.contains('qcl-target')) onTargetChange(inst, t);
 }
 
 /** Enter 不送出表單：改為移到下一個輸入框（輸入法組字中的 Enter 不攔截） */
@@ -1616,6 +2300,9 @@ function mount(el, opts) {
     revenue: opts.revenue,
     max: Math.max(1, Math.min(MAX_LINES, parseInt(opts.maxLines, 10) || MAX_LINES)),
     lines: [],
+    link: mode === 'edit' && isLinkOpts(opts),          // 顧問對話框：每列多「對應」欄（連動報價數量／拆項／不對應）
+    names: cleanNames(opts.consultantNames),            // 「顧問姓名」欄的建議清單（datalist）
+    linkInfo: null, entries: [], targetSig: null,
   };
   const initial = Array.isArray(opts.lines) ? normalize(opts.lines) : (mode === 'edit' ? seedFromItems(inst.items, opts) : []);
 
@@ -1654,12 +2341,35 @@ function mount(el, opts) {
     if (inst.dead) return;
     if (mode === 'edit') refresh(inst); else renderView(inst, inst.lines);   // 唯讀模式的「原報價品項已刪除」徽章依 items 產生，要重畫
   };
+  /** 顧問對話框：把 applyLinks 的結果交給編輯器，在每個連動列旁顯示「→ 報價 業務原值 → 新值」、單位衝突標紅（只重畫小字，不動輸入框） */
+  inst.setLinkInfo = function (al) {
+    if (inst.dead || !inst.link) return;
+    const m = new Map();
+    const units = new Map();
+    ((al && al.conflicts) || []).forEach((c) => units.set(c.lid || c.nid, c.units));
+    ((al && al.items) || []).forEach((e) => { const k = e.lid || e.nid; m.set(k, Object.assign({}, e, { units: units.get(k) })); });
+    inst.linkInfo = m;
+    paintLinkNotes(inst);
+  };
+  /** 更新「顧問姓名」建議清單 */
+  inst.setNames = function (names) {
+    inst.names = cleanNames(names);
+    if (inst.dead || !inst.ids) return;
+    const dl = inst.el.querySelector('#' + inst.ids.names);
+    if (dl) dl.innerHTML = inst.names.map((x) => '<option value="' + esc(x) + '"></option>').join('');
+  };
   inst.setRevenue = function (rev) {
     inst.revenue = rev;
     if (inst.dead) return;
     if (mode === 'edit') refresh(inst); else renderView(inst, inst.lines);
   };
   inst.collect = function () { return collectInst(inst); };
+  /** 不標記空白項目、不動焦點地讀目前的列與檢查結果（顧問對話框送去伺服器試算前判斷「填得完不完整」）；唯讀模式回 null */
+  inst.peek = function () {
+    if (inst.dead || !inst.root || mode !== 'edit') return null;
+    const rd = readDom(inst, false);
+    return { lines: rd.lines, invalid: rd.invalid, blankDesc: rd.blankDesc, zeroQty: rd.zeroQty, badTarget: rd.badTarget };
+  };
   inst.destroy = function () {
     if (inst.dead) return;
     inst.dead = true;
@@ -1683,23 +2393,30 @@ function outLines(lines) {
 }
 
 function collectInst(inst) {
-  if (inst.dead || !inst.root) return { lines: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0 };
+  if (inst.dead || !inst.root) return { lines: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0, badTarget: 0 };
   if (inst.mode === 'view') {
     const ls = inst.lines.filter((l) => l.auto !== 'stamp');
     return {
       lines: outLines(inst.lines), invalid: 0,
-      blankDesc: ls.filter((l) => !l.desc).length, zeroCost: ls.filter((l) => l.unitCost === 0).length, zeroQty: ls.filter((l) => l.qty === 0).length,
+      blankDesc: ls.filter((l) => !l.desc).length, zeroCost: ls.filter((l) => l.unitCost === 0).length, zeroQty: ls.filter((l) => l.qty === 0).length, badTarget: 0,
     };
   }
   const rd = readDom(inst, true);
   refresh(inst, rd);
-  return { lines: rd.lines, invalid: rd.invalid, blankDesc: rd.blankDesc, zeroCost: rd.zeroCost, zeroQty: rd.zeroQty };
+  return { lines: rd.lines, invalid: rd.invalid, blankDesc: rd.blankDesc, zeroCost: rd.zeroCost, zeroQty: rd.zeroQty, badTarget: rd.badTarget };
 }
 
 /** 從 DOM 讀回 lines；空白項目的列保留並標紅、數字非法標紅（qcl-bad），是否擋存由呼叫端依 invalid／blankDesc 決定 */
 function collect(el) {
   const inst = findInst(el);
-  return inst ? collectInst(inst) : { lines: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0 };
+  return inst ? collectInst(inst) : { lines: [], invalid: 0, blankDesc: 0, zeroCost: 0, zeroQty: 0, badTarget: 0 };
+}
+
+/** 建議清單：字串、去頭尾空白、截 40 字、去空白與重複（顧問姓名 datalist 用） */
+function cleanNames(list) {
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach((x) => { const s = text(x, CONSULTANT_MAX); if (s && out.indexOf(s) < 0) out.push(s); });
+  return out;
 }
 
 global.QCL = {
@@ -1725,6 +2442,25 @@ global.QCL = {
   unmatchedKeys,           // (lines, items) → 未涵蓋有價品項的鍵陣列（lid／nid）：表單載入時記成儲存前確認的基準
   unmatchedNewNote,        // (lines, items, baseline) → 只算基準以外新出現的未涵蓋品項的提醒文字；沒有回 ''（儲存前確認用）
   STAMP_DESC,
+  // cost-sync（顧問成本畫面連動業務報價）：連動計算、委外占比、卡片數字——與伺服器 lib/quoteCostLines.js 逐例鏡像（scripts/check-quote-costsync-ui.js 以 vm 隨機比對）
+  RELS, REL_LABELS, MAX_NEW_ITEMS, MIN_ITEM_QTY, CONSULTANT_MAX,
+  applyLinks,              // (items, lines, newItems) → { items, changes, conflicts, zero }：連動計算（＝CL.applyLinks）
+  materializeItems,        // (items, al, makeNew) → 套用連動後的報價品項陣列（＝CL.materializeItems）
+  decimalSum,              // (numbers) → number：十進位精確加總
+  itemCents,               // (item) → 分：單一報價品項金額（數量×單價，逐列取整）
+  isOutsourced,            // (line) → boolean：顧問服務區且委外廠商非空
+  pctText,                 // (num, den) → '12.34'|null：小數兩位向 0 截斷（＝CL.pctText）
+  marginTextOf,            // (gpCents, revenueCents) → '31.25'|null（＝QA.marginText）
+  costStats,               // (lines, revenue) → { byCat, stampCents, totalCents, consultCents, outsourcedCents, stampUnknown }（分）
+  outsourcedStats,         // (lines, revenue) → { outsourcedCents, totalCents, consultCents, outsourcedPctOfCost, outsourcedPctOfConsult }（＝CL.outsourcedStats）
+  outsourcedFromBreakdown, // (costBreakdown) → 同上；直接用伺服器序列化的分類彙總（核准面板用）
+  outsourcedCardModel,     // (stats) → { pct, pctLabel, bar, line1, line2, title, aria }：委外佔比卡片顯示模型
+  outsourcedCardHtml,      // (model[, id]) → 卡片 HTML（pnl-sum-card 樣式）
+  paintOutsourcedCard,     // (root, model) → 更新卡片文字與進度條
+  liveSummary,             // ({items, lines, newItems, discountType, discountValue}) → 卡片數字（營收／成本／毛利／毛利率／委外占比）與連動結果
+  syncConfirmText,         // (changes) → 按「完成」前的「將同步更新業務的報價」清單文字
+  targetEntries,           // (items) → [{key, seq, name, isNew}]：「對應」下拉的選項來源
+  lineCents,               // (line) → 分：單列成本（數量×單價，十進位精確取整，＝伺服器 centsOf）
   // 內部（單元測試用）
   _unmatchedMessage: unmatchedMessage,
   _isOrphanLine: (l, items) => isOrphanLine(l, itemLidSet(items)),
@@ -1732,7 +2468,9 @@ global.QCL = {
   _supplementMessage: supplementMessage,
   _mergeLines: mergeLines,
   _catByUnit: catByUnit,
-  _editRowHtml: (l, cat) => editRowHtml(cleanLine(Object.assign({}, l, { cat })), CAT_BY_KEY[cat], { desc: 'd', unit: 'u' }),
+  _editRowHtml: (l, cat, ctx) => editRowHtml(cleanLine(Object.assign({}, l, { cat })), CAT_BY_KEY[cat], { desc: 'd', unit: 'u', names: 'n' }, ctx),
+  _mergeConfirmText: (cat, rows) => mergeConfirmText(CAT_BY_KEY[cat], rows, rows.reduce((t, l) => t + lineCents(l), 0) / 100),
+  _lineCents: lineCents,
   _viewRowHtml: (l, cat, items) => viewRowHtml(cleanLine(Object.assign({}, l, { cat })), CAT_BY_KEY[cat], itemLidSet(items)),
 };
 })(typeof window !== 'undefined' ? window : globalThis);

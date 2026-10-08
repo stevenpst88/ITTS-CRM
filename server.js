@@ -202,6 +202,8 @@ app.use((req, res, next) => {
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
   if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響
+  if (/^\/api\/quotations\/[^/]+\/cost-draft\/(?:summary|pnl-preview)$/.test(req.path)) return next();
   if (!req.session || !req.session.user) return next(); // 未登入交由後續 requireAuth 處理
   try {
     const auth = loadAuth();

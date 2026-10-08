@@ -433,7 +433,11 @@ if (QAmod && CLmod && typeof Q.revenueOf === 'function') {
   t('13c. 沿用第一列的 lid 與 forLid；其他列的 forLid 改收進 forLids（涵蓋判定因此認得每個被併的品項，見 15d）', m.lid === 'L-first' && m.forLid === 'I-1' && J(m.forLids) === J(['I-3']), J(m));
   t('13d. 廠商：全部相同才帶入（兩列都是「甲」＋一列沒有廠商 → 帶「甲」）；沒有廠商 → 空', m.vendor === '甲' && MG([row('A', 1, 1), row('B', 1, 1)]).vendor === '', m.vendor);
   const mv = MG([row('A', 1, 1, { vendor: '甲' }), row('B', 1, 1, { vendor: '乙' })]);
-  t('13e. 廠商不只一種 → 廠商欄空白、記到說明「廠商：甲、乙」（不丟資訊）', mv.vendor === '' && mv.note === '廠商：甲、乙', J(mv));
+  // cost-sync §7.1：顧問服務區的「委外廠商」決定這列算不算委外，合併時若把多種廠商清成空白，合併後的列就變成自家顧問、委外占比憑空掉到 0。
+  // 所以顧問區改成「相同才保留、不同以『、』串接」（截 60 字，被截斷才把完整名單記在說明）；其他分區（供應商）維持原行為。
+  t('13e. 顧問區廠商不只一種 → 以「、」串接成「甲、乙」（合併後仍算委外；原本是欄位留白＋說明記「廠商：甲、乙」，因委外占比而改）', mv.vendor === '甲、乙' && mv.note === '', J(mv));
+  const mvs = MG([row('A', 1, 1, { vendor: '甲', cat: 'software' }), row('B', 1, 1, { vendor: '乙', cat: 'software' })]);
+  t('13e2. 軟體區（供應商）廠商不只一種 → 維持原行為：廠商欄空白、記到說明「廠商：甲、乙」', mvs.vendor === '' && mvs.note === '廠商：甲、乙', J(mvs));
   t('13f. 合併後仍是合法的列（cleanLine 過得去）：Q.normalize 保留、不超出上限', Q.normalize([m]).length === 1 && Q.normalize([m])[0].unitCost === 207507.5);
   t('13g. 項目名稱過長（40 列 × 20 字）截成 120 字、不是空白', (() => { const big = Array.from({ length: 40 }, (_, i) => row('品項名稱很長很長很長很長' + i, 1, 1)); const r = MG(big); return r.desc.length === 120 && /^合併 40 項：/.test(r.desc); })());
   t('13h. 印花稅列不併入；空陣列／非陣列／全是無效列 → null', MG([row('A', 1, 100), { cat: 'other', auto: 'stamp' }]).unitCost === 100 && MG([]) === null && MG(undefined) === null && MG([null, 5]) === null);

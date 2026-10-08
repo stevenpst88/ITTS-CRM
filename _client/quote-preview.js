@@ -288,30 +288,89 @@ async function previewQuotePnl(id) {
   let r, j = {};
   try { r = await fetch(`${API}/quotations/${encodeURIComponent(id)}/pnl-preview`); j = await r.json().catch(() => ({})); } catch (e) { return showToast('毛利分析預覽載入失敗，請重試'); }
   if (!r.ok || !j.html) return showToast(j.error || '無法預覽毛利分析');
+  showPnlPreviewModal(j, { id });
+}
+
+/**
+ * 顧問「毛利預覽」（cost-sync）：用顧問畫面上目前的成本明細（含尚未儲存的調整）請伺服器產生毛利分析並轉成 HTML（POST cost-draft/pnl-preview，不寫入）。
+ * body＝{ costLines, newItems?, contingencyPct? }。顯示的版面與已存檔版相同，但沒有下載鈕（草稿還不是報價內容；要下載請在完成成本後從報價單列表進行）。
+ * 回傳 true＝已開啟預覽；false＝失敗（已提示）。
+ */
+async function previewQuotePnlDraft(id, body) {
+  let r, j = {};
+  try {
+    r = await fetch(`${API}/quotations/${encodeURIComponent(id)}/cost-draft/pnl-preview`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+    j = await r.json().catch(() => ({}));
+  } catch (e) { showToast('毛利預覽載入失敗，請重試'); return false; }
+  if (!r.ok || !j.html) { showToast(j.error || '無法產生毛利預覽'); return false; }
+  showPnlPreviewModal(j, { id, draft: true });
+  return true;
+}
+
+/** 毛利分析預覽視窗（已存檔版與顧問草稿版共用）。opts.draft＝草稿：標明「含尚未儲存的調整」，不提供下載 */
+function showPnlPreviewModal(j, opts) {
+  opts = opts || {};
   _qpvEnsureStyle();
   closeQuotePreview();
   const ov = document.createElement('div');
   ov.className = 'modal-overlay open';
   ov.id = 'quotePreviewOverlay';
+  if (opts.draft) ov.setAttribute('data-draft', '1');
   ov.innerHTML = `
     <div class="modal qpv-modal">
       <div class="modal-header">
-        <h2>毛利分析預覽（內部）　${escapeHtml(j.quoteNo || '')}</h2>
+        <h2>毛利分析預覽（內部）${opts.draft ? '：草稿' : ''}　${escapeHtml(j.quoteNo || '')}</h2>
         <button class="modal-close" onclick="closeQuotePreview()">&#10005;</button>
       </div>
       <div class="modal-body qpv-body">
         <div class="qpv-warn qpv-unsigned"><span>內部文件：含成本與毛利率，請勿提供客戶。</span></div>
+        ${opts.draft ? '<div class="qpv-warn"><span>這是依你畫面上<b>目前的調整（含尚未儲存的內容）</b>產生的草稿預覽：報價品項的數量／單位已套用「連動」的結果，新增的報價項目單價尚未填寫（由業務補填）。草稿預覽沒有下載鈕。</span></div>' : ''}
         <div class="qpv-hint">這是「毛利分析(內部)」Excel 內容的網頁預覽（和下載檔同一份資料；範本上的簽名線、選項按鈕等圖形不會顯示），實際成品以下載的 Excel 為準。</div>
         <div class="qpv-stage" id="qpvStage" data-paper-width="${Number(j.widthPx) || 950}"><div class="qpv-pnl-sheet" style="width:${Number(j.widthPx) || 950}px;margin:0 auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18)">${j.html}</div></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeQuotePreview()">關閉</button>
-        <button class="btn btn-export" id="qpvPnlDlBtn" type="button">&#11015; 下載毛利分析 Excel</button>
+        ${opts.draft ? '' : '<button class="btn btn-export" id="qpvPnlDlBtn" type="button">&#11015; 下載毛利分析 Excel</button>'}
       </div>
     </div>`;
   document.body.appendChild(ov);
   const dl = ov.querySelector('#qpvPnlDlBtn');
-  if (dl) dl.addEventListener('click', function () { exportQuote(id, j.quoteNo || '', 'pnl'); });
+  if (dl) dl.addEventListener('click', function () { exportQuote(opts.id, j.quoteNo || '', 'pnl'); });
+  fitQuotePreview();
+  window.addEventListener('resize', fitQuotePreview);
+}
+
+/**
+ * 顧問「報價單預覽」（cost-sync）：q＝已把連動後的品項（數量／單位）與顧問新增的報價項目套進去的報價單物件（前端用 cost-draft/summary 回傳的 items 覆蓋），
+ * info＝issue-info。走和一般預覽相同的渲染（buildQuotePreviewHtml），但是草稿：沒有下載鈕、沒有「主管尚未簽核」警示（顧問看不到簽核資訊），並標明含未儲存的調整。
+ */
+function showQuoteDraftPreview(q, info) {
+  _qpvEnsureStyle();
+  closeQuotePreview();
+  const no = escapeHtml(q.quoteNo || '');
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 'quotePreviewOverlay';
+  ov.setAttribute('data-draft', '1');
+  const news = (q.items || []).filter(function (it) { return it && it.needPrice === true && !(parseFloat(it.unitPrice) > 0); }).length;
+  ov.innerHTML = `
+    <div class="modal qpv-modal">
+      <div class="modal-header">
+        <h2>報價單預覽：草稿　${no}</h2>
+        <button class="modal-close" onclick="closeQuotePreview()">&#10005;</button>
+      </div>
+      <div class="modal-body qpv-body">
+        <div id="qpvNotice"><div class="qpv-warn"><span>這是依你畫面上<b>目前的調整（含尚未儲存的內容）</b>產生的草稿預覽：品項的數量／單位已套用「連動」的結果${news ? '；新增的報價項目（' + news + ' 項）單價是 0，由業務補填' : ''}。尚未同步給業務，按「完成並通知業務」才會寫回報價。</span></div>${_qpvIssuerNotice(info)}</div>
+        <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；草稿預覽沒有下載鈕。</div>
+        <div class="qpv-stage" id="qpvStage">${buildQuotePreviewHtml(q, info)}</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeQuotePreview()">關閉</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
   fitQuotePreview();
   window.addEventListener('resize', fitQuotePreview);
 }
