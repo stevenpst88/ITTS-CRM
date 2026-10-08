@@ -989,6 +989,7 @@ function serveHtmlWithVersion(htmlPath, res) {
     const versioned = html
       .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
+      .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-costlines\.js"/g, `src="quote-costlines.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)

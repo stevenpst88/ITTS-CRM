@@ -201,35 +201,13 @@ function taipeiTodayClient() {
 }
 
 /**
- * 報價期限預設值：dateStr（YYYY-MM-DD）當月的最後一個工作天；dateStr 已在當月最後工作天之後（例如月底週末或假日建單）
- * 就順延到下個月的最後一個工作天，避免預設期限早於報價日期。
- * 規則與 lib/quoteExcel.js 的 defaultValidUntil 相同（改一邊要改另一邊；單元測試會逐月比對兩邊）：週一至週五，且不是固定日期國定假日
- * 元旦 1/1、和平紀念日 2/28、勞動節 5/1、孔子誕辰紀念日／教師節 9/28（遇週六補前一個週五、遇週日補後一個週一）。
- * 春節、清明、端午、中秋日期逐年變動，未內建（2026~2030 年這些連假不影響任何月底）→ 之後月底剛好落在這些連假時請自行修改。
+ * 報價期限預設值：dateStr（報價日期 YYYY-MM-DD）當月的最後一個工作天；報價日期之後（不含當天）到該日的工作天不足 7 天
+ * （含月底週末／假日／最後工作天當天建單）就順延到下個月的最後一個工作天。dateStr 不合法回傳 ''。
+ * 規則與假日表只有一份：_client/tw-workdays.js（window.TWWD，伺服器 lib/quoteExcel.js 也 require 同一支）。
+ * 這裡只是保留舊函式名給既有呼叫端；沒載入 TWWD（例如腳本被擋）時回傳 ''，使用者自己輸入報價期限即可。
  */
 function quoteLastWorkingDay(dateStr) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
-  if (!m) return '';
-  const y0 = +m[1], mo0 = +m[2], dd0 = +m[3];
-  const chk = new Date(Date.UTC(y0, mo0 - 1, dd0));
-  if (chk.getUTCFullYear() !== y0 || chk.getUTCMonth() !== mo0 - 1 || chk.getUTCDate() !== dd0) return '';   // 必須是真實存在的日期
-  const iso = function (d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); };
-  const lwd = function (y, mo) {
-    const hol = new Set();
-    [y, y + 1].forEach(function (yy) {          // 含隔年：隔年 1/1 遇週六會補到今年 12/31
-      [[1, 1], [2, 28], [5, 1], [9, 28]].forEach(function (md) {
-        const dt = new Date(Date.UTC(yy, md[0] - 1, md[1])), dow = dt.getUTCDay();
-        if (dow === 6) dt.setUTCDate(dt.getUTCDate() - 1); else if (dow === 0) dt.setUTCDate(dt.getUTCDate() + 1);
-        hol.add(iso(dt));
-      });
-    });
-    const d = new Date(Date.UTC(y, mo, 0));   // 當月最後一天
-    while (d.getUTCDay() === 0 || d.getUTCDay() === 6 || hol.has(iso(d))) d.setUTCDate(d.getUTCDate() - 1);
-    return iso(d);
-  };
-  let r = lwd(y0, mo0);
-  if (r < dateStr) { let y = y0, mo = mo0 + 1; if (mo === 13) { mo = 1; y += 1; } r = lwd(y, mo); }
-  return r;
+  return (typeof TWWD !== 'undefined' && TWWD && typeof TWWD.defaultValidUntil === 'function') ? TWWD.defaultValidUntil(dateStr) : '';
 }
 
 function fmtMoney(n) {
@@ -1316,6 +1294,9 @@ function renderQuoteApprovalState(q) {
 let _qValidUntilTouched = false;
 function bindQuoteValidUntil() {
   const vu = $('qValidUntil'), qd = $('qDate');
+  // 欄位說明裡的「7 個工作天」跟著規則常數走（改 tw-workdays.js 的 MIN_VALID_WORKING_DAYS 就同步；HTML 內的 7 只是沒載入 TWWD 時的後備）
+  const minEl = $('qValidUntilMinDays');
+  if (minEl && typeof TWWD !== 'undefined' && TWWD && TWWD.MIN_VALID_WORKING_DAYS) minEl.textContent = String(TWWD.MIN_VALID_WORKING_DAYS);
   if (vu && !vu._qBound) {
     vu._qBound = true;
     vu.addEventListener('input', function () { _qValidUntilTouched = true; if (typeof renderQuoteFixedClauses === 'function') renderQuoteFixedClauses(); });
@@ -1368,7 +1349,8 @@ async function openQuoteModal(idOrNull) {
     $('qAddress').value     = q ? (q.address       || '') : '';
     $('qDate').value        = q ? (q.quoteDate     || today) : today;
     $('qProjectName').value = q ? (q.projectName   || '') : '';
-    // 報價期限：新單預設「報價日期當月最後一個工作天」，業務沒改過就跟著報價日期走；編輯舊單則尊重已存的值
+    // 報價期限：新單預設「報價日期當月最後一個工作天；報價日期之後剩餘不足 7 個工作天則下個月最後一個工作天」（TWWD 單一規則），
+    // 業務沒改過就跟著報價日期走；編輯舊單則尊重已存的值（q.validUntil 是伺服器算好的：舊單沒存就是舊規則的推算值）
     $('qValidUntil').value  = q ? (q.validUntil || quoteLastWorkingDay($('qDate').value)) : quoteLastWorkingDay($('qDate').value);
     _qValidUntilTouched     = !!q;
     bindQuoteValidUntil();
