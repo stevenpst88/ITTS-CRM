@@ -181,7 +181,11 @@ app.use((req, res, next) => {
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
   const origEnd = res.end.bind(res);
   res.end = function (...args) {
-    Promise.resolve(db.flush ? db.flush() : null)
+    // 簽核信件：先等這個請求累積的寄信工作做完（lib/mail/quoteMail.js 把 promise 放進 req._mailPending；永不 reject），
+    // 再 flush（寄信會寫稽核）。Vercel 回應送出後實例可能被凍結，所以不能像 Web Push 那樣發了就不管。沒有寄信時幾乎零成本。
+    // 有時限：waitPending 最多等 12 秒（每封寄信 promise 本身另有 10 秒上限）；outbox／資料庫卡住時放手，業務回應照送。
+    quoteMail.waitPending(req)
+      .then(() => (db.flush ? db.flush() : null))
       .catch((e) => console.error('[db.flush] error before response:', e))
       .finally(() => origEnd(...args));
     return res;
@@ -500,6 +504,50 @@ function writeLog(action, operator, target, detail, req) {
   });
   if (logs.length > 500) logs = logs.slice(0, 500); // keep latest 500
   fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), 'utf8');
+}
+
+// ── 簽核信件派送（E1–E6）單例 ─────────────────────────────
+// 規格與模組分工見 lib/mail/README.md。MAIL_MODE 未設＝off（安全預設）：完全不寄、不渲染、不碰儲存體。
+// 本階段真傳輸（Microsoft Graph）還沒實作，live 模式是 stub（回 NOT_CONFIGURED）→ 任何模式都不會真的寄出。
+// outbox：雲端（DB_BACKEND=postgres）用獨立資料表（不放進 app_data 主 blob，避免整 row 後寫覆蓋）；本機用 JSON 檔（MAIL_OUTBOX_FILE，預設 mail-outbox.json，已在 .gitignore）。
+const { getMailConfig } = require('./lib/mail/config');
+const { createOutbox, jsonFileAdapter, postgresAdapter } = require('./lib/mail/outbox');
+const { createQuoteMail } = require('./lib/mail/quoteMail');
+const { registerMailRoutes } = require('./lib/mail/routes');
+const { renderJumpPage } = require('./lib/mail/link');
+const { validateUserEmail, maskedAuditDetail } = require('./lib/mail/userEmail');
+const mailConfig = getMailConfig();
+let _mailPool = null;
+/** outbox 專用的 pg 連線（沿用 db/postgres.js、lib/apiMonitor.js 的慣例：max 2、ssl、connectionTimeoutMillis 5000）；第一次查詢才建立 */
+function mailPgQuery(sql, params) {
+  if (!_mailPool) {
+    const { Pool } = require('pg');
+    _mailPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 2,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
+    });
+    _mailPool.on('error', (err) => console.error('[mail] pool error:', err));
+  }
+  return _mailPool.query(sql, params);
+}
+let mailOutbox = null;
+try {
+  const mailAdapter = _USE_DB_FOR_META
+    ? postgresAdapter({ query: mailPgQuery })
+    : jsonFileAdapter({ file: path.resolve(__dirname, mailConfig.outboxFile) });
+  mailOutbox = createOutbox(mailAdapter, { config: mailConfig });
+} catch (e) {
+  console.error('[mail] 寄件匣初始化失敗，簽核信件功能停用（簽核與站內通知不受影響）:', e && e.message);
+}
+const quoteMail = createQuoteMail({ config: mailConfig, outbox: mailOutbox, db, loadAuth, writeLog });
+mailConfig.warnings.forEach((w) => console.warn('[mail config]', w));
+/** GET /api/poll-bundle 的機會式清理（每個實例至少間隔 60 秒、最久等 4 秒；MAIL_MODE=off 時零成本）。放在 ETag／304 短路之前，不改 ETag 計算 */
+function mailPollDrain(req, res, next) {
+  if (!quoteMail.enabled()) return next();
+  quoteMail.pollDrain().then(() => next(), () => next());
 }
 
 // ── 聯絡人欄位中文標籤 ───────────────────────────────────
@@ -980,6 +1028,20 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
   });
 });
+
+// ── 簽核信件：公開跳板頁、登入頁用的 deep-link.js、Cron／後台寄信路由 ─────────
+// 必須在 requireAuth 與下方 _client 靜態檔之前（信內連結 /q/<單據id> 沒有登入也要打得開）。
+// /q/<id> 不查資料庫、不洩漏單據是否存在；自帶比 helmet 更嚴的標頭（res.set 會取代同名標頭）。
+// 用 req.path 而不是 /q/:id 的路徑參數：Express 會對參數做 decodeURIComponent，壞掉的百分比編碼（例如 %E0%A4%A）會在進路由前就被丟成 400，
+// 內容就和其他無效 id 的 404 頁不同。單據 id 只可能是 [A-Za-z0-9_-]，所以直接拿「未解碼」的路徑片段，含 / 或 % 的一律是無效 id → 同一頁 404。
+// /deep-link.js 必須有自己的公開路由：其他 _client/*.js 都在 requireAuth 之後，login.html 載入它時會被導向登入頁（靜默失效）。
+// registerMailRoutes 裡的 /api/* 路由要在上面的「強制改密碼」「集團角色路徑白名單」middleware 之後註冊（所以放在這裡，不是更前面）。
+app.get(/^\/q\/.*$/i, (req, res) => {
+  const r = renderJumpPage({ quoteId: req.path.slice(3), cost: req.query.cost });
+  res.status(r.status).set(r.headers).send(r.body);
+});
+app.use('/deep-link.js', express.static(path.join(__dirname, '_client', 'deep-link.js'), STATIC_NO_CACHE));
+registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json' });
 
 // ── 受保護路由（需驗證）─────────────────────────────────
 // 伺服器啟動時間戳，用於前端資源版本控制（每次重啟強制瀏覽器重抓）
@@ -1741,10 +1803,14 @@ const GROUP_SCOPED_ROLES = ['tecopm', 'groupsales'];
 // ── Admin: get all users ─────────────────────────────────
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const auth = loadAuth();
+  const emailStatus = quoteMail.emailStatusMap(auth.users);   // OK｜NO_EMAIL｜BAD_EMAIL｜DOMAIN_NOT_ALLOWED（與寄信的收件人檢查同一套規則）
   const users = auth.users.map(u => ({
     username: u.username,
     displayName: u.displayName,
     nickname: u.nickname || '',   // 後台統一設定的暱稱（報表／下拉優先顯示；空＝沿用顯示名稱）
+    // 簽核信件的收件位址：只有這個管理員端點會回傳（不進 /api/me、JWT、/api/me/contact；那是印在客戶報價單上的聯絡資訊）
+    email: u.email || '',
+    emailStatus: emailStatus[u.username] || 'OK',
     role: u.role || 'user',
     bu: normalizeBu(u.bu),
     canDownloadContacts: u.canDownloadContacts || false,
@@ -1824,6 +1890,12 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   if (!KNOWN_ROLES.includes(finalRole)) return res.status(400).json({ error: `未知的角色代碼：${String(finalRole).slice(0, 40)}` });
   const nickCheck = validateNickname(auth.users, nickname, username.trim());
   if (nickCheck.error) return res.status(400).json({ error: nickCheck.error });
+  // 簽核信件的 Email：body 有帶 email 欄位才驗證（空字串／null＝不設定）；格式、網域白名單、全站唯一都由 lib/mail/userEmail 把關
+  let emailCheck = null;
+  if (req.body && 'email' in req.body) {
+    emailCheck = validateUserEmail(req.body.email, { config: mailConfig, users: auth.users, selfUsername: username.trim() });
+    if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
+  }
   const buCheck = validateBuInput(finalRole, bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
 
@@ -1851,6 +1923,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     password: hashedPassword,
     displayName: displayName || username,
     ...(nickCheck.nickname ? { nickname: nickCheck.nickname } : {}),
+    ...(emailCheck && emailCheck.value ? { email: emailCheck.value } : {}),
     role: finalRole,
     bu: buCheck.bu,
     canDownloadContacts: !!canDownloadContacts,
@@ -1867,7 +1940,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
   const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}`, req);
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : ''), req);
   res.json({ success: true });
 });
 
@@ -1885,6 +1958,14 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     nickCheck = validateNickname(auth.users, nickname, req.params.username);
     if (nickCheck.error) return res.status(400).json({ error: nickCheck.error });
   }
+  // 簽核信件的 Email：body 有帶 email 欄位才處理（空字串／null＝清除；沒帶＝不動）。格式、網域白名單、全站唯一由 lib/mail/userEmail 把關。
+  // 稽核只記「未設定→已設定／已變更／已清除」，絕不寫完整位址
+  let emailCheck = null;
+  if (req.body && 'email' in req.body) {
+    emailCheck = validateUserEmail(req.body.email, { config: mailConfig, users: auth.users, selfUsername: req.params.username });
+    if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
+  }
+  const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
   // 所有修改先套在「副本」u 上，全部驗證通過才寫回 auth.users[idx]：
@@ -1897,6 +1978,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   }
   if (displayName !== undefined)        u.displayName = displayName;
   if (nickCheck) { if (nickCheck.nickname) u.nickname = nickCheck.nickname; else delete u.nickname; }
+  if (emailCheck) { if (emailCheck.value) u.email = emailCheck.value; else delete u.email; }
   if (role !== undefined)               u.role = role;
   const effectiveRole = u.role;
   if (bu !== undefined || role !== undefined) {
@@ -1944,7 +2026,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   Object.assign(target, u);
   saveAuth(auth);
   const buLabel = u.bu ? u.bu.join('+') : '全公司';
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (u.role !== roleBefore ? `；角色 ${roleBefore}→${u.role}` : ''), req);
+  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (u.role !== roleBefore ? `；角色 ${roleBefore}→${u.role}` : '') + (emailCheck && maskedAuditDetail(emailBefore, emailCheck.value) !== maskedAuditDetail('', '') ? '；' + maskedAuditDetail(emailBefore, emailCheck.value) : ''), req);
   res.json({ success: true });
 });
 
@@ -6118,7 +6200,7 @@ app.get('/api/notifications', requireAuth, (req, res) => {
 
 // ── 通知合併端點：notifications + contract-reminders + birthday-reminders ──
 // 單次 db.load() 完成三組計算 + ETag 支援，省 Supabase egress
-app.get('/api/poll-bundle', requireAuth, (req, res) => {
+app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
   const username = req.session.user.username;
   const role     = req.session.user.role;
   const data = db.load();
@@ -9276,6 +9358,7 @@ require('./lib/quoteRoutes')(app, {
   db, loadAuth, saveAuth, requireAuth, requireAdmin, writeLog, pushNotification, getViewableOwners,
   sanitizeStr, genQuoteNo, taipeiToday, resolveIssuer, buildQuoteWorkbook, buildQuotePnlExcel,
   QUOTE_TEMPLATE, uuidv4, normalizeBu, getUserFeatures,
+  mail: quoteMail,   // 簽核信件（E1–E6）；MAIL_MODE=off 時 notifyMail 立刻返回
 });
 
 // ── 全域錯誤處理（必須在所有路由之後）─────────────────────

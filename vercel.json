@@ -10,5 +10,8 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index" }
   ],
+  "crons": [
+    { "path": "/api/cron/mail-outbox", "schedule": "0 0 * * *" }
+  ],
   "regions": ["hnd1"]
 }

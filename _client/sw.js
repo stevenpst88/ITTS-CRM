@@ -3,6 +3,7 @@
  * 策略：
  *   - /api/*                → 永遠 network-only（live data + auth，絕不 cache）
  *   - /uploads/*            → network-only（簽署 URL / auth-gated）
+ *   - /q/*                  → network-only（簽核信件的深層連結跳板頁，不可快取）
  *   - HTML（含 /, /admin.html, /login.html, /help, /help.html）
  *                          → network-first，失敗時回 cache，最後 fallback offline
  *   - /sw.js, /manifest.webmanifest
@@ -20,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v3';
+const SW_VERSION = 'itts-crm-v4';   // v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
@@ -65,6 +66,7 @@ function isNetworkOnly(url) {
   return (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/uploads/') ||
+    url.pathname.startsWith('/q/') ||            // 簽核信件的深層連結跳板頁（伺服器即時產生、每次都要走網路；Cache API 不理會 no-store）
     url.pathname === '/sw.js' ||
     url.pathname === '/manifest.webmanifest'
   );

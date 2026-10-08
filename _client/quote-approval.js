@@ -1863,16 +1863,50 @@ function userText(s, username) {
   return (u.displayName || u.username) + (u.displayName && u.displayName !== u.username ? '（' + u.username + '）' : '') + (u.active === false ? ' [停用]' : '');
 }
 
+// ── 簽核信件的 email 狀態徽章（簽核名冊頁）──────────────────
+// GET /api/quote-approval/config（管理員）的 users[].emailStatus：OK｜NO_EMAIL｜BAD_EMAIL｜DOMAIN_NOT_ALLOWED，由伺服器用寄信收件人檢查的同一套規則算出，
+// 「不含位址」（位址只在後台帳號管理看得到）。舊版伺服器沒有這個欄位（undefined）時不顯示任何徽章。
+// 只有會收到簽核信的名冊（總經理／董事長／董事會代核人／成本填寫人）與秘書要標；報價專用章管理人不會收到簽核信，不標。
+const EMAIL_STATUS_LABEL = { NO_EMAIL: '⚠ 無 email', BAD_EMAIL: '⚠ email 格式有誤', DOMAIN_NOT_ALLOWED: '⚠ email 網域不允許' };
+const EMAIL_STATUS_TIP = {
+  NO_EMAIL: '這個帳號沒有 email，簽核信件不會寄給他（站內通知不受影響）。請管理員到「後台 → 帳號管理」補上。',
+  BAD_EMAIL: '這個帳號已存的 email 格式不正確，簽核信件會被略過。請管理員到「後台 → 帳號管理」修正。',
+  DOMAIN_NOT_ALLOWED: '這個帳號的 email 網域不在允許清單內，簽核信件會被略過。請管理員到「後台 → 帳號管理」修正。',
+};
+const MAIL_ROSTER_KEYS = ['gm', 'chairman', 'boardProxy', 'costProviders'];
+
+/** 回傳 NO_EMAIL／BAD_EMAIL／DOMAIN_NOT_ALLOWED，沒問題（或不適用）回 '' */
+function emailProblem(s, username) {
+  const u = (s.cfg.users || []).find((x) => x.username === username);
+  if (!u || u.active === false) return '';
+  return Object.prototype.hasOwnProperty.call(EMAIL_STATUS_LABEL, u.emailStatus) ? u.emailStatus : '';
+}
+
+function emailBadge(s, username) {
+  const st = emailProblem(s, username);
+  if (!st) return '';
+  return ` <span class="qap-badge warn" data-mail-status="${st}" title="${e(EMAIL_STATUS_TIP[st])}">${e(EMAIL_STATUS_LABEL[st])}</span>`;
+}
+
 function buildRosterTab(s) {
   const users = (s.cfg.users || []).filter((u) => u.active !== false).slice()
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username), 'zh-Hant'));
   const secs = users.filter((u) => u.role === 'secretary');
-  let html = `<div class="qap-alert info">所有「secretary」角色的在職帳號自動具有「董事會代核」與「報價章管理」權限，不需要在此重複加入。目前有：${secs.length ? secs.map((u) => e(u.displayName || u.username)).join('、') : '（無）'}</div>`;
+  let html = `<div class="qap-alert info">所有「secretary」角色的在職帳號自動具有「董事會代核」與「報價章管理」權限，不需要在此重複加入。目前有：${secs.length ? secs.map((u) => e(u.displayName || u.username) + emailBadge(s, u.username)).join('、') : '（無）'}</div>`;
+  // 簽核信件：名冊（含秘書）裡沒有可用 email 的人，系統不會寄信給他們 → 頂端彙整提醒（只列名字，不含位址）
+  const seenMail = new Set();
+  const noMail = [];
+  MAIL_ROSTER_KEYS.forEach((k) => (s.roster[k] || []).forEach((un) => { if (!seenMail.has(un)) { seenMail.add(un); if (emailProblem(s, un)) noMail.push(un); } }));
+  secs.forEach((u) => { if (!seenMail.has(u.username)) { seenMail.add(u.username); if (emailProblem(s, u.username)) noMail.push(u.username); } });
+  if (noMail.length) {
+    html += `<div class="qap-alert warn" id="qapMailWarn">⚠ 以下 ${noMail.length} 位簽核相關人員沒有可用的 email，系統不會寄簽核信給他們（站內通知不受影響）：${noMail.map((un) => e(userText(s, un))).join('、')}。請管理員到「後台 → 帳號管理」補上 email（後台「寄信」→「缺 email 清單」可看完整清單，含一級主管）。</div>`;
+  }
   ROSTER_GROUPS.forEach((g) => {
     const sel = s.roster[g.key] || [];
-    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
+    const mailRelevant = MAIL_ROSTER_KEYS.indexOf(g.key) >= 0;
+    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}${mailRelevant ? emailBadge(s, un) : ''}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
     const opts = users.filter((u) => sel.indexOf(u.username) < 0)
-      .map((u) => `<option value="${e(u.username)}">${e(u.displayName || u.username)}（${e(u.username)}）${u.role ? ' · ' + e(u.role) : ''}</option>`).join('');
+      .map((u) => `<option value="${e(u.username)}">${e(u.displayName || u.username)}（${e(u.username)}）${u.role ? ' · ' + e(u.role) : ''}${mailRelevant && emailProblem(s, u.username) ? ' · ' + e(EMAIL_STATUS_LABEL[emailProblem(s, u.username)]) : ''}</option>`).join('');
     html += sec(e(g.label), `<div class="qap-muted" style="margin-bottom:6px">${e(g.desc)}</div>
       <div class="qap-path">${chips}</div>
       <select class="qap-input" data-act="addUser" data-g="${e(g.key)}" style="max-width:340px"><option value="">＋ 加入帳號…</option>${opts}</select>`);

@@ -343,7 +343,14 @@
   </div>
 </div>
 
+<!-- 信件深層連結暫存（簽核信 → /q/<id> → 這裡 → 登入後回到該單）。/deep-link.js 是公開路由（伺服器端有自己的靜態路由）；載入失敗只是少了這個功能，不影響登入 -->
+<script src="/deep-link.js"></script>
 <script>
+/* ── 信件深層連結：登入頁載入時決定要不要沿用暫存的 #quote:…（登入成功後帶回去）──
+   網址上有合法片段 → 記住；沒有，但 app.js 是為了登入而導過來的（上膛）→ 保留；其他（使用者主動打開登入頁、登出後回來）→ 清掉舊暫存，
+   下一位登入的人不會被帶去上一位的單據。 */
+try { if (window.ITTSDeepLink) window.ITTSDeepLink.settleOnLoginPage(window.location.hash); } catch (_) { /* 取不到就當沒有 */ }
+
 /* ── 粒子 ── */
 const pWrap = document.getElementById('particles');
 for (let i = 0; i < 50; i++) {
@@ -585,7 +592,10 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     const data = await res.json();
     if (res.ok && data.success) {
       sessionStorage.setItem('justLoggedIn', '1');
-      window.location.href = data.role === 'admin' ? '/admin.html' : '/';
+      // 深層連結：非 admin 登入後帶回暫存的 #quote:…（hashForRedirect 取一次即清）；admin 不附片段（後台沒有報價單面板），但仍要清掉暫存
+      let _dl = '';
+      try { _dl = window.ITTSDeepLink ? window.ITTSDeepLink.hashForRedirect() : ''; } catch (_) { _dl = ''; }
+      window.location.href = data.role === 'admin' ? '/admin.html' : '/' + _dl;
     } else {
       errorMsg.classList.add('show');
       document.getElementById('password').value = '';

@@ -354,6 +354,101 @@
     body.dark ::-webkit-scrollbar-track { background: #0d1117; }
     body.dark ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
     body.dark ::-webkit-scrollbar-thumb:hover { background: #444c56; }
+    /* ── 簽核信件：使用者 Email 欄位、批次匯入、「寄信」區段（程式在檔尾 mail 區塊）── */
+    .mail-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .mail-badge-warn { background: #fff3e0; color: #e65100; }
+    .mail-badge-bad  { background: #fce8e6; color: #c62828; }
+    .mail-badge-ok   { background: #e6f4ea; color: #1e7e34; }
+    .mail-badge-info { background: #e8f0fe; color: #1a73e8; }
+    .mail-badge-mute { background: #f0f2f5; color: #666; }
+    .mail-addr  { font-family: Consolas, 'Courier New', monospace; font-size: 12px; color: #444; }
+    .mail-muted { color: #b0b7c3; }
+    .mail-help  { font-size: 12px; color: #8a94a3; margin-top: 4px; line-height: 1.6; }
+    .mail-hint  { font-size: 12px; margin-top: 4px; line-height: 1.6; color: #8a94a3; }
+    .mail-hint.ok   { color: #1e7e34; }
+    .mail-hint.warn { color: #e65100; }
+    .mail-hint.bad  { color: #c62828; font-weight: 600; }
+    .mail-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+    .mail-tab { padding: 8px 16px; border-radius: 8px; border: 1.5px solid #e0e2e5; background: #fff; font-size: 13px; font-weight: 600; color: #555; cursor: pointer; font-family: inherit; }
+    .mail-tab.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+    .mail-panel[hidden] { display: none; }
+    .mail-banner { border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; line-height: 1.7; border: 1px solid transparent; }
+    .mail-banner.info { background: #e8f0fe; color: #1558b0; border-color: #b6cdf5; }
+    .mail-banner.warn { background: #fff4e5; color: #8a4b00; border-color: #f5c98b; }
+    .mail-banner.bad  { background: #fde8e8; color: #b3261e; border-color: #f2b8b5; }
+    .mail-banner.ok   { background: #e6f4ea; color: #1e7a3a; border-color: #b7dfc3; }
+    .mail-banner ul { margin: 6px 0 0 18px; }
+    .mail-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .mail-stat { background: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
+    .mail-stat .l { font-size: 11px; color: #888; font-weight: 600; }
+    .mail-stat .v { font-size: 22px; font-weight: 800; color: #1a2d52; margin-top: 2px; }
+    .mail-filter { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; padding: 14px 16px; }
+    .mail-filter label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+    .mail-filter select, .mail-filter input { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit; max-width: 100%; background: #fff; color: inherit; }
+    .mail-tablewrap { overflow-x: auto; }
+    .mail-table th, .mail-table td { white-space: nowrap; }
+    .mail-table td.mail-wrap { white-space: normal; min-width: 150px; max-width: 320px; word-break: break-word; }
+    /* 批次匯入預覽：固定欄寬、內容自動換行，桌面版整張表放得進對話框（不用橫向捲動）；手機（<620px）才在容器內橫向捲動 */
+    #emailImportTable { table-layout: fixed; width: 100%; min-width: 620px; }
+    #emailImportTable th, #emailImportTable td { white-space: normal; overflow-wrap: anywhere; word-break: break-word; vertical-align: top; }
+    #emailImportTable th:nth-child(1), #emailImportTable td:nth-child(1) { width: 44px; }
+    #emailImportTable th:nth-child(2) { width: 22%; }
+    #emailImportTable th:nth-child(3) { width: 31%; }
+    #emailImportTable th:nth-child(4), #emailImportTable td:nth-child(4) { width: 84px; }
+    .mail-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 16px; font-size: 13px; color: #666; border-top: 1px solid #f0f2f5; }
+    .mail-pager-btns { display: flex; gap: 8px; align-items: center; }
+    .mail-empty { text-align: center; color: #bbb; padding: 40px 12px; font-size: 14px; }
+    .mail-kv { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; font-size: 13px; }
+    .mail-kv > div { padding: 9px 14px; border-bottom: 1px solid #f0f2f5; word-break: break-word; }
+    .mail-kv > .k { color: #666; font-weight: 600; background: #f8f9fa; }
+    .mail-modal-wide { width: 900px; }
+    .mail-import-text { width: 100%; font-family: Consolas, 'Courier New', monospace; font-size: 13px; padding: 10px 12px; border: 1.5px solid #e0e2e5; border-radius: 8px; resize: vertical; outline: none; background: #fff; color: inherit; }
+    .mail-import-text:focus { border-color: #1a73e8; }
+    .mail-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+    .mail-notice-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; font-size: 13px; background: #fff4e5; color: #8a4b00; border-bottom: 1px solid #f5c98b; }
+    .mail-notice-row[hidden] { display: none; }
+    .log-IMPORT_USER_EMAILS, .log-REQUEUE_MAIL { background: #e8f0fe; color: #1a73e8; }
+    .log-QUOTE_MAIL_FAILED { background: #fce8e6; color: #c62828; }
+    .log-QUOTE_MAIL_SKIPPED { background: #fff3e0; color: #e65100; }
+    body.dark .mail-badge-warn { background: #3d2b0a; color: #f0b866; }
+    body.dark .mail-badge-bad  { background: #3f1717; color: #ff8a80; }
+    body.dark .mail-badge-ok   { background: #12351f; color: #6fdc8c; }
+    body.dark .mail-badge-info { background: #14283f; color: #79b8ff; }
+    body.dark .mail-badge-mute { background: #21262d; color: #8b949e; }
+    body.dark .mail-addr { color: #c9d1d9; }
+    body.dark .mail-tab { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+    body.dark .mail-tab.on { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+    body.dark .mail-banner.info { background: #14283f; color: #79b8ff; border-color: #25476e; }
+    body.dark .mail-banner.warn { background: #3d2b0a; color: #f0b866; border-color: #6b4a14; }
+    body.dark .mail-banner.bad  { background: #3f1717; color: #ff8a80; border-color: #7a2b2b; }
+    body.dark .mail-banner.ok   { background: #12351f; color: #6fdc8c; border-color: #1f5a35; }
+    body.dark .mail-stat { background: #161b22; box-shadow: 0 1px 6px rgba(0,0,0,.5); }
+    body.dark .mail-stat .v { color: #8ecfff; }
+    body.dark .mail-filter select, body.dark .mail-filter input { background: #0d1117; border-color: #30363d; }
+    body.dark .mail-pager { border-top-color: #30363d; color: #8b949e; }
+    body.dark .mail-kv > div { border-bottom-color: #21262d; }
+    body.dark .mail-kv > .k { background: #21262d; color: #8b949e; }
+    body.dark .mail-import-text { background: #0d1117; border-color: #30363d; }
+    body.dark .mail-notice-row { background: #3d2b0a; color: #f0b866; border-bottom-color: #6b4a14; }
+    /* ── 窄螢幕（手機）：後台原本沒有任何 RWD，這段只在 ≤768px 生效，桌面版完全不受影響 ── */
+    @media (max-width: 768px) {
+      .admin-topbar { padding: 6px 12px; height: auto; min-height: 52px; flex-wrap: wrap; gap: 6px; }
+      .admin-topbar-right { gap: 6px; flex-wrap: wrap; }
+      .admin-user { display: none; }
+      .admin-layout { flex-direction: column; height: auto; min-height: calc(100vh - 58px); }
+      .admin-sidebar { width: 100%; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 6px 8px; gap: 4px; }
+      .admin-nav-item, .admin-nav-group-header { white-space: nowrap; flex-shrink: 0; border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; }
+      .admin-nav-item.active { border-bottom-color: #4da3ff; }
+      .admin-nav-subitems { display: flex; flex-direction: row; flex-shrink: 0; }
+      .admin-nav-subitem { padding-left: 12px !important; }
+      .admin-main { padding: 14px 12px; overflow-x: hidden; }
+      .stat-row { grid-template-columns: repeat(2, 1fr); }
+      .admin-card-body { overflow-x: auto; }
+      .admin-card-header { flex-wrap: wrap; gap: 8px; }
+      .mail-kv { grid-template-columns: 1fr; }
+      .mail-kv > .k { border-bottom: none; padding-bottom: 2px; }
+      .mail-modal-wide { width: 95vw; }
+    }
   </style>
   <script>
   (function(){
@@ -504,6 +599,9 @@
       <div class="admin-nav-item" data-sec="product-catalog">
         <span class="admin-nav-icon">🛒</span> 銷售商品維護
       </div>
+      <div class="admin-nav-item" data-sec="mail">
+        <span class="admin-nav-icon">✉️</span> 寄信
+      </div>
       <div class="admin-nav-item" data-sec="subscription">
         <span class="admin-nav-icon">💳</span> 訂閱管理
       </div>
@@ -528,8 +626,12 @@
         <div class="admin-card">
           <div class="admin-card-header">
             <span class="admin-card-title">使用者列表</span>
-            <button class="btn btn-primary" id="addUserBtn">＋ 新增帳號</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn" id="emailImportBtn" type="button" style="background:#f0f2f5;color:#333">📧 批次匯入 Email</button>
+              <button class="btn btn-primary" id="addUserBtn">＋ 新增帳號</button>
+            </div>
           </div>
+          <div class="mail-notice-row" id="userEmailNotice" hidden></div>
           <div class="admin-card-body" style="padding:0">
             <table class="admin-table">
               <thead>
@@ -537,6 +639,7 @@
                   <th>帳號</th>
                   <th>顯示名稱</th>
                   <th title="由後台統一設定；報表與下拉選單優先顯示暱稱，用來區分同名的業務">暱稱</th>
+                  <th>Email</th>
                   <th>角色</th>
                   <th>BU</th>
                   <th>狀態</th>
@@ -2018,7 +2121,129 @@
         </div>
       </div>
 
+      <!-- ── 寄信（簽核信件 E1–E6：寄信紀錄／設定與狀態／缺 email 清單；邏輯在檔尾的 mail script）── -->
+      <div class="admin-section" id="sec-mail">
+        <div class="section-title">寄信</div>
+        <div class="section-sub">報價單簽核信件（送簽、核准、駁回、撤回、請顧問填成本）的寄送紀錄與狀態。寄信模式與密鑰由伺服器環境變數決定，後台只能查看、不能修改。</div>
+
+        <div class="mail-tabs" role="tablist" aria-label="寄信區段">
+          <button type="button" class="mail-tab on" data-mail-tab="log" role="tab" id="mailTabLog" aria-selected="true" aria-controls="mailPanelLog" tabindex="0">寄信紀錄</button>
+          <button type="button" class="mail-tab" data-mail-tab="config" role="tab" id="mailTabConfig" aria-selected="false" aria-controls="mailPanelConfig" tabindex="-1">設定與狀態</button>
+          <button type="button" class="mail-tab" data-mail-tab="missing" role="tab" id="mailTabMissing" aria-selected="false" aria-controls="mailPanelMissing" tabindex="-1">缺 email 清單<span id="mailMissingCount" style="margin-left:6px"></span></button>
+        </div>
+
+        <!-- 寄信紀錄 -->
+        <div class="mail-panel" id="mailPanelLog" data-mail-panel="log" role="tabpanel" aria-labelledby="mailTabLog">
+          <div id="mailStatusBox"></div>
+          <div class="admin-card">
+            <div class="admin-card-header"><span class="admin-card-title">篩選條件</span></div>
+            <div class="mail-filter" role="search" aria-label="寄信紀錄篩選條件">
+              <div>
+                <label for="mailFStatus">狀態</label>
+                <select id="mailFStatus">
+                  <option value="">全部狀態</option>
+                  <option value="pending">等待寄送</option>
+                  <option value="sending">寄送中</option>
+                  <option value="sent">已寄出</option>
+                  <option value="failed">失敗</option>
+                  <option value="skipped">略過</option>
+                  <option value="cancelled">已取消</option>
+                </select>
+              </div>
+              <div>
+                <label for="mailFType">事件</label>
+                <select id="mailFType">
+                  <option value="">全部事件</option>
+                  <option value="E1_SUBMIT">E1 送簽通知</option>
+                  <option value="E2_COST_REQUEST">E2 請顧問填成本</option>
+                  <option value="E3_NEXT_STEP">E3 下一關簽核</option>
+                  <option value="E4_RESULT">E4 結果通知業務</option>
+                  <option value="E5_COST_DONE">E5 成本完成通知</option>
+                  <option value="E6_WITHDRAWN">E6 撤回／作廢</option>
+                </select>
+              </div>
+              <div>
+                <label for="mailFQuoteNo">單號</label>
+                <input type="text" id="mailFQuoteNo" maxlength="40" placeholder="報價單號" autocomplete="off">
+              </div>
+              <div>
+                <label for="mailFToUser">收件帳號</label>
+                <input type="text" id="mailFToUser" maxlength="64" placeholder="帳號" autocomplete="off">
+              </div>
+              <div>
+                <label for="mailFSince">起始日期</label>
+                <input type="date" id="mailFSince">
+              </div>
+              <button type="button" class="btn btn-primary" id="mailFSearch">🔍 查詢</button>
+              <button type="button" class="btn" id="mailFClear" style="background:#f0f2f5;color:#333">清除</button>
+            </div>
+          </div>
+          <div class="admin-card">
+            <div class="admin-card-header">
+              <span class="admin-card-title">寄信紀錄</span>
+              <button type="button" class="btn btn-sm" id="mailRefresh" style="background:#f0f2f5;color:#333">重新整理</button>
+            </div>
+            <div class="mail-tablewrap" id="mailLogBody"><div class="mail-empty">載入中...</div></div>
+            <div class="mail-pager" id="mailPager" hidden></div>
+          </div>
+        </div>
+
+        <!-- 設定與狀態（唯讀） -->
+        <div class="mail-panel" id="mailPanelConfig" data-mail-panel="config" role="tabpanel" aria-labelledby="mailTabConfig" hidden>
+          <div id="mailConfigBody"><div class="mail-empty">載入中...</div></div>
+        </div>
+
+        <!-- 缺 email 清單 -->
+        <div class="mail-panel" id="mailPanelMissing" data-mail-panel="missing" role="tabpanel" aria-labelledby="mailTabMissing" hidden>
+          <div id="mailMissingBody"><div class="mail-empty">載入中...</div></div>
+        </div>
+      </div>
     </main>
+  </div>
+
+  <!-- ── 批次匯入 Email Modal（貼上 → 預覽 → 確認套用；邏輯在檔尾的 mail script）── -->
+  <div class="modal-overlay" id="emailImportModal">
+    <div class="modal mail-modal-wide" role="dialog" aria-modal="true" aria-labelledby="emailImportTitle">
+      <div class="modal-header">
+        <h3 id="emailImportTitle">批次匯入 Email</h3>
+        <button class="modal-close" id="emailImportClose" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="mail-help" style="margin:0 0 8px">每行一筆「帳號 Email」，分隔可用逗號、分號、Tab 或空白；<code>#</code> 開頭是註解；一次最多 500 行。帳號區分大小寫；空的 Email 視為錯誤（批次匯入不能清除，要清除請到個別帳號編輯）。先按「預覽」確認每一行，再按「確認套用」。</div>
+        <textarea id="emailImportText" class="mail-import-text" rows="7" spellcheck="false" autocomplete="off" aria-label="要匯入的帳號與 Email（每行一筆）" placeholder="# 帳號, Email&#10;user_a, user_a@itts.test&#10;user_b; user_b@itts.test"></textarea>
+        <div class="mail-actions">
+          <button type="button" class="btn btn-primary" id="emailImportPreviewBtn">預覽</button>
+          <span id="emailImportStatus" class="mail-hint" role="status"></span>
+        </div>
+        <div id="emailImportSummary" class="mail-actions" style="margin-top:0"></div>
+        <div id="emailImportTableWrap" class="mail-tablewrap" hidden>
+          <table class="admin-table mail-table" id="emailImportTable" aria-label="批次匯入預覽結果">
+            <thead><tr><th>行</th><th>帳號</th><th>Email</th><th>結果</th><th>說明</th></tr></thead>
+            <tbody id="emailImportBody"></tbody>
+          </table>
+        </div>
+        <div id="emailImportResult" class="mail-banner ok" role="status" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" style="background:#f0f2f5;color:#333" id="emailImportCancel">關閉</button>
+        <button type="button" class="btn btn-primary" id="emailImportApply" disabled>確認套用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 重送確認 Modal（寄信紀錄頁的「立即重送」）── -->
+  <div class="modal-overlay" id="mailConfirmModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mailConfirmTitle">
+      <div class="modal-header">
+        <h3 id="mailConfirmTitle">請確認</h3>
+        <button class="modal-close" id="mailConfirmClose" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body" id="mailConfirmBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" style="background:#f0f2f5;color:#333" id="mailConfirmCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="mailConfirmOk">確定</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── 新增/編輯帳號 Modal ── -->
@@ -2046,6 +2271,13 @@
           <label>暱稱（選填）</label>
           <input type="text" id="fieldNickname" maxlength="20" placeholder="例：Steven-MDM">
           <div style="font-size:12px;color:#8a94a3;margin-top:4px">用來區分同名的業務：報表、篩選與下拉選單會優先顯示暱稱；留空就沿用顯示名稱。全站不可重複、最多 20 字。對客戶的報價單不會使用暱稱。</div>
+        </div>
+        <div class="form-group">
+          <label for="fieldEmail">Email（選填，簽核信件收件位址）</label>
+          <input type="text" id="fieldEmail" maxlength="254" inputmode="email" autocomplete="off" spellcheck="false" aria-describedby="fieldEmailHint fieldEmailErr" placeholder="name@公司網域">
+          <div class="mail-hint" id="fieldEmailHint"></div>
+          <div class="mail-hint bad" id="fieldEmailErr" role="alert" hidden></div>
+          <div class="mail-help">送簽、核准結果、請顧問填成本等簽核信件會寄到這個位址。只有管理員看得到，不會出現在一般使用者的畫面、報價單或個人資料裡；全站不可重複。留空＝不設定。</div>
         </div>
         <div class="form-group">
           <label>角色</label>
@@ -3153,6 +3385,7 @@
         allUsers = await r.json();
         renderUserStat();
         renderUserTable();
+        if (typeof mailAfterUserTable === 'function') mailAfterUserTable();
       } catch (e) { if (e.message !== 'Session expired') showToast('載入失敗'); }
     }
 
@@ -3192,6 +3425,7 @@
           <td><strong>${u.username}</strong></td>
           <td>${escH(u.displayName)}</td>
           <td>${u.nickname ? '<strong>' + escH(u.nickname) + '</strong>' : '<span style="color:#b0b7c3">—</span>'}${dupBadge}</td>
+          <td>${typeof mailEmailCell === 'function' ? mailEmailCell(u) : ''}</td>
           <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
           <td>${buCell}</td>
           <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
@@ -3322,6 +3556,7 @@
       $('passwordGroup').style.display = '';
       $('fieldDisplayName').value = '';
       $('fieldNickname').value = '';
+      if (typeof mailInitEmailField === 'function') mailInitEmailField('');
       $('fieldRole').value = 'user';
       setBuCheckboxes([]);
       $('fieldActive').value = 'true';
@@ -3350,6 +3585,7 @@
       $('passwordGroup').style.display = 'none';
       $('fieldDisplayName').value = u.displayName;
       $('fieldNickname').value = u.nickname || '';
+      if (typeof mailInitEmailField === 'function') mailInitEmailField(u.email || '');
       $('fieldRole').value = u.role || 'user';
       setBuCheckboxes(u.bu || []);
       $('fieldActive').value = u.active ? 'true' : 'false';
@@ -3410,6 +3646,8 @@
         pureSupervisor: $('fieldPureSupervisor').checked,
         ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
+      const _emailPatch = typeof mailEmailPayload === 'function' ? mailEmailPayload(isEdit) : null;   // 簽核信件 Email：編輯＝有改才送、新增＝有填才送
+      if (_emailPatch) payload.email = _emailPatch.value;
       try {
         let r;
         if (isEdit) {
@@ -3421,7 +3659,7 @@
           r = await adminFetch(`${API}/admin/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: un, password: pw, ...payload }) });
         }
         const data = await r.json();
-        if (!r.ok) { showToast(data.error || '儲存失敗'); return; }
+        if (!r.ok) { if (typeof mailShowEmailError === 'function') mailShowEmailError(data); showToast(data.error || '儲存失敗'); return; }
         showToast(isEdit ? '✅ 帳號已更新' : '✅ 帳號已新增');
         closeUserModal();
         loadUsers();
@@ -3485,6 +3723,8 @@
       CREATE_CONTRACT: '新增合約', UPDATE_CONTRACT: '更新合約', DELETE_CONTRACT: '刪除合約',
       CREATE_RECEIVABLE: '新增帳款', UPDATE_RECEIVABLE: '更新帳款', DELETE_RECEIVABLE: '刪除帳款',
       SET_TARGET: '設定目標',
+      IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
+      QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
     };
 
     function parseUA(ua) {
@@ -6751,6 +6991,646 @@
       }
     });
 
+  </script>
+  <script>
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * 簽核信件（Exchange 整合）— 後台前端。API 契約見 lib/mail/README.md §6A。
+   * 內容：①帳號 Modal 的 Email 欄位（即時格式／網域提示；伺服器回的錯誤訊息原樣顯示）
+   *      ②帳號列表的 Email 欄（遮罩位址＋「無 email」徽章）與缺 email 提示列
+   *      ③批次匯入 Email 對話框（貼上 → 預覽 → 確認套用）
+   *      ④「寄信」區段（寄信紀錄／設定與狀態／缺 email 清單，照既有 data-sec lazy-init + adminFetch 模式）
+   * 原則：
+   *   · 所有動態字串都經 esc()（HTML 跳脫，含單雙引號）或 textContent；批次匯入預覽的帳號／Email／錯誤字串可能含 < >，一律走 textContent。
+   *   · 位址只在管理員畫面出現：帳號列表與寄信紀錄一律遮罩（a***@網域）；編輯 Modal 與批次匯入預覽才顯示完整位址（管理員自己輸入／貼上的）。
+   *     /api/me、一般使用者畫面、報價單都不會有 email。
+   *   · 本區塊只呼叫 adminFetch／showToast／loadUsers／openEditUser 等既有函式，不改既有流程；主 script 以 typeof 守衛呼叫這裡的 mail* 函式，
+   *     所以就算這個區塊載入失敗，帳號頁也不會壞。
+   * 限制：寄信模式／密鑰／網域白名單由伺服器環境變數決定，這裡唯讀；「寄測試信」與 Graph 診斷屬 P4，尚未提供。
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  (function () {
+    'use strict';
+
+    const MAIL_API = (typeof API === 'string' && API) ? API : '/api';
+    const $ = (id) => document.getElementById(id);
+    const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
+    const toast = (msg, ms) => { try { showToast(msg, ms); } catch (_) { /* 沒有 toast 也不影響功能 */ } };
+    const isSessionErr = (e) => !!e && e.message === 'Session expired';
+
+    /** 共用呼叫：走 adminFetch（401／403 會顯示登入畫面並丟 'Session expired'），回 {ok, status, data}（data 可能是 null） */
+    async function mailApi(method, path, body) {
+      const opts = { method, headers: {} };
+      if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      const r = await adminFetch(MAIL_API + path, opts);
+      let data = null;
+      try { data = await r.json(); } catch (_) { data = null; }
+      return { ok: r.ok, status: r.status, data };
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-TW', { hour12: false });
+    }
+
+    // ── 標籤 ─────────────────────────────────────────────
+    const STATUS_LABEL = { pending: '等待寄送', sending: '寄送中', sent: '已寄出', failed: '失敗', skipped: '略過', cancelled: '已取消' };
+    const STATUS_CLS = { pending: 'info', sending: 'info', sent: 'ok', failed: 'bad', skipped: 'mute', cancelled: 'warn' };
+    const STATUS_ORDER = ['pending', 'sending', 'sent', 'failed', 'skipped', 'cancelled'];
+    const TYPE_LABEL = {
+      E1_SUBMIT: 'E1 送簽通知', E2_COST_REQUEST: 'E2 請顧問填成本', E3_NEXT_STEP: 'E3 下一關簽核',
+      E4_RESULT: 'E4 結果通知業務', E5_COST_DONE: 'E5 成本完成通知', E6_WITHDRAWN: 'E6 撤回／作廢',
+    };
+    const REASON_LABEL = {
+      MODE_OFF: '寄信功能為 off（不寄）', MODE_LOG: '記錄模式（只記錄，不寄出）', NO_EMAIL: '此人沒有 email',
+      BAD_EMAIL: 'email 格式不正確', DOMAIN_NOT_ALLOWED: 'email 網域不在允許清單', INACTIVE: '帳號已停用',
+      ACTOR: '操作者本人（不寄給自己）', UNKNOWN_USER: '找不到這個帳號', DUPLICATE: '重複事件',
+      STALE: '單據已進到別關或已撤回（信件已過期）', GONE: '單據或該關卡資料已不存在', STALE_CHECK: '過期檢查失敗，稍後重試',
+      TIMEOUT: '寄送逾時', NETWORK: '網路錯誤', SERVER: '郵件伺服器錯誤', THROTTLED: '被郵件服務限流', AUTH: '寄件驗證失敗',
+      REJECTED: '被郵件服務拒收', BAD_MESSAGE: '信件內容不合格', NOT_CONFIGURED: '尚未設定寄件參數', RENDER: '信件產生失敗',
+      LEASE_EXPIRED: '處理逾時（租約過期）', REBUILD: '重建信件內容失敗', BAD_JOB: '工作內容不合格', UNKNOWN: '未知錯誤',
+    };
+    const MODE_INFO = {
+      off: { cls: 'info', title: 'off（未啟用）', text: '不寄信，也不會產生新的寄信紀錄（這是預設的安全模式）。下方只顯示過去已有的紀錄。' },
+      log: { cls: 'info', title: 'log（只記錄）', text: '不會真的寄出：事件會留下紀錄，狀態為「略過（記錄模式）」。用來驗證事件有沒有觸發、收件人對不對。' },
+      redirect: { cls: 'warn', title: 'redirect（測試轉送）', text: '所有信都改寄到固定的測試信箱，不會寄給原收件人；紀錄的收件人欄仍是原本預定的人（遮罩位址）。' },
+      live: { cls: 'ok', title: 'live（正式寄送）', text: '依收件人的 email 真正寄出。' },
+    };
+    const reasonLabel = (code) => (code ? (REASON_LABEL[code] || code) : '');
+    const typeLabel = (t) => TYPE_LABEL[t] || t || '';
+    const badge = (cls, text, title) => '<span class="mail-badge mail-badge-' + cls + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(text) + '</span>';
+
+    // ═══ ① 帳號 Modal 的 Email 欄位 ═════════════════════════════
+    const EMAIL_CODES = ['NOT_STRING', 'TOO_LONG', 'CONTROL_CHAR', 'NON_ASCII', 'SPACE', 'BAD_CHAR', 'BAD_FORMAT', 'BAD_LOCAL', 'BAD_DOMAIN', 'DOMAIN_NOT_ALLOWED', 'DUPLICATE'];
+    let allowedDomains = null;   // 取自 /admin/mail/config（唯讀）；取不到就不做網域提示，伺服器儲存時仍會檢查
+    let allowedPromise = null;
+    function ensureAllowedDomains() {
+      if (allowedDomains) return Promise.resolve(allowedDomains);
+      if (!allowedPromise) {
+        allowedPromise = mailApi('GET', '/admin/mail/config').then((r) => {
+          if (r.ok && r.data && r.data.config && Array.isArray(r.data.config.allowedDomains)) allowedDomains = r.data.config.allowedDomains.map(String);
+          allowedPromise = null;
+          return allowedDomains;
+        }).catch(() => { allowedPromise = null; return null; });
+      }
+      return allowedPromise;
+    }
+
+    /** 即時提示：只做「看得出來的」檢查（格式、網域）；一律不擋儲存，以伺服器的檢查為準 */
+    function emailHintState(raw, orig) {
+      const v = String(raw == null ? '' : raw).trim();
+      if (v === '') {
+        if (orig) return { cls: 'warn', text: '儲存後會清除目前的 email：這個帳號將不會收到簽核信件。' };
+        return { cls: '', text: '留空＝不設定：這個帳號不會收到簽核信件（站內通知不受影響）。' };
+      }
+      if (/\s/.test(v)) return { cls: 'bad', text: '不可含空白。' };
+      if (/[^\x21-\x7e]/.test(v)) return { cls: 'bad', text: '只能使用半形英數字與符號（不接受中文、全形字）。' };
+      if (!/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+$/.test(v)) return { cls: 'bad', text: '格式不正確：需要是 name@網域 的形式。' };
+      const domain = v.slice(v.lastIndexOf('@') + 1).toLowerCase();
+      if (allowedDomains && allowedDomains.length && allowedDomains.indexOf(domain) < 0) {
+        return { cls: 'bad', text: '網域「' + domain + '」不在允許清單（允許：' + allowedDomains.join('、') + '），儲存時會被拒絕。' };
+      }
+      return { cls: 'ok', text: '格式看起來正確' + (allowedDomains && allowedDomains.length ? '，網域在允許清單內' : '') + '（最後仍以儲存時的檢查為準）。' };
+    }
+    function updateEmailHint() {
+      const inp = $('fieldEmail'), hint = $('fieldEmailHint');
+      if (!inp || !hint) return;
+      const st = emailHintState(inp.value, inp.dataset.orig || '');
+      hint.className = 'mail-hint ' + st.cls;
+      hint.textContent = st.text;
+    }
+    function setEmailErr(msg) {
+      const el = $('fieldEmailErr');
+      if (!el) return;
+      el.textContent = msg || '';
+      el.hidden = !msg;
+    }
+    /** 開啟新增／編輯 Modal 時呼叫：value 是目前的 email（新增＝''） */
+    window.mailInitEmailField = function (value) {
+      const inp = $('fieldEmail');
+      if (!inp) return;
+      inp.value = value || '';
+      inp.dataset.orig = value || '';
+      setEmailErr('');
+      updateEmailHint();
+      ensureAllowedDomains().then(updateEmailHint);
+    };
+    /** 儲存時：回傳 {value} 才把 email 放進 payload。編輯＝只有改過才送（沒帶＝伺服器不動；''＝清除）；新增＝有填才送 */
+    window.mailEmailPayload = function (isEdit) {
+      const inp = $('fieldEmail');
+      if (!inp) return null;
+      const v = inp.value.trim();
+      if (isEdit) return v === (inp.dataset.orig || '') ? null : { value: v };
+      return v ? { value: v } : null;
+    };
+    /** 儲存失敗時：若是 email 相關的錯誤碼，就把伺服器訊息（原樣、textContent）顯示在欄位下方並聚焦 */
+    window.mailShowEmailError = function (data) {
+      if (!data || EMAIL_CODES.indexOf(data.code) < 0) return false;
+      let msg = String(data.error || 'Email 不合格');
+      if (data.conflictUsername) msg += '（已被帳號「' + String(data.conflictUsername) + '」使用）';
+      setEmailErr(msg);
+      const inp = $('fieldEmail');
+      if (inp) inp.focus();
+      return true;
+    };
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.id === 'fieldEmail') { setEmailErr(''); updateEmailHint(); }
+    });
+
+    // ═══ ② 帳號列表：Email 欄與提示列 ═══════════════════════════
+    function maskEmail(s) {
+      const v = String(s == null ? '' : s).trim().toLowerCase();
+      const at = v.indexOf('@');
+      if (at < 1 || at === v.length - 1) return '(格式有誤)';
+      return v.charAt(0) + '***' + v.slice(at);
+    }
+    window.mailEmailCell = function (u) {
+      const em = u && u.email ? String(u.email) : '';
+      const st = (u && u.emailStatus) || 'OK';
+      if (!em) return u && u.active === false ? '<span class="mail-muted">—</span>' : badge('warn', '⚠ 無 email', '沒有 email：不會收到簽核信件');
+      let b = '';
+      if (st === 'BAD_EMAIL') b = badge('bad', '格式有誤', '已存的 email 格式不正確，寄信時會被略過') + ' ';
+      else if (st === 'DOMAIN_NOT_ALLOWED') b = badge('bad', '網域不允許', '網域不在允許清單，寄信時會被略過') + ' ';
+      return b + '<span class="mail-addr" title="位址已遮罩；點「編輯」可看完整位址">' + esc(maskEmail(em)) + '</span>';
+    };
+    window.mailAfterUserTable = function () {
+      const box = $('userEmailNotice');
+      if (box) {
+        const list = (typeof allUsers !== 'undefined' && Array.isArray(allUsers) ? allUsers : []).filter((u) => u && u.active !== false && (u.emailStatus || 'OK') !== 'OK');
+        if (!list.length) { box.hidden = true; box.textContent = ''; }
+        else {
+          box.hidden = false;
+          box.innerHTML = '<span>⚠ 有 <b>' + list.length + '</b> 位在職帳號沒有可用的 email，簽核信件不會寄給他們（站內通知不受影響）。</span>' +
+            '<button type="button" class="btn btn-sm btn-warning" data-mail-go="missing">查看缺 email 清單</button>' +
+            '<button type="button" class="btn btn-sm btn-primary" data-mail-go="import">批次匯入 Email</button>';
+        }
+      }
+      // 帳號資料變了：寄信區段的設定／缺 email 清單要重抓（區段正開著就立刻重抓）
+      M.cfgStale = true;
+      if (M.inited && $('sec-mail') && $('sec-mail').classList.contains('active') && M.tab !== 'log') loadConfig(true);
+    };
+
+    // ═══ ③ 批次匯入 Email ═══════════════════════════════════════
+    const imp = { previewed: false, text: '', busy: false };
+    function impStatus(text, cls) {
+      const el = $('emailImportStatus');
+      el.textContent = text || '';
+      el.className = 'mail-hint ' + (cls || '');
+    }
+    function impReset() {
+      imp.previewed = false; imp.text = '';
+      impStatus('', '');
+      $('emailImportSummary').textContent = '';
+      $('emailImportBody').textContent = '';
+      $('emailImportTableWrap').hidden = true;
+      const res = $('emailImportResult');
+      res.hidden = true; res.textContent = '';
+      $('emailImportApply').disabled = true;
+    }
+    // ── 對話框無障礙（只套用在 mail 新增的兩個對話框：批次匯入、重送確認）──
+    // 開啟：記住開啟前的焦點、聚焦第一個欄位；開著時 Tab／Shift+Tab 只在對話框內循環；Esc 關閉；關閉後把焦點還給原本的按鈕。
+    const dlg = { ov: null, opener: null, close: null };
+    function dlgFocusables(ov) {
+      return Array.prototype.filter.call(ov.querySelectorAll('button, [href], input, select, textarea, [tabindex]'),
+        (e) => !e.disabled && e.getAttribute('tabindex') !== '-1' && !e.hidden && e.getClientRects().length > 0);
+    }
+    function dlgKeydown(e) {
+      if (!dlg.ov) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (dlg.close) dlg.close(); return; }
+      if (e.key !== 'Tab') return;
+      const f = dlgFocusables(dlg.ov);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (!dlg.ov.contains(a)) { e.preventDefault(); first.focus(); return; }
+      if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    }
+    function dlgOpen(ov, focusEl, close) {
+      dlg.ov = ov; dlg.close = close; dlg.opener = document.activeElement;
+      document.addEventListener('keydown', dlgKeydown, true);
+      ov.classList.add('open');
+      setTimeout(() => { try { (focusEl || dlgFocusables(ov)[0]).focus(); } catch (_) { /* ignore */ } }, 30);
+    }
+    function dlgClose(ov) {
+      ov.classList.remove('open');
+      document.removeEventListener('keydown', dlgKeydown, true);
+      const op = dlg.opener;
+      dlg.ov = null; dlg.close = null; dlg.opener = null;
+      try { if (op && typeof op.focus === 'function' && document.body.contains(op)) op.focus(); } catch (_) { /* ignore */ }
+    }
+    function openImport() {
+      $('emailImportText').value = '';
+      impReset();
+      dlgOpen($('emailImportModal'), $('emailImportText'), closeImport);
+    }
+    function closeImport() { dlgClose($('emailImportModal')); }
+
+    function chip(cls, text) {
+      const s = document.createElement('span');
+      s.className = 'mail-badge mail-badge-' + cls;
+      s.textContent = text;
+      return s;
+    }
+    const ROW_STATUS = { ok: ['ok', '可套用'], unchanged: ['mute', '無變更'], error: ['bad', '錯誤'] };
+    /** 預覽結果：帳號、Email、錯誤字串都是使用者貼上的內容或含 < > 的帳號名 → 只用 textContent */
+    function renderPreview(d) {
+      const sum = $('emailImportSummary');
+      sum.textContent = '';
+      const s = d.summary || {};
+      sum.appendChild(chip('ok', '可套用 ' + (s.ok || 0)));
+      sum.appendChild(chip('mute', '無變更 ' + (s.unchanged || 0)));
+      sum.appendChild(chip(s.error ? 'bad' : 'mute', '有錯誤 ' + (s.error || 0)));
+      if (d.fatal) {
+        const f = document.createElement('span');
+        f.className = 'mail-hint bad';
+        const first = (d.rows && d.rows[0]) || {};
+        f.textContent = '整批被拒絕：' + (first.error || '內容不合法') + '（不會做只處理一部分的匯入）';
+        sum.appendChild(f);
+      }
+      const body = $('emailImportBody');
+      body.textContent = '';
+      (Array.isArray(d.rows) ? d.rows : []).forEach((row) => {
+        const tr = document.createElement('tr');
+        const cell = (text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text == null ? '' : String(text); tr.appendChild(td); return td; };
+        cell(row.line);
+        cell(row.username);
+        cell(row.email, 'mail-addr');
+        const st = ROW_STATUS[row.status] || ['mute', String(row.status || '')];
+        const tdSt = document.createElement('td');
+        tdSt.appendChild(chip(st[0], st[1]));
+        tr.appendChild(tdSt);
+        let note = '';
+        if (row.status === 'error') note = String(row.error || '') + (row.conflictUsername ? '（衝突帳號：' + row.conflictUsername + '）' : '');
+        else if (row.status === 'ok') note = '將設定／更新此帳號的 email';
+        else if (row.status === 'unchanged') note = '與目前相同';
+        cell(note, 'mail-wrap');
+        body.appendChild(tr);
+      });
+      $('emailImportTableWrap').hidden = !(body.children.length);
+    }
+    async function doPreview() {
+      if (imp.busy) return;
+      const text = $('emailImportText').value;
+      impReset();
+      if (!text.trim()) { impStatus('請先貼上要匯入的內容。', 'bad'); return; }
+      imp.busy = true;
+      $('emailImportPreviewBtn').disabled = true;
+      impStatus('預覽中…', '');
+      try {
+        const r = await mailApi('POST', '/admin/users/email-import/preview', { text });
+        if (!r.ok || !r.data) { impStatus((r.data && r.data.error) || ('預覽失敗（HTTP ' + r.status + '）'), 'bad'); return; }
+        renderPreview(r.data);
+        imp.text = text;
+        imp.previewed = !r.data.fatal && !!(r.data.summary && r.data.summary.ok > 0);
+        $('emailImportApply').disabled = !imp.previewed;
+        impStatus(imp.previewed ? '預覽完成：確認無誤後按「確認套用」（只會套用「可套用」的行）。' : (r.data.fatal ? '' : '沒有可套用的行。'), imp.previewed ? 'ok' : 'warn');
+      } catch (e) {
+        if (!isSessionErr(e)) impStatus('預覽失敗：' + (e && e.message ? e.message : e), 'bad');
+      } finally {
+        imp.busy = false;
+        $('emailImportPreviewBtn').disabled = false;
+      }
+    }
+    async function doApply() {
+      if (imp.busy || !imp.previewed) return;
+      if ($('emailImportText').value !== imp.text) { $('emailImportApply').disabled = true; impStatus('內容已修改，請重新預覽。', 'warn'); return; }
+      imp.busy = true;
+      $('emailImportApply').disabled = true;
+      $('emailImportPreviewBtn').disabled = true;
+      impStatus('套用中…', '');
+      try {
+        const r = await mailApi('POST', '/admin/users/email-import/apply', { text: imp.text });
+        if (!r.ok || !r.data) { impStatus((r.data && r.data.error) || ('套用失敗（HTTP ' + r.status + '）'), 'bad'); return; }
+        const d = r.data;
+        const res = $('emailImportResult');
+        res.textContent = '';
+        const head = document.createElement('div');
+        head.textContent = '已更新 ' + (d.updated || 0) + ' 人；無變更 ' + (d.unchanged || 0) + '；有錯誤未匯入 ' + (d.errors || 0) + '；套用時略過 ' + (Array.isArray(d.skipped) ? d.skipped.length : 0) + '。';
+        res.appendChild(head);
+        (Array.isArray(d.updatedUsers) ? d.updatedUsers : []).slice(0, 50).forEach((u) => {
+          const line = document.createElement('div');
+          line.className = 'mail-help';
+          line.textContent = '・' + u.username + '：' + (u.detail || '');
+          res.appendChild(line);
+        });
+        res.hidden = false;
+        imp.previewed = false;
+        impStatus('', '');
+        toast('✅ Email 批次匯入完成：更新 ' + (d.updated || 0) + ' 人');
+        if (typeof loadUsers === 'function') loadUsers();
+      } catch (e) {
+        if (!isSessionErr(e)) impStatus('套用失敗：' + (e && e.message ? e.message : e), 'bad');
+      } finally {
+        imp.busy = false;
+        $('emailImportPreviewBtn').disabled = false;
+      }
+    }
+
+    // ═══ ④ 「寄信」區段 ═════════════════════════════════════════
+    const M = { inited: false, tab: 'log', limit: 25, offset: 0, total: 0, rows: [], mode: 'off', seq: 0, cfg: null, cfgStale: false, cfgSeq: 0 };
+
+    function setTab(tab) {
+      M.tab = tab;
+      document.querySelectorAll('#sec-mail .mail-tab').forEach((b) => {
+        const on = b.dataset.mailTab === tab;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        b.tabIndex = on ? 0 : -1;       // roving tabindex：Tab 只停在目前分頁，方向鍵換分頁
+      });
+      document.querySelectorAll('#sec-mail .mail-panel').forEach((p) => { p.hidden = p.dataset.mailPanel !== tab; });
+      // 設定／缺 email 清單：每次切過去都重抓（帳號資料可能在別處被改過；先顯示上次的內容、抓到新的再換，不閃「載入中」）
+      if (tab === 'log') loadLog(); else loadConfig(true);
+    }
+
+    function buildQuery() {
+      const p = new URLSearchParams();
+      const set = (k, v) => { if (v) p.set(k, v); };
+      set('status', $('mailFStatus').value);
+      set('type', $('mailFType').value);
+      set('quoteNo', $('mailFQuoteNo').value.trim());
+      set('toUser', $('mailFToUser').value.trim());
+      const day = $('mailFSince').value;
+      if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        const d = new Date(day + 'T00:00:00+08:00');   // 台北時間當天 00:00
+        if (!isNaN(d.getTime())) p.set('since', d.toISOString());
+      }
+      p.set('limit', String(M.limit));
+      p.set('offset', String(M.offset));
+      return '?' + p.toString();
+    }
+
+    function modeBanner(mode) {
+      const m = MODE_INFO[mode] || MODE_INFO.off;
+      return '<div class="mail-banner ' + m.cls + '"><b>寄信模式：' + esc(m.title) + '</b>　' + esc(m.text) + '</div>';
+    }
+    function renderStatusBox(d) {
+      const st = d.stats || {}, counts = st.counts || {}, br = d.breaker || {};
+      let html = modeBanner(d.mode);
+      if (br.open) html += '<div class="mail-banner bad">🛑 寄送熔斷中：近期連續失敗，暫停寄送到 <b>' + esc(fmtTime(br.until)) + '</b>（失敗點數 ' + esc(br.failures == null ? '' : br.failures) + '）。新事件只會入列，熔斷結束後自動繼續。</div>';
+      else if (br.halfOpen) html += '<div class="mail-banner warn">⚠ 熔斷剛結束，目前是試探狀態：下一次失敗會立刻重新熔斷。</div>';
+      html += '<div class="mail-stats">' + STATUS_ORDER.map((k) => '<div class="mail-stat"><div class="l">' + esc(STATUS_LABEL[k]) + '</div><div class="v"' + (k === 'failed' && counts[k] ? ' style="color:#c62828"' : '') + '>' + esc(counts[k] || 0) + '</div></div>').join('') +
+        '<div class="mail-stat"><div class="l">近 24 小時失敗</div><div class="v"' + (st.failed24h ? ' style="color:#c62828"' : '') + '>' + esc(st.failed24h || 0) + '</div></div>' +
+        '<div class="mail-stat"><div class="l">總筆數</div><div class="v">' + esc(st.total || 0) + '</div></div>' +
+        '<div class="mail-stat"><div class="l">最久的待寄</div><div class="v" style="font-size:13px;margin-top:8px">' + (st.oldestPendingAt ? esc(fmtTime(st.oldestPendingAt)) : '<span class="mail-muted">無</span>') + '</div></div></div>';
+      $('mailStatusBox').innerHTML = html;
+    }
+
+    function reasonOf(r) {
+      if (r.status === 'failed') return { text: reasonLabel(r.lastErrorCode) || '寄送失敗', title: r.lastErrorMsg || r.lastErrorCode || '' };
+      if (r.status === 'skipped' || r.status === 'cancelled') return { text: reasonLabel(r.skipReason) || '', title: r.skipReason || '' };
+      if (r.status === 'pending') return { text: r.nextAttemptAt ? '預計 ' + fmtTime(r.nextAttemptAt) + ' 後嘗試' : '等待寄送', title: r.lastErrorCode ? reasonLabel(r.lastErrorCode) : '' };
+      if (r.status === 'sent') return { text: r.sentAt ? fmtTime(r.sentAt) : '', title: '' };
+      return { text: '', title: '' };
+    }
+    function rowHtml(r) {
+      const canRequeue = r.status === 'failed' || r.status === 'skipped' || r.status === 'cancelled';
+      const rs = reasonOf(r);
+      return '<tr data-mail-row="' + esc(r.id) + '">' +
+        '<td class="log-time">' + esc(fmtTime(r.createdAt)) + '</td>' +
+        '<td>' + esc(typeLabel(r.type)) + '</td>' +
+        '<td>' + esc(r.quoteNo || '') + '</td>' +
+        '<td><strong>' + esc(r.toUser) + '</strong><br><span class="mail-addr">' + esc(r.toMasked || '') + '</span></td>' +
+        '<td>' + badge(STATUS_CLS[r.status] || 'mute', STATUS_LABEL[r.status] || r.status || '') + '</td>' +
+        '<td style="text-align:center">' + esc(r.attempts == null ? 0 : r.attempts) + '</td>' +
+        '<td class="mail-wrap"' + (rs.title ? ' title="' + esc(rs.title) + '"' : '') + '>' + esc(rs.text) + '</td>' +
+        '<td class="log-time">' + esc(fmtTime(r.updatedAt)) + '</td>' +
+        '<td>' + (canRequeue ? '<button type="button" class="btn btn-sm btn-primary" data-mail-requeue="' + esc(r.id) + '">立即重送</button>' : '') + '</td>' +
+        '</tr>';
+    }
+    function renderPager(d) {
+      const pg = $('mailPager');
+      const total = Number(d.total) || 0, off = Number(d.offset) || 0, lim = Number(d.limit) || M.limit;
+      if (!total) { pg.hidden = true; pg.textContent = ''; return; }
+      const from = off + 1, to = Math.min(off + lim, total);
+      pg.hidden = false;
+      pg.innerHTML = '<span>第 ' + from + '–' + to + ' 筆，共 ' + total + ' 筆</span>' +
+        '<span class="mail-pager-btns"><label style="font-size:12px;color:#888">每頁 <select id="mailLimit">' +
+        [10, 25, 50, 100].map((n) => '<option value="' + n + '"' + (n === lim ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
+        '<button type="button" class="btn btn-sm" data-mail-page="prev" style="background:#f0f2f5;color:#333"' + (off <= 0 ? ' disabled' : '') + '>上一頁</button>' +
+        '<button type="button" class="btn btn-sm" data-mail-page="next" style="background:#f0f2f5;color:#333"' + (off + lim >= total ? ' disabled' : '') + '>下一頁</button></span>';
+    }
+    function renderLog(d) {
+      M.total = d.total || 0; M.offset = d.offset || 0; M.limit = d.limit || M.limit; M.mode = d.mode || 'off';
+      M.rows = Array.isArray(d.rows) ? d.rows : [];
+      renderStatusBox(d);
+      $('mailLogBody').innerHTML = M.rows.length
+        ? '<table class="admin-table mail-table" aria-label="寄信紀錄"><thead><tr><th>建立時間</th><th>事件</th><th>單號</th><th>收件人</th><th>狀態</th><th>嘗試</th><th>原因／錯誤</th><th>最後更新</th><th>操作</th></tr></thead><tbody>' + M.rows.map(rowHtml).join('') + '</tbody></table>'
+        : '<div class="mail-empty">沒有符合條件的寄信紀錄</div>';
+      renderPager(d);
+    }
+    async function loadLog() {
+      const seq = ++M.seq;
+      $('mailLogBody').innerHTML = '<div class="mail-empty">載入中...</div>';
+      try {
+        const r = await mailApi('GET', '/admin/mail/outbox' + buildQuery());
+        if (seq !== M.seq) return;   // 有更新的查詢，丟掉這個舊回應
+        if (!r.ok || !r.data) {
+          $('mailStatusBox').innerHTML = '';
+          $('mailPager').hidden = true;
+          $('mailLogBody').innerHTML = '<div class="mail-empty">' + esc(r.status === 503 ? '寄信功能目前無法使用（寄件匣未初始化）' : ((r.data && r.data.error) || ('載入失敗（HTTP ' + r.status + '）'))) + '</div>';
+          return;
+        }
+        renderLog(r.data);
+      } catch (e) {
+        if (seq === M.seq && !isSessionErr(e)) $('mailLogBody').innerHTML = '<div class="mail-empty">載入失敗：' + esc(e && e.message ? e.message : e) + '</div>';
+      }
+    }
+
+    // ── 立即重送 ──
+    function confirmBox(opts) {
+      return new Promise((resolve) => {
+        const ov = $('mailConfirmModal');
+        $('mailConfirmTitle').textContent = opts.title || '請確認';
+        const body = $('mailConfirmBody');
+        body.textContent = '';
+        (opts.lines || []).forEach((t) => { const p = document.createElement('p'); p.style.cssText = 'font-size:13px;line-height:1.7;margin:0 0 8px'; p.textContent = t; body.appendChild(p); });
+        $('mailConfirmOk').textContent = opts.okText || '確定';
+        let done = false;
+        const finish = (v) => {
+          if (done) return;
+          done = true;
+          dlgClose(ov);
+          $('mailConfirmOk').removeEventListener('click', onOk);
+          $('mailConfirmCancel').removeEventListener('click', onNo);
+          $('mailConfirmClose').removeEventListener('click', onNo);
+          resolve(v);
+        };
+        const onOk = () => finish(true);
+        const onNo = () => finish(false);
+        $('mailConfirmOk').addEventListener('click', onOk);
+        $('mailConfirmCancel').addEventListener('click', onNo);
+        $('mailConfirmClose').addEventListener('click', onNo);
+        dlgOpen(ov, $('mailConfirmOk'), onNo);       // Esc 與焦點循環由 dlgKeydown 處理
+      });
+    }
+    function requeueSummary(d) {
+      const rec = d && d.record;
+      if (!rec) return '已送出重送要求';
+      switch (rec.status) {
+        case 'sent': return '✅ 已寄出';
+        case 'skipped': return 'ℹ️ 已處理：' + (reasonLabel(rec.skipReason) || '略過');
+        case 'cancelled': return 'ℹ️ 已取消：' + (reasonLabel(rec.skipReason) || '單據已不需要這封信') + '（不會寄出）';
+        case 'failed': return '⚠ 重送後仍失敗：' + (reasonLabel(rec.lastErrorCode) || '寄送失敗');
+        case 'pending': return d.drain ? 'ℹ️ 已放回佇列，稍後嘗試寄送' : 'ℹ️ 已放回佇列（寄信模式為 off，不會寄出）';
+        default: return '已送出重送要求（目前狀態：' + (STATUS_LABEL[rec.status] || rec.status) + '）';
+      }
+    }
+    async function requeue(id) {
+      const row = M.rows.find((r) => r.id === id);
+      if (!row) return;
+      const modeNote = M.mode === 'off' ? '目前寄信模式為 off：只會放回佇列，不會寄出。' : M.mode === 'log' ? '目前寄信模式為 log：只會留下紀錄，不會真的寄出。' : M.mode === 'redirect' ? '目前寄信模式為 redirect：會改寄到測試信箱，不會寄給原收件人。' : '';
+      const ok = await confirmBox({
+        title: '立即重送這封信？',
+        lines: [
+          '事件：' + typeLabel(row.type) + '　單號：' + (row.quoteNo || '（無）'),
+          '收件人：' + row.toUser + '（' + (row.toMasked || '') + '）　目前狀態：' + (STATUS_LABEL[row.status] || row.status),
+          '系統會用單據目前的狀態重新產生並檢查信件：若單據已進到別關或已撤回，這封信會被取消而不是寄出。如果是因為沒有 email 被略過，請先補好 email 再重送。',
+        ].concat(modeNote ? [modeNote] : []),
+        okText: '確定重送',
+      });
+      if (!ok) return;
+      try {
+        const r = await mailApi('POST', '/admin/mail/outbox/' + encodeURIComponent(id) + '/requeue');
+        toast(r.ok ? requeueSummary(r.data) : '重送失敗：' + ((r.data && r.data.error) || ('HTTP ' + r.status)), 5000);
+      } catch (e) {
+        if (!isSessionErr(e)) toast('重送失敗：' + (e && e.message ? e.message : e));
+      }
+      loadLog();
+    }
+
+    // ── 設定與狀態（唯讀）／缺 email 清單 ──
+    async function loadConfig(force) {
+      if (M.cfg && !M.cfgStale && !force) { renderConfig(); renderMissing(); return; }
+      const seq = ++M.cfgSeq;
+      if (!M.cfg) { $('mailConfigBody').innerHTML = '<div class="mail-empty">載入中...</div>'; $('mailMissingBody').innerHTML = '<div class="mail-empty">載入中...</div>'; }
+      try {
+        const r = await mailApi('GET', '/admin/mail/config');
+        if (seq !== M.cfgSeq) return;
+        if (!r.ok || !r.data) {
+          const msg = '<div class="mail-empty">' + esc((r.data && r.data.error) || ('載入失敗（HTTP ' + r.status + '）')) + '</div>';
+          $('mailConfigBody').innerHTML = msg; $('mailMissingBody').innerHTML = msg;
+          return;
+        }
+        M.cfg = r.data; M.cfgStale = false;
+        if (r.data.config && Array.isArray(r.data.config.allowedDomains)) allowedDomains = r.data.config.allowedDomains.map(String);
+        renderConfig(); renderMissing();
+      } catch (e) {
+        if (seq === M.cfgSeq && !isSessionErr(e)) { const msg = '<div class="mail-empty">載入失敗：' + esc(e && e.message ? e.message : e) + '</div>'; $('mailConfigBody').innerHTML = msg; $('mailMissingBody').innerHTML = msg; }
+      }
+    }
+    function kv(rows) {
+      return '<div class="mail-kv" role="group" aria-label="寄信設定與狀態">' + rows.map((p) => '<div class="k">' + esc(p[0]) + '</div><div>' + p[1] + '</div>').join('') + '</div>';
+    }
+    function renderConfig() {
+      const d = M.cfg;
+      if (!d) return;
+      const c = d.config || {}, rt = d.runtime || {};
+      const mode = c.mode || 'off';
+      const mi = MODE_INFO[mode] || MODE_INFO.off;
+      let html = '<div class="mail-banner info">寄信模式、允許的收件網域、轉送信箱與各種密鑰都由<b>伺服器的環境變數</b>決定（例如 MAIL_MODE、MAIL_ALLOWED_DOMAINS），後台只能查看、不能修改；要調整請到部署平台設定環境變數後重新部署。這一頁不會顯示任何密鑰或轉送信箱的位址。</div>';
+      const warns = Array.isArray(d.warnings) ? d.warnings : [];
+      if (warns.length) html += '<div class="mail-banner warn"><b>設定警告</b><ul>' + warns.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul></div>';
+      if ((mode === 'live' || mode === 'redirect') && !c.graphConfigured) html += '<div class="mail-banner warn">⚠ 尚未設定 Microsoft Graph 寄件參數（MAIL_GRAPH_*）：目前 ' + esc(mode) + ' 模式沒有可用的真實寄送管道，信件會記為失敗或略過。</div>';
+      const to = c.timeouts || {}, rty = c.retry || {};
+      const rows = [
+        ['寄信模式', badge(mi.cls === 'warn' ? 'warn' : (mi.cls === 'ok' ? 'ok' : 'info'), mi.title) + ' ' + esc(mi.text)],
+        ['目前是否運作', d.enabled ? badge('ok', '運作中') + ' 事件會產生寄信紀錄並嘗試寄送' : badge('mute', '未運作') + ' 不寄信、不產生新的紀錄（MAIL_MODE 為 off 或未設定）'],
+        ['寄件匣儲存體', esc(d.backend === 'postgres' ? '資料庫（Postgres 專用資料表）' : '本機 JSON 檔案（僅限本機開發）') + (rt.available === false ? ' ' + badge('bad', '未初始化') : '')],
+        ['轉送信箱（redirect 模式）', c.redirectConfigured ? '已設定（位址不顯示）' : '<span class="mail-muted">未設定</span>'],
+        ['寄件顯示名稱', esc(c.fromName || '')],
+        ['網站網址（信內連結）', esc(c.appBaseUrl || '')],
+        ['允許的收件網域', (Array.isArray(c.allowedDomains) && c.allowedDomains.length) ? c.allowedDomains.map((x) => '<span class="mail-addr">' + esc(x) + '</span>').join('、') : '<span class="mail-muted">（無）</span>'],
+        ['Microsoft Graph 寄件參數', c.graphConfigured ? badge('ok', '已設定') : badge('mute', '未設定')],
+        ['每日補寄排程（Cron）密鑰', d.cronSecretConfigured ? badge('ok', '已設定') : badge('warn', '未設定') + ' 沒有密鑰時，排程端點會拒絕所有請求（每日補寄不會執行）'],
+        ['寄送逾時', esc('連線 ' + (to.connectMs == null ? '?' : to.connectMs) + ' 毫秒／單封總計 ' + (to.totalMs == null ? '?' : to.totalMs) + ' 毫秒')],
+        ['失敗重試', esc('一輪最多 ' + ((Array.isArray(rty.delaysSec) ? rty.delaysSec.length : 0) + 1) + ' 次嘗試；退避 ' + (Array.isArray(rty.delaysSec) ? rty.delaysSec.join('／') : '?') + ' 秒；最終失敗後需在「寄信紀錄」手動重送')],
+        ['機會式清理（輪詢）', esc('本實例已執行 ' + ((rt.poll && rt.poll.runs) || 0) + ' 次' + ((rt.poll && rt.poll.lastAt) ? '；最近一次 ' + fmtTime(rt.poll.lastAt) : ''))],
+      ];
+      html += '<div class="admin-card"><div class="admin-card-header"><span class="admin-card-title">寄信設定（唯讀）</span><button type="button" class="btn btn-sm" id="mailCfgRefresh" style="background:#f0f2f5;color:#333">重新整理</button></div>' + kv(rows) + '</div>';
+      $('mailConfigBody').innerHTML = html;
+    }
+    const MISSING_REASON = { NO_EMAIL: ['warn', '沒有 email'], BAD_EMAIL: ['bad', 'email 格式不正確'], DOMAIN_NOT_ALLOWED: ['bad', 'email 網域不在允許清單'] };
+    function renderMissing() {
+      const d = M.cfg;
+      if (!d) return;
+      const list = Array.isArray(d.missingEmails) ? d.missingEmails : [];
+      const cnt = $('mailMissingCount');
+      cnt.innerHTML = list.length ? '<span class="mail-badge mail-badge-warn">' + list.length + '</span>' : '';
+      if (!list.length) { $('mailMissingBody').innerHTML = '<div class="mail-banner ok">✓ 所有會收到簽核信的人（一級主管、總經理、董事長、董事會代核人、秘書、支援顧問）都有可用的 email。</div>'; return; }
+      $('mailMissingBody').innerHTML = '<div class="mail-banner warn">以下 <b>' + list.length + '</b> 位人員在簽核流程中會收到信，但沒有可用的 email，系統會略過他們（站內通知不受影響）。到「帳號管理」編輯補上，或用「批次匯入 Email」一次補多人；補好後可到「寄信紀錄」對被略過的信按「立即重送」。' +
+        ' <button type="button" class="btn btn-sm btn-primary" data-mail-go="import" style="margin-left:6px">批次匯入 Email</button></div>' +
+        '<div class="admin-card"><div class="mail-tablewrap"><table class="admin-table mail-table" aria-label="缺 email 清單"><thead><tr><th>帳號</th><th>顯示名稱</th><th>簽核角色</th><th>原因</th><th>備註</th><th>操作</th></tr></thead><tbody>' +
+        list.map((m) => {
+          const rs = MISSING_REASON[m.reason] || ['mute', m.reason || ''];
+          return '<tr><td><strong>' + esc(m.username) + '</strong></td><td>' + esc(m.label) + '</td><td class="mail-wrap">' + esc((Array.isArray(m.roleLabels) ? m.roleLabels : []).join('、')) + '</td><td>' + badge(rs[0], rs[1]) + '</td><td class="mail-wrap">' + (m.readOnly ? '<span class="mail-muted">唯讀帳號（不能簽核，仍會收到通知）</span>' : '') + '</td>' +
+            '<td><button type="button" class="btn btn-sm btn-primary" data-mail-edit="' + esc(m.username) + '">編輯 email</button></td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+    }
+
+    // ── 事件委派（全區塊只掛一次）──
+    function bindOnce() {
+      if (M.inited) return;
+      M.inited = true;
+      const sec = $('sec-mail');
+      sec.addEventListener('click', (e) => {
+        const t = e.target.closest('button');
+        if (!t) return;
+        if (t.dataset.mailTab) { setTab(t.dataset.mailTab); return; }
+        if (t.dataset.mailRequeue) { requeue(t.dataset.mailRequeue); return; }
+        if (t.dataset.mailPage) { M.offset = Math.max(0, M.offset + (t.dataset.mailPage === 'next' ? M.limit : -M.limit)); loadLog(); return; }
+        if (t.dataset.mailGo === 'import') { openImport(); return; }
+        if (t.dataset.mailEdit) { if (typeof openEditUser === 'function') openEditUser(t.dataset.mailEdit); return; }
+        if (t.id === 'mailFSearch') { M.offset = 0; loadLog(); return; }
+        if (t.id === 'mailFClear') {
+          ['mailFStatus', 'mailFType', 'mailFQuoteNo', 'mailFToUser', 'mailFSince'].forEach((id) => { $(id).value = ''; });
+          M.offset = 0; loadLog(); return;
+        }
+        if (t.id === 'mailRefresh') { loadLog(); return; }
+        if (t.id === 'mailCfgRefresh') { loadConfig(true); }
+      });
+      sec.addEventListener('change', (e) => {
+        if (e.target && e.target.id === 'mailLimit') { M.limit = parseInt(e.target.value, 10) || 25; M.offset = 0; loadLog(); return; }
+        if (e.target && (e.target.id === 'mailFStatus' || e.target.id === 'mailFType' || e.target.id === 'mailFSince')) { M.offset = 0; loadLog(); }
+      });
+      sec.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target && (e.target.id === 'mailFQuoteNo' || e.target.id === 'mailFToUser')) { M.offset = 0; loadLog(); return; }
+        // 分頁的方向鍵（WAI-ARIA tabs）：← → 在分頁間移動並切換（首尾循環）、Home／End 跳到第一個／最後一個
+        const tabs = Array.prototype.slice.call(sec.querySelectorAll('.mail-tabs [role=tab]'));
+        const i = tabs.indexOf(e.target);
+        if (i < 0 || ['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(e.key) < 0) return;
+        e.preventDefault();
+        const n = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length : e.key === 'Home' ? 0 : tabs.length - 1;
+        setTab(tabs[n].dataset.mailTab);
+        tabs[n].focus();
+      });
+    }
+    function initMailSection() {
+      bindOnce();
+      M.cfgStale = true;   // 每次進入區段都重抓設定／缺 email 清單（帳號資料可能剛改過）
+      setTab(M.tab);
+      if (M.tab === 'log') loadConfig(true);   // 讓分頁標籤上的「缺 email」數量也跟著更新
+    }
+    const navMail = document.querySelector('[data-sec="mail"]');
+    if (navMail) navMail.addEventListener('click', initMailSection);
+
+    // ── 帳號頁的入口按鈕、提示列、批次匯入對話框 ──
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest ? e.target.closest('button') : null;
+      if (!t) return;
+      if (t.id === 'emailImportBtn') openImport();
+      else if (t.id === 'emailImportClose' || t.id === 'emailImportCancel') closeImport();
+      else if (t.id === 'emailImportPreviewBtn') doPreview();
+      else if (t.id === 'emailImportApply') doApply();
+      else if (t.dataset && t.dataset.mailGo && $('userEmailNotice') && $('userEmailNotice').contains(t)) {
+        if (t.dataset.mailGo === 'import') openImport();
+        else if (t.dataset.mailGo === 'missing') { M.tab = 'missing'; if (navMail) navMail.click(); }
+      }
+    });
+    const impText = $('emailImportText');
+    if (impText) impText.addEventListener('input', () => {
+      if (imp.previewed && impText.value !== imp.text) { imp.previewed = false; $('emailImportApply').disabled = true; impStatus('內容已修改，請重新按「預覽」。', 'warn'); }
+    });
+  })();
   </script>
 </body>
 </html>

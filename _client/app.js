@@ -3416,16 +3416,28 @@ $('exportBtn').addEventListener('click', async () => {
 
 // ── 登入者資訊 & 登出 ────────────────────────────────────
 window._myRole = 'user'; // 全域存角色，供其他函式判斷
+// 信件深層連結（deep-link.js）：導向登入頁之前，把網址上合法的 #quote:… 片段存進 sessionStorage，登入成功後由 login.html 帶回。
+// deep-link.js 載入失敗或格式不合時什麼都不做（不影響導向）。
+function _rememberDeepLink(forLogin) {
+  try { if (window.ITTSDeepLink) { if (forLogin) window.ITTSDeepLink.rememberForLogin(window.location.hash); else window.ITTSDeepLink.remember(window.location.hash); } } catch (_) { /* 忽略 */ }
+}
+// 登出時一律清掉暫存的深層連結：下一位在同分頁登入的人不能被帶去上一位的單據（login.html 載入時也會再清一次沒上膛的暫存）
+function _clearDeepLink() {
+  try { if (window.ITTSDeepLink) window.ITTSDeepLink.clear(); } catch (_) { /* 忽略 */ }
+}
 async function initUser() {
   try {
     const res = await fetch('/api/me');
-    if (res.status === 401) { window.location.href = '/login.html'; return; }
+    if (res.status === 401) { _rememberDeepLink(true); window.location.href = '/login.html'; return; }
     const user = await res.json();
     window._myRole = user.role || 'user';
     window._myUsername = user.username || '';
     // 強制變更密碼：彈出 modal 並中斷後續初始化（API 已被 middleware 阻擋）
     if (user.mustChangePassword === true) {
       window._displayName = user.displayName || '';
+      // 改完密碼會 location.reload()：網址上的 #quote:… 此時還在（_handleQuoteDeepLink 要到初始化完成才會清掉），
+      // 這裡再存一份當保險，重新載入後 initUser 結尾會接著開啟那張單。
+      _rememberDeepLink();
       openForcePasswordModal(user.passwordChangeReason);
       return;
     }
@@ -3506,12 +3518,18 @@ async function initUser() {
       // 非首次載入時的安全網：tecopm 一律強制進預測表
       showSection('forecast');
     }
-    // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單
-    if (typeof _handleQuoteDeepLink === 'function') _handleQuoteDeepLink();
+    // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單。
+    // 信件連結（/q/<id> → 登入頁 → 這裡）：網址片段優先；網址上沒有時改用 sessionStorage 暫存的那一份（取一次即清，不會重複開）
+    if (typeof _handleQuoteDeepLink === 'function') {
+      let stored = '';
+      try { stored = window.ITTSDeepLink ? window.ITTSDeepLink.consume() : ''; } catch (_) { stored = ''; }
+      if (!_handleQuoteDeepLink() && stored) _handleQuoteDeepLink(stored);
+    }
   } catch { window.location.href = '/login.html'; }
 }
 
 $('logoutBtn').addEventListener('click', async () => {
+  _clearDeepLink();
   await fetch('/api/logout', { method: 'POST' });
   window.location.href = '/login.html';
 });
@@ -8520,8 +8538,13 @@ function openQuoteFromNotification(type, id) {
 
 // 推播通知點擊 → 網址帶 #quote:<id>（server 的 notificationUrlFor）。頁面載入（initUser 結尾）與 hashchange 都處理；
 // 處理完立刻清掉 hash，避免重新整理又開一次。伺服器端仍會對該張單做權限檢查。
-function _handleQuoteDeepLink() {
-  const m = /^#quote:([0-9a-fA-F-]{8,64})(:cost)?$/.exec(window.location.hash || '');
+// 參數：可傳入字串片段（initUser 用暫存的深層連結）；省略時讀網址（hashchange 監聽器會傳 event 物件，不是字串 → 一律當省略）。
+// 格式驗證與 deep-link.js 共用（ITTSDeepLink.isValidHash：#quote:<英數底線連字號 1–64>[:cost]）；單據 id 目前全是 uuid，行為與舊的 uuid 專用正規式一致。
+// deep-link.js 沒載入時退回舊的 uuid 正規式。
+function _handleQuoteDeepLink(hashArg) {
+  const h = typeof hashArg === 'string' ? hashArg : (window.location.hash || '');
+  const valid = window.ITTSDeepLink ? window.ITTSDeepLink.isValidHash(h) : /^#quote:[0-9a-fA-F-]{8,64}(:cost)?$/.test(h);
+  const m = valid ? /^#quote:([A-Za-z0-9_-]+)(:cost)?$/.exec(h) : null;
   if (!m) return false;
   try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) { /* 忽略 */ }
   openQuoteFromNotification(m[2] ? 'quote_cost_request' : 'quote_submitted', m[1]);
@@ -10637,6 +10660,7 @@ function renderExecProduct(data) {
     clearTimeout(idleTimer);
     clearInterval(countdownTimer);
     overlay.style.display = 'none';
+    _clearDeepLink();
     try { await fetch('/api/logout', { method: 'POST' }); } catch {}
     window.location.href = '/login.html';
   }
@@ -10771,6 +10795,7 @@ async function submitForcePassword() {
   if (submitBtn) submitBtn.addEventListener('click', submitForcePassword);
   if (logoutLink) logoutLink.addEventListener('click', async (e) => {
     e.preventDefault();
+    _clearDeepLink();
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
