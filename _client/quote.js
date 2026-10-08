@@ -937,6 +937,7 @@ function onQuoteProductsChanged() {
 
   const pnl = document.getElementById('quoteTabContentPnl');
   if (pnl && pnl.style.display !== 'none') renderPnlTab();
+  if (typeof QSteps === 'object' && QSteps) QSteps.refresh();   // 逐步填寫：商品勾選（含取消勾選標籤）會影響「指派顧問」步驟
 }
 
 // ════════════════════════════════════════════════════════════
@@ -954,6 +955,7 @@ function switchQuoteTab(tabName) {
   const modal = document.querySelector('#quoteModalOverlay > .modal');
   if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : '860px';
   if (tabName === 'pnl') renderPnlTab();
+  if (typeof QSteps === 'object' && QSteps) QSteps.onTab(tabName);   // 逐步填寫：只在新單分步時作用
 }
 
 /** 毛利率顏色分級（僅畫面提示，不代表簽核層級） */
@@ -1545,6 +1547,8 @@ async function openQuoteModal(idOrNull) {
 
     overlay.style.display = 'flex';
     updateQuoteTotals();
+    // 新增報價單的逐步填寫（quote-steps.js）：新單才分步；編輯既有單（q 有值）會把分步狀態完全清掉，表單維持原樣
+    if (typeof QSteps === 'object' && QSteps) QSteps.onOpen(q);
 
   } catch (err) {
     console.error('openQuoteModal 錯誤:', err);
@@ -2039,6 +2043,7 @@ function updateQuoteTotals() {
   // 毛利與簽核路徑頁籤開著時同步
   const pnl = document.getElementById('quoteTabContentPnl');
   if (pnl && pnl.style.display !== 'none' && document.getElementById('pnlRevenue')) updatePnlNumbers();
+  if (typeof QSteps === 'object' && QSteps) QSteps.refresh();   // 逐步填寫：品項／優惠變動後重算各步驟是否完成
 }
 
 // ── 儲存報價單 ──────────────────────────────────────────────

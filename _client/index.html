@@ -2640,7 +2640,12 @@
       <!-- ── TAB 1：報價資訊 ── -->
       <div class="modal-body" id="quoteTabContentInfo">
         <input type="hidden" id="quoteId">
+        <!-- 「新增」報價單的逐步填寫（quote-steps.js）：左側進度欄＋每個 .qs-step 是一步。
+             沒有 .qs-on（編輯既有單、或測試用旗標關閉）時，進度欄不顯示、.qs-main／.qs-step 只是沒有任何樣式的區塊，版面與沒分步時完全相同。 -->
+        <nav class="qs-rail" id="qsRail" aria-label="填寫進度"></nav>
+        <div class="qs-main" id="qsMain">
 
+        <div class="qs-step" data-qs="customer">
         <!-- 基本資訊 -->
         <div class="quote-section-title">📋 基本資訊</div>
         <div class="form-row">
@@ -2670,6 +2675,9 @@
           <label>地址</label>
           <input type="text" id="qAddress" placeholder="客戶地址">
         </div>
+        </div><!-- end step customer -->
+
+        <div class="qs-step" data-qs="project">
         <div class="form-row">
           <div class="form-group">
             <label>建立日期 <span class="required">*</span></label>
@@ -2686,12 +2694,14 @@
           <label>專案名稱</label>
           <input type="text" id="qProjectName" maxlength="200" placeholder="請輸入專案名稱（會印在報價單中間的「專案資料」框內）">
         </div>
-        <div class="form-group">
+        <div class="form-group qs-hide">
           <label>簽核狀態</label>
           <div id="qApprovalState" class="q-ro-state">新建立（尚未送簽）</div>
         </div>
+        </div><!-- end step project -->
 
         <!-- 商品（必勾）與支援顧問：決定簽核核決表的類別與是否需要顧問填成本 -->
+        <div class="qs-step" data-qs="products">
         <div class="quote-section-title" style="margin-top:20px">🧩 商品 <span class="required">*</span>
           <span class="q-sec-sub">勾選本次報價包含的商品（至少 1 項），系統依商品歸類決定簽核層級</span></div>
         <div id="qProductsSection">
@@ -2703,6 +2713,9 @@
           <div id="qProductsList" class="qp-list"></div>
           <div id="qProdWarn" class="q-warnbar" style="display:none"></div>
         </div>
+        <div id="qSelfCostHint" class="q-infobar" style="display:none">此單的商品都由業務自行填成本（例如 SAP 軟體授權），不需要顧問。請到「毛利與簽核路徑」頁籤填寫專案成本明細（顧問／軟體／硬體／差旅／其他費用，含印花稅）。</div>
+        </div><!-- end step products -->
+        <div class="qs-step" data-qs="consultant">
         <div id="qCostByWrap" class="q-costby" style="display:none">
           <div class="form-row">
             <div class="form-group">
@@ -2716,9 +2729,10 @@
             </div>
           </div>
         </div>
-        <div id="qSelfCostHint" class="q-infobar" style="display:none">此單的商品都由業務自行填成本（例如 SAP 軟體授權），不需要顧問。請到「毛利與簽核路徑」頁籤填寫專案成本明細（顧問／軟體／硬體／差旅／其他費用，含印花稅）。</div>
+        </div><!-- end step consultant -->
 
         <!-- 報價項目 -->
+        <div class="qs-step" data-qs="items">
         <div class="quote-section-title" style="margin-top:20px">📦 報價項目</div>
         <div class="quote-items-wrap">
           <table class="quote-items-table">
@@ -2743,8 +2757,10 @@
           <div id="qItemsHint" class="q-hint" style="display:none"></div>
           <div id="qCatHint" class="q-hint" style="display:none"></div>
         </div>
+        </div><!-- end step items -->
 
         <!-- 優惠設定 -->
+        <div class="qs-step" data-qs="discount">
         <div class="quote-discount-bar">
           <div class="quote-discount-label">💰 優惠設定</div>
           <div class="quote-discount-modes">
@@ -2791,8 +2807,10 @@
             <span id="qTotal">NT$ 0</span>
           </div>
         </div>
+        </div><!-- end step discount -->
 
         <!-- Remarks（備註條款）：第 3 條付款方式與第 7 條起追加條款是「活的」，其餘固定 -->
+        <div class="qs-step" data-qs="payment">
         <div class="form-group" style="margin-top:14px" id="qPaySection">
           <label>付款方式<span class="qrm-sub">（印在報價單 Remarks 第 3 條）</span></label>
           <div class="qrm-row">
@@ -2818,6 +2836,8 @@
           <summary>固定條款（不可修改）</summary>
           <div id="qFixedList"></div>
         </details>
+        </div><!-- end step payment -->
+        </div><!-- end qsMain -->
       </div><!-- end quoteTabContentInfo -->
 
       <!-- ── TAB 2：毛利與簽核路徑（唯讀摘要；成本由顧問填寫，業務自填時才可編輯成本） ── -->
@@ -3063,6 +3083,7 @@
   <script src="tw-workdays.js"></script>
   <script src="quote-costlines.js"></script>
   <script src="quote.js"></script>
+  <script src="quote-steps.js"></script>
   <script src="quote-preview.js"></script>
   <script src="quote-pdf.js"></script>
   <script src="quote-approval.js"></script>
