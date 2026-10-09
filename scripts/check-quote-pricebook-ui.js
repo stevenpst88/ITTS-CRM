@@ -9,6 +9,7 @@
  *      單位規則）、種子帶入（只在 pricebookSeed:true 且只帶顧問品項列的成本；沒開旗標時輸出與沒有牌價簿時逐位元相同）、載入已存的成本列（normalize）完全不動
  *   3b) BU 分頁（業主決定：ERP／ITS／MDM／CRM 四個分頁，名稱只在同一個 BU 內唯一）：sanitizeList／groupByBu／pickDefaultBu／buildItems 跨分頁；QCL 同名跨 BU 的帶入規則
  *       （BU 已知先找該 BU；否則只有全部 BU 剛好一筆才帶入；歧義不帶入）；種子同規則
+ *   5) 說明（spec）：sanitizeList／buildItems 複製說明、isBlankDefaultRow、對話框灰色說明行（跳脫）、後台說明欄（序列化、驗證、匯入預覽、跳脫）、QPB.cleanSpec 與伺服器 cleanItemText 逐例相同
  *   4) 靜態紀律：使用者文字進 innerHTML 前一律跳脫（QPB 對話框、後台表格）、無 eval／new Function／document.write、接線（按鈕、script 順序、?v= 版本）、
  *      既有簽核雜湊程式沒被改到、牌價簿命名空間
  */
@@ -42,7 +43,7 @@ async function run() {
   t('1.3 marginPct：(牌價-成本)/牌價；牌價 0 或壞資料 → null；成本高於牌價 → 負值', P.marginPct(9000, 6000).toFixed(4) === '33.3333' && P.marginPct(0, 5) === null && P.marginPct('x', 1) === null && P.marginPct(100, 150) === -50 && P.marginPct(100, 0) === 100);
   t('1.4 marginText：一位小數＋%；無法計算顯示「—」', P.marginText(9000, 6000) === '33.3%' && P.marginText(0, 0) === '—' && P.marginText(100, 150) === '-50.0%');
   const raw = [{ id: 'a', name: ' PM ', price: 9000, cost: 6000, extra: 1 }, null, 'x', { id: 'b', name: '', price: 1, cost: 1 }, { id: 'c', name: 'N', price: -1, cost: 1 }, { id: 'd', name: 'N', price: 1, cost: NaN }, { name: 'noid', price: 1, cost: 1 }, { id: 'e', name: 'OK', price: '7000', cost: '5000' }];
-  t('1.5 sanitizeList：丟掉壞項目（空名稱、負價、NaN、沒 id、非物件）；名稱去空白；只留 id／bu（缺漏＝ERP）／name／price／cost', J(P.sanitizeList(raw)) === J([{ id: 'a', bu: 'ERP', name: 'PM', price: 9000, cost: 6000 }, { id: 'e', bu: 'ERP', name: 'OK', price: 7000, cost: 5000 }]) && J(P.sanitizeList(undefined)) === '[]');
+  t('1.5 sanitizeList：丟掉壞項目（空名稱、負價、NaN、沒 id、非物件）；名稱去空白；只留 id／bu（缺漏＝ERP）／name／price／cost／spec（缺漏＝空字串）', J(P.sanitizeList(raw)) === J([{ id: 'a', bu: 'ERP', name: 'PM', price: 9000, cost: 6000, spec: '' }, { id: 'e', bu: 'ERP', name: 'OK', price: 7000, cost: 5000, spec: '' }]) && J(P.sanitizeList(undefined)) === '[]');
   const list = [{ id: 'a', name: 'PM 顧問經理', price: 9000, cost: 6500 }, { id: 'b', name: 'SD 顧問', price: 7000, cost: 5000 }, { id: 'c', name: 'ABAP', price: 6500, cost: 4500 }];
   const built = P.buildItems(list, [{ id: 'c', qty: 2 }, { id: 'a', qty: 3 }]);
   t('1.6 buildItems：依牌價簿順序（不是點選順序）；每項只有 desc／unit(人天)／qty／unitPrice／cat(consult)', J(built) === J([{ desc: 'PM 顧問經理', unit: '人天', qty: 3, unitPrice: 9000, cat: 'consult' }, { desc: 'ABAP', unit: '人天', qty: 2, unitPrice: 6500, cat: 'consult' }]));
@@ -171,6 +172,31 @@ async function run() {
   t('3b.12 種子帶入同規則：沒有 pricebookBu → SD（歧義）不帶、Uniq 帶；pricebookBu:ITS → SD 帶 4000；pricebookBu:ERP → SD 帶 5000', (() => { const a = sdSeed(); const b = sdSeed({ pricebookBu: 'ITS' }); const c = sdSeed({ pricebookBu: 'ERP' }); const f = (arr, lid) => arr.find((l) => l.forLid === lid); return !f(a, 'i1').unitCost && f(a, 'i2').unitCost === 3000 && f(b, 'i1').unitCost === 4000 && f(c, 'i1').unitCost === 5000; })());
   t('3b.13 沒開 pricebookSeed 時種子仍與沒有牌價簿逐位元相同（舊行為），即使牌價簿有 BU', J(Q.seedFromItems(itemsBu, { includeStamp: true, pricebook: pbm, pricebookBu: 'ITS' })) === J(Q.seedFromItems(itemsBu, { includeStamp: true })));
 
+  // ═════════ 5) 說明（spec）：牌價簿 → 報價品項、對話框、後台 ═════════
+  const specList = P.sanitizeList([{ id: 's1', bu: 'ERP', name: 'PM', price: 9000, cost: 6000, spec: '  專案管理  與協調 ' }, { id: 's2', bu: 'ERP', name: 'SD', price: 7000, cost: 5000 }, { id: 's3', bu: 'ITS', name: 'Net', price: 6000, cost: 4000, spec: 123 }, { id: 's4', bu: 'ITS', name: 'Long', price: 1, cost: 1, spec: '字'.repeat(250) }, { id: 's5', bu: 'MDM', name: 'Lines', price: 1, cost: 1, spec: 'a\n b\t\u0001c' }]);
+  t('5.1 sanitizeList 帶 spec：清洗成單行純文字（空白收合）；缺漏／非字串＝空字串；超過 200 字截斷；換行／控制字元當空白', J(specList.map((x) => x.spec)) === J(['專案管理 與協調', '', '', '字'.repeat(200), 'a b c']), J(specList.map((x) => x.spec)));
+  const specBuilt = P.buildItems(specList, [{ id: 's1', qty: 2 }, { id: 's2', qty: 1 }, { id: 's3', qty: 1 }]);
+  t('5.2 buildItems 複製 spec：牌價簿有說明的項目才帶 spec（沒有的不多任何欄位，外形與以前相同）；其餘欄位不變', J(specBuilt[0]) === J({ desc: 'PM', unit: '人天', qty: 2, unitPrice: 9000, cat: 'consult', spec: '專案管理 與協調' }) && J(Object.keys(specBuilt[1])) === J(['desc', 'unit', 'qty', 'unitPrice', 'cat']) && J(Object.keys(specBuilt[2])) === J(['desc', 'unit', 'qty', 'unitPrice', 'cat']));
+  t('5.3 複製語意：品項只多 spec（沒有 note、沒有 pb 參照／出處欄位）；改牌價簿清單物件不影響已產生的品項', (() => { const c = P.sanitizeList([{ id: 'x', name: 'X', price: 1, cost: 1, spec: 'orig' }]); const it = P.buildItems(c, [{ id: 'x', qty: 1 }])[0]; c[0].spec = 'changed'; return it.spec === 'orig' && !('note' in it) && !Object.keys(it).some((k) => /^pb|prov|source/i.test(k)); })());
+  t('5.4 isBlankDefaultRow：填了說明或備註就不是「還沒動過的預設空白列」（否則從牌價簿加入時會把使用者剛打的字蓋掉）；空字串 spec／note 仍算空白', !P.isBlankDefaultRow(Object.assign({}, blank, { spec: 'x' })) && !P.isBlankDefaultRow(Object.assign({}, blank, { note: 'x' })) && P.isBlankDefaultRow(Object.assign({}, blank, { spec: '', note: '' })));
+  t('5.5 QPB.cleanSpec 與伺服器 lib/quoteItems.js cleanItemText 逐例相同（前端鏡像）', (() => {
+    const QI5 = require(path.join(ROOT, 'lib/quoteItems.js'));
+    const cases = ['', ' ', '  a  ', 'a\nb', 'a\r\n\tb', 'a\u0001b', 'a\u007fb\u0085c', 'x'.repeat(300), '字'.repeat(250), '\u{20BB7}'.repeat(250), 'a  b   c', 'a b', '﻿x', null, undefined, 5, {}, ['x'], '=1+1', '<b>x</b>'];
+    return cases.every((c) => P.cleanSpec(c) === QI5.cleanItemText(c, 200));
+  })());
+  const dlgSeg = qpbSrc.slice(qpbSrc.indexOf('function tableHtml'), qpbSrc.indexOf('function dialogHtml'));
+  t('5.6 對話框：說明以小字灰色顯示在項目名稱下方，進 HTML 前經 esc（it.spec 沒有直接相加）；沒有說明的項目不輸出 qpb-spec', /it\.spec \? '<div class="qpb-spec">' \+ esc\(it\.spec\) \+ '<\/div>' : ''/.test(dlgSeg) && !/\+\s*it\.spec\s*\+/.test(dlgSeg) && /\.qpb-spec\{[^}]*color:#6b7280/.test(qpbSrc) && /body\.dark \.qpb-spec/.test(qpbSrc));
+  const adminSrc5 = read(path.join(ROOT, '_client/admin.html'));
+  const b0 = adminSrc5.indexOf('const PB_MAX_ITEMS'), b1 = adminSrc5.indexOf('系統整合：連線設定', b0);
+  const adminBlock5 = adminSrc5.slice(b0, b1);
+  t('5.7 後台：每列有「說明」輸入（data-pbf="spec"、maxlength=PB_MAX_SPEC=200、value 經 pcEsc、錯誤區 data-f="spec"）、表頭有「說明」欄、新增項目帶 spec:\'\'', /data-pbf="spec"/.test(adminBlock5) && /value="\$\{pcEsc\(r\.spec\)\}"/.test(adminBlock5) && /PB_MAX_SPEC = 200/.test(adminBlock5) && /maxlength="\$\{PB_MAX_SPEC\}"/.test(adminBlock5) && /data-f="spec"/.test(adminBlock5) && /<th style="padding:4px">說明/.test(adminBlock5) && /bu: _pbTab, spec: '' \}/.test(adminBlock5));
+  t('5.8 後台：說明納入序列化／髒檢查（pbSerRows 帶 spec）與驗證（超過 200 字顯示錯誤並標示分頁）；pbRow 帶 spec', /spec: String\(r\.spec \|\| ''\)\.trim\(\)/.test(adminBlock5) && /sl > PB_MAX_SPEC/.test(adminBlock5) && /e\.name \|\| e\.price \|\| e\.cost \|\| e\.spec/.test(adminBlock5) && /spec: it\.spec == null \? '' : String\(it\.spec\)/.test(adminBlock5));
+  t('5.9 後台匯入預覽：有「說明」欄與「問題」欄（舊的「說明」改名「問題」）；說明異動顯示 舊 → 新、全部 pcEsc（pbSpecCell）；空預覽列 colspan=9', /<th[^>]*>說明<\/th><th[^>]*>問題<\/th>/.test(adminSrc5) && /function pbSpecCell/.test(adminBlock5) && /pcEsc\(pbClip\(o\.spec\)\)/.test(adminBlock5) && /pcEsc\(ns\)/.test(adminBlock5) && /colspan="9"/.test(adminBlock5));
+  t('5.10 後台 PUT 的 body 仍是 items＋updatedAt（spec 在 items 裡）；沒有任何 eval／document.write 新增', /JSON\.stringify\(\{ items: pbSerialize\(\), updatedAt: _pbUpdatedAt \}\)/.test(adminBlock5) && !/\beval\(|new Function|document\.write/.test(adminBlock5));
+  const quoteSrc5 = read(path.join(ROOT, '_client/quote.js'));
+  t('5.11 quote.js 從牌價簿加入：onApply 直接用 planAppend 的結果重畫（spec 隨品項物件進 renderQuoteItems → 說明欄顯示並展開）', /onApply: function \(items, info\) \{\s*renderQuoteItems\(items\);/.test(quoteSrc5) && /specV = typeof it\.spec === 'string'/.test(quoteSrc5) && /notesOpen = !!\(specV \|\| noteV\)/.test(quoteSrc5));
+  t('5.12 quote.js 說明／備註輸入：value 經 escapeHtml、maxlength 200／300、readQuoteItems 一律送字串（空字串＝清除）', /class="qi-spec" value="' \+ escapeHtml\(specV\) \+ '" maxlength="200"/.test(quoteSrc5) && /class="qi-note" value="' \+ escapeHtml\(noteV\) \+ '" maxlength="300"/.test(quoteSrc5) && /it\.spec = specEl\.value\.trim\(\)/.test(quoteSrc5) && /it\.note = noteEl\.value\.trim\(\)/.test(quoteSrc5));
+
   // ═════════ 4) 靜態紀律 ═════════
   const adminSrc = read(path.join(ROOT, '_client/admin.html'));
   const a0 = adminSrc.indexOf('const PB_MAX_ITEMS'), a1 = adminSrc.indexOf('系統整合：連線設定', a0);
@@ -199,15 +225,21 @@ async function run() {
   t('4.14 quote-approval.js（顧問對話框）：種子與掛載都帶 pricebook 但 pricebookSeed: false；載入後 setPricebook；沒有 QPB 時退回空陣列', /pricebook: pbList, pricebookSeed: false/.test(qaSrc) && /setPricebook\(r\.items\)/.test(qaSrc) && /typeof QPB === 'object' && QPB && QPB\.peek\(\)\) \|\| \[\]/.test(qaSrc));
   // 既有簽核／雜湊／正規化程式沒被這個功能改到
   let gitOk = true, changed = '';
-  try { changed = require('child_process').execFileSync('git', ['diff', '--name-only', 'HEAD', '--', 'lib/quoteApproval.js', 'lib/quoteItems.js', 'lib/quoteCostLines.js'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (e) { gitOk = false; }
-  if (gitOk) t('4.15 簽核雜湊／品項列／成本明細的伺服器程式（lib/quoteApproval.js、quoteItems.js、quoteCostLines.js）相對 HEAD 沒有改動', changed === '', changed);
+  let itemsDiff = '';
+  try {
+    changed = require('child_process').execFileSync('git', ['diff', '--name-only', 'HEAD', '--', 'lib/quoteApproval.js', 'lib/quoteCostLines.js'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    itemsDiff = require('child_process').execFileSync('git', ['diff', '-U0', 'HEAD', '--', 'lib/quoteItems.js'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) { gitOk = false; }
+  if (gitOk) t('4.15 簽核雜湊／成本明細的伺服器程式（lib/quoteApproval.js、quoteCostLines.js）相對 HEAD 沒有改動', changed === '', changed);
+  // quoteItems.js 為「品項說明／備註」只做加法：只允許刪除舊的 module.exports 那一行（被換成多了幾個匯出的新版），其餘舊程式一行不動
+  if (gitOk) t('4.15b lib/quoteItems.js 相對 HEAD 只有新增（唯一被移除的行是舊的 module.exports）', itemsDiff.split('\n').filter((l) => /^-(?!--)/.test(l)).every((l) => /^-module\.exports = \{/.test(l)), itemsDiff.split('\n').filter((l) => /^-(?!--)/.test(l)).join('|').slice(0, 200));
   else console.log('SKIP 4.15（不是 git 工作樹，無法比對 HEAD）——這一項不計入');
   const routesSrc = read(path.join(ROOT, 'lib/quoteRoutes.js'));
   t('4.16 normalizeItems 沒有被改成認得牌價簿欄位（沒有 pbId／pricebook 字樣出現在 normalizeItems 區段）', (() => { const a = routesSrc.indexOf('function normalizeItems('), b = routesSrc.indexOf('畫面還沒存檔的新品項沒有 lid'); return a > 0 && b > a && !/pricebook|pbId|pb[A-Z]/i.test(routesSrc.slice(a, b)); })());
   // BU 分頁的靜態紀律
   t('4.17 後台：四個分頁（role=tablist／tab／tabpanel、aria-selected、roving tabindex、←→ Home End）、每個分頁顯示項目數與未儲存標記、sessionStorage 在 try/catch 內、送出的每個項目帶 bu', /role="tablist"/.test(adminSrc) && /role="tab"/.test(adminSrc) && /role="tabpanel"/.test(adminSrc) && /aria-selected="\$\{on\}"/.test(adminBlock) && /tabindex="\$\{on \? 0 : -1\}"/.test(adminBlock) && /ArrowRight/.test(adminBlock) && /ArrowLeft/.test(adminBlock) && /'Home'/.test(adminBlock) && /data-pbdirty/.test(adminBlock) && /try \{ sessionStorage\.setItem/.test(adminBlock) && /try \{ const t = sessionStorage\.getItem/.test(adminBlock) && /\{ bu: r\.bu, name: r\.name\.trim\(\)/.test(adminBlock));
   t('4.17b 後台分頁列「就地更新」：只有在 4 個分頁按鈕不存在時才建立，之後只改屬性／文字（輸入框 change 觸發更新時不能重建按鈕，否則點分頁的 click 會丟失——e2e 抓到的 bug）', (() => { const a = adminSrc.indexOf('function pbRenderTabs'), b = adminSrc.indexOf('function pbSetTab', a); const seg = a > 0 && b > a ? adminSrc.slice(a, b) : ''; return seg.length > 500 && /querySelectorAll\('\[role="tab"\]'\)\.length !== PB_BUS\.length/.test(seg) && (seg.match(/host\.innerHTML\s*=/g) || []).length === 1 && /setAttribute\('aria-selected'/.test(seg); })());
-  t('4.18 後台：名稱唯一性在同一個 BU 內（key 含 bu）、每個 BU 上限 60（pbTabRows）、上下移只和同 BU 的項目對調、新增項目進目前分頁', /seen\.has\(r\.bu \+ '\\u0001' \+ pbNameKey\(nm\)\)/.test(adminBlock) && /pbTabRows\(_pbTab\)\.length >= PB_MAX_ITEMS/.test(adminBlock) && /const same = pbTabRows\(_pbItems\[i\]\.bu\)/.test(adminBlock) && /bu: _pbTab \}\)/.test(adminBlock));
+  t('4.18 後台：名稱唯一性在同一個 BU 內（key 含 bu）、每個 BU 上限 60（pbTabRows）、上下移只和同 BU 的項目對調、新增項目進目前分頁', /seen\.has\(r\.bu \+ '\\u0001' \+ pbNameKey\(nm\)\)/.test(adminBlock) && /pbTabRows\(_pbTab\)\.length >= PB_MAX_ITEMS/.test(adminBlock) && /const same = pbTabRows\(_pbItems\[i\]\.bu\)/.test(adminBlock) && /bu: _pbTab, spec: '' \}\)/.test(adminBlock));
   t('4.19 後台匯入預覽：BU 欄、各 BU 統計、BU 篩選；伺服器回來的 bu／名稱／錯誤／skippedSheets 都經 pcEsc；確認後切到第一個有變動的 BU', /pcEsc\(r\.bu\)/.test(adminBlock) && /pcEsc\(r\.name\)/.test(adminBlock) && /pcEsc\(r\.error\)/.test(adminBlock) && /skippedSheets\.map\(x => pcEsc\(x\)\)/.test(adminBlock) && /data-pbbu/.test(adminBlock) && /const firstBu = PB_BUS\.find/.test(adminBlock));
   t('4.19b 後台匯入預覽 pbImpRender：伺服器回來的欄位（bu／row／name／action／error）在 ${…} 內插時一律包 pcEsc（逐一檢查，不只看有出現 pcEsc）', (() => { const a = adminSrc.indexOf('function pbImpRender'), b = adminSrc.indexOf('function pbImpMsg', a); const seg = a > 0 && b > a ? adminSrc.slice(a, b) : ''; const bare = seg.match(/\$\{\s*r\.(?:bu|row|name|action|error)\s*\}/g) || []; return seg.length > 500 && bare.length === 0 && /pcEsc\(r\.bu\)/.test(seg); })());
   t('4.23 後台牌價簿的窄螢幕／深色模式樣式：名稱欄 min-width:140px；深色規則全部限定在 #pbImpModal／#sec-quote-pricebook（不改全域 .modal）；淺色的 .modal 規則維持原樣', (() => { const css = adminSrc.slice(adminSrc.indexOf('專用：窄螢幕與深色模式'), adminSrc.indexOf('    body.dark { background: #0d1117; color: #c9d1d9; }')); const rules = css.split('\n').filter((l) => /body\.dark/.test(l)); return css.length > 500 && rules.length > 8 && rules.every((l) => /#pbImpModal|#sec-quote-pricebook/.test(l)) && /body\.dark #pbImpModal \.modal \{ background: #161b22/.test(css) && /min-width:140px">\$\{pcEsc\(r\.name\)\}/.test(adminSrc) && /\.modal \{ background: #fff; border-radius: 16px; width: 460px;/.test(adminSrc) && /@media \(max-width: 480px\)[\s\S]*#pbImpChips button/.test(css); })());

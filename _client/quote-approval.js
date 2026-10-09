@@ -30,6 +30,7 @@ const STEP_STATUS = { waiting: '等待中', pending: '簽核中', approved: '已
 const ACTION_LABEL = {
   SUBMIT: '送簽', APPROVE: '核准', RETURN: '駁回', WITHDRAW: '撤回', REASSIGN: '改派',
   INVALIDATE: '核准作廢', COST_REQUEST: '通知顧問填成本', COST_DONE: '顧問完成成本',
+  ITEM_TEXT_EDIT: '修改品項說明／備註（不影響核准）',
 };
 const COST_STATE_LABEL = { na: '無需顧問填寫', needed: '需顧問填寫（尚未通知）', requested: '等待顧問填寫', filled: '顧問已填寫完成' };
 const CLASS_ORDER = ['consult', 'software', 'hardware', 'crm', 'mdm', 'ot', 'other'];
@@ -148,6 +149,33 @@ body.dark .qap-table tr.qap-uncls td { background: #3d2b0a; }
 body.dark .qap-chip { background: #21262d; color: #c9d1d9; }
 body.dark .qap-chip.sel { background: #14283f; color: #79b8ff; }
 body.dark .qap-alert.warn { background: #3d2b0a; color: #f0b866; border-color: #6b4a14; }
+/* 簽核歷程裡的「說明／備註 舊→新」差異（ITEM_TEXT_EDIT） */
+.qap-tdiff { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.qap-hist td:nth-child(3) { min-width: 7.5em; }   /* 動作欄不要被壓成一字一行 */
+.qap-hist td.desc { overflow-wrap: anywhere; }
+.qap-hist th, .qap-hist td.r { white-space: normal; }   /* 窄螢幕：標題與時間欄允許換行，整張表才塞得進手機寬度 */   /* 很長的不可斷字串（網址、連續英數）也要換行，不撐出橫向捲軸 */
+@media (max-width: 620px) {   /* 手機：歷程每筆改成上下排（時間／人員／動作一行、內容整行），差異才有足夠寬度 */
+  .qap-hist thead { display: none; }
+  .qap-hist tr { display: block; border-bottom: 1px solid #eceef1; padding: 4px 0; }
+  .qap-hist td { display: block; border-bottom: none; padding: 2px 8px; text-align: left !important; min-width: 0 !important; }
+  .qap-hist td:nth-child(-n+3) { display: inline-block; padding-right: 0; }
+  body.dark .qap-hist tr { border-bottom-color: #30363d; }
+}
+.qap-tdiff-item { border-left: 3px solid #f29900; padding-left: 8px; }
+.qap-tdiff-item .nm { font-weight: 600; }
+.qap-tdiff-row { margin-top: 2px; word-break: break-word; overflow-wrap: anywhere; }
+.qap-tdiff-row .k { color: #6b7686; margin-right: 4px; }
+.qap-tdiff-row .old { color: #8a94a3; text-decoration: line-through; }
+.qap-tdiff-row .new { color: #1b5e20; font-weight: 600; }
+.qap-tdiff-row .emp { font-style: italic; opacity: .8; }
+.qap-tdiff-row .old .emp { text-decoration: none; }
+.qap-textedit { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.qap-flash { animation: qapflash 1.6s ease-out 1; }
+@keyframes qapflash { from { box-shadow: 0 0 0 3px #f29900; } to { box-shadow: 0 0 0 0 rgba(242,153,0,0); } }
+body.dark .qap-tdiff-item { border-left-color: #d4a84e; }
+body.dark .qap-tdiff-row .k { color: #8b949e; }
+body.dark .qap-tdiff-row .old { color: #8b949e; }
+body.dark .qap-tdiff-row .new { color: #6fdc8c; }
 body.dark .qap-alert.bad { background: #3f1717; color: #ff8a80; border-color: #7a2b2b; }
 body.dark .qap-alert.info { background: #14283f; color: #79b8ff; border-color: #25476e; }
 body.dark .qap-steps li { border-bottom-color: #30363d; }
@@ -601,11 +629,34 @@ function buildStepsSection(q) {
   return sec('簽核進度', `<ul class="qap-steps">${li}</ul>${board}`);
 }
 
+/**
+ * 品項說明／備註修改（ITEM_TEXT_EDIT）的差異：每個被改的品項一塊，列出品名與「說明 舊 → 新」「備註 舊 → 新」（空白顯示「（空）」）。全部 e() 跳脫。
+ * 舊資料（沒有結構化明細，只有 comment 文字）退回顯示 comment。
+ */
+function buildTextDiff(x) {
+  const items = Array.isArray(x.items) ? x.items : null;
+  if (!items || !items.length) return e(x.comment || '');
+  const val = (t) => (t === undefined || t === null || t === '' ? '<span class="emp">（空）</span>' : e(t));
+  const row = (label, pair) => (Array.isArray(pair) ? `<div class="qap-tdiff-row"><span class="k">${label}</span><span class="old">${val(pair[0])}</span> → <span class="new">${val(pair[1])}</span></div>` : '');
+  const more = Number(x.itemsMore) > 0 ? `<div class="qap-muted">…另 ${e(x.itemsMore)} 項</div>` : '';
+  return `<div class="qap-tdiff">${items.map((it) => `<div class="qap-tdiff-item"><div class="nm">${e(it.name || '（未填品項說明）')}</div>${row('說明', it.spec)}${row('備註', it.note)}</div>`).join('')}${more}</div>`;
+}
+
+/** 「送簽後說明／備註被改過」橫幅文字（簽核中／已核准且有記錄才有；與 quote.js 的 quoteTextEditText 同義，這裡不依賴它） */
+function textEditNotice(q) {
+  const a = q && q.approval, te = a && a.textEdits;
+  if (!te || !(a.state === 'pending' || a.state === 'approved')) return '';
+  let doneAt = '';
+  if (a.state === 'approved') (a.steps || []).forEach((st) => { if (st && st.status === 'approved' && st.at && st.at > doneAt) doneAt = st.at; });
+  const lead = a.state === 'pending' ? '簽核中說明／備註已被修改' : (doneAt && te.lastAt && te.lastAt > doneAt ? '核准後說明／備註已被修改' : '簽核期間說明／備註曾被修改');
+  return `${lead}（最後修改：${fmtTime(te.lastAt)}　${te.lastByName || ''}；共 ${te.count || 0} 次）`;
+}
+
 function buildHistorySection(q) {
   const h = q.approval && Array.isArray(q.approval.history) ? q.approval.history : [];
   if (!h.length) return '';
-  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${e(ACTION_LABEL[x.action] || x.action || '')}</td><td class="desc">${e(x.comment || '')}</td></tr>`).join('');
-  return sec('簽核歷程', `<div class="qap-tablewrap"><table class="qap-table"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${e(ACTION_LABEL[x.action] || x.action || '')}</td><td class="desc">${x.action === 'ITEM_TEXT_EDIT' ? buildTextDiff(x) : e(x.comment || '')}</td></tr>`).join('');
+  return sec('簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
 }
 
 /** 目前輪到的關卡是否為董事會（僅決定「要不要顯示決議欄位」，能不能簽仍看 perm） */
@@ -675,6 +726,7 @@ function renderApproval(s) {
     const last = h.length ? h[h.length - 1] : null;
     html += `<div class="qap-alert warn">此報價單被駁回${last && last.byName ? '（' + e(last.byName) + '）' : ''}${last && last.comment ? '：' + e(last.comment) : ''}。修改後可重新送簽。</div>`;
   }
+  { const tn = textEditNotice(q); if (tn) html += `<div class="qap-alert warn qap-textedit" id="qapTextEditBanner" role="status"><span>⚠ ${e(tn)}。核准有效、未重新簽核。</span><button class="btn btn-secondary btn-sm" type="button" data-act="textdiff">查看差異</button></div>`; }
   html += buildBlockersAlert(q);
   html += sec('報價摘要', `<div class="qap-grid">
       <div><span class="k">報價單號</span><b>${e(q.quoteNo || '')}</b></div>
@@ -794,6 +846,11 @@ async function runApprovalAction(s, method, path, body, okMsg) {
 
 async function handleApprovalAction(s, act) {
   if (act === 'close') { closeApproval(); return; }   // 動作進行中也允許關閉；回應回來時以 s.closed 判斷
+  if (act === 'textdiff') {   // 橫幅的「查看差異」：捲到簽核歷程並閃一下（純前端，不打 API）
+    const hs = s.body.querySelector('#qapHistory');
+    if (hs) { hs.scrollIntoView({ block: 'start', behavior: 'smooth' }); hs.classList.remove('qap-flash'); void hs.offsetWidth; hs.classList.add('qap-flash'); }
+    return;
+  }
   if (s.busy || !s.q) return;
   const q = s.q;
   const perm = q.perm || {};

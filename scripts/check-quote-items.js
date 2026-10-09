@@ -67,6 +67,16 @@ const su = (d) => ({ lid: 's' + d, kind: 'subtotal', desc: d });
   const xe = await build([su(''), ti('T'), su('空段')]);
   t('3h. 空段小計寫 0、不產生反向範圍', cell(xe, 'J' + r(0)).inner.includes('<v>0</v>') && !cell(xe, 'J' + r(0)).inner.includes('<f>') && cell(xe, 'J' + r(2)).inner.includes('<v>0</v>') && !/SUBTOTAL\(9,J\d+:J\d+\)/.test(cell(xe, 'J' + r(2)).inner));
 
+  // 4) 品項說明／備註（spec／note，印在客戶單上）不影響分組標題／小計列的版面與計算（完整檢查見 scripts/check-quote-item-notes.js）
+  const noted = [ti('Part A'), Object.assign(it('a1', 2, 100), { spec: '說明 a1', note: '備註 a1' }), Object.assign(it('a2', 1, 50), { spec: '說明 a2' }), su('Part A 小計'), ti('Part B'), Object.assign(it('b1', 3, 10), { note: '=1+1' }), su('')];
+  const x4 = await build(noted);
+  t('4a. 品項帶說明／備註：標題列仍合併 B:J、小計列仍合併 C:I、小計公式與快取值（250／30）、總額 SUBTOTAL 與快取值（280）、項目編號（1、2、3）都不變', x4.includes(`<mergeCell ref="B${r(0)}:J${r(0)}"/>`) && x4.includes(`<mergeCell ref="C${r(3)}:I${r(3)}"/>`)
+    && cell(x4, 'J' + r(3)).inner.includes(`SUBTOTAL(9,J${r(1)}:J${r(2)})`) && cell(x4, 'J' + r(3)).inner.includes('<v>250</v>') && cell(x4, 'J' + r(6)).inner.includes('<v>30</v>')
+    && cell(x4, 'J' + L.sumList).inner.includes(`SUBTOTAL(9,J${L.itemFirst}:J${L.itemLast})`) && cell(x4, 'J' + L.sumList).inner.includes('<v>280</v>')
+    && cell(x4, 'B' + r(1)).inner.includes('<v>1</v>') && cell(x4, 'B' + r(2)).inner.includes('<v>2</v>') && cell(x4, 'B' + r(5)).inner.includes('<v>3</v>'));
+  t('4b. 標題／小計列帶說明／備註（不該有）→ 與沒帶時的 sheet1.xml 完全相同；前端 _qpvSubtotals 不看說明／備註', await (async () => { const a = [Object.assign(ti('T'), { spec: 'x', note: 'y' }), it('a', 1, 5), Object.assign(su('S'), { spec: 'x', note: 'y' })]; const b = [ti('T'), it('a', 1, 5), su('S')]; return (await build(a)) === (await build(b)); })()
+    && JSON.stringify(ctx._qpvSubtotals(noted)) === JSON.stringify(ctx._qpvSubtotals(noted.map((x) => { const y = Object.assign({}, x); delete y.spec; delete y.note; return y; }))) && JSON.stringify(QI.subtotalValues(noted)) === JSON.stringify([null, null, null, 250, null, null, 30]));
+
   let pass = 0, fail = 0;
   res.forEach(([n, ok, x]) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (!ok && x ? '  <- ' + x : '')); ok ? pass++ : fail++; });
   console.log(`\n分組標題／小計列檢查：PASS ${pass} / FAIL ${fail}`);

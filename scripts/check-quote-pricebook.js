@@ -7,6 +7,7 @@
  *   2) normalizePricebook：名稱（空白、全空白、過長、控制字元、重複不分大小寫且先 trim）、牌價／成本、active 型別、60 筆上限、
  *      XSS 字樣的名稱原樣當純文字存放、id 穩定（保留合法 id、重複 id 拒絕、缺漏／不合法才產生、新 id 不撞既有）、unit 固定人天、多餘欄位丟棄、不改動輸入
  *   3) publicItems／adminItems／diffPricebook／summarizeDiff（新增、移除、改名、牌價成本 old→new、啟停用、順序）
+ *   8) 說明（spec，選填單行文字 ≤200 字）：清洗、上限（以字元計）、型別、舊用戶端沒帶 spec 沿用既有、public／admin 輸出、diff／摘要（舊→新）、XSS 原樣
  *   4) 路由層（假 app＋記憶體 db 直接呼叫 handler）：業務端只看到啟用項目（含牌價＋成本）、沒有報價單功能的角色 403、被指派的成本填寫人可讀；
  *      管理員 GET 含停用項目；非管理員 PUT／GET admin 403 且沒有任何寫入；驗證失敗 400 且不動資料；樂觀並行 409 STALE_PRICEBOOK（附現況）；
  *      成功儲存：data.pricebook 落地、id 產生、updatedBy、稽核 SAVE_QUOTE_PRICEBOOK 摘要含實際異動；已存報價單與其他命名空間完全不受影響
@@ -72,7 +73,7 @@ async function run() {
 
   // ═════════════════ 3) public / admin / diff ═════════════════
   const stored = [{ id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6000, active: true }, { id: 'b', name: 'SD', unit: '人天', price: 7000, cost: 5000, active: false }, { id: 'c', name: 'MM', unit: '人天', price: 7500, cost: 5200, active: true }];
-  t('3.1 publicItems：只留啟用項目、只有 id／bu（舊資料沒有 bu＝ERP）／name／unit／price／cost，順序不變', eq(PB.publicItems(stored), [{ id: 'a', bu: 'ERP', name: 'PM', unit: '人天', price: 9000, cost: 6000 }, { id: 'c', bu: 'ERP', name: 'MM', unit: '人天', price: 7500, cost: 5200 }]));
+  t('3.1 publicItems：只留啟用項目、只有 id／bu（舊資料沒有 bu＝ERP）／name／unit／price／cost／spec（沒有＝空字串），順序不變', eq(PB.publicItems(stored), [{ id: 'a', bu: 'ERP', name: 'PM', unit: '人天', price: 9000, cost: 6000, spec: '' }, { id: 'c', bu: 'ERP', name: 'MM', unit: '人天', price: 7500, cost: 5200, spec: '' }]));
   t('3.2 adminItems：全部（含停用），多一個 active', PB.adminItems(stored).length === 3 && PB.adminItems(stored)[1].active === false);
   t('3.3 publicItems／adminItems 對壞資料不丟錯（undefined／非陣列／含 null）', eq(PB.publicItems(undefined), []) && eq(PB.adminItems('x'), []) && PB.publicItems([null, stored[0]]).length === 1);
   const next = [{ id: 'c', name: 'MM 顧問', unit: '人天', price: 8000, cost: 5200, active: true }, { id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6500, active: false }, { id: 'n', name: 'ABAP', unit: '人天', price: 6000, cost: 4000, active: true }];
@@ -286,6 +287,34 @@ async function run() {
   t('7.12 diff 每筆都帶 bu：新增 [MDM]New、移除 [ITS]Net、牌價 [ERP] 7000→7500、[ITS] 停用；摘要字串含「[ERP]「SD 顧問」牌價 7000→7500」', dd.added[0].bu === 'MDM' && dd.removed[0].bu === 'ITS' && dd.changed[0].bu === 'ERP' && dd.toggled[0].bu === 'ITS' && sm2.includes('[ERP]「SD 顧問」牌價 7000→7500') && sm2.includes('[ITS]「SD 顧問」停用') && sm2.includes('新增 [MDM]「New」') && sm2.includes('移除 [ITS]「Net」'), sm2);
   const ro = [{ id: 'x', bu: 'ITS', name: 'x', price: 1, cost: 1 }, { id: 'y', bu: 'ERP', name: 'y', price: 1, cost: 1 }, { id: 'z', bu: 'ITS', name: 'z', price: 1, cost: 1 }];
   t('7.13 順序調整以「每個 BU 內」計：只換 ITS 內的 x／z → reorderedBus=[ITS]、摘要「順序調整 [ITS]」；只是不同 BU 的項目在扁平陣列裡互換位置（各 BU 內順序沒變）→ 不算順序調整', eq(PB.diffPricebook(ro, [ro[2], ro[1], ro[0]]).reorderedBus, ['ITS']) && PB.summarizeDiff(PB.diffPricebook(ro, [ro[2], ro[1], ro[0]])) === '順序調整 [ITS]' && PB.diffPricebook(ro, [ro[1], ro[0], ro[2]]).reordered === false && PB.summarizeDiff(PB.diffPricebook(ro, [ro[1], ro[0], ro[2]])) === '無異動');
+  // ═════════════════ 8) 說明（spec，選填單行文字 ≤200 字）═════════════════
+  r = norm([row('A', 1, 1), row('B', 1, 1, { spec: '  專案管理  ' })]);
+  t('8.1 spec 選填：沒填的項目不多存欄位（資料外形與以前相同）；有填的存清洗後的文字', r.ok && !('spec' in r.items[0]) && r.items[1].spec === '專案管理' && !r.items.some((x) => x.spec === undefined && 'spec' in x), JSON.stringify(r.items));
+  r = norm([row('A', 1, 1, { spec: 'a\r\n b\t\tc\u0001d   e' })]);
+  t('8.2 單行純文字：換行／Tab／控制字元收合成單一空白、前後去空白', r.ok && r.items[0].spec === 'a b c d e', JSON.stringify(r.items));
+  r = norm([row('A', 1, 1, { spec: ' \n\t ' }), row('B', 1, 1, { spec: '' }), row('C', 1, 1, { spec: null })]);
+  t('8.3 只有空白／空字串／null 的 spec ＝ 沒有說明（不存欄位）', r.ok && r.items.every((x) => !('spec' in x)));
+  t('8.4 恰好 200 字通過；201 字拒絕（BAD_PRICEBOOK、field=spec、訊息含「說明不可超過 200 字」與目前字數）；以字元計（200 個 4-byte 字元也通過）', norm([row('A', 1, 1, { spec: '字'.repeat(200) })]).ok && norm([row('A', 1, 1, { spec: '\u{20BB7}'.repeat(200) })]).ok
+    && (() => { const x = norm([row('A', 1, 1), row('B', 1, 1, { spec: '字'.repeat(201) })]); return !x.ok && x.error.code === 'BAD_PRICEBOOK' && x.error.field === 'spec' && x.error.index === 1 && /說明不可超過 200 字（目前 201 字）/.test(x.error.message); })());
+  t('8.5 spec 型別：數字／布林／物件／陣列一律拒絕（field=spec）；undefined 與 null 不算錯', [123, true, {}, [], ['x']].every((v) => { const x = norm([row('A', 1, 1, { spec: v })]); return !x.ok && x.error.field === 'spec'; }) && norm([row('A', 1, 1, { spec: undefined })]).ok && norm([row('A', 1, 1, { spec: null })]).ok);
+  // 舊用戶端（後台頁面快取，不知道有 spec 欄）整份存回：沒帶 spec 的項目沿用既有說明；明確給空字串／null＝清除；給新字串＝取代
+  const exSpec = [{ id: 's1', bu: 'ERP', name: 'A', price: 1, cost: 1, active: true, spec: '既有說明' }, { id: 's2', bu: 'ERP', name: 'B', price: 1, cost: 1, active: true, spec: '另一個' }, { id: 's3', bu: 'ITS', name: 'C', price: 1, cost: 1, active: true }];
+  rb = PB.normalizePricebook([{ id: 's1', name: 'A', price: 2, cost: 1 }, { id: 's2', name: 'B', price: 1, cost: 1, spec: '' }, { id: 's3', bu: 'ITS', name: 'C', price: 1, cost: 1, spec: '新增的說明' }, { id: 'zz', name: 'New', price: 1, cost: 1 }], { genId, existing: exSpec });
+  t('8.6 PUT 相容：沒帶 spec → 沿用既有（s1）；空字串 → 清除（s2）；新字串 → 取代／新增（s3）；id 對不上又沒帶 → 沒有說明（zz）', rb.ok && rb.items[0].spec === '既有說明' && !('spec' in rb.items[1]) && rb.items[2].spec === '新增的說明' && !('spec' in rb.items[3]), JSON.stringify(rb.items));
+  t('8.7 publicItems／adminItems 都帶 spec（沒有＝空字串）；壞資料（非字串 spec、超長）不丟錯且被清洗：非字串→空字串、超長→截到 200', eq(PB.publicItems(exSpec).map((x) => x.spec), ['既有說明', '另一個', '']) && eq(PB.adminItems(exSpec).map((x) => x.spec), ['既有說明', '另一個', ''])
+    && PB.adminItems([{ id: 'q', name: 'x', price: 1, cost: 1, spec: 123 }])[0].spec === '' && Array.from(PB.adminItems([{ id: 'q', name: 'x', price: 1, cost: 1, spec: '字'.repeat(500) }])[0].spec).length === 200);
+  t('8.8 publicItems 只多 spec 一個欄位（其餘欄位不變）；停用項目照舊不出現', eq(Object.keys(PB.publicItems(exSpec)[0]), ['id', 'bu', 'name', 'unit', 'price', 'cost', 'spec']) && PB.publicItems([{ id: 'a', name: 'x', price: 1, cost: 1, active: false, spec: 's' }]).length === 0);
+  const dSpec = PB.diffPricebook(exSpec, rb.items.slice(0, 3).map((x) => Object.assign({}, x)));
+  t('8.9 diff／摘要：說明異動列出 old→new（[BU]「名稱」說明 舊→新；清空顯示 ∅）；沒有說明異動時摘要不出現「說明」', dSpec.specChanged.length === 2    && /\[ERP\]「B」說明 另一個→∅/.test(PB.summarizeDiff(dSpec)) && /\[ITS\]「C」說明 ∅→新增的說明/.test(PB.summarizeDiff(dSpec)) && !/說明/.test(PB.summarizeDiff(PB.diffPricebook(exSpec, exSpec.map((x) => Object.assign({}, x))))), PB.summarizeDiff(dSpec));
+  const dAdd = PB.diffPricebook([], [{ id: 'n1', bu: 'MDM', name: 'N', price: 1, cost: 1, active: true, spec: '新項目的說明' }]);
+  t('8.10 新增項目帶說明：摘要「新增 [MDM]「N」(牌價1/成本1/說明 新項目的說明)」；沒有說明的新增與以前的摘要完全相同', PB.summarizeDiff(dAdd) === '新增 [MDM]「N」(牌價1/成本1/說明 新項目的說明)' && PB.summarizeDiff(PB.diffPricebook([], [{ id: 'n2', bu: 'ERP', name: 'M', price: 2, cost: 1, active: true }])) === '新增 [ERP]「M」(牌價2/成本1)', PB.summarizeDiff(dAdd));
+  const longSpec = '長'.repeat(120);
+  t('8.11 摘要的說明文字過長會截到 40 字加「…」', PB.summarizeDiff(PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', name: 'x', price: 1, cost: 1, spec: longSpec }])).includes('說明 ∅→' + '長'.repeat(40) + '…'));
+  r = norm([row('<img src=x onerror=alert(1)>', 1, 1, { spec: '<script>alert(1)</script> & "q"' })]);
+  t('8.12 XSS 字樣的說明：原樣當純文字存放（不轉義、不過濾；顯示端負責轉義）', r.ok && r.items[0].spec === '<script>alert(1)</script> & "q"');
+  t('8.13 LIMITS 帶 MAX_SPEC=200（前端依此顯示）；PB.MAX_SPEC 同值', PB.LIMITS.MAX_SPEC === 200 && PB.MAX_SPEC === 200 && Object.isFrozen(PB.LIMITS));
+  t('8.14 空 spec 與沒有 spec 在 diff 裡視為相同（舊資料 → 補上空說明不算異動）', PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', name: 'x', price: 1, cost: 1, spec: '' }]).specChanged.length === 0);
+
   t('7.14 舊資料（沒有 bu）→ 同一份補上 bu:ERP 之後：沒有任何差異（不算換 BU、不算變更）；真的換 BU 才出現 moved 與「換 BU」文字', PB.summarizeDiff(PB.diffPricebook(legacyStored.slice(0, 1), PB.adminItems(legacyStored.slice(0, 1)))) === '無異動' && PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', bu: 'CRM', name: 'x', price: 1, cost: 1 }]).moved.length === 1 && /「x」換 BU \[ERP\]→\[CRM\]/.test(PB.summarizeDiff(PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', bu: 'CRM', name: 'x', price: 1, cost: 1 }]))));
 
 }

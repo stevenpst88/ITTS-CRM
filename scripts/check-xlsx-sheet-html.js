@@ -97,6 +97,19 @@ const F = I.formatNumber;
     const v6 = await mini('<row r="1"><c r="A1" t="s"><v>0</v></c></row>', '', { sst: '<sst><si><t>很長很長的文字</t></si></sst>' });
     t('3j. 右邊是空格 → 溢出（overflow:visible）', /overflow:visible/.test(v6.html.split('</td>')[0])); }
 
+  // 4) 給客戶的 Excel（含品項說明／備註的 rich text 儲存格）轉 HTML：三行都在、使用者文字一律跳脫、列高有被帶進去
+  {
+    const QE = require(path.join(ROOT, 'lib/quoteExcel.js'));
+    const cq = { quoteNo: 'QU-H', company: 'C', projectName: 'P', validUntil: '2026-10-30', discountType: 'none', discountValue: 0,
+      items: [{ lid: 'a', desc: '導入顧問', unit: '式', qty: 1, unitPrice: 1000, spec: '說明 <b>粗</b> & "q"', note: '=1+1 <img src=x onerror=alert(1)>' }, { lid: 'b', desc: '無備註項目', unit: '式', qty: 1, unitPrice: 5 }] };
+    const hv = await sheetToHtml(await QE.buildQuoteWorkbook(cq, path.join(ROOT, 'templates/quotation_template.xlsx'), { issueDate: '2026-10-09', issuer: {} }));
+    const i0 = hv.html.indexOf('導入顧問');
+    const seg = hv.html.slice(i0, hv.html.indexOf('</td>', i0));
+    t('4a. 客戶 Excel 轉 HTML：品項儲存格依序是 品名／說明／「備註：…」三行（換行保留），文字全部跳脫（沒有原始的 <b>、<img）', i0 > 0 && /導入顧問\n說明 &lt;b&gt;粗&lt;\/b&gt; &amp; &quot;q&quot;\n備註：=1\+1 &lt;img src=x onerror=alert\(1\)&gt;/.test(seg) && !/<img/i.test(hv.html) && !/<b>粗/.test(hv.html), seg.slice(0, 300));
+    const px = (name) => { const k = hv.html.indexOf(name); const trStart = hv.html.lastIndexOf('<tr', k); const m = /height:(\d+)px/.exec(hv.html.slice(trStart, trStart + 400)); return m ? +m[1] : 0; };
+    t('4b. 有說明／備註的列比沒有的列高（列高 pt 轉成 px 後有帶進預覽）', px('導入顧問') > px('無備註項目') && px('無備註項目') > 0, px('導入顧問') + ' vs ' + px('無備註項目'));
+  }
+
   let pass = 0, fail = 0;
   res.forEach(([n, ok, x]) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (!ok && x ? '  <- ' + x : '')); ok ? pass++ : fail++; });
   console.log(`\nxlsx 轉 HTML 檢查：PASS ${pass} / FAIL ${fail}`);

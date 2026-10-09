@@ -55,6 +55,16 @@ const t = (name, ok, extra) => res.push([name, !!ok, extra === undefined ? '' : 
   t('3d. 追加條款單條 >200 字拒絕；lenientLength 僅供比對舊單行備註時使用', !!R.normalizeClauses([long250]).error && R.normalizeClauses([long250], { lenientLength: true }).value[0].length === 250);
   t('3e. 型別嚴格（陣列／布林／物件當比例或時點）', [{ net: 30, items: [{ label: 'a', pct: [] }] }, { net: 30, items: [{ label: 'a', pct: true }] }, { net: 30, items: [{ label: ['x'], pct: 100 }] }, null, 5].every((x) => !ok(x)));
 
+  // 4) 品項說明／備註（spec／note）不影響 Remarks 區與品項區以下的版面（完整檢查見 scripts/check-quote-item-notes.js）
+  {
+    const base = { quoteNo: 'QU-R', company: 'C', projectName: 'P', validUntil: '2026-10-30', discountType: 'none', discountValue: 0, payment: R.DEFAULT_PAYMENT, extraClauses: ['追加條款一', '追加條款二'], items: [{ lid: 'a', desc: '品項', unit: '式', qty: 1, unitPrice: 100 }, { lid: 'b', desc: '品項2', unit: '式', qty: 1, unitPrice: 200 }] };
+    const withN = JSON.parse(JSON.stringify(base)); withN.items[0].spec = '說明'; withN.items[0].note = '備註'; withN.items[1].note = '=1+1';
+    const sheetOf = async (q) => (await JSZip.loadAsync(await QE.buildQuoteWorkbook(q, path.join(ROOT, 'templates/quotation_template.xlsx'), { issueDate: '2026-10-09', issuer: {} }))).file('xl/worksheets/sheet1.xml').async('string');
+    const [a, b] = [await sheetOf(base), await sheetOf(withN)];
+    const tail = (x) => x.slice(x.indexOf('<row r="' + (QE.LAYOUT.itemLast + 1) + '"'));
+    t('4. 品項區以下（總額、專案資料框、Remarks 第 1~6 條與追加條款、簽名區）的 XML 與沒有說明／備註時逐位元相同', tail(a).length > 5000 && tail(a) === tail(b));
+  }
+
   let pass = 0, fail = 0;
   res.forEach(([n, o, x]) => { console.log((o ? 'PASS ' : 'FAIL ') + n + (x && !o ? '  ← ' + x : '')); o ? pass++ : fail++; });
   console.log(`\nRemarks 一致性檢查：PASS ${pass} / FAIL ${fail}`);

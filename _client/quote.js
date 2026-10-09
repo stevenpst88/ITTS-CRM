@@ -160,6 +160,38 @@ body.dark .q-cs-banner { background:#0d2040; border-bottom-color:#1c3a5f; color:
 body.dark .q-cs-banner .q-cs-need, body.dark .qi-needchip { background:#2a2000; border-color:#5a4000; color:#d4a84e; }
 body.dark input.qi-price.qi-need { background:#2a2000; border-color:#d4a84e !important; }
 
+/* 送簽後說明／備註被改過：列表小徽章與表單提示 */
+.q-textedit-badge { display:inline-block; margin-left:6px; padding:0 8px; font-size:11.5px; line-height:1.7; border-radius:9px; font-weight:600; background:#fff4e5; color:#8a4b00; border:1px solid #f5c98b; white-space:nowrap; vertical-align:middle; }
+.q-textedit { color:#8a4b00 !important; }
+.q-textedit a { color:#1a73e8; }
+body.dark .q-textedit-badge { background:#2a2000; border-color:#5a4000; color:#d4a84e; }
+body.dark .q-textedit { color:#d4a84e !important; }
+body.dark .q-textedit a { color:#58a6ff; }
+/* 品項的「說明」「備註」（第二行，印在客戶報價單上）。備註用橙色左邊線與淡底，跟說明區分 */
+.qi-notes { margin-top:5px; display:flex; flex-direction:column; gap:4px; }
+.qi-notes[hidden] { display:none; }
+.qi-notes input { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:4px; padding:4px 8px; font-size:12.5px; }
+.qi-notes input.qi-spec { color:#555; }
+.qi-notes input.qi-note { border-left:3px solid #f29900; background:#fffaf0; }
+.qi-notes-toggle { display:inline-block; margin-top:3px; padding:0; background:none; border:none; color:#1a73e8; font-size:12px; cursor:pointer; }
+.qi-notes-toggle[hidden] { display:none; }
+/* 窄螢幕：品名欄至少 220px，說明／備註輸入框才有可用的寬度（整張表本來就可橫向捲動） */
+@media (max-width: 620px) { #quoteItemsBody tr:not([data-kind]) td:nth-child(3) { min-width:220px; } }
+body.dark .qi-notes input { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+body.dark .qi-notes input.qi-note { background:#2a2000; border-color:#30363d; border-left-color:#d4a84e; }
+body.dark .qi-notes-toggle { color:#58a6ff; }
+/* 「修改說明／備註」小視窗（簽核中／已核准的單用） */
+.qn-list { display:flex; flex-direction:column; gap:10px; max-height:52vh; overflow:auto; }
+.qn-row { border:1px solid #e3e6ea; border-radius:8px; padding:8px 10px; }
+.qn-row .qn-name { font-weight:600; font-size:13.5px; margin-bottom:5px; word-break:break-word; }
+.qn-row input { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:4px; padding:5px 8px; font-size:13px; margin-top:4px; }
+.qn-row input.qn-note { border-left:3px solid #f29900; background:#fffaf0; }
+.qn-err { color:#c5221f; font-size:13px; min-height:18px; margin-top:8px; }
+body.dark .qn-row { border-color:#30363d; }
+body.dark .qn-row input { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+body.dark .qn-row input.qn-note { background:#2a2000; border-left-color:#d4a84e; }
+body.dark .qn-err { color:#ff8080; }
+
 @media (max-width: 620px) {
   .q-actions { min-width:0; max-width:none; }
   .q-cs-banner { padding:10px 14px; }
@@ -400,6 +432,19 @@ function _qEverSubmitted(q) {
   return (a.history || []).some(h => h && (h.action === 'SUBMIT' || h.action === 'APPROVE'));
 }
 
+/**
+ * 「送簽後說明／備註被改過」提示文字（簽核中／已核准且伺服器有記錄 approval.textEdits 才有；沒有回空字串）。
+ * 核准後才改的用「核准後…」，只在簽核期間改的用「簽核期間…」，簽核中用「簽核中…」。與 quote-approval.js 的 textEditNotice 同義。
+ */
+function quoteTextEditText(q) {
+  const a = q && q.approval, te = a && a.textEdits;
+  if (!te || !(a.state === 'pending' || a.state === 'approved')) return '';
+  let doneAt = '';
+  if (a.state === 'approved') (a.steps || []).forEach(function (st) { if (st && st.status === 'approved' && st.at && st.at > doneAt) doneAt = st.at; });
+  const lead = a.state === 'pending' ? '簽核中說明／備註已被修改' : (doneAt && te.lastAt && te.lastAt > doneAt ? '核准後說明／備註已被修改' : '簽核期間說明／備註曾被修改');
+  return lead + '（最後修改：' + _qFmtTime(te.lastAt) + '　' + (te.lastByName || '') + '）';
+}
+
 /** 簽核階段：{ key, cls, label, title } */
 function quoteStageInfo(q) {
   const a = q.approval;
@@ -534,6 +579,8 @@ function _qActionButtons(q) {
   if (p.canEdit)     out.push(b('edit', '✏️ 編輯'));
   if (p.canSubmit)   out.push(b('submit', '📤 送簽', 'btn-primary', '送交主管簽核；送簽後整張單鎖定'));
   if (p.canWithdraw) out.push(b('withdraw', '↩ 撤回', '', '撤回後可修改，已簽的關卡作廢'));
+  // 簽核中（整張鎖定）或已核准的單：只修改各品項的「說明／備註」（不影響簽核，會留下紀錄）。擁有者與管理員才有
+  if ((p.isOwner || me.isAdmin) && a && (a.state === 'pending' || a.state === 'approved')) out.push(b('notes', '📝 說明／備註', '', '只修改各品項的說明與備註（印在客戶報價單上）：不影響金額與簽核，會留下修改紀錄'));
   if (p.canApprove || p.canReturn) {
     out.push(b('approve', '✍ 簽核', 'btn-primary', '開啟簽核面板'));
   } else if (a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) {
@@ -551,6 +598,12 @@ function _qActionButtons(q) {
   if (p.canSeeCost && p.canSeePrice !== false) out.push(b('pnl', '&#11015; 毛利分析(內部)', '', '含成本與毛利率，僅限內部使用，請勿提供客戶'));
   if ((p.isOwner || me.isAdmin) && !_qEverSubmitted(q) && p.isCostProvider !== true) out.push(b('delete', '🗑️', 'btn-soft-danger', '刪除（送過簽的單不可刪除）'));
   return `<div class="q-actions">${out.join('')}</div>`;
+}
+
+/** 列表狀態欄的小徽章：送簽後說明／備註被改過（滑過顯示最後修改時間與人）；沒有就空字串 */
+function quoteTextEditBadge(q) {
+  const t = quoteTextEditText(q);
+  return t ? '<span class="q-textedit-badge" title="' + escapeHtml(t) + '">⚠ 說明／備註已修改</span>' : '';
 }
 
 function renderQuoteList() {
@@ -593,7 +646,7 @@ function renderQuoteList() {
       <td>${escapeHtml(q.ownerName || q.owner || '')}</td>
       <td>${escapeHtml(q.quoteDate || '')}</td>
       <td style="text-align:right;font-weight:600;font-size:13px">${totalCell}</td>
-      <td><span class="quote-status q-wrap ${escapeHtml(st.cls)}"${st.title ? ` title="${escapeHtml(st.title)}"` : ''}>${escapeHtml(st.label)}</span>${legacy}${quoteProgressHtml(q)}</td>
+      <td><span class="quote-status q-wrap ${escapeHtml(st.cls)}"${st.title ? ` title="${escapeHtml(st.title)}"` : ''}>${escapeHtml(st.label)}</span>${legacy}${quoteTextEditBadge(q)}${quoteProgressHtml(q)}</td>
       <td>${quoteCostCell(q)}</td>
       <td>${_qActionButtons(q)}</td>
     </tr>`;
@@ -647,6 +700,7 @@ function bindQuoteListHandlers() {
         case 'edit':     p = openQuoteModal(id); break;
         case 'submit':   p = submitQuote(id); break;
         case 'withdraw': p = withdrawQuote(id); break;
+        case 'notes':    p = openQuoteNotesDialog(id); break;
         case 'approve':  p = qOpenApproval(id); break;
         case 'cost':     p = qOpenCostFill(id); break;
         case 'preview':  p = previewQuote(id); break;
@@ -1365,14 +1419,20 @@ function renderQuoteApprovalState(q) {
   let html = `<span class="quote-status ${escapeHtml(st.cls)}">${escapeHtml(st.label)}</span>`;
   const a = q.approval;
   if (a && a.state === 'approved' && a.valid !== false) {
-    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。</span>';
+    html += '<span class="q-sub">修改客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣會使核准作廢，需重新送簽（儲存前會再次確認）。品項的「說明」「備註」除外：改這兩欄不會作廢核准，但會留下修改紀錄。</span>';
   } else if (a && a.state === 'returned') {
     const h = (a.history || []).filter(x => x && x.action === 'RETURN');
     const last = h.length ? h[h.length - 1] : null;
     if (last && last.comment) html += `<span class="q-sub">駁回原因：${escapeHtml(last.comment)}${last.byName ? '（' + escapeHtml(last.byName) + '）' : ''}</span>`;
   }
   if (QUOTE_LEGACY_LABEL[q.status]) html += `<span class="q-sub">舊狀態：${escapeHtml(QUOTE_LEGACY_LABEL[q.status])}（簽核功能上線前）</span>`;
+  const teText = quoteTextEditText(q);
+  if (teText) html += `<span class="q-sub q-textedit" id="qTextEditNote">⚠ ${escapeHtml(teText)}　<a href="#" data-qte="${escapeHtml(q.id || '')}">查看差異</a></span>`;
   box.innerHTML = html;
+  if (!box._qteBound) {   // 「查看差異」→ 開簽核面板（歷程有舊→新）
+    box._qteBound = true;
+    box.addEventListener('click', function (ev) { const a = ev.target.closest('[data-qte]'); if (!a) return; ev.preventDefault(); qOpenApproval(a.getAttribute('data-qte')); });
+  }
 }
 
 // ── 報價期限欄位：業務自行輸入；沒動過就隨「建立日期」重算預設值 ─────────────────────
@@ -1870,13 +1930,21 @@ function renderQuoteItems(items) {
     // 顧問新增、待業務補單價的品項（cost-sync）：整列帶 data-needprice，補了單價（>0）就自動取消標示；旗標由伺服器維護，送出時伺服器忽略
     const needAttr = it.needPrice === true ? ' data-needprice="1"' : '';
     const needOn = it.needPrice === true && !(price > 0);
+    // 說明／備註（選填單行文字，印在客戶報價單上）：兩者都空 → 收合成「＋說明／備註」連結（一次點擊展開）；任一有值 → 一直展開
+    const specV = typeof it.spec === 'string' ? it.spec : '', noteV = typeof it.note === 'string' ? it.note : '';
+    const notesOpen = !!(specV || noteV);
     const attrs = lidAttr + nidAttr + needAttr +
       (it.cost !== undefined && it.cost !== null && it.cost !== '' ? ' data-cost="' + escapeHtml(String(it.cost)) + '"' : '');
     return '<tr data-idx="' + i + '"' + attrs + '>' + dragTd +
       '<td style="text-align:center;color:#999;font-size:12px">' + seq + '</td>' +
       '<td><input type="text" class="qi-desc" value="' + escapeHtml(it.desc || '') + '" ' +
         'placeholder="品項說明" style="width:100%;border:1px solid #ddd;border-radius:4px;padding:5px 8px;font-size:13px;box-sizing:border-box">' +
-        (it.needPrice === true ? '<span class="qi-needchip"' + (needOn ? '' : ' hidden') + ' title="這個品項是顧問新增的，單價要由你補填；補完單價前不能送簽">待補單價</span>' : '') + '</td>' +
+        (it.needPrice === true ? '<span class="qi-needchip"' + (needOn ? '' : ' hidden') + ' title="這個品項是顧問新增的，單價要由你補填；補完單價前不能送簽">待補單價</span>' : '') +
+        '<button type="button" class="qi-notes-toggle"' + (notesOpen ? ' hidden' : '') + ' aria-expanded="false" title="替這個品項加上說明或備註（會印在客戶報價單上）">＋ 說明／備註</button>' +
+        '<div class="qi-notes"' + (notesOpen ? '' : ' hidden') + '>' +
+          '<input type="text" class="qi-spec" value="' + escapeHtml(specV) + '" maxlength="200" aria-label="品項說明" placeholder="說明（選填，會印在客戶報價單）">' +
+          '<input type="text" class="qi-note" value="' + escapeHtml(noteV) + '" maxlength="300" aria-label="品項備註" placeholder="備註：此項目的特殊需求（選填，會印在客戶報價單）">' +
+        '</div></td>' +
       '<td><input type="text" class="qi-unit" value="' + escapeHtml(it.unit || '式') + '" ' +
         'style="width:54px;border:1px solid #ddd;border-radius:4px;padding:5px 6px;font-size:13px;text-align:center"></td>' +
       '<td><input type="number" class="qi-qty" value="' + qty + '" min="0.001" step="1" ' +
@@ -1899,6 +1967,17 @@ function renderQuoteItems(items) {
 
   // 毛利分類：只影響毛利分析（內部），提示多類別商品時請逐列指定
   tbody.querySelectorAll('.qi-cat').forEach(function (sel) { sel.addEventListener('change', updateQuoteCatHint); });
+
+  // 「＋說明／備註」：展開兩個輸入框並把焦點放在說明欄（一次點擊）
+  tbody.querySelectorAll('.qi-notes-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var box = btn.parentNode.querySelector('.qi-notes');
+      if (box) box.hidden = false;
+      btn.hidden = true;
+      var sp = box && box.querySelector('.qi-spec');
+      if (sp) sp.focus();
+    });
+  });
 
   // 移除／上移／下移：一律「讀回目前列 → 改陣列 → 重畫」，lid 與成本隨列的 data 屬性保留
   tbody.querySelectorAll('.qi-remove').forEach(function (btn) {
@@ -2016,7 +2095,7 @@ function updateQuoteCatHint() {
 let _qNidSeq = 0;
 /** 新品項的暫時代號（'nid-' 開頭，與伺服器 lib/quoteCostLines.js 的 TMP_REF_PREFIX 一致；長度遠小於 64） */
 function _qNewNid() { return 'nid-' + Date.now().toString(36) + '-' + (++_qNidSeq).toString(36) + Math.random().toString(36).slice(2, 6); }
-// 回傳 { lid?, nid?, desc, unit, qty, unitPrice, cost? }；lid/cost 只在列上有值時才出現；nid（暫時代號）只有還沒存檔、沒有 lid 的一般品項才有
+// 回傳 { lid?, nid?, desc, unit, qty, unitPrice, spec, note, cost? }；lid/cost 只在列上有值時才出現（spec／note 一般品項一律有，可為空字串）；nid（暫時代號）只有還沒存檔、沒有 lid 的一般品項才有
 function readQuoteItems() {
   return Array.from($('quoteItemsBody').querySelectorAll('tr')).map(function (row) {
     // 分組標題／小計列：只有 kind 與文字（沒有數量、單價、成本、分類）
@@ -2038,6 +2117,10 @@ function readQuoteItems() {
       if (!row.dataset.nid) row.dataset.nid = _qNewNid();
       it.nid = row.dataset.nid;
     }
+    // 說明／備註：一律送出字串（空字串＝清除；伺服器收到 undefined 才會沿用舊值，舊版畫面不會洗掉資料）
+    const specEl = row.querySelector('.qi-spec'), noteEl = row.querySelector('.qi-note');
+    if (specEl) it.spec = specEl.value.trim();
+    if (noteEl) it.note = noteEl.value.trim();
     if (row.dataset.cost !== undefined) it.cost = parseFloat(row.dataset.cost) || 0;
     if (row.dataset.needprice === '1') it.needPrice = true;   // 只讓重畫（移動、刪除其他列）時旗標跟著列走；伺服器依 lid 自己維護，忽略送上去的值
     const catSel = row.querySelector('.qi-cat');
@@ -2157,6 +2240,9 @@ async function saveQuote() {
       return k;
     }
     const o = { desc: it.desc, unit: it.unit, qty: it.qty, unitPrice: it.unitPrice, cat: it.cat || '' };
+    // 說明／備註（readQuoteItems 一律給字串；空字串＝清除）。不進核准雜湊，所以只改這兩欄不會讓核准作廢
+    if (typeof it.spec === 'string') o.spec = it.spec;
+    if (typeof it.note === 'string') o.note = it.note;
     if (it.lid) o.lid = it.lid;
     else if (it.nid) o.nid = it.nid;   // 暫時代號：伺服器用它把成本明細裡指向這個新品項的 forLid／forLids 換成剛指派的 lid（不存檔）
     return o;
@@ -2227,7 +2313,7 @@ async function saveQuote() {
     if (!res.r.ok && res.j.code === 'WILL_VOID') {
       const ok = await qDialog({
         title: '修改會使核准作廢',
-        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣），儲存後原核准會作廢，需要重新送簽。\n仍要儲存？',
+        message: '此報價單已核准。你修改了簽核涵蓋的內容（客戶、聯絡人、地址、電話、專案、備註與追加條款、付款方式、報價期限、商品、品項、分組標題與小計列（含順序）、單價、成本（含成本明細）或折扣），儲存後原核准會作廢，需要重新送簽（只改品項的說明／備註不會走到這一步）。\n仍要儲存？',
         buttons: [
           { text: '儲存並作廢核准', value: true, cls: 'btn-danger' },
           { text: '取消', value: false, cls: 'btn-secondary' },
@@ -2266,6 +2352,73 @@ async function saveQuote() {
     _qSaving = false;
     saveBtn.disabled = false;
   }
+}
+
+// ── 只修改品項的「說明／備註」（簽核中／已核准的單）─────────────────────────────────────
+// PUT /api/quotations/:id/item-notes 只收 { items:[{lid, spec?, note?}] }：不可能動到金額、狀態或簽核；伺服器會留下稽核紀錄與（簽核中／已核准時）簽核歷程一行「舊→新」。
+// 客戶單上印出的文字因此會立即改變、不需重新簽核——對話框上方明講這件事。
+async function openQuoteNotesDialog(id) {
+  const q = (await _qFetchQuote(id)) || _qFind(id);
+  if (!q) { showToast('找不到此報價單'); return; }
+  const rows = (q.items || []).filter(function (it) { return !quoteIsKindRow(it); });
+  if (!rows.length) { showToast('這張報價單沒有品項'); return; }
+  const old = document.getElementById('qNotesOverlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 'qNotesOverlay';
+  ov.style.zIndex = '125';
+  const state = q.approval && q.approval.state === 'pending' ? '簽核中' : '已核准';
+  ov.innerHTML = '<div class="modal q-dlg q-dlg-wide" role="dialog" aria-modal="true" aria-labelledby="qNotesTitle">' +
+    '<div class="modal-header"><h2 id="qNotesTitle">修改品項說明／備註　' + escapeHtml(q.quoteNo || '') + '</h2><button type="button" class="modal-close" data-qn="x" aria-label="關閉">&#10005;</button></div>' +
+    '<div class="modal-body q-dlg-body">' +
+      '<div class="q-infobar" style="margin-bottom:10px">這張報價單目前' + state + '。這裡只能修改各品項的「說明」與「備註」：不影響金額與簽核（不需重新簽核），但<b>客戶報價單上印出的文字會立即改變</b>，每次修改都會留下紀錄（舊 → 新）。要改數量、單價等請先撤回或走一般編輯。</div>' +
+      '<div class="qn-list">' + rows.map(function (it, i) {
+        return '<div class="qn-row" data-lid="' + escapeHtml(it.lid || '') + '">' +
+          '<div class="qn-name">' + (i + 1) + '. ' + escapeHtml(it.desc || '（未填品項說明）') + '</div>' +
+          '<input type="text" class="qn-spec" maxlength="200" value="' + escapeHtml(it.spec || '') + '" data-orig="' + escapeHtml(it.spec || '') + '" aria-label="品項說明" placeholder="說明（選填，會印在客戶報價單）">' +
+          '<input type="text" class="qn-note" maxlength="300" value="' + escapeHtml(it.note || '') + '" data-orig="' + escapeHtml(it.note || '') + '" aria-label="品項備註" placeholder="備註：此項目的特殊需求（選填，會印在客戶報價單）">' +
+        '</div>';
+      }).join('') + '</div><div class="qn-err" role="alert" aria-live="assertive"></div></div>' +
+    '<div class="modal-footer"><button type="button" class="btn btn-secondary" data-qn="x">取消</button><button type="button" class="btn btn-primary" data-qn="save">儲存說明／備註</button></div></div>';
+  document.body.appendChild(ov);
+  const errEl = ov.querySelector('.qn-err'), saveBtn = ov.querySelector('[data-qn="save"]');
+  let busy = false;
+  const close = function () { document.removeEventListener('keydown', onKey, true); ov.remove(); };
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); if (!busy) close(); } }
+  document.addEventListener('keydown', onKey, true);
+  ov.addEventListener('mousedown', function (e) { if (e.target === ov && !busy) close(); });
+  const first = ov.querySelector('.qn-spec'); if (first) first.focus();
+  ov.addEventListener('click', async function (e) {
+    const b = e.target.closest('[data-qn]');
+    if (!b || busy) return;
+    if (b.getAttribute('data-qn') === 'x') { close(); return; }
+    // 只送有改的欄位（沒改的不送，避免覆蓋別人剛改的）
+    const items = [];
+    ov.querySelectorAll('.qn-row').forEach(function (row) {
+      const o = { lid: row.getAttribute('data-lid') };
+      const sp = row.querySelector('.qn-spec'), nt = row.querySelector('.qn-note');
+      if (sp.value.trim() !== sp.getAttribute('data-orig').trim()) o.spec = sp.value.trim();
+      if (nt.value.trim() !== nt.getAttribute('data-orig').trim()) o.note = nt.value.trim();
+      if (o.spec !== undefined || o.note !== undefined) items.push(o);
+    });
+    if (!items.length) { errEl.textContent = '沒有修改任何內容'; return; }
+    busy = true; saveBtn.disabled = true; errEl.textContent = '';
+    try {
+      const r = await fetch(API + '/quotations/' + encodeURIComponent(id) + '/item-notes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items }) });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok) { errEl.textContent = j.error || '儲存失敗'; return; }
+      const i = (allQuotations || []).findIndex(function (x) { return x.id === id; });
+      if (i >= 0) allQuotations[i] = j;
+      close();
+      showToast('已更新品項說明／備註（簽核狀態不變）');
+      renderQuoteList();
+    } catch (err) {
+      errEl.textContent = '儲存失敗，請重試';
+    } finally {
+      busy = false; saveBtn.disabled = false;
+    }
+  });
 }
 
 // ── 我的聯絡資訊（印在報價單右上「廠商資料」框；業務自行維護、之後自動套用）─────────────────
