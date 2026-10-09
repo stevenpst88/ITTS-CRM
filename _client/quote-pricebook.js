@@ -8,7 +8,7 @@
 //                                對話框依 BU 分四個分頁（ERP／ITS／MDM／CRM，各顯示項目數）；跨分頁勾選的項目會保留，「加入」一次加入所有分頁勾選的項目。
 //                                預設分頁＝hooks.bu（有項目才採用），否則第一個有項目的 BU。目前報價單沒有可靠的 BU 欄位（lib/quoteRoutes.js 不收也不存 bu），所以呼叫端沒傳 bu。
 //   純函式（可單元測試，不碰 DOM）：parseQty／marginPct／marginText／buildItems／isBlankDefaultRow／planAppend／sanitizeList／groupByBu／pickDefaultBu
-// 選取是「複製」：品項只帶 desc／unit('人天')／qty／unitPrice／cat('consult')，沒有參照也沒有出處欄位，之後牌價簿怎麼改都不影響已存的報價單；
+// 選取是「複製」：品項只帶 desc／unit('人天')／qty／unitPrice／cat('consult')／spec（牌價簿的說明，有才帶；之後可在報價單上逐單修改），沒有參照也沒有出處欄位，之後牌價簿怎麼改都不影響已存的報價單；
 // 伺服器不檢查報價單價格是否等於牌價（牌價簿只是建議值）。
 (function (global) {
 'use strict';
@@ -50,7 +50,17 @@ function marginText(price, cost) {
   return m === null ? '—' : m.toFixed(1) + '%';
 }
 
-/** 伺服器回傳的清單 → 乾淨的 [{id,bu,name,price,cost}]（丟掉格式不對的項目；牌價與成本要是 ≥0 的有限數字；bu 缺漏或不合法＝ERP，相容舊資料） */
+/** 說明：單行純文字（與 lib/quoteItems.js cleanItemText 同規則：控制字元／換行當空白、空白收合、去頭尾、最多 200 字）；非字串＝'' */
+var SPEC_MAX = 200;
+var SPEC_CTRL_RE = new RegExp('[\\u0000-\\u001F\\u007F-\\u009F' + String.fromCharCode(0x2028) + String.fromCharCode(0x2029) + ']+', 'g');
+function cleanSpec(v) {
+  if (typeof v !== 'string') return '';
+  var s = v.replace(SPEC_CTRL_RE, ' ').replace(/\s+/g, ' ').trim();
+  var cps = Array.from(s);
+  return cps.length > SPEC_MAX ? cps.slice(0, SPEC_MAX).join('').trim() : s;
+}
+
+/** 伺服器回傳的清單 → 乾淨的 [{id,bu,name,price,cost,spec}]（丟掉格式不對的項目；牌價與成本要是 ≥0 的有限數字；bu 缺漏或不合法＝ERP，相容舊資料；spec 缺漏＝''） */
 function sanitizeList(raw) {
   var out = [];
   (Array.isArray(raw) ? raw : []).forEach(function (x) {
@@ -58,7 +68,7 @@ function sanitizeList(raw) {
     var name = typeof x.name === 'string' ? x.name.trim() : '';
     var price = Number(x.price), cost = Number(x.cost);
     if (!x.id || !name || !isFinite(price) || price < 0 || !isFinite(cost) || cost < 0) return;
-    out.push({ id: String(x.id), bu: BUS.indexOf(x.bu) >= 0 ? x.bu : 'ERP', name: name, price: price, cost: cost });
+    out.push({ id: String(x.id), bu: BUS.indexOf(x.bu) >= 0 ? x.bu : 'ERP', name: name, price: price, cost: cost, spec: cleanSpec(x.spec) });
   });
   return out;
 }
@@ -79,7 +89,7 @@ function pickDefaultBu(list, hint) {
   return BUS[0];
 }
 
-/** 依勾選結果產生報價品項（依牌價簿順序：ERP、ITS、MDM、CRM 分頁順序，各 BU 內依清單順序；不依點選順序；找不到的 id 略過）。picks = [{id, qty}]。品項說明只有名稱（不帶 BU） */
+/** 依勾選結果產生報價品項（依牌價簿順序：ERP、ITS、MDM、CRM 分頁順序，各 BU 內依清單順序；不依點選順序；找不到的 id 略過）。picks = [{id, qty}]。品名只有名稱（不帶 BU）；牌價簿有說明就複製到品項的 spec */
 function buildItems(list, picks) {
   var want = Object.create(null);
   (Array.isArray(picks) ? picks : []).forEach(function (p) { if (p && p.id !== undefined) want[p.id] = p.qty; });
@@ -88,7 +98,10 @@ function buildItems(list, picks) {
   BUS.forEach(function (b) { flat = flat.concat(g[b]); });
   flat.forEach(function (it) {
     if (!it || !Object.prototype.hasOwnProperty.call(want, it.id)) return;
-    out.push({ desc: it.name, unit: UNIT, qty: Number(want[it.id]), unitPrice: Number(it.price), cat: 'consult' });
+    var item = { desc: it.name, unit: UNIT, qty: Number(want[it.id]), unitPrice: Number(it.price), cat: 'consult' };
+    var spec = cleanSpec(it.spec);
+    if (spec) item.spec = spec;   // 複製牌價簿的說明（沒有就不帶欄位）
+    out.push(item);
   });
   return out;
 }
@@ -103,6 +116,7 @@ function isBlankDefaultRow(it) {
   if (Number(it.unitPrice || 0) !== 0) return false;
   if (it.cost !== undefined && it.cost !== null && it.cost !== '' && Number(it.cost) !== 0) return false;
   if (it.cat) return false;
+  if (it.spec || it.note) return false;   // 已經填了說明／備註就不是「還沒動過」
   return true;
 }
 
@@ -162,6 +176,7 @@ var CSS = '' +
   '.qpb-qty.qpb-bad{border-color:#ea4335;background:#fde8e8}' +
   '.qpb-err{color:#c5221f;font-size:13px;min-height:18px;margin-top:8px}' +
   '.qpb-neg{color:#c5221f;font-weight:600}' +
+  '.qpb-spec{font-size:12px;color:#6b7280;line-height:1.45;margin-top:2px;white-space:normal;word-break:break-word}body.dark .qpb-spec{color:#8b949e}' +
   '.qpb-tabs{display:flex;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid #e3e6ea;margin:0 0 10px}' +
   '.qpb-tab{flex:0 0 auto;border:none;background:none;cursor:pointer;padding:8px 14px;font-size:14px;font-weight:600;color:#6b7686;white-space:nowrap;border-bottom:2px solid transparent}' +
   '.qpb-tab[aria-selected="true"]{color:#1a73e8;border-bottom-color:#1a73e8;font-weight:700}' +
@@ -187,7 +202,7 @@ function tableHtml(list, bu) {
     var m = marginPct(it.price, it.cost);
     return '<tr data-id="' + esc(it.id) + '">' +
       '<td style="width:34px;text-align:center"><input type="checkbox" class="qpb-cb" data-id="' + esc(it.id) + '" aria-label="選取 ' + esc(it.name) + '"></td>' +
-      '<td>' + esc(it.name) + '</td>' +
+      '<td>' + esc(it.name) + (it.spec ? '<div class="qpb-spec">' + esc(it.spec) + '</div>' : '') + '</td>' +
       '<td class="r">' + esc(money(it.price)) + '</td>' +
       '<td class="r">' + esc(money(it.cost)) + '</td>' +
       '<td class="r qpb-m' + (m !== null && m < 0 ? ' qpb-neg' : '') + '">' + esc(marginText(it.price, it.cost)) + '</td>' +
@@ -377,7 +392,7 @@ global.QPB = {
   MAX_ROWS: MAX_ROWS, QTY_MAX: QTY_MAX, UNIT: UNIT, BUS: BUS,
   load: load, peek: peek, openPicker: openPicker,
   parseQty: parseQty, marginPct: marginPct, marginText: marginText, sanitizeList: sanitizeList,
-  groupByBu: groupByBu, pickDefaultBu: pickDefaultBu,
+  groupByBu: groupByBu, pickDefaultBu: pickDefaultBu, cleanSpec: cleanSpec, SPEC_MAX: SPEC_MAX,
   buildItems: buildItems, isBlankDefaultRow: isBlankDefaultRow, planAppend: planAppend,
   // 內部（單元測試用）
   _setFetch: function (f) { fetchImpl = f; },

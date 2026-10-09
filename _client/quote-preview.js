@@ -6,6 +6,8 @@
 // 與 lib/quoteExcel.js 保持一致的地方（改其中一邊時請一起改）：
 //   · 欄位對應（左框＝客戶資料；右框＝日期＋聯絡人＋手機）
 //   · 優惠規則（percent 僅 0<值<100 才生效；amount 需 >0）、稅金 5%
+//   · 品項下方的「說明」（灰色小字）與「備註：…」（棕紅色一行）：沒填就完全不輸出任何額外標記（沒有說明／備註的報價單，預覽與以前位元級相同）；
+//     文字清洗規則與 lib/quoteItems.js cleanItemText 相同（_qpvCleanText 是鏡像，scripts/check-quote-item-notes.js 逐例比對）
 //   · 公司抬頭是範本內的固定文字，範本改了這裡要同步；Remarks 條款不在這裡維護——一律用 issue-info 的 remarks（lib/quoteRemarks.js 單一來源）
 // 預覽只顯示客戶看得到的內容，不含成本與毛利。
 // ═════════════════════════════════════════════════
@@ -59,6 +61,8 @@ const QPV_CSS = `
 .qpv-items td.r { text-align: right; }
 .qpv-items td.desc { white-space: pre-wrap; word-break: break-word; }
 .qpv-items td.blank { color: #333; }
+.qpv-items td.desc .qpv-spec { font-size: 0.82em; color: #6b7280; line-height: 1.45; margin-top: 2px; }
+.qpv-items td.desc .qpv-note { font-size: 0.9em; color: #9a3412; line-height: 1.45; margin-top: 2px; }
 .qpv-items tr.qpv-grp td { background: #f2f2f2; font-weight: 700; text-align: left; padding: 5px 10px; white-space: pre-wrap; word-break: break-word; }
 .qpv-items tr.qpv-sub td { font-weight: 700; }
 .qpv-items tr.qpv-sub td.lbl { text-align: right; padding-right: 8px; }
@@ -121,6 +125,19 @@ function _qpvSubtotals(items) {
   return out;
 }
 
+/** 品項的說明／備註文字（單行純文字）。鏡像 lib/quoteItems.js 的 cleanItemText；標題／小計列沒有。max：說明 200、備註 300 */
+const QPV_SPEC_RE = new RegExp('[\\u0000-\\u001F\\u007F-\\u009F' + String.fromCharCode(0x2028) + String.fromCharCode(0x2029) + ']+', 'g');
+function _qpvCleanText(v, max) {
+  if (typeof v !== 'string') return '';
+  const t = v.replace(QPV_SPEC_RE, ' ').replace(/\s+/g, ' ').trim();
+  const cps = Array.from(t);
+  return cps.length > max ? cps.slice(0, max).join('').trim() : t;
+}
+function _qpvItemTexts(it) {
+  if (!it || typeof it !== 'object' || _qpvIsKindRow(it)) return { spec: '', note: '' };
+  return { spec: _qpvCleanText(it.spec, 200), note: _qpvCleanText(it.note, 300) };
+}
+
 /** 金額與優惠：規則與 lib/quoteExcel.js 一致 */
 function _qpvTotals(q) {
   const items = Array.isArray(q.items) ? q.items.slice(0, 50) : [];
@@ -160,7 +177,9 @@ function buildQuotePreviewHtml(q, info) {
       return `<tr class="qpv-sub"><td colspan="6" class="lbl">${e(label)}</td><td class="r">${n(subVals[i])}</td></tr>`;
     }
     const qty = parseFloat(it.qty) || 1, price = parseFloat(it.unitPrice) || 0;
-    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="c">${e(String(qty))}</td>` +
+    const tx = _qpvItemTexts(it);
+    const extra = (tx.spec ? `<div class="qpv-spec">${e(tx.spec)}</div>` : '') + (tx.note ? `<div class="qpv-note"><b>備註：</b>${e(tx.note)}</div>` : '');
+    return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}${extra}</td><td class="c">${e(String(qty))}</td>` +
            `<td class="c">${e(it.unit || '式')}</td><td class="r">${n(price)}</td><td></td><td class="r">${n(qty * price)}</td></tr>`;
   }).join('');
 

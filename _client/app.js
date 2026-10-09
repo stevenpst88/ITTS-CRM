@@ -8440,7 +8440,7 @@ function renderNotifList(list) {
     callin_new:'📞', callin_assigned:'📋', callin_overdue:'⏰', callin_responded:'✅',
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
-    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️'
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知

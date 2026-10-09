@@ -2270,7 +2270,7 @@
         <div id="pbImpNote" style="font-size:12.5px;color:#6b7280;margin-bottom:8px"></div>
         <div class="pb-tblwrap" style="max-height:46vh;overflow:auto;border:1px solid #eee;border-radius:8px">
           <table style="width:100%;border-collapse:collapse;font-size:13.5px" aria-label="匯入預覽結果">
-            <thead><tr style="text-align:left;color:#6b7280;font-size:12.5px;background:#f9fafb;position:sticky;top:0"><th style="padding:6px 8px">BU</th><th style="padding:6px 8px">列</th><th style="padding:6px 8px;min-width:140px">項目名稱</th><th style="padding:6px 8px">動作</th><th style="padding:6px 8px;text-align:right">牌價</th><th style="padding:6px 8px;text-align:right">成本</th><th style="padding:6px 8px;text-align:center">啟用</th><th style="padding:6px 8px">說明</th></tr></thead>
+            <thead><tr style="text-align:left;color:#6b7280;font-size:12.5px;background:#f9fafb;position:sticky;top:0"><th style="padding:6px 8px">BU</th><th style="padding:6px 8px">列</th><th style="padding:6px 8px;min-width:140px">項目名稱</th><th style="padding:6px 8px">動作</th><th style="padding:6px 8px;text-align:right">牌價</th><th style="padding:6px 8px;text-align:right">成本</th><th style="padding:6px 8px;text-align:center">啟用</th><th style="padding:6px 8px;min-width:150px">說明</th><th style="padding:6px 8px">問題</th></tr></thead>
             <tbody id="pbImpBody"></tbody>
           </table>
         </div>
@@ -2849,16 +2849,16 @@
     let _pbInited = false, _pbAttached = false, _pbItems = [], _pbUpdatedAt = null, _pbUpdatedBy = null, _pbSnap = '[]', _pbSnapBy = {};
     let _pbSeq = 0, _pbShowErr = false, _pbSrvErr = null, _pbLive = null, _pbSaving = false, _pbTab = 'ERP';
     const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
-    const PB_MAX_ITEMS = 60, PB_MAX_NAME = 40, PB_MAX_MONEY = 1e9;   // 與 lib/quotePricebook.js 相同（PB_MAX_ITEMS 是「每個 BU」）
+    const PB_MAX_ITEMS = 60, PB_MAX_NAME = 40, PB_MAX_SPEC = 200, PB_MAX_MONEY = 1e9;   // 與 lib/quotePricebook.js 相同（PB_MAX_ITEMS 是「每個 BU」）
     const PB_MONEY_RE = /^\s*\d+(\.\d+)?\s*$/;
     const PB_TAB_KEY = 'pbActiveBu';
     try { const t = sessionStorage.getItem(PB_TAB_KEY); if (PB_BUS.includes(t)) _pbTab = t; } catch (_) { /* 沒有 sessionStorage 也能用 */ }
 
     function pbRow(it) {
-      return { k: ++_pbSeq, id: it.id || '', bu: PB_BUS.includes(it.bu) ? it.bu : 'ERP', name: it.name || '', price: it.price == null ? '' : String(it.price), cost: it.cost == null ? '' : String(it.cost), active: it.active !== false };
+      return { k: ++_pbSeq, id: it.id || '', bu: PB_BUS.includes(it.bu) ? it.bu : 'ERP', name: it.name || '', price: it.price == null ? '' : String(it.price), cost: it.cost == null ? '' : String(it.cost), active: it.active !== false, spec: it.spec == null ? '' : String(it.spec) };
     }
     const pbOrdered = () => PB_BUS.reduce((a, b) => a.concat(_pbItems.filter(r => r.bu === b)), []);
-    const pbSerRows = (rows) => rows.map(r => { const o = { bu: r.bu, name: r.name.trim(), price: String(r.price).trim(), cost: String(r.cost).trim(), active: !!r.active }; if (r.id) o.id = r.id; return o; });
+    const pbSerRows = (rows) => rows.map(r => { const o = { bu: r.bu, name: r.name.trim(), price: String(r.price).trim(), cost: String(r.cost).trim(), active: !!r.active, spec: String(r.spec || '').trim() }; if (r.id) o.id = r.id; return o; });
     const pbSerialize = () => pbSerRows(pbOrdered());
     const pbSerializeBu = (bu) => pbSerRows(_pbItems.filter(r => r.bu === bu));
     function pbIsDirty() { return JSON.stringify(pbSerialize()) !== _pbSnap; }
@@ -2868,6 +2868,7 @@
     const pbTabRows = (bu) => _pbItems.filter(r => r.bu === bu);
 
     // 與伺服器 lib/quotePricebook.js 相同的規則（伺服器仍會再驗一次）。名稱唯一性只在同一個 BU 內。
+    const pbSpecLen = (s) => Array.from(String(s || '').replace(/\s+/g, ' ').trim()).length;   // 與伺服器一樣先把空白（含換行）收合再算字數
     function pbValidate() {
       const errs = {}, seen = new Map();
       PB_BUS.forEach(b => { if (pbTabRows(b).length > PB_MAX_ITEMS) { errs._all = errs._all || {}; errs._all[b] = `${b} 項目最多 ${PB_MAX_ITEMS} 筆`; } });
@@ -2880,7 +2881,9 @@
         const p = pbMoney(r.price), c = pbMoney(r.cost);
         if (!(p >= 0 && p <= PB_MAX_MONEY)) e.price = `請輸入 0～${PB_MAX_MONEY} 的數字`;
         if (!(c >= 0 && c <= PB_MAX_MONEY)) e.cost = `請輸入 0～${PB_MAX_MONEY} 的數字`;
-        if (e.name || e.price || e.cost) errs[r.k] = e;
+        const sl = pbSpecLen(r.spec);
+        if (sl > PB_MAX_SPEC) e.spec = `說明不可超過 ${PB_MAX_SPEC} 字（目前 ${sl} 字）`;
+        if (e.name || e.price || e.cost || e.spec) errs[r.k] = e;
       });
       return errs;
     }
@@ -2951,6 +2954,7 @@
         return `<tr data-k="${r.k}" style="border-top:1px solid #f3f4f6;${dim}">`
           + `<td style="text-align:center;padding:6px 4px"><input type="checkbox" data-pbf="active" data-k="${r.k}" ${r.active ? 'checked' : ''} title="啟用（停用後業務端不再列出，已存報價單不受影響）" aria-label="啟用"></td>`
           + `<td style="padding:6px 4px;min-width:200px"><input data-pbf="name" data-k="${r.k}" value="${pcEsc(r.name)}" placeholder="例如：PM 顧問經理" maxlength="${PB_MAX_NAME}" aria-label="項目名稱" style="width:100%;${inp}"><div class="pb-err" data-k="${r.k}" data-f="name" style="color:#c62828;font-size:12px;min-height:0"></div></td>`
+          + `<td style="padding:6px 4px;min-width:240px"><input data-pbf="spec" data-k="${r.k}" value="${pcEsc(r.spec)}" placeholder="選填，會帶進報價單品項的「說明」" maxlength="${PB_MAX_SPEC}" aria-label="說明" style="width:100%;${inp}"><div class="pb-err" data-k="${r.k}" data-f="spec" style="color:#c62828;font-size:12px;min-height:0"></div></td>`
           + `<td style="padding:6px 8px;color:#6b7280;white-space:nowrap">人天</td>`
           + `<td style="padding:6px 4px;text-align:right"><input data-pbf="price" data-k="${r.k}" value="${pcEsc(r.price)}" inputmode="decimal" aria-label="牌價" style="width:110px;text-align:right;${inp}"><div class="pb-err" data-k="${r.k}" data-f="price" style="color:#c62828;font-size:12px"></div></td>`
           + `<td style="padding:6px 4px;text-align:right"><input data-pbf="cost" data-k="${r.k}" value="${pcEsc(r.cost)}" inputmode="decimal" aria-label="成本" style="width:110px;text-align:right;${inp}"><div class="pb-err" data-k="${r.k}" data-f="cost" style="color:#c62828;font-size:12px"></div></td>`
@@ -2964,7 +2968,7 @@
       pnl.setAttribute('role', 'tabpanel');
       pnl.setAttribute('aria-labelledby', 'pbTab-' + _pbTab);
       pnl.innerHTML = empty
-        + (tabItems.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;color:#6b7280;font-size:12.5px"><th style="padding:4px;text-align:center;width:44px">啟用</th><th style="padding:4px">項目名稱</th><th style="padding:4px 8px">單位</th><th style="padding:4px;text-align:right">牌價 / 人天</th><th style="padding:4px;text-align:right">成本 / 人天</th><th style="padding:4px 8px;text-align:right">毛利率</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+        + (tabItems.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;color:#6b7280;font-size:12.5px"><th style="padding:4px;text-align:center;width:44px">啟用</th><th style="padding:4px">項目名稱</th><th style="padding:4px">說明（選填，印在客戶報價單）</th><th style="padding:4px 8px">單位</th><th style="padding:4px;text-align:right">牌價 / 人天</th><th style="padding:4px;text-align:right">成本 / 人天</th><th style="padding:4px 8px;text-align:right">毛利率</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
         + `<div id="pbAllErr" style="color:#c62828;font-size:12.5px;margin:6px 0"></div>`
         + `<button data-pbact="add" style="width:100%;margin-top:8px;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:9px;font-size:13px;color:#6b7280;cursor:pointer">＋ 新增項目到 ${_pbTab}（${tabItems.length}/${PB_MAX_ITEMS}）</button>`;
       pbRenderBanner();
@@ -3070,7 +3074,7 @@
       _pbSrvErr = null;
       if (act === 'add') {
         if (pbTabRows(_pbTab).length >= PB_MAX_ITEMS) { $('pbStatus').textContent = `${_pbTab} 項目最多 ${PB_MAX_ITEMS} 筆`; return; }
-        const r = pbRow({ name: '', price: '', cost: '', active: true, bu: _pbTab }); _pbItems.push(r); pbRender();
+        const r = pbRow({ name: '', price: '', cost: '', active: true, bu: _pbTab, spec: '' }); _pbItems.push(r); pbRender();
         const el = document.querySelector(`#pbPanel [data-pbf="name"][data-k="${r.k}"]`); if (el) el.focus();
       } else if (act === 'del' && i >= 0) {
         const nm = _pbItems[i].name.trim();
@@ -3200,6 +3204,14 @@
 
     const pbNum = (n) => (typeof n === 'number' && isFinite(n)) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—';
     const pbYN = (b) => b === undefined ? '' : (b ? '是' : '否');
+    const pbClip = (t) => { const c = Array.from(String(t || '')); return c.length > 40 ? c.slice(0, 40).join('') + '…' : c.join(''); };
+    // 說明欄：新增＝顯示新值；更新且有變＝舊 → 新（空白顯示「（無）」）；沒變＝原文。全部 pcEsc 後才進 innerHTML
+    function pbSpecCell(o, n) {
+      if (!n) return '';
+      const ns = pbClip(n.spec);
+      if (o && (o.spec || '') !== (n.spec || '')) return `<span style="color:#9ca3af">${o.spec ? pcEsc(pbClip(o.spec)) : '（無）'}</span> → <b>${ns ? pcEsc(ns) : '（無）'}</b>`;
+      return ns ? pcEsc(ns) : '<span style="color:#d1d5db">—</span>';
+    }
     function pbDiffCell(o, n, key) {
       if (!n) return '';
       if (!o || o[key] === n[key]) return pbNum(n[key]);
@@ -3231,8 +3243,9 @@
           + `<td style="padding:5px 8px;text-align:right;white-space:nowrap">${pbDiffCell(o, n, 'price')}</td>`
           + `<td style="padding:5px 8px;text-align:right;white-space:nowrap">${pbDiffCell(o, n, 'cost')}</td>`
           + `<td style="padding:5px 8px;text-align:center;white-space:nowrap">${n ? (o && o.active !== n.active ? `<span style="color:#9ca3af">${pbYN(o.active)}</span> → <b>${pbYN(n.active)}</b>` : pbYN(n.active)) : ''}</td>`
+          + `<td data-pbspec style="padding:5px 8px;font-size:12.5px;word-break:break-all;min-width:150px">${pbSpecCell(o, n)}</td>`
           + `<td style="padding:5px 8px;color:#c62828;font-size:12.5px">${r.error ? pcEsc(r.error) : ''}</td></tr>`;
-      }).join('') : '<tr><td colspan="8" style="padding:16px;text-align:center;color:#9ca3af">沒有符合的列</td></tr>';
+      }).join('') : '<tr><td colspan="9" style="padding:16px;text-align:center;color:#9ca3af">沒有符合的列</td></tr>';
       const can = sm.added + sm.updated;
       const notes = ['依「BU＋項目名稱」合併：同一個 BU 內名稱相同＝更新牌價／成本（保留原順序）、新名稱＝附加在該 BU 最後；檔案沒有的既有項目不會被刪除；檔案沒有的 BU 工作表＝該 BU 不變動。'];
       if ((d.skippedSheets || []).length) notes.push('已略過的工作表（名稱不是 ' + PB_BUS.join('／') + '）：' + d.skippedSheets.map(x => pcEsc(x)).join('、'));
