@@ -39,7 +39,7 @@ async function run() {
   let r = norm([row('PM 顧問經理', 9000, 6500), row('SD 顧問', '7000', '5000', { active: false })]);
   t('2.1 正常：欄位齊全；unit 固定「人天」；active 預設 true；字串金額轉數字；順序＝陣列順序', r.ok && eq(r.items.map((x) => [x.name, x.unit, x.price, x.cost, x.active]), [['PM 顧問經理', '人天', 9000, 6500, true], ['SD 顧問', '人天', 7000, 5000, false]]), JSON.stringify(r));
   t('2.2 每項都有 id（缺漏時由 genId 產生，彼此不同）', r.ok && r.items.every((x) => /^[A-Za-z0-9_-]{1,40}$/.test(x.id)) && r.items[0].id !== r.items[1].id);
-  t('2.3 client 送的 unit／cat／其他欄位一律丟棄（unit 強制人天）', (() => { const x = norm([row('A', 1, 1, { unit: '式', cat: 'hardware', evil: '<x>', extra: 1 })]); return x.ok && eq(Object.keys(x.items[0]).sort(), ['active', 'cost', 'id', 'name', 'price', 'unit']) && x.items[0].unit === '人天'; })());
+  t('2.3 client 送的 unit／cat／其他欄位一律丟棄（unit 強制人天）', (() => { const x = norm([row('A', 1, 1, { unit: '式', cat: 'hardware', evil: '<x>', extra: 1 })]); return x.ok && eq(Object.keys(x.items[0]).sort(), ['active', 'bu', 'cost', 'id', 'name', 'price', 'unit']) && x.items[0].unit === '人天'; })());
   t('2.4 空陣列合法（清空牌價簿）', eq(norm([]), { ok: true, items: [] }));
   const bad = [
     ['2.5a 不是陣列', 'x', 'BAD_PRICEBOOK:@undefined'], ['2.5b null', null, 'BAD_PRICEBOOK:@undefined'], ['2.5c 物件', {}, 'BAD_PRICEBOOK:@undefined'],
@@ -72,17 +72,17 @@ async function run() {
 
   // ═════════════════ 3) public / admin / diff ═════════════════
   const stored = [{ id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6000, active: true }, { id: 'b', name: 'SD', unit: '人天', price: 7000, cost: 5000, active: false }, { id: 'c', name: 'MM', unit: '人天', price: 7500, cost: 5200, active: true }];
-  t('3.1 publicItems：只留啟用項目、只有 id／name／unit／price／cost，順序不變', eq(PB.publicItems(stored), [{ id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6000 }, { id: 'c', name: 'MM', unit: '人天', price: 7500, cost: 5200 }]));
+  t('3.1 publicItems：只留啟用項目、只有 id／bu（舊資料沒有 bu＝ERP）／name／unit／price／cost，順序不變', eq(PB.publicItems(stored), [{ id: 'a', bu: 'ERP', name: 'PM', unit: '人天', price: 9000, cost: 6000 }, { id: 'c', bu: 'ERP', name: 'MM', unit: '人天', price: 7500, cost: 5200 }]));
   t('3.2 adminItems：全部（含停用），多一個 active', PB.adminItems(stored).length === 3 && PB.adminItems(stored)[1].active === false);
   t('3.3 publicItems／adminItems 對壞資料不丟錯（undefined／非陣列／含 null）', eq(PB.publicItems(undefined), []) && eq(PB.adminItems('x'), []) && PB.publicItems([null, stored[0]]).length === 1);
   const next = [{ id: 'c', name: 'MM 顧問', unit: '人天', price: 8000, cost: 5200, active: true }, { id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6500, active: false }, { id: 'n', name: 'ABAP', unit: '人天', price: 6000, cost: 4000, active: true }];
   const d = PB.diffPricebook(stored, next);
-  t('3.4 diff：新增 ABAP、移除 SD、改名 MM→MM 顧問、MM 牌價 7500→8000、PM 成本 6000→6500、PM 停用、順序調整', d.added.length === 1 && d.added[0].name === 'ABAP' && d.removed.length === 1 && d.removed[0].name === 'SD' && eq(d.renamed, [{ from: 'MM', to: 'MM 顧問' }])
+  t('3.4 diff：新增 ABAP、移除 SD、改名 MM→MM 顧問、MM 牌價 7500→8000、PM 成本 6000→6500、PM 停用、順序調整', d.added.length === 1 && d.added[0].name === 'ABAP' && d.removed.length === 1 && d.removed[0].name === 'SD' && eq(d.renamed, [{ bu: 'ERP', from: 'MM', to: 'MM 顧問' }])
     && d.changed.some((x) => x.name === 'MM 顧問' && x.field === 'price' && x.from === 7500 && x.to === 8000) && d.changed.some((x) => x.name === 'PM' && x.field === 'cost' && x.from === 6000 && x.to === 6500)
-    && eq(d.toggled, [{ name: 'PM', active: false }]) && d.reordered === true, JSON.stringify(d));
+    && eq(d.toggled, [{ bu: 'ERP', name: 'PM', active: false }]) && d.reordered === true, JSON.stringify(d));
   const sm = PB.summarizeDiff(d);
   t('3.5 summarizeDiff：文字含「新增」「移除」「改名」「牌價 7500→8000」「成本 6000→6500」「停用」「順序調整」', ['新增', '「ABAP」', '移除', '「SD」', '改名', '「MM」→「MM 顧問」', '牌價 7500→8000', '成本 6000→6500', '「PM」停用', '順序調整'].every((s) => sm.includes(s)), sm);
-  t('3.6 無差異 → 「無異動」且 reordered=false；只換順序 → 只有順序調整', PB.summarizeDiff(PB.diffPricebook(stored, stored)) === '無異動' && PB.summarizeDiff(PB.diffPricebook(stored, [stored[2], stored[1], stored[0]])) === '順序調整');
+  t('3.6 無差異 → 「無異動」且 reordered=false；只換順序 → 只有順序調整', PB.summarizeDiff(PB.diffPricebook(stored, stored)) === '無異動' && PB.summarizeDiff(PB.diffPricebook(stored, [stored[2], stored[1], stored[0]])) === '順序調整 [ERP]');
   t('3.7 摘要過長會截斷（預設 1500 字）', PB.summarizeDiff(PB.diffPricebook([], Array.from({ length: 60 }, (_, i) => ({ id: 'i' + i, name: 'R' + 'x'.repeat(30) + i, price: 1000000, cost: 1000000, active: true })))).length <= 1500);
 
   // ═════════════════ 4) 路由層 ═════════════════
@@ -193,7 +193,7 @@ async function run() {
   t('4.17 帶著載入時的 updatedAt 儲存 → 200；updatedAt 嚴格變新', r2.s === 200 && r2.j.updatedAt > loaded, JSON.stringify([loaded, r2.j.updatedAt]));
   t('4.18 id 穩定：未動的項目 id 不變（PM、SD 改名後仍同 id），新增的 MM 拿到新 id', r2.s === 200 && r2.j.items[0].id === firstIds[0] && r2.j.items[1].id === firstIds[1] && !firstIds.includes(r2.j.items[2].id) && r2.j.items.length === 3);
   const lg2 = env.logs[env.logs.length - 1];
-  t('4.19 第二次稽核摘要是實際異動：牌價 9000→9500、成本 6500→6000、改名 SD→SD 資深顧問、SD 啟用、移除 ABAP、新增 MM', ['「PM 顧問經理」牌價 9000→9500', '「PM 顧問經理」成本 6500→6000', '「SD 顧問」→「SD 資深顧問」', '「SD 資深顧問」啟用', '移除 「ABAP 顧問」', '新增 「MM 顧問」(牌價7500/成本5200)'].every((s) => String(lg2[3]).includes(s)), lg2[3]);
+  t('4.19 第二次稽核摘要是實際異動：牌價 9000→9500、成本 6500→6000、改名 SD→SD 資深顧問、SD 啟用、移除 ABAP、新增 MM', ['[ERP]「PM 顧問經理」牌價 9000→9500', '[ERP]「PM 顧問經理」成本 6500→6000', '[ERP]「SD 顧問」→「SD 資深顧問」', '[ERP]「SD 資深顧問」啟用', '移除 [ERP]「ABAP 顧問」', '新增 [ERP]「MM 顧問」(牌價7500/成本5200)'].every((s) => String(lg2[3]).includes(s)), lg2[3]);
   const stale = await env.call('admin1', 'PUT', A, {}, putBody([row('Other', 1, 1)], loaded));
   t('4.20 用舊的 updatedAt 儲存 → 409 STALE_PRICEBOOK，附現況（live.items／updatedAt），資料沒被覆蓋', stale.s === 409 && stale.j.code === 'STALE_PRICEBOOK' && stale.j.live.updatedAt === r2.j.updatedAt && stale.j.live.items.length === 3 && live().items.length === 3 && live().updatedAt === r2.j.updatedAt, JSON.stringify(stale).slice(0, 200));
   const stale2 = await env.call('admin1', 'PUT', A, {}, putBody([row('Other', 1, 1)], null));
@@ -258,6 +258,36 @@ async function run() {
   const cur = (await env.call('admin1', 'GET', A)).j;
   await env.call('admin1', 'PUT', A, {}, putBody(cur.items.map((x) => Object.assign({}, x, { price: x.price + 1000, cost: x.cost + 1000, name: x.name + '改' })), cur.updatedAt));
   t('6.5 牌價簿之後改價／改名，先前已存的報價單（含品項單價）完全不變', JSON.stringify(env.data.quotations) === snapSaved);
+  // ═════════════════ 7) BU（ERP／ITS／MDM／CRM）：資料模型 ═════════════════
+  // 舊資料／舊用戶端沒有 bu → 一律 ERP；名稱唯一性與 60 筆上限是每個 BU 各自計算（共 240）；同一個 BU 內順序＝陣列順序。
+  const Z = (bu, name, extra) => Object.assign({ bu, name, price: 1, cost: 1 }, extra || {});
+  t('7.1 BU 常數＝ERP、ITS、MDM、CRM（與 quoteRoutes 的 ALL_BUS 同序）；LIMITS 帶出 BUS 與 MAX_TOTAL=240', eq(PB.BUS, ['ERP', 'ITS', 'MDM', 'CRM']) && PB.DEFAULT_BU === 'ERP' && PB.LIMITS.MAX_TOTAL === 240 && PB.LIMITS.MAX_ITEMS === 60 && eq(PB.LIMITS.BUS, PB.BUS) && Object.isFrozen(PB.BUS));
+  let rb = norm([row('舊資料形狀', 1, 1), Z('ITS', 'B'), Z('MDM', 'C'), Z('CRM', 'D'), Z(undefined, 'E'), Z(null, 'F'), Z('', 'G')]);
+  t('7.2 normalize：沒有 bu／null／空字串 → ERP；合法 bu 保留；輸出每個項目都有 bu；順序＝輸入順序', rb.ok && eq(rb.items.map((x) => x.bu), ['ERP', 'ITS', 'MDM', 'CRM', 'ERP', 'ERP', 'ERP']) && eq(rb.items.map((x) => x.name), ['舊資料形狀', 'B', 'C', 'D', 'E', 'F', 'G']));
+  const badBus = ['XYZ', 'erp', ' ERP', 'ERP ', 5, true, {}, ['ERP'], 'ERP,ITS', 'itS'];
+  t('7.3 bu 不是四個之一（含大小寫不同、前後空白、數字、布林、物件、陣列）→ BAD_PRICEBOOK field=bu 指向該列', badBus.every((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) === 'BAD_PRICEBOOK:bu@1'), badBus.filter((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) !== 'BAD_PRICEBOOK:bu@1').map(String).join('|'));
+  t('7.4 名稱唯一性是同一個 BU 內：ERP 與 ITS 可以同名（也含大小寫／全形／空白變體）；同 BU 內重複才拒絕（訊息含 [BU]）', norm([Z('ERP', 'SD'), Z('ITS', 'sd'), Z('MDM', ' ＳＤ '), Z('CRM', 'SD')]).ok && code(norm([Z('ITS', 'SD'), Z('MDM', 'SD'), Z('ITS', ' sd ')])) === 'BAD_PRICEBOOK:name@2' && /\[ITS\]/.test(norm([Z('ITS', 'SD'), Z('ITS', 'sd')]).error.message) && code(norm([row('SD', 1, 1), Z('ERP', 'sd')])) === 'BAD_PRICEBOOK:name@1');
+  const fill = (bu, n) => Array.from({ length: n }, (_, i) => Z(bu, bu + i));
+  t('7.5 上限：每個 BU 60（共 240）通過；任一 BU 61 → 拒絕（訊息含該 BU）；總數 241 → 拒絕；最後一筆在最後的 BU 也算對', norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60))).ok && !norm(fill('ERP', 61)).ok && /\[ERP\]/.test(norm(fill('ERP', 61)).error.message) && !norm(fill('ERP', 1).concat(fill('ITS', 61))).ok && /\[ITS\]/.test(norm(fill('ERP', 1).concat(fill('ITS', 61))).error.message) && !norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60), [Z('CRM', 'extra')])).ok);
+  t('7.6 既有的逐項驗證在 BU 模型下不變：名稱空白／過長／控制字元、牌價成本範圍、active 型別、重複 id 都仍然拒絕，且訊息帶 [BU]＋BU 內第幾列', code(norm([Z('ITS', 'a'), Z('ITS', '')])) === 'BAD_PRICEBOOK:name@1' && /\[ITS\] 第 2 列/.test(norm([Z('ITS', 'a'), Z('ITS', '')]).error.message) && code(norm([Z('MDM', 'a', { price: -1 })])) === 'BAD_PRICEBOOK:price@0' && code(norm([Z('MDM', 'a', { cost: NaN })])) === 'BAD_PRICEBOOK:cost@0' && code(norm([Z('CRM', 'a', { active: 'x' })])) === 'BAD_PRICEBOOK:active@0' && code(norm([Z('ERP', 'a', { id: 'same' }), Z('CRM', 'b', { id: 'same' })])) === 'BAD_PRICEBOOK:id@1');
+  const exist = [{ id: 'k1', bu: 'ITS', name: 'A', price: 1, cost: 1, active: true }, { id: 'k2', name: 'Legacy', price: 1, cost: 1, active: true }, { id: 'k3', bu: 'CRM', name: 'C', price: 1, cost: 1, active: true }];
+  rb = PB.normalizePricebook([{ id: 'k1', name: 'A', price: 2, cost: 1 }, { id: 'k2', name: 'Legacy', price: 1, cost: 1 }, { id: 'k3', bu: 'MDM', name: 'C', price: 1, cost: 1 }, { id: 'zz', name: 'New', price: 1, cost: 1 }], { genId, existing: exist });
+  t('7.7 舊用戶端（沒帶 bu）存回：id 對得上既有項目 → 沿用它的 bu（ITS 不會被洗成 ERP；舊資料沒 bu＝ERP）；明確帶了 bu 就以送來的為準（k3 CRM→MDM）；新 id → ERP', rb.ok && eq(rb.items.map((x) => x.bu), ['ITS', 'ERP', 'MDM', 'ERP']));
+  t('7.8 沒給 existing 時同樣不丟錯（單元呼叫）；existing 不是陣列／含壞項目也不丟錯', norm([row('x', 1, 1)]).ok && PB.normalizePricebook([row('x', 1, 1)], { genId, existing: 'bad' }).ok && PB.normalizePricebook([{ id: 'k1', name: 'x', price: 1, cost: 1 }], { genId, existing: [null, 5, {}] }).ok);
+  const orderIn = [Z('CRM', 'c1'), Z('ERP', 'e1'), Z('ITS', 'i1'), Z('ERP', 'e2'), Z('CRM', 'c2')];
+  t('7.9 扁平陣列原樣保留輸入順序；各 BU 內的相對順序不變（e1 在 e2 前、c1 在 c2 前）', eq(norm(orderIn).items.map((x) => x.name), ['c1', 'e1', 'i1', 'e2', 'c2']));
+  const legacyStored = [{ id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6000, active: true }, { id: 'b', bu: 'BOGUS', name: 'SD', price: 1, cost: 1, active: false }, null];
+  t('7.10 publicItems／adminItems 對舊資料（沒有 bu）或壞 bu 補 ERP；合法 bu 原樣；GET 一定帶 bu', eq(PB.publicItems(legacyStored).map((x) => x.bu), ['ERP']) && eq(PB.adminItems(legacyStored.slice(0, 2)).map((x) => x.bu), ['ERP', 'ERP']) && PB.adminItems([{ id: 'q', bu: 'MDM', name: 'x', price: 1, cost: 1 }])[0].bu === 'MDM' && eq(PB.publicItems([{ id: 'q', bu: 'CRM', name: 'x', price: 1, cost: 1, active: true }]).map((x) => x.bu), ['CRM']));
+  t('7.11 groupByBu：固定四個 key、BU 內保持順序、缺 bu 的算 ERP、壞資料不丟錯', eq(Object.keys(PB.groupByBu([])), PB.BUS) && eq(PB.groupByBu(orderIn).CRM.map((x) => x.name), ['c1', 'c2']) && eq(PB.groupByBu(legacyStored).ERP.map((x) => x.id), ['a', 'b']) && eq(PB.groupByBu('x').ERP, []));
+  // diff / 稽核摘要
+  const pv = [{ id: 'a', bu: 'ERP', name: 'SD 顧問', price: 7000, cost: 5000, active: true }, { id: 'b', bu: 'ITS', name: 'SD 顧問', price: 6000, cost: 4000, active: true }, { id: 'c', bu: 'ITS', name: 'Net', price: 5000, cost: 3000, active: true }];
+  const nx = [{ id: 'a', bu: 'ERP', name: 'SD 顧問', price: 7500, cost: 5000, active: true }, { id: 'b', bu: 'ITS', name: 'SD 顧問', price: 6000, cost: 4000, active: false }, { id: 'n', bu: 'MDM', name: 'New', price: 1, cost: 1, active: true }];
+  const dd = PB.diffPricebook(pv, nx), sm2 = PB.summarizeDiff(dd);
+  t('7.12 diff 每筆都帶 bu：新增 [MDM]New、移除 [ITS]Net、牌價 [ERP] 7000→7500、[ITS] 停用；摘要字串含「[ERP]「SD 顧問」牌價 7000→7500」', dd.added[0].bu === 'MDM' && dd.removed[0].bu === 'ITS' && dd.changed[0].bu === 'ERP' && dd.toggled[0].bu === 'ITS' && sm2.includes('[ERP]「SD 顧問」牌價 7000→7500') && sm2.includes('[ITS]「SD 顧問」停用') && sm2.includes('新增 [MDM]「New」') && sm2.includes('移除 [ITS]「Net」'), sm2);
+  const ro = [{ id: 'x', bu: 'ITS', name: 'x', price: 1, cost: 1 }, { id: 'y', bu: 'ERP', name: 'y', price: 1, cost: 1 }, { id: 'z', bu: 'ITS', name: 'z', price: 1, cost: 1 }];
+  t('7.13 順序調整以「每個 BU 內」計：只換 ITS 內的 x／z → reorderedBus=[ITS]、摘要「順序調整 [ITS]」；只是不同 BU 的項目在扁平陣列裡互換位置（各 BU 內順序沒變）→ 不算順序調整', eq(PB.diffPricebook(ro, [ro[2], ro[1], ro[0]]).reorderedBus, ['ITS']) && PB.summarizeDiff(PB.diffPricebook(ro, [ro[2], ro[1], ro[0]])) === '順序調整 [ITS]' && PB.diffPricebook(ro, [ro[1], ro[0], ro[2]]).reordered === false && PB.summarizeDiff(PB.diffPricebook(ro, [ro[1], ro[0], ro[2]])) === '無異動');
+  t('7.14 舊資料（沒有 bu）→ 同一份補上 bu:ERP 之後：沒有任何差異（不算換 BU、不算變更）；真的換 BU 才出現 moved 與「換 BU」文字', PB.summarizeDiff(PB.diffPricebook(legacyStored.slice(0, 1), PB.adminItems(legacyStored.slice(0, 1)))) === '無異動' && PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', bu: 'CRM', name: 'x', price: 1, cost: 1 }]).moved.length === 1 && /「x」換 BU \[ERP\]→\[CRM\]/.test(PB.summarizeDiff(PB.diffPricebook([{ id: 'a', name: 'x', price: 1, cost: 1 }], [{ id: 'a', bu: 'CRM', name: 'x', price: 1, cost: 1 }]))));
+
 }
 
 run().then(() => {
