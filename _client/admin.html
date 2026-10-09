@@ -599,6 +599,9 @@
       <div class="admin-nav-item" data-sec="product-catalog">
         <span class="admin-nav-icon">🛒</span> 銷售商品維護
       </div>
+      <div class="admin-nav-item" data-sec="quote-pricebook">
+        <span class="admin-nav-icon">💼</span> 報價牌價簿
+      </div>
       <div class="admin-nav-item" data-sec="mail">
         <span class="admin-nav-icon">✉️</span> 寄信
       </div>
@@ -2053,6 +2056,21 @@
         </div>
       </div>
 
+      <div class="admin-section" id="sec-quote-pricebook">
+        <div class="section-title">💼 報價牌價簿</div>
+        <div class="section-sub">維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
+        <div class="admin-card" style="padding:18px;max-width:980px">
+          <div style="font-size:12.5px;color:#6b7280;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:8px 12px;margin-bottom:14px">委外費用依供應商報價，於填成本時輸入，不在此維護。業務端看得到這裡的牌價與成本（標準費率表）。</div>
+          <div id="pbBanner" style="display:none"></div>
+          <div id="pbPanel"></div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:16px;border-top:1px solid #eee;padding-top:14px;flex-wrap:wrap">
+            <button id="pbSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存變更</button>
+            <button id="pbReloadBtn" style="background:none;border:1px solid #d1d5db;color:#374151;padding:8px 14px;font-size:13px;border-radius:6px;cursor:pointer">重新載入</button>
+            <span id="pbStatus" style="font-size:13px;color:#6b7280"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-version">
         <div class="section-title">🏷️ 版本資訊</div>
         <div class="section-sub">系統版本、技術架構、運行環境與套件詳細資訊</div>
@@ -2562,6 +2580,7 @@
         if (this.dataset.sec === 'push-test') initPushTest();
         if (this.dataset.sec === 'integration') initIntegration();
         if (this.dataset.sec === 'product-catalog') initProductCatalog();
+        if (this.dataset.sec === 'quote-pricebook') initPricebook();
       });
     });
 
@@ -2757,6 +2776,205 @@
         st.textContent = `已儲存 ${new Date().toLocaleTimeString()}${extra}`;
       } catch (e) { st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(e.message)}</span>`; }
       finally { btn.disabled = false; btn.textContent = orig; }
+    }
+
+    // ── 報價牌價簿（Admin）─────────────────────────────────────
+    // data.pricebook：顧問角色 × 人天牌價／人天成本。整份取代儲存＋樂觀並行（送出載入時的 updatedAt，不符→409 STALE_PRICEBOOK）。
+    // 所有使用者可控字串（項目名稱、伺服器訊息、updatedBy）一律 pcEsc 後才進 innerHTML。
+    let _pbInited = false, _pbAttached = false, _pbItems = [], _pbUpdatedAt = null, _pbUpdatedBy = null, _pbSnap = '[]';
+    let _pbSeq = 0, _pbShowErr = false, _pbSrvErr = null, _pbLive = null, _pbSaving = false;
+    const PB_MAX_ITEMS = 60, PB_MAX_NAME = 40, PB_MAX_MONEY = 1e9;   // 與 lib/quotePricebook.js 相同
+    const PB_MONEY_RE =/^\s*\d+(\.\d+)?\s*$/;
+
+    function pbRow(it) {
+      return { k: ++_pbSeq, id: it.id || '', name: it.name || '', price: it.price == null ? '' : String(it.price), cost: it.cost == null ? '' : String(it.cost), active: it.active !== false };
+    }
+    function pbSerialize() {
+      return _pbItems.map(r => { const o = { name: r.name.trim(), price: String(r.price).trim(), cost: String(r.cost).trim(), active: !!r.active }; if (r.id) o.id = r.id; return o; });
+    }
+    function pbIsDirty() { return JSON.stringify(pbSerialize()) !== _pbSnap; }
+    function pbMoney(s) { return PB_MONEY_RE.test(String(s)) ? Number(s) : NaN; }
+
+    // 與伺服器 lib/quotePricebook.js 相同的規則（伺服器仍會再驗一次）
+    function pbValidate() {
+      const errs = {}, seen = new Map();
+      if (_pbItems.length > PB_MAX_ITEMS) errs._all = `項目最多 ${PB_MAX_ITEMS} 筆`;
+      _pbItems.forEach(r => {
+        const e = {}, nm = r.name.trim();
+        if (!nm) e.name = '請輸入項目名稱';
+        else if (nm.length > PB_MAX_NAME) e.name = `不可超過 ${PB_MAX_NAME} 字`;
+        else if (seen.has(nm.toLowerCase())) e.name = '名稱重複（不分大小寫）';
+        else seen.set(nm.toLowerCase(), 1);
+        const p = pbMoney(r.price), c = pbMoney(r.cost);
+        if (!(p >= 0 && p <= PB_MAX_MONEY)) e.price = `請輸入 0～${PB_MAX_MONEY} 的數字`;
+        if (!(c >= 0 && c <= PB_MAX_MONEY)) e.cost = `請輸入 0～${PB_MAX_MONEY} 的數字`;
+        if (e.name || e.price || e.cost) errs[r.k] = e;
+      });
+      return errs;
+    }
+
+    function pbMarginHtml(r) {
+      const p = pbMoney(r.price), c = pbMoney(r.cost);
+      if (!(p > 0) || !(c >= 0)) return '<span style="color:#9ca3af">—</span>';
+      const m = (p - c) / p * 100;
+      return `<span style="color:${m < 0 ? '#c62828' : '#0a8a4a'};font-weight:600">${m.toFixed(1)}%</span>`;
+    }
+
+    function pbRenderBanner() {
+      const b = $('pbBanner');
+      if (!_pbLive) { b.style.display = 'none'; b.innerHTML = ''; return; }
+      b.style.display = '';
+      b.innerHTML = `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#9a3412;display:flex;align-items:center;gap:10px;flex-wrap:wrap">`
+        + `<span>牌價簿已被其他人更新（${pcEsc(_pbLive.updatedBy || '')}，${pcEsc(_pbLive.updatedAt ? new Date(_pbLive.updatedAt).toLocaleString('zh-TW') : '')}），您的變更尚未儲存。</span>`
+        + `<button data-pbact="loadlive" style="border:1px solid #ea580c;background:#fff;color:#c2410c;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:13px">載入最新版本（放棄我的編輯）</button></div>`;
+    }
+
+    function pbRender() {
+      const rows = _pbItems.map((r, i) => {
+        const dim = r.active ? '' : 'opacity:.55;';
+        const inp = 'padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:14px;box-sizing:border-box';
+        return `<tr data-k="${r.k}" style="border-top:1px solid #f3f4f6;${dim}">`
+          + `<td style="text-align:center;padding:6px 4px"><input type="checkbox" data-pbf="active" data-k="${r.k}" ${r.active ? 'checked' : ''} title="啟用（停用後業務端不再列出，已存報價單不受影響）" aria-label="啟用"></td>`
+          + `<td style="padding:6px 4px;min-width:200px"><input data-pbf="name" data-k="${r.k}" value="${pcEsc(r.name)}" placeholder="例如：PM 顧問經理" maxlength="${PB_MAX_NAME}" aria-label="項目名稱" style="width:100%;${inp}"><div class="pb-err" data-k="${r.k}" data-f="name" style="color:#c62828;font-size:12px;min-height:0"></div></td>`
+          + `<td style="padding:6px 8px;color:#6b7280;white-space:nowrap">人天</td>`
+          + `<td style="padding:6px 4px;text-align:right"><input data-pbf="price" data-k="${r.k}" value="${pcEsc(r.price)}" inputmode="decimal" aria-label="牌價" style="width:110px;text-align:right;${inp}"><div class="pb-err" data-k="${r.k}" data-f="price" style="color:#c62828;font-size:12px"></div></td>`
+          + `<td style="padding:6px 4px;text-align:right"><input data-pbf="cost" data-k="${r.k}" value="${pcEsc(r.cost)}" inputmode="decimal" aria-label="成本" style="width:110px;text-align:right;${inp}"><div class="pb-err" data-k="${r.k}" data-f="cost" style="color:#c62828;font-size:12px"></div></td>`
+          + `<td data-pbmargin="${r.k}" style="padding:6px 8px;text-align:right;white-space:nowrap">${pbMarginHtml(r)}</td>`
+          + `<td style="padding:6px 4px;white-space:nowrap"><button data-pbact="up" data-k="${r.k}" ${i === 0 ? 'disabled' : ''} title="上移" aria-label="上移" style="border:1px solid #e5e7eb;background:none;border-radius:6px;padding:2px 8px;cursor:pointer">↑</button> `
+          + `<button data-pbact="down" data-k="${r.k}" ${i === _pbItems.length - 1 ? 'disabled' : ''} title="下移" aria-label="下移" style="border:1px solid #e5e7eb;background:none;border-radius:6px;padding:2px 8px;cursor:pointer">↓</button> `
+          + `<button data-pbact="del" data-k="${r.k}" title="刪除" aria-label="刪除" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px">🗑</button></td></tr>`;
+      }).join('');
+      const empty = _pbItems.length ? '' : '<div style="text-align:center;color:#9ca3af;font-size:14px;border:1px dashed #d1d5db;border-radius:10px;padding:22px;margin-bottom:12px">尚無牌價項目，點下方「新增項目」開始建立。</div>';
+      $('pbPanel').innerHTML = empty
+        + (_pbItems.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;color:#6b7280;font-size:12.5px"><th style="padding:4px;text-align:center;width:44px">啟用</th><th style="padding:4px">項目名稱</th><th style="padding:4px 8px">單位</th><th style="padding:4px;text-align:right">牌價 / 人天</th><th style="padding:4px;text-align:right">成本 / 人天</th><th style="padding:4px 8px;text-align:right">毛利率</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+        + `<div id="pbAllErr" style="color:#c62828;font-size:12.5px;margin:6px 0"></div>`
+        + `<button data-pbact="add" style="width:100%;margin-top:8px;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:9px;font-size:13px;color:#6b7280;cursor:pointer">＋ 新增項目（${_pbItems.length}/${PB_MAX_ITEMS}）</button>`;
+      pbRenderBanner();
+      pbPaintErrors();
+      pbRefreshState();
+    }
+
+    // 只更新錯誤文字與紅框（不重繪，避免輸入中失去焦點）
+    function pbPaintErrors() {
+      const errs = _pbShowErr ? pbValidate() : {};
+      const srv = _pbSrvErr && _pbItems[_pbSrvErr.index] ? { k: _pbItems[_pbSrvErr.index].k, f: _pbSrvErr.field, m: _pbSrvErr.message } : null;
+      document.querySelectorAll('#pbPanel .pb-err').forEach(el => {
+        const k = el.dataset.k, f = el.dataset.f;
+        let m = (errs[k] && errs[k][f]) || '';
+        if (!m && srv && String(srv.k) === k && srv.f === f) m = srv.m;
+        el.textContent = m;
+        const input = el.previousElementSibling;
+        if (input) input.style.borderColor = m ? '#c62828' : '#e5e7eb';
+      });
+      const all = $('pbAllErr'); if (all) all.textContent = (errs._all) || '';
+    }
+
+    function pbRefreshState() {
+      const dirty = pbIsDirty();
+      $('pbSaveBtn').disabled = !dirty || _pbSaving;
+      $('pbSaveBtn').style.opacity = (!dirty || _pbSaving) ? '.5' : '1';
+      $('pbSaveBtn').style.cursor = (!dirty || _pbSaving) ? 'default' : 'pointer';
+      const st = $('pbStatus');
+      if (dirty) st.textContent = '有未儲存的變更';
+      else if (_pbUpdatedAt) st.textContent = `最後儲存：${new Date(_pbUpdatedAt).toLocaleString('zh-TW')}${_pbUpdatedBy ? '（' + _pbUpdatedBy + '）' : ''}`;
+      else st.textContent = '';
+      st.style.color = dirty ? '#b45309' : '#6b7280';
+    }
+
+    function pbApply(d) {
+      _pbItems = (d.items || []).map(pbRow);
+      _pbUpdatedAt = d.updatedAt || null; _pbUpdatedBy = d.updatedBy || null;
+      _pbSnap = JSON.stringify(pbSerialize());
+      _pbLive = null; _pbSrvErr = null; _pbShowErr = false;
+      pbRender();
+    }
+
+    async function initPricebook() {
+      if (_pbInited) return;
+      _pbInited = true;
+      pbAttachOnce();
+      $('pbStatus').textContent = '載入中…';
+      try {
+        const r = await adminFetch(`${API}/admin/quote-pricebook`);
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
+        pbApply(d);
+      } catch (e) {
+        _pbInited = false;   // 讓下次點進來可重試
+        if (e.message !== 'Session expired') $('pbStatus').innerHTML = `<span style="color:#c62828">載入失敗：${pcEsc(e.message)}（按「重新載入」重試）</span>`;
+      }
+    }
+
+    function pbAttachOnce() {
+      if (_pbAttached) return; _pbAttached = true;
+      const panel = $('pbPanel');
+      panel.addEventListener('click', pbOnClick);
+      panel.addEventListener('input', pbOnInput);
+      panel.addEventListener('change', pbOnInput);
+      $('pbBanner').addEventListener('click', pbOnClick);
+      $('pbSaveBtn').addEventListener('click', pbSave);
+      $('pbReloadBtn').addEventListener('click', async () => {
+        if (pbIsDirty() && !confirm('目前有未儲存的變更，重新載入會放棄這些變更。確定？')) return;
+        _pbInited = false; await initPricebook();
+      });
+    }
+
+    function pbOnClick(e) {
+      const b = e.target.closest('[data-pbact]'); if (!b || b.disabled) return;
+      const act = b.dataset.pbact, k = +b.dataset.k, i = _pbItems.findIndex(r => r.k === k);
+      _pbSrvErr = null;
+      if (act === 'add') {
+        if (_pbItems.length >= PB_MAX_ITEMS) { $('pbStatus').textContent = `項目最多 ${PB_MAX_ITEMS} 筆`; return; }
+        const r = pbRow({ name: '', price: '', cost: '', active: true }); _pbItems.push(r); pbRender();
+        const el = document.querySelector(`#pbPanel [data-pbf="name"][data-k="${r.k}"]`); if (el) el.focus();
+      } else if (act === 'del' && i >= 0) {
+        const nm = _pbItems[i].name.trim();
+        if (nm && !confirm(`刪除「${nm}」？\n按「儲存變更」後才會生效；已存的報價單不受影響。`)) return;
+        _pbItems.splice(i, 1); pbRender();
+      } else if ((act === 'up' && i > 0) || (act === 'down' && i >= 0 && i < _pbItems.length - 1)) {
+        const j = act === 'up' ? i - 1 : i + 1;
+        const t = _pbItems[i]; _pbItems[i] = _pbItems[j]; _pbItems[j] = t; pbRender();
+        const btn = document.querySelector(`#pbPanel [data-pbact="${act}"][data-k="${k}"]`) || document.querySelector(`#pbPanel [data-pbact="${act === 'up' ? 'down' : 'up'}"][data-k="${k}"]`);
+        if (btn) btn.focus();
+      } else if (act === 'loadlive' && _pbLive) {
+        pbApply(_pbLive);
+      }
+    }
+
+    function pbOnInput(e) {
+      const el = e.target, f = el.dataset && el.dataset.pbf; if (!f) return;
+      const r = _pbItems.find(x => x.k === +el.dataset.k); if (!r) return;
+      _pbSrvErr = null;
+      if (f === 'active') { if (e.type !== 'change') return; r.active = el.checked; const tr = el.closest('tr'); if (tr) tr.style.opacity = r.active ? '' : '.55'; }
+      else r[f] = el.value;
+      const m = document.querySelector(`#pbPanel [data-pbmargin="${r.k}"]`); if (m) m.innerHTML = pbMarginHtml(r);
+      pbPaintErrors(); pbRefreshState();
+    }
+
+    async function pbSave() {
+      if (_pbSaving || !pbIsDirty()) return;
+      const st = $('pbStatus');
+      _pbShowErr = true; _pbSrvErr = null;
+      const errs = pbValidate();
+      pbPaintErrors();
+      if (Object.keys(errs).length) { st.innerHTML = '<span style="color:#c62828">請先修正標示的欄位</span>'; const first = document.querySelector('#pbPanel .pb-err:not(:empty)'); if (first && first.previousElementSibling) first.previousElementSibling.focus(); return; }
+      _pbSaving = true; pbRefreshState(); st.textContent = '儲存中…';
+      try {
+        const r = await adminFetch(`${API}/admin/quote-pricebook`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: pbSerialize(), updatedAt: _pbUpdatedAt }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 409 && d.code === 'STALE_PRICEBOOK') { _pbLive = d.live || null; _pbSaving = false; pbRenderBanner(); pbRefreshState(); st.innerHTML = '<span style="color:#c62828">儲存失敗：牌價簿已被其他人更新</span>'; return; }
+        if (!r.ok || d.error) {
+          if (typeof d.index === 'number') _pbSrvErr = { index: d.index, field: d.field, message: d.error || '' };
+          _pbSaving = false; pbPaintErrors(); pbRefreshState();
+          st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return;
+        }
+        _pbSaving = false;
+        pbApply(d);
+        st.textContent = `已儲存 ${new Date().toLocaleTimeString()}`;
+      } catch (e) {
+        _pbSaving = false; pbRefreshState();
+        st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(e.message)}</span>`;
+      }
     }
 
     // ── 系統整合：連線設定 ──────────────────────────────────
@@ -3725,6 +3943,7 @@
       SET_TARGET: '設定目標',
       IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
       QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
+      SAVE_QUOTE_PRICEBOOK: '儲存牌價簿',
     };
 
     function parseUA(ua) {
