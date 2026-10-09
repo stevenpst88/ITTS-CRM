@@ -23,6 +23,17 @@ CRM 核心：`contacts / companies / opportunities / visits / contracts / receiv
 - commit 與 push 各自需要使用者明確要求；說 commit 就只 commit，說 push 才 push（push main = 正式部署）。
 - 高風險 / 需反覆試錯的改動先在 **Demo 環境**驗證（repo `stevenpst88/ITTS-CRM-Demo` → `itts-crm-demo.vercel.app`，獨立 Supabase，壞了不影響正式）。同步方式（在 Demo repo 本地副本、用 Bash 工具執行；含 push，需使用者明說要同步 Demo）：`git fetch upstream; git merge upstream/main; git push`。
 
+## 開發流程（分支／PR／多個 session——2026-10 檢討後定案，所有 session 都要遵守）
+
+- **一個主題一條分支、一份獨立工作資料夾**：`git worktree add <資料夾> -b feat/<主題> main`。**絕不讓兩個 session 共用同一份工作目錄**（曾因此被迫手動三方合併、逐段拆共用檔案的 commit）。第二個 session／agent 要動同樣的檔案，也開自己的 worktree。
+- **走 PR，不直接 commit 到 main**：做完開 PR（`gh pr create`，附截圖與驗證結果），由使用者看 diff、核可後合併。一個 PR 一個主題，不要事後再拆。push main 等於正式部署，仍須使用者明確說 push（上方紅線不變）。
+- **高風險改動先進 Demo 驗證**（見上方紅線）；PR 預覽部署若連到正式資料庫，不可拿來寫入測試資料。
+- **測試只用隔離沙盒**：另開埠（不用 3000）、獨立資料檔複本、臨時 `_s_*` 測試帳號，測完還原；不碰真實 `data.json`／`auth.json`／`audit.log.json`，也不在另一個 session 正在用 3000 埠時啟動它。
+- **commit 衛生**：永遠明確指定檔案 add，**禁止 `git add -A`／`git add .`**（工作區常有 pptx、備份 JSON、`docs/`、`_preview_server.js` 等未追蹤檔，repo 是公開的）；新增的檔案漏 add 會讓部署後整站 `MODULE_NOT_FOUND`，commit 前逐一核對。公開 repo 不得出現帳密、客戶名、人名、本機路徑；腳本一律讀環境變數。
+- **驗證節奏**：調整畫面階段「小改自己做、只跑相關檢查、給截圖」；完整的獨立驗證（全新視角、自己重跑）只在準備 commit／PR 前做一次。
+- **多 agent 紀律**：同一件事不要同時派兩個 agent；追加需求前先確認舊的 agent 真的停了（傳訊息會喚醒它，反而造成重複實作）；進度與決定寫進檔案（狀態檔／報告），被用量上限切斷後從檔案接續，不從頭重做。
+- **分支 session（fork）**：只是同專案的另一個對話視窗，不是 Git 分支；沒有「合併」，做完就 commit 進自己的分支／PR 後關閉；後續工作回主視窗做。
+
 ## 已踩坑的事實（改相關功能前先讀）
 
 - **Vercel/Supabase 快取**（2026-07 驗證）：`db/postgres.js` 的 `REFRESH_TTL = 0`——每次 API 請求先做輕量 stale check（只抓 `updated_at`），DB 被其他實例改過就自動完整重抓。直接用 SQL 改 DB 只要 `updated_at` 有更新就會被抓到；僅當繞過寫入路徑、`updated_at` 未變時，才需要空 commit 強制重部署。
