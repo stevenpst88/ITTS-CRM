@@ -2752,6 +2752,7 @@
             <tbody id="quoteItemsBody"></tbody>
           </table>
           <button class="btn btn-secondary btn-sm" id="addQuoteItemBtn" style="margin-top:8px">&#43; 新增項目</button>
+          <button class="btn btn-secondary btn-sm" id="addQuotePbBtn" style="margin-top:8px" title="從管理員維護的牌價簿勾選顧問角色（人天牌價），一次加入多個品項；加入後是複製，之後牌價簿調整不影響這張單">&#43; 從牌價簿選取</button>
           <button class="btn btn-secondary btn-sm" id="addQuoteGroupBtn" style="margin-top:8px" title="加一列分組標題（例：Part A：系統建置），用來把報價分成幾個部分">&#43; 新增分組</button>
           <button class="btn btn-secondary btn-sm" id="addQuoteSubtotalBtn" style="margin-top:8px" title="加一列小計：自動加總「上一個分組標題或小計列」之後的品項（只顯示，不會重複計入總價）">&#43; 小計</button>
           <div id="qItemsHint" class="q-hint" style="display:none"></div>
@@ -3082,6 +3083,7 @@
   <script src="deep-link.js"></script>
   <script src="app.js"></script>
   <script src="tw-workdays.js"></script>
+  <script src="quote-pricebook.js"></script>
   <script src="quote-costlines.js"></script>
   <script src="quote.js"></script>
   <script src="quote-steps.js"></script>

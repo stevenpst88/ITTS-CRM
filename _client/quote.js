@@ -252,8 +252,12 @@ async function loadQuoteConfig() {
     const r = await fetch(`${API}/quote-approval/config`);
     if (r.ok) _qCfg = await r.json();
   } catch (e) { /* 失敗就沿用舊設定；沒有設定時表單仍可開啟，只是商品清單為空 */ }
+  // 報價牌價簿：預先載入（成本明細編輯器的建議清單／預設成本用；失敗不影響任何功能，QPB.load 不會丟錯）
+  if (typeof QPB === 'object' && QPB) QPB.load();
   return _qCfg;
 }
+/** 牌價簿目前快取的項目（沒載入成功＝空陣列＝成本明細編輯器行為與沒有牌價簿時完全相同） */
+function _qPbList() { return (typeof QPB === 'object' && QPB && QPB.peek()) || []; }
 function quoteCfg() { return _qCfg || {}; }
 
 function _qSetInboxBadge(n) {
@@ -1108,16 +1112,27 @@ function _qPnlMountLines(mode, q, hasLines) {
   const classCodes = _qClClassCodes();
   // 已存在、還沒有成本明細的舊式單：種子不含印花稅（核取方塊未勾選）——沒動編輯器就存檔不會帶成本明細，伺服器的成本不含印花稅，
   // 畫面毛利才會和存檔後一致；使用者勾選印花稅（動了編輯器）才轉成新式。新單照預設種入印花稅。
-  const lines = hasLines ? q.costLines : QCL.seedFromItems(items, { classCodes: classCodes, includeStamp: !q });
+  // 牌價簿預設成本只帶進「新單」的種子（pricebookSeed:!q）：已存在的舊式單種子要和伺服器算的成本一致，不帶
+  const pbList = _qPbList();
+  const lines = hasLines ? q.costLines : QCL.seedFromItems(items, { classCodes: classCodes, includeStamp: !q, pricebook: pbList, pricebookSeed: false });
   _qCl.touched = false;
   _qCl.opts = {
     mode: 'edit', lines: lines, items: items, revenue: revenue, classCodes: classCodes, consultantNames: _qConsultantNames(),
+    pricebook: pbList, pricebookSeed: false,   // 項目欄建議清單＋改完品名自動帶入牌價簿成本（不覆蓋已填的值）
     confirm: function (msg) {
       return qDialog({ title: '請確認', message: msg, buttons: [{ text: '確定', value: true, cls: 'btn-primary' }, { text: '取消', value: false, cls: 'btn-secondary' }] });
     },
     onChange: function () { _qCl.touched = true; updatePnlNumbers(); },
   };
   _qCl.inst = QCL.mount(_qCl.host, _qCl.opts);
+  // 牌價簿若在掛載當下還沒載入完成：載入後補設（只更新建議清單與之後的自動帶入，不動已填的列）
+  if (typeof QPB === 'object' && QPB && !pbList.length) {
+    QPB.load().then(function (r) {
+      if (!r || !r.ok) return;
+      if (_qCl.opts) _qCl.opts.pricebook = r.items;
+      if (_qCl.inst && !_qCl.inst.dead && typeof _qCl.inst.setPricebook === 'function') _qCl.inst.setPricebook(r.items);
+    });
+  }
 }
 
 /** 毛利摘要四張卡（id 供 updatePnlNumbers 填值）；withOs（新式成本）另加第五張「委外佔比」卡（cost-sync §7.2，與四張卡同一排） */
@@ -1491,6 +1506,23 @@ async function openQuoteModal(idOrNull) {
       };
       $('addQuoteItemBtn').addEventListener('click', function() {
         addRow(function () { return { desc: '', unit: '式', qty: 1, unitPrice: 0 }; });
+      });
+      // 從牌價簿選取：勾選顧問角色＋人天數 → 以一般品項（人天、顧問分類）接在後面；只有一列未動過的預設空白列時取代它。選取是複製，與牌價簿脫鉤
+      $('addQuotePbBtn').addEventListener('click', function() {
+        if (typeof QPB !== 'object' || !QPB) { showToast('牌價簿功能沒有載入成功，請重新整理頁面（Ctrl+F5）後再試'); return; }
+        QPB.openPicker({
+          maxRows: QUOTE_MAX_ROWS,
+          getCurrent: readQuoteItems,
+          onApply: function (items, info) {
+            renderQuoteItems(items);
+            updateQuoteTotals();   // 內含 QSteps.refresh()（逐步填寫重算各步驟是否完成）；下面再明確呼叫一次，不依賴它的內部細節
+            if (typeof QSteps === 'object' && QSteps && typeof QSteps.refresh === 'function') QSteps.refresh();
+            showToast('已從牌價簿加入 ' + info.added + ' 個項目');
+            var rows = $('quoteItemsBody').querySelectorAll('tr');
+            var last = rows.length ? rows[rows.length - 1].querySelector('.qi-desc') : null;
+            if (last && last.scrollIntoView) last.scrollIntoView({ block: 'nearest' });
+          },
+        });
       });
       // 分組標題：預設「Part A」「Part B」…（依已有的標題數；可自行改名）
       $('addQuoteGroupBtn').addEventListener('click', function() {

@@ -14,7 +14,7 @@
 ## 主資料 blob 的命名空間（`app_data.content` / `data.json`）
 
 CRM 核心：`contacts / companies / opportunities / visits / contracts / receivables / callins / keyAccounts`
-獨立命名空間（勿與核心混寫）：`yoyRevenue`（YoY 報表）、`integrations / integrationMappings / integrationLinks / integrationLogs`（SAP 整合）、`productCatalog`（商品目錄）、`_auth`（雲端帳號）
+獨立命名空間（勿與核心混寫）：`yoyRevenue`（YoY 報表）、`integrations / integrationMappings / integrationLinks / integrationLogs`（SAP 整合）、`productCatalog`（商品目錄）、`pricebook`（報價牌價簿：顧問人天牌價／成本）、`_auth`（雲端帳號）
 
 ## 高風險紅線
 

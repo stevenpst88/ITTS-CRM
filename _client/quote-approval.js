@@ -1570,15 +1570,23 @@ function renderCostFill(s) {
   if (useEditor) {
     let lines = can && Array.isArray(s.draftLines) ? s.draftLines : (hasLines ? q.costLines : null);
     if (!can) s.draftLines = null;
-    if (!lines) lines = QCL.seedFromItems(sync ? cfEditorItems(s) : q.items, { classCodes: costClassCodes(q), link: sync });   // 舊式單：舊 items[].cost 帶入成為成本單價
+    // 牌價簿（報價牌價簿）：項目欄建議清單＋改完品名自動帶入人天成本；種子列（沒有已存成本明細時才會產生）只在新式連動畫面帶入成本，已存的列完全不動
+    const pbList = (typeof QPB === 'object' && QPB && QPB.peek()) || [];
+    if (!lines) lines = QCL.seedFromItems(sync ? cfEditorItems(s) : q.items, { classCodes: costClassCodes(q), link: sync, pricebook: pbList, pricebookSeed: false });   // 舊式單：舊 items[].cost 帶入成為成本單價
     s.ed = QCL.mount(s.ov.querySelector('#qapCfMount'), {
       lines, items: sync ? cfEditorItems(s) : q.items, mode: can ? (sync ? 'consultant' : 'edit') : 'view', classCodes: costClassCodes(q),
       consultantNames: cfConsultantNames(s),
+      pricebook: pbList, pricebookSeed: false,
       confirm: (msg) => qapConfirm({ title: '請確認', message: msg, okText: '確定' }),
       onChange: (ls, t) => { s.dirty = true; if (sync) cfRecalc(s, ls); else showCostTotal(s, t); },
     });
     if (sync) cfRecalc(s);
     else showCostTotal(s, QCL.totals(lines));
+    // 牌價簿掛載當下還沒載入完成（或快取已過期）→ 載入後補設到這個編輯器（只更新建議清單與之後的自動帶入）
+    if (can && typeof QPB === 'object' && QPB && s.ed && typeof s.ed.setPricebook === 'function') {
+      const ed = s.ed;
+      QPB.load().then((r) => { if (r && r.ok && s.ed === ed) ed.setPricebook(r.items); });
+    }
     // 逐步填寫：只有「可編輯＋看得到價格的完整連動畫面」才分步（舊格式、唯讀、沒有編輯器維持原樣）；測試開關 window.__qNoSteps 見 quote-coststeps.js
     if (sync && can && typeof CostSteps !== 'undefined' && CostSteps.allowed(s)) CostSteps.attach(s, CF_STEPS_API);
   } else {
