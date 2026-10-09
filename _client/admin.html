@@ -459,6 +459,80 @@
     body.dark .mail-kv > .k { background: #21262d; color: #8b949e; }
     body.dark .mail-import-text { background: #0d1117; border-color: #30363d; }
     body.dark .mail-notice-row { background: #3d2b0a; color: #f0b866; border-bottom-color: #6b4a14; }
+    /* ── 帳號管理：搜尋／篩選工具列、BU 分頁、角色分組、卡片檢視（程式在 admin-users-view.js ＋ 下方 uv* 函式；選擇器都限定在 #sec-users，不影響其他區段）── */
+    #sec-users .uv-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; border-bottom: 1px solid #f0f2f5; }
+    #sec-users .uv-input, #sec-users .uv-select { padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: inherit; background: #fff; color: inherit; max-width: 100%; }
+    #sec-users .uv-input { flex: 1 1 200px; min-width: 150px; }
+    #sec-users .uv-clear { background: none; border: none; color: #1a73e8; font-size: 13px; cursor: pointer; text-decoration: underline; padding: 4px 2px; font-family: inherit; }
+    #sec-users .uv-clear[hidden] { display: none; }
+    #sec-users .uv-seg { display: inline-flex; margin-left: auto; border: 1px solid #d0d5dd; border-radius: 8px; overflow: hidden; }
+    #sec-users .uv-seg button { border: none; background: #fff; padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: inherit; color: #555; font-weight: 600; }
+    #sec-users .uv-seg button + button { border-left: 1px solid #d0d5dd; }
+    #sec-users .uv-seg button[aria-pressed="true"] { background: #1a73e8; color: #fff; }
+    #sec-users .uv-summary { padding: 8px 16px 0; font-size: 12px; color: #6b7280; min-height: 20px; }
+    #sec-users .uv-tabs { display: flex; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid #e5e7eb; padding: 0 8px; margin-top: 4px; }
+    #sec-users .uv-tabs [role="tab"] { flex: 0 0 auto; border: none; background: none; cursor: pointer; padding: 9px 16px; font-size: 14px; white-space: nowrap; border-bottom: 2px solid transparent; color: #6b7280; font-weight: 600; font-family: inherit; }
+    #sec-users .uv-tabs [role="tab"][aria-selected="true"] { color: #1a73e8; font-weight: 700; border-bottom-color: #1a73e8; }
+    #sec-users .uv-count { display: inline-block; min-width: 20px; text-align: center; font-size: 12px; border-radius: 10px; padding: 0 6px; background: #f1f3f4; color: #4b5563; }
+    #sec-users .uv-tabs [aria-selected="true"] .uv-count { background: #e8f0fe; color: #1558b0; }
+    #sec-users .uv-tablewrap { overflow-x: auto; }
+    #sec-users .uv-tablewrap .admin-table td:nth-child(5), #sec-users .uv-tablewrap .admin-table td:nth-child(7), #sec-users .uv-tablewrap .admin-table td:nth-child(8), #sec-users .uv-tablewrap .admin-table td:nth-child(11) { white-space: nowrap; }   /* 只有角色／狀態／存取模式／操作四欄不換行（否則徽章會被擠成直排）；其餘欄位照舊可換行，表格最小寬度與改版前相近 */
+    #sec-users .admin-table tr.uv-grouprow td { padding: 0; background: #f8f9fa; border-bottom: 1px solid #e9ecef; }
+    #sec-users .admin-table tr.uv-grouprow:hover td { background: #f1f3f5; }
+    #sec-users .uv-gbtn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 14px; border: none; background: none; text-align: left; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700; color: #374151; }
+    #sec-users .admin-table tr.uv-grouprow .uv-gbtn { width: auto; position: sticky; left: 0; padding-right: 28px; }   /* 橫向捲動時標題固定在可視範圍左側（整列很寬） */
+    #sec-users .uv-caret { display: inline-block; transition: transform .15s; font-size: 11px; }
+    #sec-users .uv-gbtn[aria-expanded="false"] .uv-caret { transform: rotate(-90deg); }
+    #sec-users .uv-gcount { font-size: 12px; font-weight: 600; color: #4b5563; background: #e5e7eb; border-radius: 10px; padding: 0 8px; }
+    #sec-users .uv-cards { padding: 10px 16px 16px; }
+    #sec-users .uv-cgroup { margin-bottom: 10px; }
+    #sec-users .uv-cgroup > h3 { margin: 0; font-size: 13px; }
+    #sec-users .uv-cgroup .uv-gbtn { background: #f8f9fa; border-radius: 8px; }
+    #sec-users .uv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; padding: 10px 0 4px; }
+    #sec-users .uv-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 14px; background: #fff; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+    #sec-users .uv-card.uv-off { opacity: .62; }
+    #sec-users .uv-chead { display: flex; gap: 10px; align-items: center; min-width: 0; }
+    #sec-users .uv-avatar { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px; }
+    #sec-users .uv-cname { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+    #sec-users .uv-cuser { font-size: 12px; color: #6b7280; font-family: Consolas, 'Courier New', monospace; overflow-wrap: anywhere; }
+    #sec-users .uv-cmeta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    #sec-users .uv-cmail { font-size: 12px; }
+    #sec-users .uv-ctoggles { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #555; }
+    #sec-users .uv-tg { display: inline-flex; align-items: center; gap: 6px; }
+    #sec-users .uv-cactions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+    #sec-users .uv-empty { text-align: center; color: #6b7280; font-size: 14px; padding: 36px 16px; line-height: 1.8; }
+    #sec-users .uv-empty[hidden], #sec-users .uv-cards[hidden] { display: none; }
+    #sec-users .uv-empty button { background: none; border: none; color: #1a73e8; cursor: pointer; text-decoration: underline; font: inherit; padding: 0 4px; }
+    #sec-users .uv-tabs [role="tab"]:focus-visible, #sec-users .uv-gbtn:focus-visible, #sec-users .uv-seg button:focus-visible, #sec-users .uv-clear:focus-visible, #sec-users .uv-empty button:focus-visible { outline: 2px solid #1a73e8; outline-offset: -2px; }
+    #sec-users .toggle input:focus-visible + .toggle-slider { outline: 2px solid #1a73e8; outline-offset: 2px; }
+    body.dark #sec-users .uv-toolbar { border-bottom-color: #30363d; }
+    body.dark #sec-users .uv-input, body.dark #sec-users .uv-select { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
+    body.dark #sec-users .uv-clear, body.dark #sec-users .uv-empty button { color: #58a6ff; }
+    body.dark #sec-users .uv-seg { border-color: #30363d; }
+    body.dark #sec-users .uv-seg button { background: #161b22; color: #c9d1d9; }
+    body.dark #sec-users .uv-seg button + button { border-left-color: #30363d; }
+    body.dark #sec-users .uv-seg button[aria-pressed="true"] { background: #1a73e8; color: #fff; }
+    body.dark #sec-users .uv-summary { color: #8b949e; }
+    body.dark #sec-users .uv-tabs { border-bottom-color: #30363d; }
+    body.dark #sec-users .uv-tabs [role="tab"] { color: #9aa4b0; }
+    body.dark #sec-users .uv-tabs [role="tab"][aria-selected="true"] { color: #58a6ff; border-bottom-color: #58a6ff; }
+    body.dark #sec-users .uv-count { background: #21262d; color: #9aa4b0; }
+    body.dark #sec-users .uv-tabs [aria-selected="true"] .uv-count { background: #14283f; color: #8ecfff; }
+    body.dark #sec-users .admin-table tr.uv-grouprow td { background: #21262d; border-bottom-color: #30363d; }
+    body.dark #sec-users .admin-table tr.uv-grouprow:hover td { background: #2a313a; }
+    body.dark #sec-users .uv-gbtn { color: #c9d1d9; }
+    body.dark #sec-users .uv-gcount { background: #30363d; color: #c9d1d9; }
+    body.dark #sec-users .uv-cgroup .uv-gbtn { background: #21262d; }
+    body.dark #sec-users .uv-card { background: #161b22; border-color: #30363d; }
+    body.dark #sec-users .uv-cuser { color: #8b949e; }
+    body.dark #sec-users .uv-ctoggles { color: #c9d1d9; }
+    body.dark #sec-users .uv-empty { color: #8b949e; }
+    @media (max-width: 768px) {
+      #sec-users .uv-seg { margin-left: 0; }
+      #sec-users .uv-input { flex-basis: 100%; }
+      #sec-users .uv-toolbar { padding: 10px 12px; }
+      #sec-users .uv-cards { padding: 8px 12px 14px; }
+    }
     /* ── 窄螢幕（手機）：後台原本沒有任何 RWD，這段只在 ≤768px 生效，桌面版完全不受影響 ── */
     @media (max-width: 768px) {
       .admin-topbar { padding: 6px 12px; height: auto; min-height: 52px; flex-wrap: wrap; gap: 6px; }
@@ -664,7 +738,28 @@
             </div>
           </div>
           <div class="mail-notice-row" id="userEmailNotice" hidden></div>
-          <div class="admin-card-body" style="padding:0">
+          <div class="uv-toolbar" id="uvToolbar" role="search" aria-label="篩選帳號">
+            <input type="search" id="uvSearch" class="uv-input" placeholder="搜尋 帳號／姓名／暱稱" aria-label="搜尋帳號、顯示名稱或暱稱" maxlength="100" autocomplete="off" spellcheck="false">
+            <select id="uvRoleFilter" class="uv-select" aria-label="依角色篩選"><option value="">全部角色</option></select>
+            <select id="uvStatusFilter" class="uv-select" aria-label="依狀態篩選">
+              <option value="">全部狀態</option>
+              <option value="active">啟用</option>
+              <option value="inactive">停用</option>
+            </select>
+            <select id="uvSort" class="uv-select" aria-label="排序方式">
+              <option value="role">依角色排序</option>
+              <option value="name">依名稱排序</option>
+            </select>
+            <button type="button" class="uv-clear" id="uvClear" hidden>清除篩選</button>
+            <div class="uv-seg" role="group" aria-label="檢視方式">
+              <button type="button" id="uvViewTable" data-uvview="table" aria-pressed="true">表格</button>
+              <button type="button" id="uvViewCard" data-uvview="card" aria-pressed="false">卡片</button>
+            </div>
+          </div>
+          <div class="uv-summary" id="uvSummary" role="status" aria-live="polite"></div>
+          <div id="uvTabs" class="uv-tabs" role="tablist" aria-label="事業單位（BU）"></div>
+          <div class="admin-card-body uv-body" id="uvPanel" role="tabpanel" aria-labelledby="uvTab-ERP" style="padding:0">
+            <div class="uv-tablewrap" id="uvTableWrap">
             <table class="admin-table">
               <thead>
                 <tr>
@@ -683,6 +778,9 @@
               </thead>
               <tbody id="userTableBody"></tbody>
             </table>
+            </div>
+            <div class="uv-cards" id="uvCards" hidden></div>
+            <div class="uv-empty" id="uvEmpty" hidden></div>
           </div>
         </div>
       </div>
@@ -2577,6 +2675,7 @@
 
   <div class="toast" id="toast"></div>
 
+  <script src="admin-users-view.js"></script>
   <script>
     const API = '/api';
     let allUsers = [];
@@ -3961,61 +4060,266 @@
         <div class="stat-card"><div class="stat-label">可下載名單</div><div class="stat-value" style="color:#e65100">${canDL}</div></div>`;
     }
 
-    function renderUserTable() {
-      const ROLE_LABEL = {admin:'系統管理員',executive:'董事長/總經理',manager1:'一級主管',manager2:'二級主管',accounting_manager:'會計主管',finance_manager:'財務主管',secretary:'秘書',user:'一般業務',marketing:'行銷人員',tecopm:'集團PM（唯讀）',groupsales:'集團業務',consult_manager_south:'南區顧問主管',consult_manager_north:'北區顧問主管'};
-      const BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
-      // 同名偵測：以「實際顯示用名稱」（暱稱 > 顯示名稱）判斷，只算啟用中的帳號；有同名就在該列標 ⚠，提示管理員設定暱稱
-      const _nameCount = {};
-      allUsers.forEach(x => { if (x.active !== false) { const k = adminUserLabel(x).trim().toLowerCase(); _nameCount[k] = (_nameCount[k] || 0) + 1; } });
-      $('userTableBody').innerHTML = allUsers.map(u => {
-        const _dupN = u.active !== false ? (_nameCount[adminUserLabel(u).trim().toLowerCase()] || 0) : 0;
-        const dupBadge = _dupN > 1 ? ` <span title="有 ${_dupN} 位啟用中的使用者在報表上會顯示成同一個名字，請為其中的使用者設定不同的暱稱" style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:2px 6px;border-radius:99px;cursor:help">⚠ 同名</span>` : '';
-        const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
-        // 集團PM：顯示「依集團限制」並把 viewOwnerScope 寫上
-        const buCell = ['tecopm','groupsales'].includes(u.role)
-          ? `<span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px" title="只看 ${u.viewOwnerScope || '?'} 名下、且公司在指定集團內的資料">🔒 看 ${u.viewOwnerScope || '?'} ／ 集團限制</span>`
-          : (buArr.length === 0
-            ? `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`
-            : buArr.map(b => {
-                const c = BU_BADGE[b] || '#6b7280';
-                return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${b}</span>`;
-              }).join(''));
-        return `
+    // ── 帳號管理檢視：BU 分頁＋角色分組＋搜尋／篩選＋表格／卡片 ──
+    // 純邏輯（分割、篩選、排序、分組、驗證）在 _client/admin-users-view.js（window.AdminUsersView，有單元測試）；這裡只負責畫面與畫面狀態。
+    // 畫面狀態放在模組層級的 uvState：loadUsers() 重抓資料、新增／編輯／刪除後重畫、quickToggle 失敗後重抓，分頁／篩選／收合都不會掉。
+    // 只有「分頁、檢視方式、收合的群組」存 sessionStorage（讀回來一律先驗證）；搜尋與篩選重新整理後歸零。
+    const UV = window.AdminUsersView;
+    const UV_BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+    const UV_KEY = { tab: 'admin.users.tab', view: 'admin.users.view', collapsed: 'admin.users.collapsed' };
+    function uvStoreGet(k) { try { return sessionStorage.getItem(k); } catch (_) { return null; } }
+    function uvStoreSet(k, v) { try { sessionStorage.setItem(k, v); } catch (_) { /* 沒有 sessionStorage 也能用 */ } }
+    const uvState = UV ? {
+      tab: UV.validTab(uvStoreGet(UV_KEY.tab)),          // null＝自動選第一個有帳號的分頁
+      view: UV.validView(uvStoreGet(UV_KEY.view)),
+      sort: 'role', q: '', role: '', status: '',
+      collapsed: new Set(UV.parseCollapsed(uvStoreGet(UV_KEY.collapsed)))
+    } : null;
+
+    // class 名稱只留英數與底線／連字號（角色是自由文字，不能直接拼進 class）
+    function uvCls(s) { return String(s == null ? '' : s).replace(/[^A-Za-z0-9_-]/g, ''); }
+
+    // 同名偵測：以「實際顯示用名稱」（暱稱 > 顯示名稱）判斷，只算啟用中的帳號；有同名就標 ⚠，提示管理員設定暱稱
+    function uvNameCount() {
+      const c = {};
+      allUsers.forEach(x => { if (x.active !== false) { const k = adminUserLabel(x).trim().toLowerCase(); c[k] = (c[k] || 0) + 1; } });
+      return c;
+    }
+    function uvDupBadge(u, nameCount) {
+      const n = u.active !== false ? (nameCount[adminUserLabel(u).trim().toLowerCase()] || 0) : 0;
+      return n > 1 ? ` <span title="有 ${n} 位啟用中的使用者在報表上會顯示成同一個名字，請為其中的使用者設定不同的暱稱" style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:2px 6px;border-radius:99px;cursor:help;white-space:nowrap">⚠ 同名</span>` : '';
+    }
+    function uvBuHtml(u) {
+      const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
+      // 集團PM：顯示「依集團限制」並把 viewOwnerScope 寫上
+      if (['tecopm','groupsales'].includes(u.role)) {
+        const scope = escH(u.viewOwnerScope || '?');
+        return `<span style="background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px" title="只看 ${scope} 名下、且公司在指定集團內的資料">🔒 看 ${scope} ／ 集團限制</span>`;
+      }
+      if (buArr.length === 0) return `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`;
+      return buArr.map(b => {
+        const c = UV_BU_BADGE[b] || '#6b7280';
+        return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${escH(b)}</span>`;
+      }).join('');
+    }
+    function uvAccessHtml(u) {
+      return u.accessMode === 'view'
+        ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">🔒 唯讀</span>'
+        : '<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">✏️ 可編輯</span>';
+    }
+    function uvRoleBadge(u) { return `<span class="badge badge-${uvCls(u.role)}">${escH(UV.roleLabel(u.role))}</span>`; }
+    function uvStatusBadge(u) { return `<span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span>`; }
+
+    function uvRowHtml(u, nameCount) {
+      const un = escH(u.username);
+      return `
         <tr>
-          <td><strong>${u.username}</strong></td>
+          <td><strong>${un}</strong></td>
           <td>${escH(u.displayName)}</td>
-          <td>${u.nickname ? '<strong>' + escH(u.nickname) + '</strong>' : '<span style="color:#b0b7c3">—</span>'}${dupBadge}</td>
+          <td>${u.nickname ? '<strong>' + escH(u.nickname) + '</strong>' : '<span style="color:#b0b7c3">—</span>'}${uvDupBadge(u, nameCount)}</td>
           <td>${typeof mailEmailCell === 'function' ? mailEmailCell(u) : ''}</td>
-          <td><span class="badge badge-${u.role}">${ROLE_LABEL[u.role]||u.role}</span></td>
-          <td>${buCell}</td>
-          <td><span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span></td>
-          <td>${
-            u.accessMode === 'view'
-              ? '<span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">🔒 唯讀</span>'
-              : '<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">✏️ 可編輯</span>'
-          }</td>
+          <td>${uvRoleBadge(u)}</td>
+          <td>${uvBuHtml(u)}</td>
+          <td>${uvStatusBadge(u)}</td>
+          <td>${uvAccessHtml(u)}</td>
           <td style="text-align:center">
             <label class="toggle" title="下載客戶名單">
-              <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} data-action="toggle" data-username="${u.username}" data-field="canDownloadContacts">
+              <input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} data-action="toggle" data-username="${un}" data-field="canDownloadContacts" aria-label="下載客戶名單：${un}">
               <span class="toggle-slider"></span>
             </label>
           </td>
           <td style="text-align:center">
             <label class="toggle" title="設定業績目標">
-              <input type="checkbox" ${u.canSetTargets ? 'checked' : ''} data-action="toggle" data-username="${u.username}" data-field="canSetTargets">
+              <input type="checkbox" ${u.canSetTargets ? 'checked' : ''} data-action="toggle" data-username="${un}" data-field="canSetTargets" aria-label="設定業績目標：${un}">
               <span class="toggle-slider"></span>
             </label>
           </td>
           <td>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${u.username}">編輯</button>
-              <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${u.username}">重設密碼</button>
-              <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${u.username}">刪除</button>
+            <div style="display:flex;gap:6px;flex-wrap:nowrap">
+              <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
+              <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+              <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
             </div>
           </td>
         </tr>`;
-      }).join('');
     }
+
+    function uvCardHtml(u, nameCount) {
+      const un = escH(u.username);
+      const label = adminUserLabel(u);
+      const initial = (Array.from(String(label).trim())[0] || '?').toUpperCase();
+      let h = 0; String(u.username || '').split('').forEach(ch => { h = (h * 31 + ch.charCodeAt(0)) % 360; });
+      const off = u.active ? '' : ' uv-off';
+      return `
+        <article class="uv-card${off}" data-uvcard="${un}">
+          <div class="uv-chead">
+            <div class="uv-avatar" aria-hidden="true" style="background:hsl(${h} 55% 42%)">${escH(initial)}</div>
+            <div style="min-width:0">
+              <div class="uv-cname">${escH(label)}${uvDupBadge(u, nameCount)}</div>
+              <div class="uv-cuser">${un}${u.displayName && u.nickname ? ' ・ ' + escH(u.displayName) : ''}</div>
+            </div>
+          </div>
+          <div class="uv-cmeta">${uvRoleBadge(u)}${uvStatusBadge(u)}${uvAccessHtml(u)}</div>
+          <div class="uv-cmeta">${uvBuHtml(u)}</div>
+          <div class="uv-cmail">${typeof mailEmailCell === 'function' ? mailEmailCell(u) : ''}</div>
+          <div class="uv-ctoggles">
+            <label class="uv-tg"><span class="toggle" title="下載客戶名單"><input type="checkbox" ${u.canDownloadContacts ? 'checked' : ''} data-action="toggle" data-username="${un}" data-field="canDownloadContacts"><span class="toggle-slider"></span></span>下載名單</label>
+            <label class="uv-tg"><span class="toggle" title="設定業績目標"><input type="checkbox" ${u.canSetTargets ? 'checked' : ''} data-action="toggle" data-username="${un}" data-field="canSetTargets"><span class="toggle-slider"></span></span>設定業績目標</label>
+          </div>
+          <div class="uv-cactions">
+            <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
+            <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+            <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
+          </div>
+        </article>`;
+    }
+
+    function uvGroupBtn(g) {
+      const open = !uvState.collapsed.has(g.key);
+      return `<button type="button" class="uv-gbtn" data-uvgroup="${escH(g.key)}" aria-expanded="${open}"><span class="uv-caret" aria-hidden="true">▼</span><span>${escH(g.label)}</span><span class="uv-gcount" aria-label="${g.users.length} 個帳號">${g.users.length}</span></button>`;
+    }
+
+    // 分頁列：role=tablist／tab（aria-selected、roving tabindex、←→ Home End 切換）。按鈕只建立一次、之後就地更新（同牌價簿分頁的做法）。
+    function uvRenderTabs(v) {
+      const host = $('uvTabs');
+      if (host.querySelectorAll('[role="tab"]').length !== UV.TABS.length) {
+        host.innerHTML = UV.TABS.map(t =>
+          `<button type="button" role="tab" id="uvTab-${t.id}" data-uvtab="${t.id}" aria-controls="uvPanel" aria-selected="false" tabindex="-1">${escH(t.label)} <span class="uv-count" data-uvcount></span></button>`
+        ).join('');
+      }
+      v.tabs.forEach(t => {
+        const el = host.querySelector(`[data-uvtab="${t.id}"]`); if (!el) return;
+        const on = t.id === v.tab;
+        el.setAttribute('aria-selected', on ? 'true' : 'false');
+        el.setAttribute('tabindex', on ? '0' : '-1');
+        el.setAttribute('aria-label', `${t.label}，${t.count} 個帳號`);
+        el.querySelector('[data-uvcount]').textContent = String(t.count);
+      });
+    }
+
+    function uvEmptyHtml(v) {
+      const tabLabel = (UV.TABS.find(t => t.id === v.tab) || {}).label || '';
+      if (!v.total) return '目前沒有任何帳號。';
+      let h;
+      if (v.filtersOn) {
+        h = `「${escH(tabLabel)}」分頁沒有符合條件的帳號。`;
+        if (v.others.length) h += `<br>其他分頁有符合的帳號：` + v.others.map(o => `<button type="button" data-uvtab="${o.id}">${escH(o.label)}（${o.count}）</button>`).join('');
+        h += `<br><button type="button" data-uvclear="1">清除篩選</button>`;
+        return h;
+      }
+      h = `「${escH(tabLabel)}」分頁目前沒有帳號。`;
+      if (v.others.length) h += `<br>` + v.others.map(o => `<button type="button" data-uvtab="${o.id}">${escH(o.label)}（${o.count}）</button>`).join('');
+      return h;
+    }
+
+    function uvRenderPanel(v) {
+      const tbody = $('userTableBody'), cards = $('uvCards'), wrap = $('uvTableWrap'), empty = $('uvEmpty');
+      $('uvPanel').setAttribute('aria-labelledby', 'uvTab-' + v.tab);
+      if (!v.users.length) {
+        wrap.hidden = true; cards.hidden = true; tbody.innerHTML = ''; cards.innerHTML = '';
+        empty.hidden = false; empty.innerHTML = uvEmptyHtml(v);
+        return;
+      }
+      empty.hidden = true; empty.innerHTML = '';
+      const nameCount = uvNameCount();
+      if (uvState.view === 'card') {
+        wrap.hidden = true; tbody.innerHTML = '';
+        cards.hidden = false;
+        cards.innerHTML = v.groups
+          ? v.groups.map(g => `<section class="uv-cgroup"><h3>${uvGroupBtn(g)}</h3>${uvState.collapsed.has(g.key) ? '' : `<div class="uv-grid">${g.users.map(u => uvCardHtml(u, nameCount)).join('')}</div>`}</section>`).join('')
+          : `<div class="uv-grid">${v.users.map(u => uvCardHtml(u, nameCount)).join('')}</div>`;
+      } else {
+        cards.hidden = true; cards.innerHTML = '';
+        wrap.hidden = false;
+        tbody.innerHTML = v.groups
+          ? v.groups.map(g => `<tr class="uv-grouprow"><td colspan="11">${uvGroupBtn(g)}</td></tr>` + (uvState.collapsed.has(g.key) ? '' : g.users.map(u => uvRowHtml(u, nameCount)).join(''))).join('')
+          : v.users.map(u => uvRowHtml(u, nameCount)).join('');
+      }
+    }
+
+    // 工具列與資料同步：只在值不同時才寫入（避免打字時游標被挪到最後）；角色下拉的選項只在變動時重建
+    function uvSyncToolbar(v) {
+      const q = $('uvSearch'); if (q.value !== uvState.q) q.value = uvState.q;
+      const sel = $('uvRoleFilter');
+      const opts = UV.roleOptions(allUsers);
+      const sig = opts.map(o => o.value).join('\n');
+      if (sel.dataset.sig !== sig) {
+        sel.innerHTML = '<option value="">全部角色</option>' + opts.map(o => `<option value="${escH(o.value)}">${escH(o.label)}</option>`).join('');
+        sel.dataset.sig = sig;
+      }
+      if (sel.value !== uvState.role) sel.value = uvState.role;
+      if ($('uvStatusFilter').value !== uvState.status) $('uvStatusFilter').value = uvState.status;
+      if ($('uvSort').value !== uvState.sort) $('uvSort').value = uvState.sort;
+      $('uvViewTable').setAttribute('aria-pressed', String(uvState.view === 'table'));
+      $('uvViewCard').setAttribute('aria-pressed', String(uvState.view === 'card'));
+      $('uvClear').hidden = !v.filtersOn;
+      const sum = v.tabs.reduce((n, t) => n + t.count, 0);
+      $('uvSummary').textContent = (v.filtersOn ? `符合 ${v.matched} / ${v.total} 個帳號` : `共 ${v.total} 個帳號`)
+        + (sum > v.matched ? '・同時屬於多個 BU 的帳號會出現在每個所屬分頁' : '');
+    }
+
+    function uvRender() {
+      if (!UV) {
+        const e = $('uvEmpty'); e.hidden = false; e.textContent = '帳號檢視模組（admin-users-view.js）載入失敗，請重新整理頁面。';
+        return;
+      }
+      if (uvState.role && !UV.roleOptions(allUsers).some(o => o.value === uvState.role)) uvState.role = '';   // 該角色的帳號都沒了 → 解除角色篩選
+      const v = UV.buildView(allUsers, uvState);
+      uvSyncToolbar(v);
+      uvRenderTabs(v);
+      uvRenderPanel(v);
+    }
+
+    // 入口：loadUsers() 抓完資料後呼叫（Email 提示列 mailAfterUserTable 仍由 loadUsers 在這之後呼叫）
+    function renderUserTable() { uvRender(); }
+
+    function uvSetTab(id, focusTab) {
+      if (!UV || !UV.validTab(id)) return;
+      uvState.tab = id;
+      uvStoreSet(UV_KEY.tab, id);
+      uvRender();
+      if (focusTab) { const el = document.querySelector(`#uvTabs [data-uvtab="${id}"]`); if (el) el.focus(); }
+    }
+    function uvToggleGroup(key) {
+      uvState.collapsed = UV.toggleCollapsed(uvState.collapsed, key);
+      uvStoreSet(UV_KEY.collapsed, UV.serializeCollapsed(uvState.collapsed));
+      uvRender();
+      const b = Array.from(document.querySelectorAll('#uvPanel [data-uvgroup]')).find(x => x.dataset.uvgroup === key);
+      if (b) b.focus();
+    }
+    function uvClearFilters() { uvState.q = ''; uvState.role = ''; uvState.status = ''; uvRender(); }
+
+    (function uvWire() {
+      if (!UV) return;
+      $('uvTabs').addEventListener('click', (e) => { const b = e.target.closest('[role="tab"]'); if (b) uvSetTab(b.dataset.uvtab, true); });
+      $('uvTabs').addEventListener('keydown', (e) => {
+        const b = e.target.closest('[role="tab"]'); if (!b) return;
+        const ids = UV.TAB_IDS, i = ids.indexOf(b.dataset.uvtab);
+        let j = -1;
+        if (e.key === 'ArrowRight') j = (i + 1) % ids.length;
+        else if (e.key === 'ArrowLeft') j = (i + ids.length - 1) % ids.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = ids.length - 1;
+        if (j < 0) return;
+        e.preventDefault();
+        uvSetTab(ids[j], true);
+      });
+      $('uvPanel').addEventListener('click', (e) => {
+        const g = e.target.closest('[data-uvgroup]'); if (g) { uvToggleGroup(g.dataset.uvgroup); return; }
+        const t = e.target.closest('[data-uvtab]'); if (t) { uvSetTab(t.dataset.uvtab, false); return; }
+        if (e.target.closest('[data-uvclear]')) uvClearFilters();
+      });
+      $('uvSearch').addEventListener('input', (e) => { uvState.q = e.target.value; uvRender(); });
+      $('uvRoleFilter').addEventListener('change', (e) => { uvState.role = e.target.value; uvRender(); });
+      $('uvStatusFilter').addEventListener('change', (e) => { uvState.status = UV.validStatus(e.target.value); uvRender(); });
+      $('uvSort').addEventListener('change', (e) => { uvState.sort = UV.validSort(e.target.value); uvRender(); });
+      $('uvClear').addEventListener('click', () => { uvClearFilters(); $('uvSearch').focus(); });
+      document.querySelectorAll('#uvToolbar [data-uvview]').forEach(btn => btn.addEventListener('click', () => {
+        uvState.view = UV.validView(btn.dataset.uvview);
+        uvStoreSet(UV_KEY.view, uvState.view);
+        uvRender();
+      }));
+    })();
 
     // ── 事件委派（取代所有 onclick/onchange，不依賴 CSP inline handler）──
     document.addEventListener('click', function(e) {
@@ -4037,7 +4341,7 @@
     async function quickToggle(username, field, value) {
       try {
         const payload = { [field]: value };
-        const r = await adminFetch(`${API}/admin/users/${username}`, {
+        const r = await adminFetch(`${API}/admin/users/${encodeURIComponent(username)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -4063,7 +4367,7 @@
     }
 
     // 直屬主管下拉：列出所有啟用中的帳號（排除自己與系統帳號），由 admin 自由指定
-    const SUPERVISOR_ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'一般業務', marketing:'行銷人員', tecopm:'集團PM', groupsales:'集團業務', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
+    const SUPERVISOR_ROLE_LABEL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'一般業務', marketing:'行銷人員', tecopm:'集團PM', groupsales:'集團業務', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管', pool:'客戶池（系統帳號）' };
     function loadSupervisorOptions(selfUsername) {
       const sel = $('fieldSupervisor');
       if (!sel) return;
@@ -4211,7 +4515,7 @@
       try {
         let r;
         if (isEdit) {
-          r = await adminFetch(`${API}/admin/users/${editUn}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          r = await adminFetch(`${API}/admin/users/${encodeURIComponent(editUn)}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         } else {
           const un = $('fieldUsername').value.trim();
           const pw = $('fieldPassword').value;
@@ -4241,7 +4545,7 @@
       const pw = $('pwNewPassword').value;
       if (!pw) { showToast('請輸入新密碼'); return; }
       try {
-        const r = await adminFetch(`${API}/admin/users/${un}/password`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pw }) });
+        const r = await adminFetch(`${API}/admin/users/${encodeURIComponent(un)}/password`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: pw }) });
         const data = await r.json();
         if (!r.ok) { showToast(data.error || '重設失敗'); return; }
         showToast('✅ 密碼已重設，使用者下次登入需立即更換密碼');
@@ -4261,7 +4565,7 @@
     $('delModalConfirm').addEventListener('click', async function() {
       const un = this.dataset.username;
       try {
-        const r = await adminFetch(`${API}/admin/users/${un}`, { method:'DELETE' });
+        const r = await adminFetch(`${API}/admin/users/${encodeURIComponent(un)}`, { method:'DELETE' });
         const data = await r.json();
         if (!r.ok) { showToast(data.error || '刪除失敗'); return; }
         showToast('✅ 帳號已刪除');

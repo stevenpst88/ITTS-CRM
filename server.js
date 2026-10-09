@@ -1062,6 +1062,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="quote-pdf\.js"/g,     `src="quote-pdf.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-coststeps\.js"/g, `src="quote-coststeps.js?v=${BUILD_VERSION}"`)
+      .replace(/src="admin-users-view\.js"/g, `src="admin-users-view.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
