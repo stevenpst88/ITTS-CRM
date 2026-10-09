@@ -2721,6 +2721,9 @@ body.dark .ft-filter-chip-x { background: #d97706; }
   border-bottom: 2px solid #e8eaf6;
 }
 
+.qi-titlebar { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.qi-pbbtn { flex:0 0 auto; font-weight:600; }
+
 /* 報價項目表格 */
 .quote-items-wrap {
   overflow-x: auto;

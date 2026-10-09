@@ -66,6 +66,8 @@ var QSteps = (function () {
 .qs-sub { margin-top:2px; font-size:12px; line-height:1.5; color:#8a94a3; }
 .qs-edit { flex:0 0 auto; border:none; background:none; color:#1a73e8; font-size:13px; cursor:pointer; padding:4px 10px; border-radius:6px; font-family:inherit; }
 .qs-edit:hover { background:#e8f0fe; }
+.qs-pb { flex:0 0 auto; font-weight:600; }
+.qs-step[data-st="pending"] .qs-pb, .qs-step[data-st="done"] .qs-pb { display:none; }
 
 .qs-nav { display:none; align-items:center; justify-content:space-between; gap:12px; margin:14px 16px; flex-wrap:wrap; }
 .qs-step[data-st="active"] > .qs-nav, .qs-step[data-st="edit"] > .qs-nav { display:flex; }
@@ -538,7 +540,13 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
       l1.appendChild(title); l1.appendChild(txt); ht.appendChild(l1); ht.appendChild(sub);
       var edit = mk('button', 'qs-edit', '修改'); edit.type = 'button';
       edit.addEventListener('click', function () { startEdit(d.id); });
-      head.appendChild(badge); head.appendChild(ht); head.appendChild(edit);
+      head.appendChild(badge); head.appendChild(ht);
+      if (d.id === 'items') {   // 牌價簿入口放在步驟標題列右上角（原本的標題列在逐步模式下是隱藏的），點擊轉給原按鈕
+        var pb = mk('button', 'btn btn-primary btn-sm qs-pb', '📒 從牌價簿選取'); pb.type = 'button';
+        pb.addEventListener('click', function () { var o = el('addQuotePbBtn'); if (o) o.click(); });
+        head.appendChild(pb);
+      }
+      head.appendChild(edit);
       wrap.insertBefore(head, wrap.firstChild);
       var e = { wrap: wrap, head: head, badge: badge, title: title, txt: txt, sub: sub, edit: edit };
       if (d.confirm) {
