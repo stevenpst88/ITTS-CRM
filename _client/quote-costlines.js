@@ -26,11 +26,13 @@
 //   QCL.isOutsourced / outsourcedStats / outsourcedFromBreakdown              委外占比：顧問服務區有填委外廠商的列；委外 ÷ 專案總成本（含差旅／交際費／印花稅，不含風險預留）、委外 ÷ 顧問服務成本
 //   QCL.liveSummary / outsourcedCardModel / outsourcedCardHtml / paintOutsourcedCard   顧問對話框頂端卡片的數字（與伺服器草稿試算逐分相同）與第五張「委外佔比」卡
 //   QCL.syncConfirmText(changes)            按「完成」前的「將同步更新業務的報價」清單文字
-//   牌價簿（報價牌價簿，管理員在後台維護的顧問角色人天成本；mount opts.pricebook = [{name, cost}]，沒給＝行為與以前完全相同）：
+//   牌價簿（報價牌價簿，管理員在後台維護的顧問角色人天成本；mount opts.pricebook = [{name, cost, bu?}]，沒給＝行為與以前完全相同；牌價簿依 BU 分開、同名可存在於不同 BU）：
 //   QCL.pbClean / pbDescSuggest / pbDefault   清洗清單／顧問「項目」建議清單（牌價簿角色名＋DESC_SUGGEST，不分大小寫去重）／預設成本規則（純函式）。
 //                                           規則：顧問服務區、品名（去頭尾空白、不分大小寫）與牌價簿完全相同、成本單價空白或 0、沒有委外廠商 → 帶入牌價簿成本（單位空白或預設「式」且非連動列才改「人天」）；
 //                                           只在使用者「改完品名」（change／從建議清單選取）時觸發，絕不覆蓋已填的值，載入已存的成本列時完全不動；
 //                                           opts.pricebookSeed:true 時種子（含重新帶入／補入）的顧問品項列也帶入成本（單位維持品項原樣）。inst.setPricebook(list) 可在載入完成後補設。
+//                                           BU 比對（名稱只在同一個 BU 內唯一）：mount opts.pricebookBu（報價單的 BU，可省略；目前報價單沒有可靠的 BU 欄位，呼叫端沒傳）已知 → 先在該 BU 內找完全相符；
+//                                           BU 不明、或該 BU 內沒有 → 只有「全部 BU 裡剛好一筆」同名才帶入；同名出現在 2 個以上 BU（有歧義）→ 不帶入。建議清單的名稱跨 BU 去重。
 //   QCL.collect(el)                         從 DOM 讀回 {lines, invalid, blankDesc, zeroCost, zeroQty}
 //   QCL.dragSort(container, opts)           拖曳排序核心（Pointer Events 滑鼠／觸控＋鍵盤移動模式）。編輯模式每列有把手（⋮⋮），只能在同一分區內拖；
 //                                           報價項目表（quote.js）也用同一個函式。純函式 QCL.dragTargetIndex(rects, y[, fromIdx])／QCL.dragLineY(rects, slot)
@@ -385,7 +387,8 @@ function seedItemLines(items, opts) {
   // opts.link（顧問對話框）：品項帶出的列預設「連動報價數量」（種子列的品名、單位本來就和品項相同＝規格 §1 的預設規則）；固定列（差旅、交際費）預設「不對應」。
   // 沒開 link（業務自填成本）時不寫 rel，輸出與改版前相同
   const rel = isLinkOpts(opts) ? 'link' : undefined;
-  const pb = (opts && opts.pricebookSeed === true) ? cleanPricebook(opts.pricebook) : [];   // 牌價簿預設成本只在呼叫端明確要求時帶入種子（舊式單的種子要和伺服器算的成本一致，不帶）
+  const pb = (opts && opts.pricebookSeed === true) ? cleanPricebook(opts.pricebook) : [];
+  const pbBu = cleanBu(opts && opts.pricebookBu);   // 牌價簿預設成本只在呼叫端明確要求時帶入種子（舊式單的種子要和伺服器算的成本一致，不帶）
   (Array.isArray(items) ? items : []).forEach((it) => {
     if (!it || typeof it !== 'object' || it.kind === 'title' || it.kind === 'subtotal') return;
     const q = toNum(it.qty);
@@ -398,7 +401,7 @@ function seedItemLines(items, opts) {
       forLid: it.lid || it.nid,            // 還沒存檔的新品項沒有 lid：用畫面給的暫時代號 nid 指向它，存檔時伺服器換成真正的 lid（見 lib/quoteCostLines.js resolveItemRefs）
       rel,
     });
-    if (line && pb.length) { const d = pricebookDefault(line, pb, true); if (d) line.unitCost = d.unitCost; }   // 種子列的單位跟著品項，不改
+    if (line && pb.length) { const d = pricebookDefault(line, pb, true, pbBu); if (d) line.unitCost = d.unitCost; }   // 種子列的單位跟著品項，不改
     if (line && line.desc && !(rel && !line.forLid)) out.push(line);   // link 列一定要有對應目標：沒有 lid／nid 的品項（舊資料）不產生連動列
   });
   return out;
@@ -2313,6 +2316,7 @@ function mount(el, opts) {
     lines: [],
     link: mode === 'edit' && isLinkOpts(opts),          // 顧問對話框：每列多「對應」欄（連動報價數量／拆項／不對應）
     names: cleanNames(opts.consultantNames),            // 「顧問姓名」欄的建議清單（datalist）
+    pricebookBu: cleanBu(opts.pricebookBu),             // 報價單的 BU（可省略＝不明）：同名角色出現在多個 BU 時用來挑對的那一筆
     pricebook: cleanPricebook(opts.pricebook),          // 報價牌價簿（顧問角色人天成本）：項目欄建議清單＋改完品名自動帶入成本；沒給＝空陣列＝行為與以前相同
     linkInfo: null, entries: [], targetSig: null,
   };
@@ -2364,8 +2368,9 @@ function mount(el, opts) {
     paintLinkNotes(inst);
   };
   /** 設定／更新牌價簿（載入完成後補設）：重建「項目」建議清單；不動任何已填的列 */
-  inst.setPricebook = function (list) {
+  inst.setPricebook = function (list, bu) {
     inst.pricebook = cleanPricebook(list);
+    if (bu !== undefined) inst.pricebookBu = cleanBu(bu);
     if (inst.dead || !inst.ids) return;
     const dl = inst.el.querySelector('#' + inst.ids.desc);
     if (dl) dl.innerHTML = descSuggestFor(inst.pricebook).map((x) => '<option value="' + esc(x) + '"></option>').join('');
@@ -2463,14 +2468,18 @@ function cleanNames(list) {
 
 // ── 牌價簿 ─────────────────────────────────────────
 const PB_UNIT = '人天';
-/** 清洗牌價簿清單：[{name, cost}]；名稱去頭尾空白、截長度、不分大小寫去重（先到先贏）；成本要是 ≥0 的有限數字，其餘丟棄 */
+const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
+const cleanBu = (v) => (typeof v === 'string' && PB_BUS.indexOf(v) >= 0) ? v : '';
+/** 品名比對用的鍵：NFKC＋trim＋小寫（內部空白不收合，所以「PM  顧問」與「PM 顧問」不算相同——和改版前的完全相符規則一致） */
+const pbKey = (v) => String(v === undefined || v === null ? '' : v).normalize('NFKC').trim().toLowerCase();
+/** 清洗牌價簿清單：[{name, cost, bu}]；名稱去頭尾空白、截長度；成本要是 ≥0 的有限數字，其餘丟棄；bu 缺漏或不合法＝ERP（相容舊資料）；同一個 BU 內名稱不分大小寫去重（先到先贏），不同 BU 的同名項目都保留 */
 function cleanPricebook(list) {
   const out = [], seen = Object.create(null);
   (Array.isArray(list) ? list : []).forEach((x) => {
     if (!x || typeof x !== 'object') return;
-    const name = text(x.name, DESC_MAX), cost = toNum(x.cost), k = name.toLowerCase();
+    const name = text(x.name, DESC_MAX), cost = toNum(x.cost), bu = cleanBu(x.bu) || 'ERP', k = bu + '\u0001' + pbKey(name);
     if (!name || !isFinite(cost) || cost < 0 || seen[k]) return;
-    seen[k] = 1; out.push({ name, cost });
+    seen[k] = 1; out.push({ name, cost, bu });
   });
   return out;
 }
@@ -2478,28 +2487,32 @@ function cleanPricebook(list) {
 function descSuggestFor(pricebook) {
   const out = [], seen = Object.create(null);
   (Array.isArray(pricebook) ? pricebook : []).concat(DESC_SUGGEST.map((n) => ({ name: n }))).forEach((p) => {
-    const n = p && p.name, k = String(n || '').toLowerCase();
+    const n = p && p.name, k = pbKey(n);
     if (n && !seen[k]) { seen[k] = 1; out.push(n); }
   });
   return out;
 }
 /**
- * 預設成本規則（純函式）。line＝{cat, desc, vendor, unit, unitCost}（unitCost 可以是輸入框的字串）；pricebook＝cleanPricebook 之後的清單。
- * 條件全部成立才回傳 {unitCost, unit, name}（要帶入的值），否則 null：顧問服務區、不是自動列、沒有委外廠商、成本單價空白或 0、品名（去頭尾空白、不分大小寫）與牌價簿某項完全相同、該項成本 > 0。
+ * 預設成本規則（純函式）。line＝{cat, desc, vendor, unit, unitCost}（unitCost 可以是輸入框的字串）；pricebook＝cleanPricebook 之後的清單；bu＝報價單的 BU（可省略＝不明）。
+ * 條件全部成立才回傳 {unitCost, unit, name, bu}（要帶入的值），否則 null：顧問服務區、不是自動列、沒有委外廠商、成本單價空白或 0、品名（NFKC、去頭尾空白、不分大小寫）與牌價簿某項完全相同、該項成本 > 0。
+ * 同名跨 BU：bu 已知 → 先看該 BU 內有沒有完全相符的；沒有（或 bu 不明）→ 全部 BU 裡「剛好一筆」同名才採用；同名在 2 個以上 BU 且無法判斷 → null（寧可不帶也不帶錯成本）。
  * unit：原本空白或是預設「式」才改「人天」，使用者自己填的單位不動；keepUnit＝true（連動列、種子列）一律維持原單位。
  */
-function pricebookDefault(line, pricebook, keepUnit) {
+function pricebookDefault(line, pricebook, keepUnit, bu) {
   if (!line || line.cat !== 'consult' || line.auto || !Array.isArray(pricebook) || !pricebook.length) return null;
   if (text(line.vendor, VENDOR_MAX)) return null;
   const uc = toNum(line.unitCost);
   if (isFinite(uc) && uc > 0) return null;
   if (str(line.unitCost).trim() !== '' && !isFinite(uc)) return null;   // 輸入框裡是無效文字：交給原本的驗證去擋，不蓋掉
-  const d = text(line.desc, DESC_MAX).toLowerCase();
+  const d = pbKey(text(line.desc, DESC_MAX));
   if (!d) return null;
-  const hit = pricebook.find((p) => p.name.toLowerCase() === d);
+  const same = pricebook.filter((p) => pbKey(p.name) === d);
+  const b = cleanBu(bu);
+  let hit = b ? same.find((p) => (p.bu || 'ERP') === b) : undefined;   // BU 已知：先看該 BU 內
+  if (!hit) hit = same.length === 1 ? same[0] : undefined;               // 否則只有全部 BU 裡剛好一筆才採用（0 筆＝不是牌價簿項目；2 筆以上＝有歧義）
   if (!hit || !(hit.cost > 0)) return null;
   const u = text(line.unit, UNIT_MAX);
-  return { unitCost: hit.cost, unit: keepUnit ? u : ((!u || u === DEFAULT_UNIT) ? PB_UNIT : u), name: hit.name };
+  return { unitCost: hit.cost, unit: keepUnit ? u : ((!u || u === DEFAULT_UNIT) ? PB_UNIT : u), name: hit.name, bu: hit.bu || 'ERP' };
 }
 /** 使用者改完某列的品名後：符合規則就把成本（與單位）帶進該列的輸入框，並提示一句；不符合什麼都不做 */
 function applyPricebookToRow(inst, tr) {
@@ -2509,7 +2522,7 @@ function applyPricebookToRow(inst, tr) {
   const val = (sel) => { const e = tr.querySelector(sel); return e ? e.value : ''; };
   const rel = tr.getAttribute('data-rel');
   const linked = !!rel && rel !== 'none';
-  const d = pricebookDefault({ cat: 'consult', desc: val('.qcl-desc'), vendor: val('.qcl-vendor'), unit: val('.qcl-unit'), unitCost: val('.qcl-cost') }, inst.pricebook, linked);
+  const d = pricebookDefault({ cat: 'consult', desc: val('.qcl-desc'), vendor: val('.qcl-vendor'), unit: val('.qcl-unit'), unitCost: val('.qcl-cost') }, inst.pricebook, linked, inst.pricebookBu);
   if (!d) return false;
   const cost = tr.querySelector('.qcl-cost'), unit = tr.querySelector('.qcl-unit');
   if (!cost) return false;
