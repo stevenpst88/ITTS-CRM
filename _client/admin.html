@@ -552,6 +552,98 @@
       .mail-kv > .k { border-bottom: none; padding-bottom: 2px; }
       .mail-modal-wide { width: 95vw; }
     }
+    /* ── 領域導覽（6 群組手風琴）／總覽／指令面板 ── */
+    .nav-domain { display: flex; flex-direction: column; }
+    .nav-domain-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; font-size: 13px; font-weight: 700;
+      color: rgba(255,255,255,0.6); cursor: pointer; user-select: none;
+      border-left: 3px solid transparent; transition: color .15s, background .15s;
+    }
+    .nav-domain-header:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .nav-domain-header:focus-visible { outline: 2px solid #4da3ff; outline-offset: -2px; }
+    .nav-domain.open > .nav-domain-header { color: #fff; }
+    .nav-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--dc); box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35); flex-shrink: 0; }
+    .nav-domain[data-domain="people"] .nav-dot { background: #378ADD; }
+    .nav-domain[data-domain="customers"] .nav-dot { background: #1D9E75; }
+    .nav-domain[data-domain="targets"] .nav-dot { background: #7F77DD; }
+    .nav-domain[data-domain="quote"] .nav-dot { background: #D85A30; }
+    .nav-domain[data-domain="integration"] .nav-dot { background: #EF9F27; }
+    .nav-domain[data-domain="audit"] .nav-dot { background: #B4B2A9; }
+    .nav-domain-name { flex: 1; }
+    .nav-domain-count { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.45); }
+    .nav-domain .nav-group-arrow { margin-left: 0; }
+    .nav-domain:not(.open) > .nav-domain-header .nav-group-arrow { transform: rotate(-90deg); }
+    .nav-domain-items { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .22s ease; }
+    .nav-domain.open > .nav-domain-items { grid-template-rows: 1fr; }
+    .nav-domain-inner { overflow: hidden; min-height: 0; visibility: hidden; transition: visibility 0s .22s; }
+    .nav-domain.open > .nav-domain-items > .nav-domain-inner { visibility: visible; transition-delay: 0s; }
+    .nav-domain .admin-nav-item.nav-sub { padding: 8px 20px 8px 36px; font-size: 13px; font-weight: 500; }
+    .nav-domain .admin-nav-group-header { padding-left: 36px; text-transform: none; letter-spacing: 0; font-size: 13px; }
+    .nav-domain .admin-nav-subitem { padding-left: 52px !important; }
+    .nav-domain .admin-nav-group-header .admin-nav-icon { font-size: 15px; }
+    /* 頂欄搜尋按鈕與快捷鍵提示 */
+    .pal-btn { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; transition: background .2s; font-family: inherit; }
+    .pal-btn:hover { background: rgba(255,255,255,0.25); }
+    .kbd-hint { font-family: inherit; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.4); background: rgba(255,255,255,0.12); color: inherit; }
+    .kbd-key { border-color: #c9ced6; background: #f1f3f6; color: #4a5568; }
+    body.dark .kbd-key { border-color: #3d444d; background: #21262d; color: #c9d1d9; }
+    /* 總覽 */
+    .home-alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .home-alerts[hidden] { display: none; }
+    .home-alert { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 16px; border-radius: 10px; background: #fff4e5; border: 1px solid #f5c97a; color: #7a4a00; font-size: 13.5px; }
+    .home-alert-btn { margin-left: auto; background: #b45f06; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .home-alert-btn:hover { background: #8f4a05; }
+    .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .home-card { background: #fff; border: 1px solid #eceff3; border-top: 3px solid var(--dc); border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+    .home-card-head { display: flex; align-items: center; gap: 12px; }
+    .home-card-icon { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: var(--dc-tint); flex-shrink: 0; }
+    .home-card-title { font-size: 16px; font-weight: 800; color: var(--dc); }
+    .home-card-count { font-size: 12px; color: #8a93a0; margin-top: 1px; }
+    .home-metric { font-size: 13px; color: #4a5568; padding: 6px 10px; border-radius: 8px; background: var(--dc-tint); }
+    .home-metric:empty { display: none; }
+    .home-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .home-chip { background: #f3f5f8; color: #2d3748; border: 1px solid #e4e8ee; border-radius: 99px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .15s, border-color .15s, color .15s; }
+    .home-chip:hover { background: var(--dc-tint); border-color: var(--dc); color: var(--dc); }
+    .home-chip:focus-visible { outline: 2px solid var(--dc); outline-offset: 1px; }
+    body.dark .home-card { background: #161b22; border-color: #30363d; border-top-color: var(--dc); box-shadow: 0 1px 6px rgba(0,0,0,.5); }
+    body.dark .home-card-title { color: #e6edf3; }
+    body.dark .home-card-count { color: #8b949e; }
+    body.dark .home-metric { color: #c9d1d9; }
+    body.dark .home-chip { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+    body.dark .home-chip:hover { color: #fff; border-color: var(--dc); }
+    body.dark .home-alert { background: #3a2a0d; border-color: #6b4a12; color: #f2c879; }
+    /* 指令面板 */
+    .pal-overlay { position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,0.45); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+    .pal-overlay[hidden] { display: none; }
+    .pal-box { width: min(560px, 92vw); background: #fff; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.3); overflow: hidden; }
+    .pal-input { width: 100%; box-sizing: border-box; border: none; border-bottom: 1px solid #e5e7eb; padding: 15px 18px; font-size: 15px; font-family: inherit; outline: none; background: transparent; color: #1a2d52; }
+    .pal-list { max-height: 52vh; overflow-y: auto; padding: 6px; }
+    .pal-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #2d3748; }
+    .pal-row.sel { background: #e8f0fe; }
+    .pal-row-ic { width: 22px; text-align: center; }
+    .pal-row-lb { flex: 1; font-weight: 600; }
+    .pal-row-dom { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; }
+    .pal-row-dom i { width: 8px; height: 8px; border-radius: 2px; background: var(--dc, #999); display: inline-block; }
+    .pal-empty { padding: 22px; text-align: center; color: #9ca3af; font-size: 13px; }
+    body.dark .pal-box { background: #161b22; border: 1px solid #30363d; }
+    body.dark .pal-input { color: #e6edf3; border-bottom-color: #30363d; }
+    body.dark .pal-row { color: #c9d1d9; }
+    body.dark .pal-row.sel { background: #1f2d44; }
+    body.dark .pal-row-dom { color: #8b949e; }
+    @media (max-width: 768px) {
+      .pal-btn-txt, .pal-btn .kbd-hint { display: none; }
+      .nav-domain { flex-direction: row; flex-shrink: 0; align-items: center; }
+      .nav-domain-header { white-space: nowrap; flex-shrink: 0; border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; }
+      .nav-domain-count, .nav-domain .nav-group-arrow { display: none; }
+      .nav-domain-items { display: none; }
+      .nav-domain.open > .nav-domain-items { display: block; }
+      .nav-domain-inner { display: flex; flex-direction: row; visibility: visible; }
+      .nav-domain .admin-nav-item.nav-sub, .nav-domain .admin-nav-group-header, .nav-domain .admin-nav-subitem { padding: 8px 12px !important; white-space: nowrap; flex-shrink: 0; }
+      .nav-domain .admin-nav-subitems { display: flex; flex-direction: row; max-height: none !important; }
+      .nav-domain .admin-nav-subitems.collapsed { display: none; }
+      .home-grid { grid-template-columns: 1fr; }
+    }
   </style>
   <script>
   (function(){
@@ -612,6 +704,7 @@
     </div>
     <div class="admin-topbar-right">
       <span class="admin-user" id="adminUser"></span>
+      <button type="button" id="adminPaletteBtn" class="pal-btn" title="搜尋功能（Ctrl K）" aria-label="搜尋功能">🔍 <span class="pal-btn-txt">搜尋功能</span> <kbd class="kbd-hint">Ctrl K</kbd></button>
       <button id="adminDarkToggle" title="切換深/淺色模式" onclick="toggleDarkMode()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:8px;padding:7px 12px;font-size:15px;cursor:pointer;transition:background .2s;">🌙</button>
       <a href="/" class="btn-back">← 返回系統</a>
       <button class="btn-back" style="background:#fee2e2;color:#b91c1c;border-color:#fca5a5" onclick="adminLogout()">登出</button>
@@ -621,112 +714,171 @@
   <div class="admin-layout">
     <!-- Sidebar -->
     <nav class="admin-sidebar">
-      <div class="admin-nav-item active" data-sec="users">
-        <span class="admin-nav-icon">👥</span> 帳號管理
+      <div class="admin-nav-item active" data-sec="home">
+        <span class="admin-nav-icon">🏠</span> 總覽
       </div>
-      <div class="admin-nav-item" data-sec="transfer">
-        <span class="admin-nav-icon">🔄</span> 名單移轉
-      </div>
-      <div class="admin-nav-item" data-sec="pool">
-        <span class="admin-nav-icon">📋</span> 客戶池
-      </div>
-      <div class="admin-nav-item" data-sec="companies">
-        <span class="admin-nav-icon">🏢</span> 企業主檔
-      </div>
-      <div class="admin-nav-group-header collapsed" data-group="group-io">
-        <span class="admin-nav-icon">📦</span> 資料匯出入
-        <span class="nav-group-arrow">▼</span>
-      </div>
-      <div class="admin-nav-subitems collapsed" id="group-io" style="max-height:400px">
-        <div class="admin-nav-item admin-nav-subitem" data-sec="import">
-          <span class="admin-nav-icon">📥</span> 名單匯入
+      <div class="nav-domain" data-domain="people" data-name="人員與權限" data-color="#185FA5" data-icon="👥" style="--dc:#185FA5">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">人員與權限</span><span class="nav-domain-count">4</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="bulk-website">
-          <span class="admin-nav-icon">🌐</span> 批次填入官網
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="users">
+            <span class="admin-nav-icon">👥</span> 帳號管理
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="role-permissions">
+            <span class="admin-nav-icon">🔐</span> 功能權限
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="jobfunc">
+            <span class="admin-nav-icon">🏷️</span> 職能分類
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="transfer">
+            <span class="admin-nav-icon">🔄</span> 名單移轉
+          </div>
+        </div></div>
+      </div>
+      <div class="nav-domain" data-domain="customers" data-name="客戶資料" data-color="#0F6E56" data-icon="🏢" style="--dc:#0F6E56">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">客戶資料</span><span class="nav-domain-count">12</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="contact-io">
-          <span class="admin-nav-icon">👤</span> 客戶匯出入
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="pool">
+            <span class="admin-nav-icon">📋</span> 客戶池
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="companies">
+            <span class="admin-nav-icon">🏢</span> 企業主檔
+          </div>
+          <div class="admin-nav-group-header collapsed" data-group="group-io">
+            <span class="admin-nav-icon">📦</span> 資料匯出入
+            <span class="nav-group-arrow">▼</span>
+          </div>
+          <div class="admin-nav-subitems collapsed" id="group-io" style="max-height:400px">
+            <div class="admin-nav-item admin-nav-subitem" data-sec="import">
+              <span class="admin-nav-icon">📥</span> 名單匯入
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="bulk-website">
+              <span class="admin-nav-icon">🌐</span> 批次填入官網
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="contact-io">
+              <span class="admin-nav-icon">👤</span> 客戶匯出入
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="opp-io">
+              <span class="admin-nav-icon">📊</span> 商機匯出入
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="visit-io">
+              <span class="admin-nav-icon">📝</span> 日報匯出入
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="contract-io">
+              <span class="admin-nav-icon">📄</span> 合約匯出入
+            </div>
+            <div class="admin-nav-item admin-nav-subitem" data-sec="card-ocr">
+              <span class="admin-nav-icon">📷</span> 名片辨識匯入
+            </div>
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="data-repair">
+            <span class="admin-nav-icon">🔧</span> 資料修復
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="deleted-contacts">
+            <span class="admin-nav-icon">🗑️</span> 已刪除名單
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="data-completeness">
+            <span class="admin-nav-icon">📊</span> 資料普及率
+          </div>
+        </div></div>
+      </div>
+      <div class="nav-domain" data-domain="targets" data-name="業績目標" data-color="#534AB7" data-icon="🎯" style="--dc:#534AB7">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">業績目標</span><span class="nav-domain-count">2</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="opp-io">
-          <span class="admin-nav-icon">📊</span> 商機匯出入
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="quarter-ratios">
+            <span class="admin-nav-icon">📅</span> 季度業績配比
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="monthly-budget">
+            <span class="admin-nav-icon">📆</span> 月度業績預算
+          </div>
+        </div></div>
+      </div>
+      <div class="nav-domain" data-domain="quote" data-name="報價與簽核" data-color="#993C1D" data-icon="💼" style="--dc:#993C1D">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">報價與簽核</span><span class="nav-domain-count">4</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="visit-io">
-          <span class="admin-nav-icon">📝</span> 日報匯出入
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="product-catalog">
+            <span class="admin-nav-icon">🛒</span> 銷售商品維護
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="quote-pricebook">
+            <span class="admin-nav-icon">💼</span> 報價牌價簿
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="approval-flow">
+            <span class="admin-nav-icon">⚙️</span> 簽核流程設定
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="mail">
+            <span class="admin-nav-icon">✉️</span> 寄信
+          </div>
+        </div></div>
+      </div>
+      <div class="nav-domain" data-domain="integration" data-name="整合與通知" data-color="#854F0B" data-icon="🔌" style="--dc:#854F0B">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">整合與通知</span><span class="nav-domain-count">3</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="contract-io">
-          <span class="admin-nav-icon">📄</span> 合約匯出入
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="integration">
+            <span class="admin-nav-icon">🔌</span> 系統整合
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="subscription">
+            <span class="admin-nav-icon">💳</span> 訂閱管理
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="push-test">
+            <span class="admin-nav-icon">🔔</span> 推播測試
+          </div>
+        </div></div>
+      </div>
+      <div class="nav-domain" data-domain="audit" data-name="稽核與監控" data-color="#444441" data-icon="🛡️" style="--dc:#444441">
+        <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
+          <span class="nav-dot"></span><span class="nav-domain-name">稽核與監控</span><span class="nav-domain-count">6</span>
+          <span class="nav-group-arrow">▼</span>
         </div>
-        <div class="admin-nav-item admin-nav-subitem" data-sec="card-ocr">
-          <span class="admin-nav-icon">📷</span> 名片辨識匯入
-        </div>
-      </div>
-      <div class="admin-nav-item" data-sec="quarter-ratios">
-        <span class="admin-nav-icon">📅</span> 季度業績配比
-      </div>
-      <div class="admin-nav-item" data-sec="monthly-budget">
-        <span class="admin-nav-icon">📆</span> 月度業績預算
-      </div>
-      <div class="admin-nav-item" data-sec="jobfunc">
-        <span class="admin-nav-icon">🏷️</span> 職能分類
-      </div>
-      <div class="admin-nav-item" data-sec="role-permissions">
-        <span class="admin-nav-icon">🔐</span> 功能權限
-      </div>
-      <div class="admin-nav-item" data-sec="data-repair">
-        <span class="admin-nav-icon">🔧</span> 資料修復
-      </div>
-      <div class="admin-nav-item" data-sec="logs">
-        <span class="admin-nav-icon">📋</span> 異動記錄
-      </div>
-      <div class="admin-nav-item" data-sec="contact-audit">
-        <span class="admin-nav-icon">🔍</span> 名片操作紀錄
-      </div>
-      <div class="admin-nav-item" data-sec="deleted-contacts">
-        <span class="admin-nav-icon">🗑️</span> 已刪除名單
-      </div>
-      <div class="admin-nav-item" data-sec="storage">
-        <span class="admin-nav-icon">💾</span> 容量空間監控
-      </div>
-      <div class="admin-nav-item" data-sec="data-completeness">
-        <span class="admin-nav-icon">📊</span> 資料普及率
-      </div>
-      <div class="admin-nav-item" data-sec="api-stats">
-        <span class="admin-nav-icon">📡</span> API 使用監控
-      </div>
-      <div class="admin-nav-item" data-sec="infra-stats">
-        <span class="admin-nav-icon">☁️</span> 雲端基礎設施
-      </div>
-      <div class="admin-nav-item" data-sec="integration">
-        <span class="admin-nav-icon">🔌</span> 系統整合
-      </div>
-      <div class="admin-nav-item" data-sec="product-catalog">
-        <span class="admin-nav-icon">🛒</span> 銷售商品維護
-      </div>
-      <div class="admin-nav-item" data-sec="quote-pricebook">
-        <span class="admin-nav-icon">💼</span> 報價牌價簿
-      </div>
-      <div class="admin-nav-item" data-sec="approval-flow">
-        <span class="admin-nav-icon">⚙️</span> 簽核流程設定
-      </div>
-      <div class="admin-nav-item" data-sec="mail">
-        <span class="admin-nav-icon">✉️</span> 寄信
-      </div>
-      <div class="admin-nav-item" data-sec="subscription">
-        <span class="admin-nav-icon">💳</span> 訂閱管理
-      </div>
-      <div class="admin-nav-item" data-sec="push-test">
-        <span class="admin-nav-icon">🔔</span> 推播測試
-      </div>
-      <div class="admin-nav-item" data-sec="version">
-        <span class="admin-nav-icon">🏷️</span> 版本資訊
+        <div class="nav-domain-items"><div class="nav-domain-inner">
+          <div class="admin-nav-item nav-sub" data-sec="logs">
+            <span class="admin-nav-icon">📋</span> 異動記錄
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="contact-audit">
+            <span class="admin-nav-icon">🔍</span> 名片操作紀錄
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="storage">
+            <span class="admin-nav-icon">💾</span> 容量空間監控
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="api-stats">
+            <span class="admin-nav-icon">📡</span> API 使用監控
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="infra-stats">
+            <span class="admin-nav-icon">☁️</span> 雲端基礎設施
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="version">
+            <span class="admin-nav-icon">🏷️</span> 版本資訊
+          </div>
+        </div></div>
       </div>
     </nav>
 
     <!-- Main -->
     <main class="admin-main">
 
+      <!-- ── 總覽 ── -->
+      <div class="admin-section active" id="sec-home">
+        <div class="section-title">總覽</div>
+        <div class="section-sub">依領域快速前往各項管理功能，也可按 <kbd class="kbd-hint kbd-key">Ctrl K</kbd> 搜尋</div>
+        <div class="home-alerts" id="homeAlerts" hidden></div>
+        <div class="home-grid" id="homeGrid"></div>
+      </div>
+
       <!-- ── 帳號管理 ── -->
-      <div class="admin-section active" id="sec-users">
+      <div class="admin-section" id="sec-users">
         <div class="section-title">帳號管理</div>
         <div class="section-sub">管理系統使用者帳號、密碼與權限設定</div>
 
@@ -2699,6 +2851,14 @@
     </div>
   </div>
 
+  <!-- 指令面板（Ctrl/Cmd+K）-->
+  <div class="pal-overlay" id="palOverlay" hidden>
+    <div class="pal-box" role="dialog" aria-modal="true" aria-label="搜尋功能">
+      <input type="text" id="palInput" class="pal-input" placeholder="搜尋功能或領域…（↑↓ 選擇，Enter 前往，Esc 關閉）" autocomplete="off" spellcheck="false" aria-label="搜尋功能">
+      <div class="pal-list" id="palList" role="listbox"></div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script src="admin-users-view.js"></script>
@@ -2746,6 +2906,10 @@
         document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
         this.classList.add('active');
         $('sec-' + this.dataset.sec).classList.add('active');
+        // 領域群組：手風琴，只展開目前項目所屬群組（總覽 → 全部收合）
+        adminSetDomainOpen(this.closest('.nav-domain'), true);
+        const _mainEl = document.querySelector('.admin-main'); if (_mainEl) _mainEl.scrollTop = 0;
+        if (this.dataset.sec === 'home') initHome();
         // 若點選子項目，自動展開父群組
         const parent = this.closest('.admin-nav-subitems');
         if (parent) {
@@ -2773,6 +2937,208 @@
         if (this.dataset.sec === 'approval-flow') initApprovalFlow();
       });
     });
+
+    // ── 領域導覽：手風琴群組、adminGoto、總覽、指令面板（Ctrl/Cmd+K）──
+    // 導覽唯一入口 adminGoto(sec)：觸發該項目的 click，讓上方切換邏輯與各區段自己掛在 data-sec 上的載入監聽都照常執行。
+    function adminSetDomainOpen(dom, open) {
+      document.querySelectorAll('.nav-domain').forEach(d => {
+        const o = !!open && d === dom;
+        d.classList.toggle('open', o);
+        const h = d.querySelector('.nav-domain-header');
+        if (h) h.setAttribute('aria-expanded', o ? 'true' : 'false');
+      });
+    }
+    function adminGoto(sec) {
+      const it = document.querySelector('.admin-nav-item[data-sec="' + String(sec).replace(/[^\w-]/g, '') + '"]');
+      if (!it) return false;
+      it.click();
+      return true;
+    }
+    document.querySelectorAll('.nav-domain-header').forEach(h => {
+      const toggle = () => {
+        const d = h.closest('.nav-domain');
+        adminSetDomainOpen(d, !d.classList.contains('open'));
+      };
+      h.addEventListener('click', toggle);
+      h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
+
+    function adminNavIndex() {
+      return Array.from(document.querySelectorAll('.admin-nav-item[data-sec]')).map(el => {
+        const dom = el.closest('.nav-domain');
+        const ic = el.querySelector('.admin-nav-icon');
+        return {
+          sec: el.dataset.sec,
+          icon: ic ? ic.textContent.trim() : '',
+          label: el.textContent.replace(ic ? ic.textContent : '', '').trim(),
+          domain: dom ? dom.dataset.name : '',
+          color: dom ? dom.dataset.color : '',
+          io: !!el.closest('#group-io')
+        };
+      });
+    }
+
+    // 總覽：卡片由側欄 DOM 產生（單一來源），指標只用已取得的真實資料
+    function renderHomeCards() {
+      const grid = $('homeGrid');
+      if (!grid || grid.dataset.ready) return;
+      grid.dataset.ready = '1';
+      const idx = adminNavIndex();
+      document.querySelectorAll('.nav-domain').forEach(d => {
+        const color = d.dataset.color;
+        const list = idx.filter(x => x.domain === d.dataset.name);
+        const card = document.createElement('div');
+        card.className = 'home-card';
+        card.style.setProperty('--dc', color);
+        card.style.setProperty('--dc-tint', color + '1f');
+        const head = document.createElement('div'); head.className = 'home-card-head';
+        const ic = document.createElement('div'); ic.className = 'home-card-icon'; ic.textContent = d.dataset.icon;
+        const tw = document.createElement('div');
+        const t = document.createElement('div'); t.className = 'home-card-title'; t.textContent = d.dataset.name;
+        const c = document.createElement('div'); c.className = 'home-card-count'; c.textContent = list.length + ' 項功能';
+        tw.append(t, c); head.append(ic, tw);
+        const metric = document.createElement('div'); metric.className = 'home-metric'; metric.dataset.metric = d.dataset.domain;
+        const chips = document.createElement('div'); chips.className = 'home-chips';
+        list.forEach(x => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'home-chip'; b.dataset.go = x.sec;
+          b.textContent = x.label;
+          chips.appendChild(b);
+        });
+        card.append(head, metric, chips);
+        grid.appendChild(card);
+      });
+      grid.addEventListener('click', e => {
+        const b = e.target.closest('[data-go]');
+        if (b) adminGoto(b.dataset.go);
+      });
+    }
+    renderHomeCards();
+    if ($('homeAlerts')) $('homeAlerts').addEventListener('click', e => {
+      const b = e.target.closest('[data-go]');
+      if (b) adminGoto(b.dataset.go);
+    });
+
+    let _homeBusy = false;
+    async function initHome() {
+      if (_homeBusy) return;
+      _homeBusy = true;
+      try {
+        const [uRes, cRes] = await Promise.allSettled([
+          adminFetch('/api/admin/users'),
+          adminFetch('/api/admin/quote-approval/flow-config'),
+        ]);
+        let users = null, cfg = null;
+        if (uRes.status === 'fulfilled' && uRes.value.ok) {
+          const b = await uRes.value.json();
+          users = Array.isArray(b) ? b : (b && b.users) || [];
+        }
+        if (cRes.status === 'fulfilled' && cRes.value.ok) cfg = await cRes.value.json();
+        // 指標：僅有真實資料時才顯示
+        const mEl = document.querySelector('.home-metric[data-metric="people"]');
+        if (mEl) mEl.textContent = users ? '啟用帳號 ' + users.filter(u => u.active).length + ' ／ 共 ' + users.length : '';
+        // 警示：只放能便宜算出的真實問題
+        const box = $('homeAlerts');
+        box.textContent = '';
+        if (users && cfg) {
+          const anyMgr2Step = Object.values(cfg.buSettings || {}).some(b => b && b.hasMgr2Step);
+          const mgr2 = users.filter(u => u.active && u.role === 'manager2');
+          if (!anyMgr2Step && mgr2.length) {
+            const a = document.createElement('div'); a.className = 'home-alert';
+            const tx = document.createElement('span');
+            tx.textContent = '⚠️ 所有 BU 都未啟用「二級主管複核」步驟，但系統有 ' + mgr2.length + ' 位啟用中的二級主管，他們不會出現在簽核流程中。';
+            const b = document.createElement('button'); b.type = 'button'; b.className = 'home-alert-btn'; b.dataset.go = 'approval-flow'; b.textContent = '前往簽核流程設定';
+            a.append(tx, b); box.appendChild(a);
+          }
+        }
+        box.hidden = !box.childNodes.length;
+      } catch (e) { /* Session expired 已由 adminFetch 處理；其餘靜默，總覽不顯示錯誤 */ }
+      finally { _homeBusy = false; }
+    }
+
+    // 指令面板
+    const PAL = { open: false, idx: 0, rows: [], all: null };
+    function palOpen() {
+      if ($('adminLoginScreen').classList.contains('show')) return;
+      const fp = $('forcePwdOverlay'); if (fp && fp.classList.contains('open')) return;
+      PAL.all = adminNavIndex();
+      PAL.open = true;
+      $('palOverlay').hidden = false;
+      $('palInput').value = '';
+      PAL.idx = 0;
+      palRender();
+      $('palInput').focus();
+    }
+    function palClose() {
+      if (!PAL.open) return;
+      PAL.open = false;
+      $('palOverlay').hidden = true;
+    }
+    function palRender() {
+      const q = $('palInput').value.trim().toLowerCase();
+      const toks = q ? q.split(/\s+/) : [];
+      PAL.rows = PAL.all.filter(x => {
+        const hay = (x.label + ' ' + x.domain + ' ' + (x.io ? '資料匯出入' : '') + ' ' + x.sec).toLowerCase();
+        return toks.every(t => hay.includes(t));
+      });
+      if (PAL.idx >= PAL.rows.length) PAL.idx = 0;
+      const list = $('palList');
+      list.textContent = '';
+      if (!PAL.rows.length) {
+        const e = document.createElement('div'); e.className = 'pal-empty'; e.textContent = '找不到符合的功能';
+        list.appendChild(e); return;
+      }
+      PAL.rows.forEach((x, i) => {
+        const r = document.createElement('div');
+        r.className = 'pal-row' + (i === PAL.idx ? ' sel' : '');
+        r.setAttribute('role', 'option'); r.dataset.i = i;
+        if (x.color) r.style.setProperty('--dc', x.color);
+        const ic = document.createElement('span'); ic.className = 'pal-row-ic'; ic.textContent = x.icon;
+        const lb = document.createElement('span'); lb.className = 'pal-row-lb'; lb.textContent = x.label;
+        const dm = document.createElement('span'); dm.className = 'pal-row-dom';
+        if (x.domain) { const dot = document.createElement('i'); dm.append(dot, document.createTextNode(x.domain)); }
+        r.append(ic, lb, dm);
+        list.appendChild(r);
+      });
+    }
+    function palMove(d) {
+      if (!PAL.rows.length) return;
+      PAL.idx = (PAL.idx + d + PAL.rows.length) % PAL.rows.length;
+      const rows = $('palList').querySelectorAll('.pal-row');
+      rows.forEach((r, i) => r.classList.toggle('sel', i === PAL.idx));
+      if (rows[PAL.idx]) rows[PAL.idx].scrollIntoView({ block: 'nearest' });
+    }
+    function palGo(i) {
+      const x = PAL.rows[i];
+      if (!x) return;
+      palClose();
+      adminGoto(x.sec);
+    }
+    $('palInput').addEventListener('input', () => { PAL.idx = 0; palRender(); });
+    $('palInput').addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); palMove(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); palMove(-1); }
+      else if (e.key === 'Enter') { if (e.isComposing || e.keyCode === 229) return; e.preventDefault(); palGo(PAL.idx); }
+      else if (e.key === 'Escape') { e.preventDefault(); palClose(); }
+    });
+    $('palList').addEventListener('click', e => { const r = e.target.closest('.pal-row'); if (r) palGo(+r.dataset.i); });
+    $('palList').addEventListener('mousemove', e => {
+      const r = e.target.closest('.pal-row');
+      if (r && +r.dataset.i !== PAL.idx) { PAL.idx = +r.dataset.i; $('palList').querySelectorAll('.pal-row').forEach((x, i) => x.classList.toggle('sel', i === PAL.idx)); }
+    });
+    $('palOverlay').addEventListener('mousedown', e => { if (e.target === $('palOverlay')) palClose(); });
+    $('adminPaletteBtn').addEventListener('click', palOpen);
+    document.addEventListener('keydown', e => {
+      // 只攔 Ctrl/Cmd+K；其他按鍵（含輸入框內打字）完全不動
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        PAL.open ? palClose() : palOpen();
+      } else if (e.key === 'Escape' && PAL.open) { palClose(); }
+    });
+    if (/Mac|iPhone|iPad/.test(navigator.platform || '')) {
+      document.querySelectorAll('.kbd-hint').forEach(k => { if (k.textContent === 'Ctrl K') k.textContent = '⌘ K'; });
+      const pb = $('adminPaletteBtn'); if (pb) pb.title = '搜尋功能（⌘K）';
+    }
 
     // ── 簽核流程設定（Admin）───────────────────────────────────
     const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
@@ -4097,6 +4463,7 @@
         $('adminUser').textContent = `👤 ${me.displayName || me.username}`;
         hideLoginScreen();
         await loadUsers();
+        initHome();
       } catch {
         err.textContent = '連線失敗，請稍後再試';
         err.classList.add('show');
@@ -5231,7 +5598,7 @@
     // ── 初始化（先確認登入與權限，再載入資料）──
     (async function init() {
       const ok = await loadMe();
-      if (ok) { await loadUsers(); await populateImportOwners(); await populateTransferSelects(); await populateOcrOwners(); }
+      if (ok) { await loadUsers(); initHome(); await populateImportOwners(); await populateTransferSelects(); await populateOcrOwners(); }
     })();
 
     // ════════════════════════════════════════════════════
