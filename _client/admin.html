@@ -2191,7 +2191,7 @@
         <div class="section-sub">設定各 BU 是否啟用二級主管複核步驟，以及個別人員的例外規則（例如跳過一級主管直送總經理）。設定儲存後，新送簽的報價單即採用新流程；已在簽核中的單子不受影響。</div>
         <div class="admin-card" style="padding:18px;max-width:900px">
           <div id="afBuSection" style="margin-bottom:24px">
-            <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#374151">各 BU 是否啟用二級主管複核</div>
+            <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#374151">各 BU 簽核流程（勾選即時預覽）</div>
             <div id="afBuRows" style="display:flex;flex-direction:column;gap:10px"></div>
           </div>
           <div id="afExSection">
@@ -2792,7 +2792,7 @@
         if (!cfgRes.ok || !usersRes.ok) throw new Error('API 失敗');
         _afCfg = await cfgRes.json();
         const ud = await usersRes.json();
-        _afUsers = (ud.users || []).filter(u => u.active && ['manager2', 'manager1'].includes(u.role));
+        _afUsers = (Array.isArray(ud) ? ud : (ud.users || [])).filter(u => u.active && ['manager2', 'manager1'].includes(u.role));
         st.textContent = '';
         _afRender();
         $('afSaveBtn').addEventListener('click', _afSave);
@@ -2803,20 +2803,42 @@
     }
 
     function _afRender() {
-      // BU 開關列
+      _afRenderBu();
+      _afRenderExceptions();
+    }
+
+    function _afNode(k, n, skip) {
+      return '<div style="min-width:88px;border:1px ' + (skip ? 'dashed' : 'solid') + ' #d1d5db;border-radius:10px;padding:8px 10px;background:#fff;' + (skip ? 'opacity:.5;text-decoration:line-through' : '') + '">'
+        + '<div style="font-size:11px;color:#9ca3af">' + k + '</div><div style="font-size:13.5px;font-weight:600;color:#1f2937">' + n + '</div></div>';
+    }
+
+    function _afRenderBu() {
       const buRows = $('afBuRows');
       buRows.innerHTML = '';
+      const arrow = '<span style="color:#9ca3af;padding:0 2px">→</span>';
+      const exs = (_afCfg.exceptions || []).filter(e => e.action === 'skip_mgr1');
       for (const bu of AF_BUS) {
-        const checked = _afCfg.buSettings && _afCfg.buSettings[bu] && _afCfg.buSettings[bu].hasMgr2Step;
-        const row = document.createElement('label');
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;max-width:400px';
-        row.innerHTML = `<input type="checkbox" data-bu="${bu}" ${checked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer">
-          <span style="font-weight:600;min-width:48px">${bu}</span>
-          <span style="color:#6b7280;font-size:13px">啟用二級主管複核步驟</span>`;
+        const on = !!(_afCfg.buSettings && _afCfg.buSettings[bu] && _afCfg.buSettings[bu].hasMgr2Step);
+        const skipNames = exs.map(e => _afUsers.find(u => u.username === e.username)).filter(u => u && u.bu === bu).map(u => u.displayName || u.username);
+        const skip = on && skipNames.length > 0;
+        const nodes = [_afNode('起點', '業務送簽')];
+        if (on) nodes.push(_afNode('二級主管', '複核'));
+        nodes.push(_afNode(on ? '第二關' : '第一關', '一級主管', skip));
+        nodes.push(_afNode('依毛利', '總經理'));
+        const note = skip ? '<div style="font-size:12px;color:#92400e;background:#fef3c7;border-radius:6px;padding:3px 8px;margin-top:8px;display:inline-block">例外：' + skipNames.join('、') + ' 擔任二級主管時，跳過一級主管直送總經理</div>' : '';
+        const row = document.createElement('div');
+        row.style.cssText = 'border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;background:#f9fafb';
+        row.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+          + '<span style="font-weight:700;font-size:15px;color:#1a2d52">' + bu + '</span>'
+          + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#4b5563"><input type="checkbox" data-bu="' + bu + '" ' + (on ? 'checked' : '') + ' style="width:16px;height:16px;cursor:pointer">啟用二級主管複核</label></div>'
+          + '<div style="display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:2px">' + nodes.join(arrow) + '</div>' + note;
         buRows.appendChild(row);
       }
-      // 例外規則列
-      _afRenderExceptions();
+      buRows.querySelectorAll('input[data-bu]').forEach(cb => cb.addEventListener('change', () => {
+        if (!_afCfg.buSettings) _afCfg.buSettings = {};
+        _afCfg.buSettings[cb.dataset.bu] = { hasMgr2Step: cb.checked };
+        _afRenderBu();
+      }));
     }
 
     function _afRenderExceptions() {
@@ -2835,9 +2857,9 @@
         const actionOpts = AF_ACTIONS.map(a => `<option value="${a.value}" ${a.value === e.action ? 'selected' : ''}>${a.label}</option>`).join('');
         row.innerHTML = `
           <span style="color:#6b7280;font-size:13px;min-width:56px">當 mgr2 是</span>
-          <select data-ex="${i}" data-field="username" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px">${userOpts}</select>
+          <select data-ex="${i}" data-field="username" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;background:#fff;color:#111">${userOpts}</select>
           <span style="color:#6b7280;font-size:13px">時</span>
-          <select data-ex="${i}" data-field="action" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px">${actionOpts}</select>
+          <select data-ex="${i}" data-field="action" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;background:#fff;color:#111">${actionOpts}</select>
           <input data-ex="${i}" data-field="label" placeholder="備註（選填）" value="${e.label || ''}"
             style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;flex:1;min-width:100px">
           <button data-del="${i}" type="button" style="background:none;border:none;color:#ef4444;font-size:17px;cursor:pointer;padding:0 4px" title="刪除">✕</button>`;
@@ -2848,6 +2870,7 @@
         el.addEventListener('change', ev => {
           const idx = +ev.target.dataset.ex, field = ev.target.dataset.field;
           _afCfg.exceptions[idx][field] = ev.target.value;
+          _afRenderBu();
         });
         if (el.tagName === 'INPUT') el.addEventListener('input', ev => {
           const idx = +ev.target.dataset.ex, field = ev.target.dataset.field;
@@ -2858,6 +2881,7 @@
         btn.addEventListener('click', ev => {
           _afCfg.exceptions.splice(+ev.target.dataset.del, 1);
           _afRenderExceptions();
+          _afRenderBu();
         });
       });
     }
@@ -2866,6 +2890,7 @@
       if (!_afCfg.exceptions) _afCfg.exceptions = [];
       _afCfg.exceptions.push({ id: '', username: (_afUsers[0] || {}).username || '', bu: '', role: '', action: 'skip_mgr1', label: '' });
       _afRenderExceptions();
+      _afRenderBu();
     }
 
     async function _afSave() {
