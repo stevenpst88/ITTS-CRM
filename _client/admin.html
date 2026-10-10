@@ -705,6 +705,9 @@
       <div class="admin-nav-item" data-sec="quote-pricebook">
         <span class="admin-nav-icon">💼</span> 報價牌價簿
       </div>
+      <div class="admin-nav-item" data-sec="approval-flow">
+        <span class="admin-nav-icon">⚙️</span> 簽核流程設定
+      </div>
       <div class="admin-nav-item" data-sec="mail">
         <span class="admin-nav-icon">✉️</span> 寄信
       </div>
@@ -2183,6 +2186,29 @@
         </div>
       </div>
 
+      <div class="admin-section" id="sec-approval-flow">
+        <div class="section-title">⚙️ 簽核流程設定</div>
+        <div class="section-sub">設定各 BU 是否啟用二級主管複核步驟，以及個別人員的例外規則（例如跳過一級主管直送總經理）。設定儲存後，新送簽的報價單即採用新流程；已在簽核中的單子不受影響。</div>
+        <div class="admin-card" style="padding:18px;max-width:900px">
+          <div id="afBuSection" style="margin-bottom:24px">
+            <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#374151">各 BU 是否啟用二級主管複核</div>
+            <div id="afBuRows" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+          <div id="afExSection">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <span style="font-weight:600;font-size:14px;color:#374151">例外規則</span>
+              <button id="afAddExBtn" type="button" style="background:#e8f0fe;color:#1a73e8;border:1px solid #c5d9f7;padding:5px 12px;font-size:13px;border-radius:5px;cursor:pointer">＋ 新增例外</button>
+            </div>
+            <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">例外規則說明：當指定人員擔任二級主管簽核者時，套用指定動作（例：skip_mgr1 = 跳過一級主管）。</div>
+            <div id="afExRows" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:20px;border-top:1px solid #eee;padding-top:14px">
+            <button id="afSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存設定</button>
+            <span id="afStatus" style="font-size:13px;color:#6b7280"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="admin-section" id="sec-quote-pricebook">
         <div class="section-title">💼 報價牌價簿</div>
         <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM 四個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
@@ -2744,8 +2770,123 @@
         if (this.dataset.sec === 'integration') initIntegration();
         if (this.dataset.sec === 'product-catalog') initProductCatalog();
         if (this.dataset.sec === 'quote-pricebook') initPricebook();
+        if (this.dataset.sec === 'approval-flow') initApprovalFlow();
       });
     });
+
+    // ── 簽核流程設定（Admin）───────────────────────────────────
+    const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+    const AF_ACTIONS = [{ value: 'skip_mgr1', label: '跳過一級主管' }];
+    let _afInited = false, _afCfg = null, _afUsers = null;
+
+    async function initApprovalFlow() {
+      if (_afInited) return;
+      _afInited = true;
+      const st = $('afStatus');
+      st.textContent = '載入中…';
+      try {
+        const [cfgRes, usersRes] = await Promise.all([
+          adminFetch('/api/admin/quote-approval/flow-config'),
+          adminFetch('/api/admin/users'),
+        ]);
+        if (!cfgRes.ok || !usersRes.ok) throw new Error('API 失敗');
+        _afCfg = await cfgRes.json();
+        const ud = await usersRes.json();
+        _afUsers = (ud.users || []).filter(u => u.active && ['manager2', 'manager1'].includes(u.role));
+        st.textContent = '';
+        _afRender();
+        $('afSaveBtn').addEventListener('click', _afSave);
+        $('afAddExBtn').addEventListener('click', _afAddException);
+      } catch (e) {
+        st.textContent = '載入失敗：' + e.message;
+      }
+    }
+
+    function _afRender() {
+      // BU 開關列
+      const buRows = $('afBuRows');
+      buRows.innerHTML = '';
+      for (const bu of AF_BUS) {
+        const checked = _afCfg.buSettings && _afCfg.buSettings[bu] && _afCfg.buSettings[bu].hasMgr2Step;
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;max-width:400px';
+        row.innerHTML = `<input type="checkbox" data-bu="${bu}" ${checked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer">
+          <span style="font-weight:600;min-width:48px">${bu}</span>
+          <span style="color:#6b7280;font-size:13px">啟用二級主管複核步驟</span>`;
+        buRows.appendChild(row);
+      }
+      // 例外規則列
+      _afRenderExceptions();
+    }
+
+    function _afRenderExceptions() {
+      const exRows = $('afExRows');
+      exRows.innerHTML = '';
+      const exceptions = (_afCfg && _afCfg.exceptions) || [];
+      if (!exceptions.length) {
+        exRows.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:8px">尚無例外規則</div>';
+        return;
+      }
+      for (let i = 0; i < exceptions.length; i++) {
+        const e = exceptions[i];
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:7px;background:#f9fafb';
+        const userOpts = _afUsers.map(u => `<option value="${u.username}" ${u.username === e.username ? 'selected' : ''}>${u.displayName || u.username}（${u.role}）</option>`).join('');
+        const actionOpts = AF_ACTIONS.map(a => `<option value="${a.value}" ${a.value === e.action ? 'selected' : ''}>${a.label}</option>`).join('');
+        row.innerHTML = `
+          <span style="color:#6b7280;font-size:13px;min-width:56px">當 mgr2 是</span>
+          <select data-ex="${i}" data-field="username" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px">${userOpts}</select>
+          <span style="color:#6b7280;font-size:13px">時</span>
+          <select data-ex="${i}" data-field="action" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px">${actionOpts}</select>
+          <input data-ex="${i}" data-field="label" placeholder="備註（選填）" value="${e.label || ''}"
+            style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;flex:1;min-width:100px">
+          <button data-del="${i}" type="button" style="background:none;border:none;color:#ef4444;font-size:17px;cursor:pointer;padding:0 4px" title="刪除">✕</button>`;
+        exRows.appendChild(row);
+      }
+      // 監聽欄位變更
+      exRows.querySelectorAll('select[data-ex], input[data-ex]').forEach(el => {
+        el.addEventListener('change', ev => {
+          const idx = +ev.target.dataset.ex, field = ev.target.dataset.field;
+          _afCfg.exceptions[idx][field] = ev.target.value;
+        });
+        if (el.tagName === 'INPUT') el.addEventListener('input', ev => {
+          const idx = +ev.target.dataset.ex, field = ev.target.dataset.field;
+          _afCfg.exceptions[idx][field] = ev.target.value;
+        });
+      });
+      exRows.querySelectorAll('button[data-del]').forEach(btn => {
+        btn.addEventListener('click', ev => {
+          _afCfg.exceptions.splice(+ev.target.dataset.del, 1);
+          _afRenderExceptions();
+        });
+      });
+    }
+
+    function _afAddException() {
+      if (!_afCfg.exceptions) _afCfg.exceptions = [];
+      _afCfg.exceptions.push({ id: '', username: (_afUsers[0] || {}).username || '', bu: '', role: '', action: 'skip_mgr1', label: '' });
+      _afRenderExceptions();
+    }
+
+    async function _afSave() {
+      const st = $('afStatus');
+      st.textContent = '儲存中…';
+      // 從 DOM 收集 BU 開關
+      const buSettings = {};
+      for (const bu of AF_BUS) {
+        const cb = $('afBuRows').querySelector(`input[data-bu="${bu}"]`);
+        buSettings[bu] = { hasMgr2Step: !!(cb && cb.checked) };
+      }
+      _afCfg.buSettings = buSettings;
+      try {
+        const r = await adminFetch('/api/admin/quote-approval/flow-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buSettings, exceptions: _afCfg.exceptions || [] }) });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.status); }
+        st.textContent = '✅ 儲存成功';
+        setTimeout(() => { st.textContent = ''; }, 3000);
+      } catch (e) {
+        st.textContent = '❌ 儲存失敗：' + e.message;
+      }
+    }
 
     // ── 銷售商品維護（Admin）───────────────────────────────────
     const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
