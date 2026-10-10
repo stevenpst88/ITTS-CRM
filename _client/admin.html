@@ -672,8 +672,26 @@
     });
   })();
   </script>
+  <script>
+  /* Glass UI 開關：localStorage 'glassUI'（預設開）；?glass=0 關閉並記住、?glass=1 重新開啟。window.setGlass(bool) 可即時切換。 */
+  (function(){
+    var on = true;
+    try {
+      var m = /[?&]glass=([01])(?:&|$)/.exec(location.search);
+      if (m) localStorage.setItem('glassUI', m[1]);
+      on = localStorage.getItem('glassUI') !== '0';
+    } catch (e) {}
+    window.__glassOn = on;
+    window.setGlass = function(v){
+      try { localStorage.setItem('glassUI', v ? '1' : '0'); } catch (e) {}
+      if (document.body) document.body.classList.toggle('glass', !!v);
+    };
+  })();
+  </script>
+  <link rel="stylesheet" href="glass.css">
 </head>
 <body>
+<script>(function(){try{if(window.__glassOn)document.body.classList.add('glass');if(localStorage.getItem('darkMode')==='1')document.body.classList.add('dark');}catch(e){}})();</script>
 
   <!-- ── 管理者登入畫面（session 過期時才顯示）── -->
   <div id="adminLoginScreen">

@@ -1,0 +1,301 @@
+/* ITTS CRM — Glass UI 覆蓋層（Phase 1：地基）
+ *
+ * 設計：只在 <body class="glass"> 時生效；移除該 class（?glass=0 或 setGlass(false)）即還原舊外觀。
+ * 載入順序：必須在 style.css / admin.html 內嵌樣式「之後」。
+ * 淺色 = body.glass；深色 = body.glass.dark（沿用既有的 body.dark 開關）。
+ * 硬性排除：報價單預覽／PDF 擷取區（.qpv-*）、列印樣式、login.html、help.html。
+ */
+
+/* ───────────── 1. Tokens ───────────── */
+body.glass {
+  --g-base: #e9eefb;
+  --g-surface: rgba(255, 255, 255, .58);          /* 一般卡片／側欄／頂欄 */
+  --g-surface-strong: rgba(255, 255, 255, .86);   /* 表格／表單／彈窗：數字要清楚 */
+  --g-surface-hover: rgba(255, 255, 255, .72);
+  --g-input: rgba(255, 255, 255, .78);
+  --g-th: rgba(236, 242, 255, .92);
+  --g-row-hover: rgba(26, 115, 232, .07);
+  --g-border: rgba(255, 255, 255, .72);           /* 1px 亮緣 */
+  --g-edge: rgba(24, 44, 96, .10);                /* 分隔線／輸入框邊 */
+  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .85);
+  --g-shadow: 0 8px 28px rgba(31, 54, 110, .12), 0 1px 3px rgba(31, 54, 110, .06);
+  --g-shadow-lg: 0 24px 64px rgba(25, 42, 96, .26);
+  --g-text: #1b2540;
+  --g-text-2: #4b5878;
+  --g-accent: #1a73e8;
+  --g-scrim: rgba(18, 28, 56, .38);
+  --g-side-bg: linear-gradient(180deg, rgba(15, 27, 53, .86) 0%, rgba(26, 45, 82, .78) 100%);
+  --g-blur: 18px;
+  --g-radius: 16px;
+  --g-radius-sm: 10px;
+}
+body.glass.dark {
+  --g-base: #070b18;
+  --g-surface: rgba(24, 31, 52, .56);
+  --g-surface-strong: rgba(17, 23, 40, .86);
+  --g-surface-hover: rgba(32, 41, 68, .66);
+  --g-input: rgba(8, 12, 24, .58);
+  --g-th: rgba(30, 40, 68, .94);
+  --g-row-hover: rgba(88, 166, 255, .09);
+  --g-border: rgba(255, 255, 255, .10);
+  --g-edge: rgba(255, 255, 255, .11);
+  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .08);
+  --g-shadow: 0 10px 34px rgba(0, 0, 0, .46), 0 1px 3px rgba(0, 0, 0, .3);
+  --g-shadow-lg: 0 28px 70px rgba(0, 0, 0, .6);
+  --g-text: #e6edf6;
+  --g-text-2: #9fb0cc;
+  --g-accent: #58a6ff;
+  --g-scrim: rgba(2, 5, 14, .55);
+  --g-side-bg: linear-gradient(180deg, rgba(6, 10, 24, .82) 0%, rgba(14, 22, 46, .74) 100%);
+}
+
+/* ───────────── 2. 背景（彩色柔焦光暈）─────────────
+ * 固定在最底層（z-index:-1，body 本身不建立 stacking context），pointer-events:none，
+ * 不會蓋住 modal / toast（它們的 z-index 都是正值）。 */
+body.glass {
+  background: var(--g-base);
+  color: var(--g-text);
+}
+body.glass::before,
+body.glass::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+}
+body.glass::before {
+  background:
+    radial-gradient(46vmax 46vmax at 8% 12%, rgba(99, 153, 255, .50), transparent 62%),
+    radial-gradient(40vmax 40vmax at 92% 8%, rgba(167, 139, 250, .42), transparent 62%),
+    radial-gradient(44vmax 44vmax at 78% 96%, rgba(45, 212, 191, .38), transparent 62%);
+}
+body.glass::after {
+  background: radial-gradient(34vmax 34vmax at 30% 88%, rgba(244, 114, 182, .20), transparent 62%);
+}
+body.glass.dark::before {
+  background:
+    radial-gradient(46vmax 46vmax at 8% 12%, rgba(37, 99, 235, .46), transparent 62%),
+    radial-gradient(40vmax 40vmax at 92% 8%, rgba(192, 38, 211, .30), transparent 62%),
+    radial-gradient(44vmax 44vmax at 78% 96%, rgba(13, 148, 136, .34), transparent 62%);
+}
+body.glass.dark::after {
+  background: radial-gradient(34vmax 34vmax at 30% 88%, rgba(79, 70, 229, .24), transparent 62%);
+}
+
+/* 讓容器透出背景 */
+body.glass .app-layout,
+body.glass .main-wrapper,
+body.glass .main,
+body.glass .admin-layout,
+body.glass.dark .admin-main,
+body.glass .admin-main { background: transparent; }
+
+/* ───────────── 3. 玻璃表面（一般）─────────────
+ * 只掛在「主要大面」上；backdrop-filter 不用在每個格子。 */
+body.glass .topbar,
+body.glass .stat-card,
+body.glass .contact-card,
+body.glass .dash-pipeline-card,
+body.glass .admin-card,
+body.glass .home-card,
+body.glass .mail-panel,
+body.glass .mail-stat,
+body.glass .chart-card {
+  background: var(--g-surface);
+  border: 1px solid var(--g-border);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(160%);
+  backdrop-filter: blur(var(--g-blur)) saturate(160%);
+  color: var(--g-text);
+}
+body.glass .stat-card,
+body.glass .contact-card,
+body.glass .dash-pipeline-card,
+body.glass .admin-card,
+body.glass .chart-card,
+body.glass .home-card { border-radius: var(--g-radius); }
+body.glass .topbar { border-radius: 0; border-width: 0 0 1px 0; border-bottom-color: var(--g-edge); }
+body.glass .contact-card:hover,
+body.glass .stat-card:hover { background: var(--g-surface-hover); }
+body.glass .admin-card-header { border-bottom-color: var(--g-edge); }
+body.glass .topbar-title,
+body.glass .card-name,
+body.glass .section-title,
+body.glass .admin-card-title,
+body.glass .stat-value { color: var(--g-text); }
+body.glass .section-sub,
+body.glass .stat-label,
+body.glass .card-title-company,
+body.glass .card-info-row,
+body.glass .contact-count { color: var(--g-text-2); }
+body.glass .contact-count { background: var(--g-input); }
+body.glass .search-box { background: var(--g-input); border: 1px solid var(--g-edge); }
+body.glass .search-box input { color: var(--g-text); }
+
+/* ───────────── 4. 側欄（保留海軍藍識別，更通透）───────────── */
+body.glass .sidebar,
+body.glass .admin-sidebar {
+  background: var(--g-side-bg);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border-right: 1px solid rgba(255, 255, 255, .10);
+  box-shadow: 4px 0 24px rgba(8, 16, 40, .16);
+}
+body.glass .admin-topbar {
+  background: linear-gradient(135deg, rgba(26, 45, 82, .86) 0%, rgba(26, 115, 232, .78) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, .18);
+}
+body.glass .sidebar-nav-item.active,
+body.glass .admin-nav-item.active { background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10); }
+
+/* ───────────── 5. 表格容器（更不透明）+ 表格本體 ───────────── */
+body.glass .table-wrap,
+body.glass .ka-table-wrap,
+body.glass .cm-table-wrap,
+body.glass .forecast-table-wrap,
+body.glass .mail-tablewrap,
+body.glass .rp-wrap,
+body.glass .import-preview-wrap {
+  background: var(--g-surface-strong);
+  border: 1px solid var(--g-border);
+  border-radius: var(--g-radius);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+/* 管理後台表格住在 .admin-card 內：卡片本身改為強玻璃 */
+body.glass .admin-card:has(> .admin-card-body table),
+body.glass .admin-card:has(table) { background: var(--g-surface-strong); }
+
+/* 表格元素（報價單預覽紙張 .qpv-paper 內一律排除） */
+body.glass table:not(.qpv-paper *) { color: var(--g-text); }
+body.glass thead th:not(.qpv-paper *),
+body.glass th:not(.qpv-paper *) {
+  background: var(--g-th);
+  color: var(--g-text-2);
+  border-bottom: 1px solid var(--g-edge);
+}
+body.glass thead th:not(.qpv-paper *) { position: sticky; top: 0; z-index: 2; }
+body.glass td:not(.qpv-paper *) { border-bottom-color: var(--g-edge); color: var(--g-text); }
+body.glass tbody tr:hover td:not(.qpv-paper *) { background: var(--g-row-hover); }
+body.glass.dark .ka-row:hover td { background: var(--g-row-hover) !important; }
+
+/* 含大量數字的卡片（月度業績計量等）：強玻璃 */
+body.glass .mb-card { background: var(--g-surface-strong); border: 1px solid var(--g-border); border-radius: var(--g-radius); box-shadow: var(--g-ring), var(--g-shadow); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+/* 看板卡片數量多（上百張）：只做半透明，不加 blur */
+body.glass .kanban-card { background: var(--g-surface-strong); border: 1px solid var(--g-border); box-shadow: var(--g-ring), 0 2px 8px rgba(31, 54, 110, .08); }
+
+/* ───────────── 6. 按鈕 ───────────── */
+body.glass .btn,
+body.glass .btn-sm,
+body.glass .btn-xs { border-radius: var(--g-radius-sm); }
+body.glass .btn-primary {
+  background: linear-gradient(180deg, #3b8af2 0%, #1a73e8 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 12px rgba(26, 115, 232, .30);
+}
+body.glass .btn-primary:hover { background: linear-gradient(180deg, #4a95f5 0%, #1f78ec 100%); }
+body.glass .btn-secondary,
+body.glass .btn-back {
+  background: var(--g-input); color: var(--g-text);
+  border: 1px solid var(--g-edge);
+  box-shadow: var(--g-ring);
+}
+body.glass .btn-secondary:hover { background: var(--g-surface-hover); }
+body.glass .btn-export,
+body.glass .btn-success { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 4px 12px rgba(52, 168, 83, .26); }
+body.glass .btn-danger { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 4px 12px rgba(234, 67, 53, .24); }
+/* admin.html 頂欄的 .btn-back 在深藍漸層上，維持半透明白 */
+body.glass .admin-topbar .btn-back { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .28); }
+
+/* ───────────── 7. 徽章（保留語意色，加細邊讓它在玻璃上更清楚）───────────── */
+body.glass [class*="badge-"],
+body.glass .badge { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .45); }
+body.glass.dark [class*="badge-"],
+body.glass.dark .badge { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+
+/* ───────────── 8. 表單 ───────────── */
+body.glass .form-group label { color: var(--g-text-2); }
+body.glass .form-group input,
+body.glass .form-group select,
+body.glass .form-group textarea,
+body.glass .pal-input {
+  background: var(--g-input);
+  border: 1px solid var(--g-edge);
+  border-radius: var(--g-radius-sm);
+  color: var(--g-text);
+}
+body.glass .form-group input:focus,
+body.glass .form-group select:focus,
+body.glass .form-group textarea:focus {
+  border-color: var(--g-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 24%, transparent);
+  outline: none;
+}
+
+/* ───────────── 9. 分頁籤 ───────────── */
+body.glass .modal-tabs,
+body.glass .mail-tabs { border-bottom-color: var(--g-edge); }
+body.glass .tab-btn { color: var(--g-text-2); }
+body.glass .tab-btn:hover { background: var(--g-row-hover); color: var(--g-accent); }
+body.glass .tab-btn.active { background: var(--g-surface-strong); color: var(--g-accent); border-bottom-color: var(--g-accent); }
+body.glass .mail-tab { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text-2); }
+body.glass .mail-tab.on { background: var(--g-accent); border-color: var(--g-accent); color: #fff; }
+
+/* ───────────── 10. Modal ───────────── */
+body.glass .modal-overlay { background: var(--g-scrim); }   /* 遮罩不做 blur：巢狀 backdrop-filter 無效且耗效能 */
+body.glass .modal {
+  background: var(--g-surface-strong);
+  border: 1px solid var(--g-border);
+  border-radius: 20px;
+  box-shadow: var(--g-ring), var(--g-shadow-lg);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  color: var(--g-text);
+}
+body.glass .modal-header h2,
+body.glass .modal-header h3 { color: var(--g-text); }
+body.glass .modal-header,
+body.glass .modal-footer { border-color: var(--g-edge); }
+body.glass .modal-close { background: var(--g-input); color: var(--g-text-2); }
+
+/* ───────────── 11. Toast ───────────── */
+body.glass .toast {
+  background: rgba(24, 32, 56, .82); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: var(--g-shadow-lg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+/* ───────────── 12. 硬性排除：報價單預覽／PDF 擷取區 ─────────────
+ * 預覽紙張維持原樣（白底、原字型、無玻璃）。本檔其他規則已用 :not(.qpv-paper *) 避開；
+ * 這裡再補一道保險，確保紙張內沒有任何 blur / 繼承色。 */
+body.glass .qpv-paper,
+body.glass .qpv-paper * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body.glass .qpv-paper { background: #fff; color: #111; }
+
+/* ───────────── 13. 降級與無障礙 ───────────── */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body.glass { --g-surface: rgba(255, 255, 255, .92); --g-side-bg: rgba(15, 27, 53, .97); }
+  body.glass.dark { --g-surface: rgba(22, 27, 34, .95); --g-side-bg: rgba(8, 12, 26, .98); }
+  body.glass .modal-overlay { background: rgba(10, 16, 34, .6); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  body.glass { --g-surface: var(--g-surface-strong); }
+  body.glass * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.glass .stat-card, body.glass .contact-card, body.glass .btn { transition: none; }
+}
+@media (max-width: 768px) {
+  /* 手機：降低模糊強度省 GPU */
+  body.glass { --g-blur: 10px; }
+}
+
+/* ───────────── 14. 列印：完全不套用 ───────────── */
+@media print {
+  body.glass::before, body.glass::after { display: none !important; }
+  body.glass * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
