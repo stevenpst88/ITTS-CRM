@@ -836,6 +836,7 @@ function _countUp(el, to, opts) {
   const suffix = opts.suffix || '', dur = opts.dur || 850;
   const fmt = opts.fmt || (n => Math.round(n).toLocaleString());
   to = Number(to) || 0;
+  el.dataset.to = String(to);   // 終值（玻璃首頁 glass-dash.js 讀這個，動畫途中 textContent 是中間值）
   if (_prefersReduce()) { el.textContent = fmt(to) + suffix; return; }
   const start = performance.now();
   (function tick(now) {
@@ -10089,6 +10090,7 @@ async function loadManagerHome() {
   _revealIn(document.querySelectorAll('#managerHomeView .mgr-card'));
   renderMgrAging(d.aging);
   renderMgrTopCust(d.topCustomers);
+  if (window.GlassMgr) window.GlassMgr.update(d);   // 玻璃主管首頁摘要（glass-dash.js；沒開玻璃時 no-op）
 }
 
 // ── Gap 分析（年底預測）──────────────────────────────────
