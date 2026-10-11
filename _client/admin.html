@@ -695,6 +695,31 @@
   })();
   </script>
   <link rel="stylesheet" href="glass.css">
+  <style id="ax-classes">
+  /* Phase 5-0: inline style -> shared class. Specificity (3,0,0) via :is(#id,.cls) so classes win exactly where the inline style used to win (never !important).
+     Theme colors read --ax-* variables; fallback = exact legacy literal. Undefined vars => legacy look. */
+  :is(#ax-i, .ax-fs12):is(#ax-i, .ax-fs12):is(#ax-i, .ax-fs12) { font-size:12px; }
+  :is(#ax-i, .ax-mb16):is(#ax-i, .ax-mb16):is(#ax-i, .ax-mb16) { margin-bottom:16px; }
+  :is(#ax-i, .ax-input):is(#ax-i, .ax-input):is(#ax-i, .ax-input) { width:100%; padding:8px 10px; border:1px solid var(--ax-border, #d1d5db); border-radius:6px; font-size:13px; }
+  :is(#ax-i, .ax-mb12):is(#ax-i, .ax-mb12):is(#ax-i, .ax-mb12) { margin-bottom:12px; }
+  :is(#ax-i, .ax-p6-8):is(#ax-i, .ax-p6-8):is(#ax-i, .ax-p6-8) { padding:6px 8px; }
+  :is(#ax-i, .ax-title-15):is(#ax-i, .ax-title-15):is(#ax-i, .ax-title-15) { font-size:15px; font-weight:700; color:var(--ax-heading, #1a2d52); margin-bottom:6px; }
+  :is(#ax-i, .ax-mt14):is(#ax-i, .ax-mt14):is(#ax-i, .ax-mt14) { margin-top:14px; }
+  :is(#ax-i, .ax-td-row):is(#ax-i, .ax-td-row):is(#ax-i, .ax-td-row) { padding:8px 12px; text-align:left; border-bottom:1px solid var(--ax-border-3, #eee); }
+  :is(#ax-i, .ax-mt16):is(#ax-i, .ax-mt16):is(#ax-i, .ax-mt16) { margin-top:16px; }
+  :is(#ax-i, .ax-ox-auto):is(#ax-i, .ax-ox-auto):is(#ax-i, .ax-ox-auto) { overflow-x:auto; }
+  :is(#ax-i, .ax-flex-c4):is(#ax-i, .ax-flex-c4):is(#ax-i, .ax-flex-c4) { display:flex; align-items:center; gap:4px; }
+  :is(#ax-i, .ax-th-c):is(#ax-i, .ax-th-c):is(#ax-i, .ax-th-c) { padding:10px 8px; text-align:center; border-bottom:2px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-p8-0):is(#ax-i, .ax-p8-0):is(#ax-i, .ax-p8-0) { padding:8px 0; }
+  :is(#ax-i, .ax-input-lg):is(#ax-i, .ax-input-lg):is(#ax-i, .ax-input-lg) { width:100%; padding:9px 10px; border:1px solid var(--ax-border, #d1d5db); border-radius:8px; font-size:15px; font-weight:700; text-align:center; }
+  :is(#ax-i, .ax-card):is(#ax-i, .ax-card):is(#ax-i, .ax-card) { background:var(--ax-surface-2, #f8f9fb); border-radius:12px; padding:24px; }
+  :is(#ax-i, .ax-input-sm):is(#ax-i, .ax-input-sm):is(#ax-i, .ax-input-sm) { padding:6px 10px; border:1px solid var(--ax-border-4, #ddd); border-radius:6px; font-size:13px; }
+  :is(#ax-i, .ax-p6-8-l):is(#ax-i, .ax-p6-8-l):is(#ax-i, .ax-p6-8-l) { padding:6px 8px; text-align:left; }
+  :is(#ax-i, .ax-p7-12):is(#ax-i, .ax-p7-12):is(#ax-i, .ax-p7-12) { padding:7px 12px; }
+  :is(#ax-i, .ax-ta-r):is(#ax-i, .ax-ta-r):is(#ax-i, .ax-ta-r) { text-align:right; }
+  :is(#ax-i, .ax-table-12):is(#ax-i, .ax-table-12):is(#ax-i, .ax-table-12) { width:100%; border-collapse:collapse; font-size:12px; }
+  :is(#ax-i, .ax-sq16):is(#ax-i, .ax-sq16):is(#ax-i, .ax-sq16) { width:16px; height:16px; }
+  </style>
 </head>
 <body>
 <script>(function(){try{var b=document.body;if(window.__glassOn){b.classList.add('glass');var t=localStorage.getItem('glassTheme');if(/^(ocean|noir|aurora|dusk|ember|graphite)$/.test(t))b.dataset.theme=t;}var d=localStorage.getItem('darkMode');if(d==='1'||(d===null&&window.__glassOn))b.classList.add('dark');}catch(e){}})();</script>
@@ -1014,7 +1039,7 @@
         <div class="section-sub">以統一編號為唯一辨識的公司主檔（一統編一主檔）。所有名片會自動掛勾到對應主檔；無統編者以公司名為辨識。點任一列可展開該公司彙整。</div>
 
         <div id="companyListWrap">
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">企業主檔清單</span>
             <span id="companiesCount" style="font-size:12px;color:#6b7280">—</span>
@@ -1037,7 +1062,7 @@
           </div>
           <div style="font-size:12px;color:#6b7280;margin:6px 0 4px">「建立/更新」會掃描所有名片，依統編歸併出主檔並掛勾名片。可重複執行，不會產生重複主檔。「GCIS 補全」會向經濟部查詢有統編主檔的正式名稱與資本額（分批進行，需稍候）。</div>
           <div id="companyBuildResult" style="margin:10px 0;font-size:13px"></div>
-          <div style="overflow-x:auto">
+          <div class="ax-ox-auto">
             <table class="admin-table" id="companyTable" style="min-width:820px">
               <thead>
                 <tr>
@@ -1127,7 +1152,7 @@
         <div class="section-title">📋 客戶池</div>
         <div class="section-sub">尚未指派業務的客戶（owner = _pool），由 Manager 分配給實際業務</div>
 
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">池中客戶清單</span>
             <span id="poolCount" style="font-size:12px;color:#6b7280">載入中…</span>
@@ -1144,7 +1169,7 @@
             勾選要分配的客戶，從右側選擇目標業務後按「分配選取項目」。<br>
             分配時會把該客戶的「相關商機 / 拜訪 / 合約 / 應收帳款」全部一併轉移給目標業務（依公司名比對）。
           </div>
-          <div style="overflow-x:auto">
+          <div class="ax-ox-auto">
             <table class="admin-table" id="poolTable" style="min-width:900px">
               <thead>
                 <tr>
@@ -1235,7 +1260,7 @@
       <div class="admin-section" id="sec-bulk-website">
         <div class="section-title">批次填入客戶官網</div>
         <div class="section-sub">自動查詢網站空白的客戶，依序嘗試 MOPS、GCIS、DuckDuckGo 填入官網網址</div>
-        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
+        <div class="ax-card">
           <div style="font-size:13px;color:#555;margin-bottom:6px">
             ・有統一編號的公司會查詢 MOPS（上市/上櫃）與 GCIS 通訊資料<br>
             ・無統編的公司以 DuckDuckGo 搜尋，知名企業較易成功<br>
@@ -1254,15 +1279,15 @@
 
         <!-- 匯出 -->
         <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 客戶資料匯出</div>
+          <div class="ax-title-15">📤 客戶資料匯出</div>
           <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有客戶名單（所有業務人員），包含完整欄位，可直接作為匯入模板使用</div>
           <button class="btn btn-primary" id="contactExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
           <div id="contactExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
         </div>
 
         <!-- 匯入 -->
-        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 客戶資料匯入</div>
+        <div class="ax-card">
+          <div class="ax-title-15">📥 客戶資料匯入</div>
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 批次新增客戶。建議先匯出作為模板，<strong>必填：姓名或公司（至少一項）、業務帳號</strong>
           </div>
@@ -1284,7 +1309,7 @@
             </div>
             <div>
               <div style="font-size:12px;color:#888;margin-bottom:4px">重複資料</div>
-              <select id="contactImportSkipDup" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <select id="contactImportSkipDup" class="ax-input-sm">
                 <option value="true">略過重複（同業務+公司+姓名）</option>
                 <option value="false">全部匯入</option>
               </select>
@@ -1312,7 +1337,7 @@
             <button class="btn btn-primary" id="contactImportBtn" disabled style="min-width:120px">匯入</button>
             <button class="btn" id="contactImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
-          <div id="contactImportResult" style="margin-top:14px"></div>
+          <div id="contactImportResult" class="ax-mt14"></div>
         </div>
       </div>
 
@@ -1323,15 +1348,15 @@
 
         <!-- 匯出 -->
         <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 商機匯出</div>
+          <div class="ax-title-15">📤 商機匯出</div>
           <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有商機（所有業務人員），包含完整欄位，可直接再匯入</div>
           <button class="btn btn-primary" id="oppExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
           <div id="oppExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
         </div>
 
         <!-- 匯入 -->
-        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 商機匯入</div>
+        <div class="ax-card">
+          <div class="ax-title-15">📥 商機匯入</div>
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 檔案批次新增商機。<strong>必填欄位：客戶名稱、業務帳號、把握度階段</strong>
           </div>
@@ -1372,8 +1397,8 @@
             <button class="btn btn-primary" id="oppImportBtn" disabled style="min-width:120px">匯入</button>
             <button class="btn" id="oppImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
-          <div id="oppImportPrecheck" style="margin-top:14px"></div>
-          <div id="oppImportResult" style="margin-top:14px"></div>
+          <div id="oppImportPrecheck" class="ax-mt14"></div>
+          <div id="oppImportResult" class="ax-mt14"></div>
         </div>
       </div>
 
@@ -1384,15 +1409,15 @@
 
         <!-- 匯出 -->
         <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 日報匯出</div>
+          <div class="ax-title-15">📤 日報匯出</div>
           <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有業務人員的拜訪記錄，包含完整欄位，可直接再匯入</div>
           <button class="btn btn-primary" id="visitExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
           <div id="visitExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
         </div>
 
         <!-- 匯入 -->
-        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 日報匯入</div>
+        <div class="ax-card">
+          <div class="ax-title-15">📥 日報匯入</div>
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 檔案批次新增日報記錄。請使用匯出的檔案作為模板，<strong>必填欄位：拜訪日期、業務帳號</strong>
           </div>
@@ -1420,7 +1445,7 @@
             <button class="btn btn-primary" id="visitImportBtn" disabled style="min-width:120px">匯入</button>
             <button class="btn" id="visitImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
-          <div id="visitImportResult" style="margin-top:14px"></div>
+          <div id="visitImportResult" class="ax-mt14"></div>
         </div>
       </div>
 
@@ -1431,15 +1456,15 @@
 
         <!-- 匯出 -->
         <div style="background:#f8f9fb;border-radius:12px;padding:24px;margin-bottom:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📤 合約匯出</div>
+          <div class="ax-title-15">📤 合約匯出</div>
           <div style="font-size:13px;color:#888;margin-bottom:16px">匯出系統內所有合約資料，包含完整欄位，可直接再匯入</div>
           <button class="btn btn-primary" id="contractExportBtn" style="min-width:140px">⬇ 下載 Excel</button>
           <div id="contractExportMsg" style="margin-top:10px;font-size:13px;color:#1a73e8"></div>
         </div>
 
         <!-- 匯入 -->
-        <div style="background:#f8f9fb;border-radius:12px;padding:24px">
-          <div style="font-size:15px;font-weight:700;color:#1a2d52;margin-bottom:6px">📥 合約匯入</div>
+        <div class="ax-card">
+          <div class="ax-title-15">📥 合約匯入</div>
           <div style="font-size:13px;color:#888;margin-bottom:4px">
             上傳 Excel 檔案批次新增合約。請使用匯出的檔案作為模板，<strong>必填欄位：客戶名稱、業務帳號</strong>
           </div>
@@ -1467,7 +1492,7 @@
             <button class="btn btn-primary" id="contractImportBtn" disabled style="min-width:120px">匯入</button>
             <button class="btn" id="contractImportClearBtn" style="background:#f0f2f5;color:#333;display:none">清除</button>
           </div>
-          <div id="contractImportResult" style="margin-top:14px"></div>
+          <div id="contractImportResult" class="ax-mt14"></div>
         </div>
       </div>
 
@@ -1534,17 +1559,17 @@
                 📋 預覽 — 共 <span id="ocrTotalRows">0</span> 筆
               </div>
               <div style="overflow-x:auto;border-radius:8px;border:1px solid #eee">
-                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <table class="ax-table-12">
                   <thead>
                     <tr style="background:#f5f5f5">
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">#</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">姓名</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">公司</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">職稱</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">電話</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">手機</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">Email</th>
-                      <th style="padding:8px 12px;text-align:left;border-bottom:1px solid #eee">統一編號</th>
+                      <th class="ax-td-row">#</th>
+                      <th class="ax-td-row">姓名</th>
+                      <th class="ax-td-row">公司</th>
+                      <th class="ax-td-row">職稱</th>
+                      <th class="ax-td-row">電話</th>
+                      <th class="ax-td-row">手機</th>
+                      <th class="ax-td-row">Email</th>
+                      <th class="ax-td-row">統一編號</th>
                     </tr>
                   </thead>
                   <tbody id="ocrPreviewBody"></tbody>
@@ -1588,37 +1613,37 @@
           <summary style="font-size:13px;font-weight:700;color:#6b7280;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
             ⚙️ 全域預設金額（業務員未設定個人目標時使用）
           </summary>
-          <div style="margin-top:14px">
+          <div class="ax-mt14">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:14px" id="qrGrid">
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
-                <div style="display:flex;align-items:center;gap:4px">
+                <div class="ax-flex-c4">
                   <input type="number" id="qrQ1" min="0" step="1" placeholder="0"
-                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                    class="ax-input-lg" oninput="calcQrSum()">
                   <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
-                <div style="display:flex;align-items:center;gap:4px">
+                <div class="ax-flex-c4">
                   <input type="number" id="qrQ2" min="0" step="1" placeholder="0"
-                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                    class="ax-input-lg" oninput="calcQrSum()">
                   <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
-                <div style="display:flex;align-items:center;gap:4px">
+                <div class="ax-flex-c4">
                   <input type="number" id="qrQ3" min="0" step="1" placeholder="0"
-                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                    class="ax-input-lg" oninput="calcQrSum()">
                   <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
               <div>
                 <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
-                <div style="display:flex;align-items:center;gap:4px">
+                <div class="ax-flex-c4">
                   <input type="number" id="qrQ4" min="0" step="1" placeholder="0"
-                    style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="calcQrSum()">
+                    class="ax-input-lg" oninput="calcQrSum()">
                   <span style="color:#6b7280;flex-shrink:0">K</span>
                 </div>
               </div>
@@ -1637,16 +1662,16 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:360px;margin-bottom:16px">
             <div>
               <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">下限（min）</div>
-              <div style="display:flex;align-items:center;gap:4px">
+              <div class="ax-flex-c4">
                 <input type="number" id="oprMin" min="0.1" max="3" step="0.05" value="1.1"
-                  style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="validateOpr()">
+                  class="ax-input-lg" oninput="validateOpr()">
               </div>
             </div>
             <div>
               <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">上限（max）</div>
-              <div style="display:flex;align-items:center;gap:4px">
+              <div class="ax-flex-c4">
                 <input type="number" id="oprMax" min="0.1" max="3" step="0.05" value="1.2"
-                  style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-weight:700;text-align:center" oninput="validateOpr()">
+                  class="ax-input-lg" oninput="validateOpr()">
               </div>
             </div>
           </div>
@@ -1745,7 +1770,7 @@
       <div class="admin-section" id="sec-role-permissions">
         <div class="section-title">🔐 功能權限管理</div>
         <div class="section-sub">勾選每個角色可看見的側邊導覽功能。admin 永遠擁有全部功能，無法修改。</div>
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
             <button class="btn btn-primary" id="rpSaveBtn">💾 儲存變更</button>
             <button class="btn" id="rpResetBtn">⟲ 還原預設</button>
@@ -1770,7 +1795,7 @@
         <div class="section-title">🔧 資料修復</div>
         <div class="section-sub">系統工具：修補因歷史 bug 造成的資料不一致</div>
 
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div style="font-size:15px;font-weight:700;color:#1a3c7a;margin-bottom:8px">同公司聯絡人「我的客戶」一致性修復</div>
           <div style="font-size:13px;color:#6b7280;line-height:1.7;margin-bottom:14px">
             <strong>適用情境</strong>：同一家公司有些聯絡人是「我的客戶」、有些卻是「潛在客戶」。<br>
@@ -1808,13 +1833,13 @@
           <div class="admin-card-body" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px">
             <div>
               <div style="font-size:12px;color:#888;margin-bottom:4px">操作人員</div>
-              <select id="auditFilterUser" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <select id="auditFilterUser" class="ax-input-sm">
                 <option value="">全部人員</option>
               </select>
             </div>
             <div>
               <div style="font-size:12px;color:#888;margin-bottom:4px">動作類型</div>
-              <select id="auditFilterAction" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <select id="auditFilterAction" class="ax-input-sm">
                 <option value="">全部動作</option>
                 <option value="CREATE">新增</option>
                 <option value="UPDATE">修改</option>
@@ -1825,17 +1850,17 @@
             </div>
             <div>
               <div style="font-size:12px;color:#888;margin-bottom:4px">開始日期</div>
-              <input type="date" id="auditFilterFrom" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <input type="date" id="auditFilterFrom" class="ax-input-sm">
             </div>
             <div>
               <div style="font-size:12px;color:#888;margin-bottom:4px">結束日期</div>
-              <input type="date" id="auditFilterTo" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <input type="date" id="auditFilterTo" class="ax-input-sm">
             </div>
             <button class="btn" onclick="loadContactAudit()" style="background:#1a73e8;color:#fff;padding:7px 18px">🔍 查詢</button>
             <button class="btn" onclick="clearAuditFilter()" style="background:#f0f2f5;color:#333;padding:7px 14px">清除</button>
           </div>
         </div>
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div class="admin-card-header">
             <span class="admin-card-title">操作紀錄</span>
             <span id="auditCount" style="font-size:13px;color:#888"></span>
@@ -1877,7 +1902,7 @@
             <div class="admin-card-header">
               <span class="admin-card-title">📊 資料集合筆數</span>
             </div>
-            <div class="admin-card-body" id="storageCollections" style="padding:8px 0"></div>
+            <div class="admin-card-body ax-p8-0" id="storageCollections"></div>
           </div>
 
           <!-- 磁碟用量圓餅 + 圖片列表 -->
@@ -1922,7 +1947,7 @@
           </div>
         </div>
 
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div class="admin-card-header">
             <span class="admin-card-title">各業務員普及率</span>
             <span style="font-size:12px;color:#6b7280;margin-left:8px">分數低者排前・點擊展開欄位明細</span>
@@ -1936,21 +1961,21 @@
         <div class="section-title">📡 API 使用量監控</div>
         <div class="section-sub">Gemini AI Token 消耗、統一編號查詢次數與速率限制觸發統計</div>
         <div id="apiStatRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px"></div>
-        <div class="admin-card" style="margin-bottom:16px">
+        <div class="admin-card ax-mb16">
           <div class="admin-card-header">
             <span class="admin-card-title">🤖 Gemini AI 呼叫分類（今日）</span>
             <span id="geminiMonthBadge" style="font-size:12px;color:#888"></span>
           </div>
-          <div class="admin-card-body" style="padding:8px 0" id="geminiFeatureList"></div>
+          <div class="admin-card-body ax-p8-0" id="geminiFeatureList"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">🏢 統一編號查詢（今日）</span></div>
-            <div class="admin-card-body" id="companyLookupStats" style="padding:8px 0"></div>
+            <div class="admin-card-body ax-p8-0" id="companyLookupStats"></div>
           </div>
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">🚫 Rate Limit 觸發次數</span></div>
-            <div class="admin-card-body" id="rateLimitStats" style="padding:8px 0"></div>
+            <div class="admin-card-body ax-p8-0" id="rateLimitStats"></div>
           </div>
         </div>
         <div style="text-align:right;margin-top:4px">
@@ -1967,11 +1992,11 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">🗄️ Supabase 資料表</span></div>
-            <div class="admin-card-body" id="infraDbTables" style="padding:8px 0"></div>
+            <div class="admin-card-body ax-p8-0" id="infraDbTables"></div>
           </div>
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">⚙️ 執行環境</span></div>
-            <div class="admin-card-body" id="infraRuntime" style="padding:8px 0"></div>
+            <div class="admin-card-body ax-p8-0" id="infraRuntime"></div>
           </div>
         </div>
         <div style="text-align:right;margin-top:4px">
@@ -1995,7 +2020,7 @@
             <div style="font-size:28px;font-weight:900;letter-spacing:-0.5px" id="subPlanBadge">—</div>
             <div style="font-size:13px;opacity:.75;margin-top:4px" id="subExpiry">載入中…</div>
           </div>
-          <div style="text-align:right">
+          <div class="ax-ta-r">
             <div style="font-size:13px;opacity:.6;margin-bottom:4px">AI Credits 餘額</div>
             <div style="font-size:36px;font-weight:900" id="subCreditsBalance">—</div>
             <div style="font-size:11px;opacity:.5;margin-top:2px" id="subCreditsHint"></div>
@@ -2008,7 +2033,7 @@
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">⚙️ 方案設定</span></div>
             <div class="admin-card-body">
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">訂閱方案</label>
                 <select id="subPlanSelect" class="form-control">
                   <option value="starter">Starter（入門）</option>
@@ -2017,15 +2042,15 @@
                   <option value="enterprise">Enterprise（企業）</option>
                 </select>
               </div>
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">方案到期日</label>
                 <input type="date" id="subPlanExpiry" class="form-control">
               </div>
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">試用到期日（優先於方案到期）</label>
                 <input type="date" id="subTrialUntil" class="form-control">
               </div>
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">加購模組（逗號分隔，如 M5,M6）</label>
                 <input type="text" id="subAddons" class="form-control" placeholder="M5,M6,M7">
               </div>
@@ -2037,13 +2062,13 @@
           <div class="admin-card">
             <div class="admin-card-header"><span class="admin-card-title">🤖 AI Credits 管理</span></div>
             <div class="admin-card-body">
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">設定 Credits 餘額（直接覆蓋）</label>
                 <input type="number" id="subAiCredits" class="form-control" placeholder="500" min="0">
               </div>
-              <button class="btn btn-primary" onclick="saveCreditsBalance()" style="margin-bottom:12px">設定餘額</button>
+              <button class="btn btn-primary ax-mb12" onclick="saveCreditsBalance()">設定餘額</button>
               <hr style="border-color:rgba(255,255,255,.1);margin:12px 0">
-              <div class="form-group" style="margin-bottom:12px">
+              <div class="form-group ax-mb12">
                 <label class="form-label">加值點數（累加）</label>
                 <select id="subCreditPkg" class="form-control">
                   <option value="200">輕量包 200 點（NT$180）</option>
@@ -2065,7 +2090,7 @@
             <button class="btn btn-sm" onclick="loadSubUsage()" style="margin-left:auto">重新整理</button>
           </div>
           <div class="admin-card-body">
-            <div id="subUsageTable" style="overflow-x:auto">
+            <div id="subUsageTable" class="ax-ox-auto">
               <table class="admin-table" style="width:100%">
                 <thead><tr>
                   <th>時間</th><th>功能</th><th>消耗點數</th><th>使用者</th><th>餘額</th>
@@ -2088,13 +2113,13 @@
           <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:18px">
             <div style="flex:0 0 220px">
               <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">送給哪個帳號</label>
-              <select id="pushTestTarget" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <select id="pushTestTarget" class="ax-input">
                 <option value="">（自己）</option>
               </select>
             </div>
             <div style="flex:0 0 200px">
               <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">情境</label>
-              <select id="pushTestType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <select id="pushTestType" class="ax-input">
                 <option value="all">5 種全部（預設）</option>
                 <option value="test">🔔 基本測試</option>
                 <option value="contract_30">📅 合約 D-30 預警</option>
@@ -2145,20 +2170,20 @@
               <label class="toggle" title="啟用此連線"><input type="checkbox" id="integEnabled"><span class="toggle-slider"></span></label>
             </div>
 
-            <div style="margin-bottom:16px">
+            <div class="ax-mb16">
               <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">連線名稱</label>
-              <input id="integName" type="text" placeholder="SAP Sales Cloud V2" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <input id="integName" type="text" placeholder="SAP Sales Cloud V2" class="ax-input">
             </div>
 
-            <div style="margin-bottom:16px">
+            <div class="ax-mb16">
               <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Base URL（租戶網址）</label>
-              <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" class="ax-input">
               <div style="font-size:11px;color:#9ca3af;margin-top:4px">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
             </div>
 
-            <div style="margin-bottom:16px">
+            <div class="ax-mb16">
               <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">認證方式</label>
-              <select id="integAuthType" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              <select id="integAuthType" class="ax-input">
                 <option value="basic">Basic（帳號 / 密碼）</option>
                 <option value="oauth">OAuth2（Client Credentials）</option>
               </select>
@@ -2166,29 +2191,29 @@
 
             <!-- Basic 欄位 -->
             <div id="integBasicFields">
-              <div style="margin-bottom:16px">
+              <div class="ax-mb16">
                 <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">API User 帳號</label>
-                <input id="integUsername" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <input id="integUsername" type="text" autocomplete="off" class="ax-input">
               </div>
-              <div style="margin-bottom:16px">
+              <div class="ax-mb16">
                 <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
-                <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" class="ax-input">
               </div>
             </div>
 
             <!-- OAuth 欄位 -->
             <div id="integOauthFields" style="display:none">
-              <div style="margin-bottom:16px">
+              <div class="ax-mb16">
                 <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Token Endpoint</label>
-                <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" class="ax-input">
               </div>
-              <div style="margin-bottom:16px">
+              <div class="ax-mb16">
                 <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client ID</label>
-                <input id="integClientId" type="text" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <input id="integClientId" type="text" autocomplete="off" class="ax-input">
               </div>
-              <div style="margin-bottom:16px">
+              <div class="ax-mb16">
                 <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
-                <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" class="ax-input">
               </div>
             </div>
 
@@ -2307,7 +2332,7 @@
                 <input id="pushSearch" type="search" placeholder="🔍 搜尋公司名稱 / 統編" autocomplete="off" style="margin-left:auto;width:240px;padding:5px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;outline:none">
               </div>
               <div style="max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">
-                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <table class="ax-table-12">
                   <thead style="position:sticky;top:0;z-index:1;background:#f9fafb">
                     <tr>
                       <th style="padding:6px 8px;text-align:center;width:36px;border-bottom:1px solid #e5e7eb">推送</th>
@@ -2422,7 +2447,7 @@
             <div style="font-size:26px;font-weight:900;letter-spacing:-0.5px" id="vAppName">Account Profile CRM</div>
             <div style="font-size:13px;opacity:.75;margin-top:4px" id="vAppDesc">名片管理 CRM 系統</div>
           </div>
-          <div style="text-align:right">
+          <div class="ax-ta-r">
             <div style="font-size:40px;font-weight:900;opacity:.15;position:absolute;right:32px;top:20px;letter-spacing:-2px" id="vVersionBg">v1.0</div>
             <div style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
                  border-radius:10px;padding:8px 20px;display:inline-block">
@@ -2450,13 +2475,13 @@
         </div>
 
         <!-- 資料庫架構 -->
-        <div class="admin-card" style="margin-bottom:16px">
+        <div class="admin-card ax-mb16">
           <div class="admin-card-header"><span class="admin-card-title">🗄️ 資料庫架構</span></div>
           <div class="admin-card-body" id="vDbInfo" style="padding:14px"></div>
         </div>
 
         <!-- 後端套件 -->
-        <div class="admin-card" style="margin-bottom:16px">
+        <div class="admin-card ax-mb16">
           <div class="admin-card-header"><span class="admin-card-title">📦 後端套件（Node.js）</span></div>
           <div class="admin-card-body">
             <div id="vBackendPkgs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding:12px"></div>
@@ -2464,7 +2489,7 @@
         </div>
 
         <!-- 前端技術 -->
-        <div class="admin-card" style="margin-bottom:16px">
+        <div class="admin-card ax-mb16">
           <div class="admin-card-header"><span class="admin-card-title">🎨 前端技術</span></div>
           <div class="admin-card-body">
             <div id="vFrontendPkgs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;padding:12px"></div>
@@ -2571,7 +2596,7 @@
         <div id="pbImpNote" style="font-size:12.5px;color:#6b7280;margin-bottom:8px"></div>
         <div class="pb-tblwrap" style="max-height:46vh;overflow:auto;border:1px solid #eee;border-radius:8px">
           <table style="width:100%;border-collapse:collapse;font-size:13.5px" aria-label="匯入預覽結果">
-            <thead><tr style="text-align:left;color:#6b7280;font-size:12.5px;background:#f9fafb;position:sticky;top:0"><th style="padding:6px 8px">BU</th><th style="padding:6px 8px">列</th><th style="padding:6px 8px;min-width:140px">項目名稱</th><th style="padding:6px 8px">動作</th><th style="padding:6px 8px;text-align:right">牌價</th><th style="padding:6px 8px;text-align:right">成本</th><th style="padding:6px 8px;text-align:center">啟用</th><th style="padding:6px 8px;min-width:150px">說明</th><th style="padding:6px 8px">問題</th></tr></thead>
+            <thead><tr style="text-align:left;color:#6b7280;font-size:12.5px;background:#f9fafb;position:sticky;top:0"><th class="ax-p6-8">BU</th><th class="ax-p6-8">列</th><th style="padding:6px 8px;min-width:140px">項目名稱</th><th class="ax-p6-8">動作</th><th style="padding:6px 8px;text-align:right">牌價</th><th style="padding:6px 8px;text-align:right">成本</th><th style="padding:6px 8px;text-align:center">啟用</th><th style="padding:6px 8px;min-width:150px">說明</th><th class="ax-p6-8">問題</th></tr></thead>
             <tbody id="pbImpBody"></tbody>
           </table>
         </div>
@@ -2696,10 +2721,10 @@
         <div class="form-group" id="buFieldGroup">
           <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*至少選一個（可複選）</span></label>
           <div id="buCheckboxWrap" style="display:flex;flex-wrap:wrap;gap:14px;padding:8px 4px">
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ERP" style="width:16px;height:16px"> ERP</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ITS" style="width:16px;height:16px"> ITS</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="MDM" style="width:16px;height:16px"> MDM</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="CRM" style="width:16px;height:16px"> CRM</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb ax-sq16" value="ERP"> ERP</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb ax-sq16" value="ITS"> ITS</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb ax-sq16" value="MDM"> MDM</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb ax-sq16" value="CRM"> CRM</label>
           </div>
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
@@ -2713,7 +2738,7 @@
         </div>
         <div class="form-group" id="pureSupervisorFieldGroup">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
-            <input type="checkbox" id="fieldPureSupervisor" style="width:16px;height:16px">
+            <input type="checkbox" id="fieldPureSupervisor" class="ax-sq16">
             <span>唯讀掛名主管（業績由部屬彙總，不計本人）</span>
           </label>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">勾選後：此帳號在「業績達成率」不列入自己名下數字，卡片改為即時彙總其部屬；上層主管加總時也只算其部屬一次，不重複。適用「掛名主管、實際業務由部屬執行」的情形。</div>
@@ -3624,7 +3649,7 @@
       pnl.setAttribute('role', 'tabpanel');
       pnl.setAttribute('aria-labelledby', 'pbTab-' + _pbTab);
       pnl.innerHTML = empty
-        + (tabItems.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;color:#6b7280;font-size:12.5px"><th style="padding:4px;text-align:center;width:44px">啟用</th><th style="padding:4px">項目名稱</th><th style="padding:4px">說明（選填，印在客戶報價單）</th><th style="padding:4px 8px">單位</th><th style="padding:4px;text-align:right">牌價 / 人天</th><th style="padding:4px;text-align:right">成本 / 人天</th><th style="padding:4px 8px;text-align:right">毛利率</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
+        + (tabItems.length ? `<div class="ax-ox-auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="text-align:left;color:#6b7280;font-size:12.5px"><th style="padding:4px;text-align:center;width:44px">啟用</th><th style="padding:4px">項目名稱</th><th style="padding:4px">說明（選填，印在客戶報價單）</th><th style="padding:4px 8px">單位</th><th style="padding:4px;text-align:right">牌價 / 人天</th><th style="padding:4px;text-align:right">成本 / 人天</th><th style="padding:4px 8px;text-align:right">毛利率</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '')
         + `<div id="pbAllErr" style="color:#c62828;font-size:12.5px;margin:6px 0"></div>`
         + `<button data-pbact="add" style="width:100%;margin-top:8px;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:9px;font-size:13px;color:#6b7280;cursor:pointer">＋ 新增項目到 ${_pbTab}（${tabItems.length}/${PB_MAX_ITEMS}）</button>`;
       pbRenderBanner();
@@ -4351,7 +4376,7 @@
                 <span style="font-size:11px;color:#9ca3af">操作者：${log.operator}</span>
                 <span style="font-size:11px;color:#9ca3af;margin-left:auto">▸ 點擊展開</span>
               </summary>
-              <div style="overflow-x:auto">
+              <div class="ax-ox-auto">
               <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
                 <thead><tr style="background:#f9fafb">
                   <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">類型</th>
@@ -5558,12 +5583,12 @@
           <tr style="border-bottom:1px solid #f0f0f0">
             <td style="padding:7px 12px;color:#aaa">${i + 1}</td>
             <td style="padding:7px 12px;font-weight:500">${r.name || ''}</td>
-            <td style="padding:7px 12px">${r.company || ''}</td>
+            <td class="ax-p7-12">${r.company || ''}</td>
             <td style="padding:7px 12px;color:#666">${r.title || ''}</td>
-            <td style="padding:7px 12px">${r.phone || ''}</td>
-            <td style="padding:7px 12px">${r.mobile || ''}</td>
-            <td style="padding:7px 12px">${r.email || ''}</td>
-            <td style="padding:7px 12px">${r.taxId || ''}</td>
+            <td class="ax-p7-12">${r.phone || ''}</td>
+            <td class="ax-p7-12">${r.mobile || ''}</td>
+            <td class="ax-p7-12">${r.email || ''}</td>
+            <td class="ax-p7-12">${r.taxId || ''}</td>
           </tr>`).join('');
         $('ocrPreviewSection').style.display = 'block';
         $('ocrImportBtn').style.display = '';
@@ -6136,7 +6161,7 @@
         $('storageDiskBars').innerHTML = diskItems.map(item => {
           const pct = Math.round(item.size / totalSize * 100);
           return `
-            <div style="margin-bottom:12px">
+            <div class="ax-mb12">
               <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
                 <span style="font-weight:600;color:#444">${item.label}</span>
                 <span style="color:#888">${fmtBytes(item.size)} (${pct}%)</span>
@@ -6264,7 +6289,7 @@
           📊 待填入聯絡人：<strong>${totalContacts}</strong> 筆，共 <strong>${totalCompanies}</strong> 家公司<br>
           ✅ 成功填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆<br>
           ❌ 未找到網址：<strong>${totalNotFound}</strong> 筆
-          ${debugHtml ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #c5e0b4"><strong style="font-size:12px">🔍 診斷樣本（前 8 筆）：</strong>' + debugHtml + '</div>' : ''}`;
+          ${debugHtml ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #c5e0b4"><strong class="ax-fs12">🔍 診斷樣本（前 8 筆）：</strong>' + debugHtml + '</div>' : ''}`;
         hint.textContent = '完成！重新整理客戶頁面即可看到更新結果。';
 
       } catch (e) {
@@ -6860,17 +6885,17 @@
     const getDefaultRatio = () => qrAllRatios[year] || qrAllRatios[yStr] || [0, 0, 0, 0];
 
     wrap.innerHTML = `
-      <div style="overflow-x:auto">
+      <div class="ax-ox-auto">
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead>
             <tr style="background:#f3f4f6;color:#6b7280">
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #e5e7eb;white-space:nowrap">業務員</th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q1<br><span style="font-size:10px;font-weight:400">1-3月（K）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q2<br><span style="font-size:10px;font-weight:400">4-6月（K）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q3<br><span style="font-size:10px;font-weight:400">7-9月（K）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">Q4<br><span style="font-size:10px;font-weight:400">10-12月（K）</span></th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">合計（K）</th>
-              <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e5e7eb">操作</th>
+              <th class="ax-th-c">Q1<br><span style="font-size:10px;font-weight:400">1-3月（K）</span></th>
+              <th class="ax-th-c">Q2<br><span style="font-size:10px;font-weight:400">4-6月（K）</span></th>
+              <th class="ax-th-c">Q3<br><span style="font-size:10px;font-weight:400">7-9月（K）</span></th>
+              <th class="ax-th-c">Q4<br><span style="font-size:10px;font-weight:400">10-12月（K）</span></th>
+              <th class="ax-th-c">合計（K）</th>
+              <th class="ax-th-c">操作</th>
             </tr>
           </thead>
           <tbody id="qrUserTbody">
@@ -7411,7 +7436,7 @@
         }
         tbody.innerHTML = d.creditLog.map(row => `
           <tr>
-            <td style="font-size:12px">${row.ts ? row.ts.replace('T',' ').slice(0,19) : '—'}</td>
+            <td class="ax-fs12">${row.ts ? row.ts.replace('T',' ').slice(0,19) : '—'}</td>
             <td>${FEATURE_LABELS[row.feature] || row.feature}</td>
             <td style="text-align:center;color:#e57373">−${row.cost}</td>
             <td>${row.user}</td>
@@ -7598,7 +7623,7 @@
             <td>${escapeAttr(c.company)}</td>
             <td style="color:#6b7280;font-size:12px">${escapeAttr(c.title)}</td>
             <td>${relatedHtml}</td>
-            <td style="font-size:12px">${escapeAttr(c.industry)}</td>
+            <td class="ax-fs12">${escapeAttr(c.industry)}</td>
             <td style="font-size:11px;color:#9ca3af">${importedDate}</td>
             <td>
               <button class="btn btn-sm pool-row-del" data-id="${c.id}" data-name="${escapeAttr(c.name)}" data-company="${escapeAttr(c.company)}" data-opp="${c.oppCount || 0}" data-visit="${c.visitCount || 0}" data-contract="${c.contractCount || 0}" style="background:#fde2e2;color:#b91c1c;font-size:12px;padding:4px 8px">🗑️ 刪除</button>
@@ -7783,7 +7808,7 @@
           ? ` <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle" title="GCIS 公司狀態：${escapeAttr(c.gcisStatus)}（此公司已不存在，建議清理或轉移）">🚫 ${escapeAttr(c.gcisStatus)}</span>`
           : '';
         const ownersCell = (c.owners && c.owners.length)
-          ? `<span style="font-size:12px">${c.owners.map(escapeAttr).join('、')}</span>`
+          ? `<span class="ax-fs12">${c.owners.map(escapeAttr).join('、')}</span>`
           : '<span style="color:#cbd5e1;font-size:12px">-</span>';
         const buCell = (c.bu && c.bu.length)
           ? c.bu.map(b => `<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:5px;font-size:11px;padding:1px 6px;margin:1px">${escapeAttr(b)}</span>`).join('')
@@ -7800,7 +7825,7 @@
           <td>${buCell}</td>
           <td>${regionCell}</td>
           <td>${custCodeCell}</td>
-          <td style="font-size:12px">${gcis}</td>
+          <td class="ax-fs12">${gcis}</td>
           <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
       };
@@ -7975,43 +8000,43 @@
       ].map(([k, v]) => `<div style="min-width:200px"><span style="color:#9ca3af;font-size:12px">${k}</span><br><span style="font-size:13px">${v}</span></div>`).join('');
 
       const tbl = (title, headers, rows) => `
-        <div class="admin-card" style="margin-top:14px">
+        <div class="admin-card ax-mt14">
           <div class="admin-card-title" style="margin-bottom:8px">${title}（${rows.length}）</div>
-          ${rows.length ? `<div style="overflow-x:auto"><table class="admin-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+          ${rows.length ? `<div class="ax-ox-auto"><table class="admin-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
             : '<div style="color:#9ca3af;font-size:13px;padding:8px 0">無資料</div>'}
         </div>`;
 
       const contactRows = d.contacts.map(c => `<tr>
         <td>${c.isPrimary ? '⭐ ' : ''}${escapeAttr(c.name)}</td>
-        <td style="font-size:12px">${escapeAttr(c.title || '')}</td>
-        <td style="font-size:12px">${escapeAttr(c.phone || c.mobile || '')}</td>
-        <td style="font-size:12px">${escapeAttr(c.email || '')}</td>
-        <td style="font-size:12px">${EMP_LABEL_MAP[c.employmentStatus] || '在職'}</td>
-        <td style="font-size:12px">${escapeAttr(c.ownerDisplay || '')}</td>
+        <td class="ax-fs12">${escapeAttr(c.title || '')}</td>
+        <td class="ax-fs12">${escapeAttr(c.phone || c.mobile || '')}</td>
+        <td class="ax-fs12">${escapeAttr(c.email || '')}</td>
+        <td class="ax-fs12">${EMP_LABEL_MAP[c.employmentStatus] || '在職'}</td>
+        <td class="ax-fs12">${escapeAttr(c.ownerDisplay || '')}</td>
       </tr>`);
       const oppRows = d.opps.map(o => `<tr>
-        <td style="font-size:12px">${escapeAttr(o.product || '')}</td>
-        <td style="font-size:12px">${escapeAttr(STAGE_LABEL_MAP[o.stage] || o.stage || '')}</td>
-        <td style="text-align:right">${fmtK(o.amount)}</td>
-        <td style="font-size:12px">${escapeAttr(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || ''))}</td>
-        <td style="font-size:12px">${escapeAttr(o.ownerDisplay || '')}</td>
+        <td class="ax-fs12">${escapeAttr(o.product || '')}</td>
+        <td class="ax-fs12">${escapeAttr(STAGE_LABEL_MAP[o.stage] || o.stage || '')}</td>
+        <td class="ax-ta-r">${fmtK(o.amount)}</td>
+        <td class="ax-fs12">${escapeAttr(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || ''))}</td>
+        <td class="ax-fs12">${escapeAttr(o.ownerDisplay || '')}</td>
       </tr>`);
       const ctrRows = d.contracts.map(x => `<tr>
-        <td style="font-size:12px">${escapeAttr(x.product || '')}</td>
-        <td style="text-align:right">${fmtK(x.amount)}</td>
-        <td style="font-size:12px">${escapeAttr(x.startDate || '')} ~ ${escapeAttr(x.endDate || '')}</td>
-        <td style="font-size:12px">${escapeAttr(x.ownerDisplay || '')}</td>
+        <td class="ax-fs12">${escapeAttr(x.product || '')}</td>
+        <td class="ax-ta-r">${fmtK(x.amount)}</td>
+        <td class="ax-fs12">${escapeAttr(x.startDate || '')} ~ ${escapeAttr(x.endDate || '')}</td>
+        <td class="ax-fs12">${escapeAttr(x.ownerDisplay || '')}</td>
       </tr>`);
       const recvRows = d.receivables.map(r => `<tr>
-        <td style="font-size:12px">${escapeAttr(r.invoiceNo || '')}</td>
-        <td style="text-align:right">${fmtK(r.amount)}</td>
-        <td style="font-size:12px">${escapeAttr(r.dueDate || '')}</td>
-        <td style="font-size:12px">${escapeAttr(r.status || '')}</td>
-        <td style="font-size:12px">${escapeAttr(r.ownerDisplay || '')}</td>
+        <td class="ax-fs12">${escapeAttr(r.invoiceNo || '')}</td>
+        <td class="ax-ta-r">${fmtK(r.amount)}</td>
+        <td class="ax-fs12">${escapeAttr(r.dueDate || '')}</td>
+        <td class="ax-fs12">${escapeAttr(r.status || '')}</td>
+        <td class="ax-fs12">${escapeAttr(r.ownerDisplay || '')}</td>
       </tr>`);
 
       return `
-        <div class="admin-card" style="margin-top:16px">
+        <div class="admin-card ax-mt16">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <button class="btn btn-sm" id="companyDetailBack" style="background:#f0f2f5;color:#333">← 返回清單</button>
             <span style="font-size:18px;font-weight:700">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeAttr(c.name)}</span>
@@ -8176,7 +8201,7 @@
     }
     function renderCompanyImportPreview(d) {
       const chip = (label, val, color) => `<span style="display:inline-block;background:${color}1a;color:${color};border:1px solid ${color}55;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600;margin:2px 4px 2px 0">${label} <b>${val}</b></span>`;
-      let html = `<div style="margin-bottom:12px">`
+      let html = `<div class="ax-mb12">`
         + chip('將新增', d.created, '#1e8e3e')
         + chip('將更新', d.updated, '#1a73e8')
         + chip('疑似重複', d.duplicates, d.duplicates ? '#d97706' : '#9ca3af')
@@ -8186,8 +8211,8 @@
         + `<span style="color:#9ca3af;font-size:12px;margin-left:6px">共 ${d.totalRows} 列</span></div>`;
       if (d.noTaxId > 0) {
         html += `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#9a3412;font-size:13px">🌐 偵測到 <b>${d.noTaxId}</b> 筆<b>無統一編號</b>的新公司（如國外客戶）。將以<b>公司名</b>比對（無法用統編去重，日後同名易產生重複）。確認後仍會照常匯入。</div>`;
-        html += `<div style="overflow:auto;max-height:160px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#fff7ed"><th style="padding:6px 8px;text-align:left;width:60px">列</th><th style="padding:6px 8px;text-align:left">公司名稱（無統編）</th></tr></thead><tbody>`;
-        html += (d.noTaxIdSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;color:#6b7280">${s.rowNum}</td><td style="padding:6px 8px">${escapeAttr(s.name || '(空白公司名)')}</td></tr>`).join('');
+        html += `<div style="overflow:auto;max-height:160px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table class="ax-table-12"><thead><tr style="background:#fff7ed"><th style="padding:6px 8px;text-align:left;width:60px">列</th><th class="ax-p6-8-l">公司名稱（無統編）</th></tr></thead><tbody>`;
+        html += (d.noTaxIdSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;color:#6b7280">${s.rowNum}</td><td class="ax-p6-8">${escapeAttr(s.name || '(空白公司名)')}</td></tr>`).join('');
         html += `</tbody></table></div>`;
         if (d.noTaxId > (d.noTaxIdSamples || []).length) html += `<div style="font-size:12px;color:#9ca3af;margin:-6px 0 12px">（僅顯示前 ${d.noTaxIdSamples.length} 筆，共 ${d.noTaxId} 筆）</div>`;
       }
@@ -8196,16 +8221,16 @@
       }
       if (d.duplicates > 0) {
         html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:10px;color:#92400e;font-size:13px">⚠️ 偵測到 <b>${d.duplicates}</b> 筆疑似與現有歷史資料重複。寫入後會「新增」成另一筆主檔（<b>不會覆蓋</b>現有資料）。建議取消後補上統編再匯入，或確認後再手動合併。</div>`;
-        html += `<div style="overflow:auto;max-height:260px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#faf5eb"><th style="padding:6px 8px;text-align:left">列</th><th style="padding:6px 8px;text-align:left">匯入公司</th><th style="padding:6px 8px;text-align:left">統編</th><th style="padding:6px 8px;text-align:left">原因 / 對應現有主檔</th></tr></thead><tbody>`;
-        html += (d.duplicateSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px">${s.rowNum}</td><td style="padding:6px 8px">${escapeAttr(s.name)}</td><td style="padding:6px 8px">${escapeAttr(s.taxId || '—')}</td><td style="padding:6px 8px;color:#92400e">${escapeAttr(companyDupReasonText(s.reason))}<br><span style="color:#6b7280">現有：${escapeAttr(s.existingName || '—')}${s.existingTaxId ? '（' + escapeAttr(s.existingTaxId) + '）' : ''}</span></td></tr>`).join('');
+        html += `<div style="overflow:auto;max-height:260px;border:1px solid #eee;border-radius:8px;margin-bottom:12px"><table class="ax-table-12"><thead><tr style="background:#faf5eb"><th class="ax-p6-8-l">列</th><th class="ax-p6-8-l">匯入公司</th><th class="ax-p6-8-l">統編</th><th class="ax-p6-8-l">原因 / 對應現有主檔</th></tr></thead><tbody>`;
+        html += (d.duplicateSamples || []).map(s => `<tr style="border-top:1px solid #f0f0f0"><td class="ax-p6-8">${s.rowNum}</td><td class="ax-p6-8">${escapeAttr(s.name)}</td><td class="ax-p6-8">${escapeAttr(s.taxId || '—')}</td><td style="padding:6px 8px;color:#92400e">${escapeAttr(companyDupReasonText(s.reason))}<br><span style="color:#6b7280">現有：${escapeAttr(s.existingName || '—')}${s.existingTaxId ? '（' + escapeAttr(s.existingTaxId) + '）' : ''}</span></td></tr>`).join('');
         html += `</tbody></table></div>`;
         if (d.duplicates > (d.duplicateSamples || []).length) html += `<div style="font-size:12px;color:#9ca3af;margin:-6px 0 12px">（僅顯示前 ${d.duplicateSamples.length} 筆，共 ${d.duplicates} 筆）</div>`;
       }
       if (d.updated > 0) {
         const withChanges = (d.updateSamples || []).filter(u => u.changes && u.changes.length);
         if (withChanges.length) {
-          html += `<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:13px;color:#1a73e8">將更新 ${d.updated} 筆既有主檔（點開看覆蓋內容）</summary><div style="overflow:auto;max-height:200px;border:1px solid #eee;border-radius:8px;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>`;
-          html += withChanges.map(u => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;white-space:nowrap;color:#6b7280">列 ${u.rowNum}</td><td style="padding:6px 8px"><b>${escapeAttr(u.name)}</b><br>${u.changes.map(c => escapeAttr(companyChangeText(c))).join('<br>')}</td></tr>`).join('');
+          html += `<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:13px;color:#1a73e8">將更新 ${d.updated} 筆既有主檔（點開看覆蓋內容）</summary><div style="overflow:auto;max-height:200px;border:1px solid #eee;border-radius:8px;margin-top:8px"><table class="ax-table-12"><tbody>`;
+          html += withChanges.map(u => `<tr style="border-top:1px solid #f0f0f0"><td style="padding:6px 8px;white-space:nowrap;color:#6b7280">列 ${u.rowNum}</td><td class="ax-p6-8"><b>${escapeAttr(u.name)}</b><br>${u.changes.map(c => escapeAttr(companyChangeText(c))).join('<br>')}</td></tr>`).join('');
           html += `</tbody></table></div></details>`;
         } else {
           html += `<div style="font-size:13px;color:#6b7280;margin-bottom:8px">將更新 ${d.updated} 筆既有主檔（內容相同，僅更新時間）。</div>`;
@@ -8326,7 +8351,7 @@
           (s.unlinked ? chip('未掛主檔', s.unlinked, '#c62828') : '');
 
         const section = (title, color, rowsHtml, emptyMsg) =>
-          `<div style="margin-top:14px">
+          `<div class="ax-mt14">
             <div style="font-weight:700;color:${color};font-size:13px;margin-bottom:6px">${title}</div>
             ${rowsHtml || `<div style="color:#9ca3af;font-size:12px;padding:4px 0">${emptyMsg}</div>`}
           </div>`;
@@ -8380,7 +8405,7 @@
           resultEl.innerHTML = `
             <div style="background:#d1fae5;border:1px solid #10b981;border-radius:8px;padding:14px;color:#166534">
               ✅ <b>檢查完成，無需修復</b><br>
-              <span style="font-size:12px">所有同公司聯絡人 customerType 已一致</span>
+              <span class="ax-fs12">所有同公司聯絡人 customerType 已一致</span>
             </div>`;
         } else {
           const rows = data.fixedCompanies.map(f => `
