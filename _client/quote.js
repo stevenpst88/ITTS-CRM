@@ -1228,7 +1228,7 @@ function renderPnlTab() {
 
   if (mode === 'hidden') {
     html += '<div class="q-infobar" style="margin-top:' + (products.length ? '0' : '10px') + '">' +
-      (need ? '此單的成本由顧問填寫，業務不顯示逐列成本；毛利率與簽核路徑由系統試算（見下方）。'
+      (need ? '此單的成本由顧問填寫；顧問儲存後，你可以在此唯讀查看逐列成本。毛利率與簽核路徑由系統試算（見下方）。'
             : '成本資料目前不顯示。') + '</div>';
     html += _qCostFlowBlock(q);
     html += `<div class="pnl-summary-bar"><div class="pnl-sum-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -1240,7 +1240,7 @@ function renderPnlTab() {
     html += `<div class="pnl-note">📌 ${mode === 'edit'
       ? '此單由業務自行填成本：請在下方填寫<strong>專案成本明細</strong>（顧問服務／軟體／硬體／差旅／其他費用，差旅交通、交際費與印花稅也計入專案成本與簽核毛利）。成本明細與客戶看到的報價品項各自獨立；毛利以<strong>優惠後未稅報價</strong>為基準。'
       : (perm && perm.isOwner && need
-          ? '此單的成本由顧問填寫：你可以查看，但不能修改（顧問重新填寫後會更新）。成本與毛利僅供內部參考，請勿提供客戶；毛利以<strong>優惠後未稅報價</strong>為基準。'
+          ? '此單的成本由顧問填寫（顧問填寫，唯讀）：你可以查看，但不能修改（顧問重新填寫後會更新）。成本與毛利僅供內部參考，請勿提供客戶；毛利以<strong>優惠後未稅報價</strong>為基準。'
           : '以下為專案成本與毛利（僅有權限者可見，請勿提供客戶）；毛利以<strong>優惠後未稅報價</strong>為基準。')}</div>`;
     if (mode !== 'edit' && need) html += _qCostFlowBlock(q);
     const contingency = (q && typeof q.contingencyPct === 'number')
