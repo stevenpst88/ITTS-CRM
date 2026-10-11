@@ -413,14 +413,16 @@
         st.put('E', '<span class="gd-n gd-mute">尚無資料</span>', '', '<div class="gd-note">' + esc(periodNote(GD.period)) + '</div>');
         return;
       }
+      var FW = [96, 78, 60, 44, 32], fh = 14;   // 固定漸縮外形（不依筆數畫寬度，避免資料偏斜時漏斗變形）；筆數以文字標示
       ST.forEach(function (k, j) {
-        var w = Math.max(14, c4[j] / total * 92), w2 = j < 3 ? Math.max(14, c4[j + 1] / total * 92) : w * .8, h = 13;
+        var w = FW[j], w2 = FW[j + 1];
         var x1 = 50 - w / 2, x2 = 50 + w / 2, x3 = 50 + w2 / 2, x4 = 50 - w2 / 2;
-        fs += '<polygon points="' + x1.toFixed(1) + ',' + y + ' ' + x2.toFixed(1) + ',' + y + ' ' + x3.toFixed(1) + ',' + (y + h) + ' ' + x4.toFixed(1) + ',' + (y + h) + '" fill="' + SC[k] + '" opacity=".92"/>';
-        y += h + 2;
+        fs += '<polygon points="' + x1.toFixed(1) + ',' + y + ' ' + x2.toFixed(1) + ',' + y + ' ' + x3.toFixed(1) + ',' + (y + fh) + ' ' + x4.toFixed(1) + ',' + (y + fh) + '" fill="' + SC[k] + '" stroke="' + SC[k] + '" stroke-width="1.6" stroke-linejoin="round" opacity=".94"/>' +
+          '<text x="50" y="' + (y + fh / 2 + 2) + '" text-anchor="middle" font-size="5.4" font-weight="600" fill="#fff">' + k + '　' + Math.round(c4[j]) + '</text>';
+        y += fh + 2.5;
       });
       st.put('E', '<span class="gd-n">' + Math.round(c4[3] / total * 100) + '%</span><small>A｜Commit 占比</small>',
-        '<svg viewBox="0 0 100 62" preserveAspectRatio="xMidYMid meet" role="img" aria-label="商機漏斗">' + fs + '</svg>',
+        '<svg viewBox="0 0 100 66" preserveAspectRatio="xMidYMid meet" role="img" aria-label="商機漏斗">' + fs + '</svg>',
         '<div class="gd-slice-in">' + ST.map(function (k, j) { return kv(SN[k], Math.round(c4[j]) + ' 家', 'gd-st-' + k) + ''; }).join('') + '</div>' +
         '<div class="gd-note">各階段占比：' + ST.map(function (k, j) { return k + ' ' + Math.round(c4[j] / total * 100) + '%'; }).join('　') + '　｜　' + esc(periodNote(GD.period)) + '</div>');
     } else if (id === 'F') {
