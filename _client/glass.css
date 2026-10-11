@@ -1178,3 +1178,274 @@ body.glass .page-btn.active { background: var(--g-accent); border-color: var(--g
 body.glass:not(.dark) .page-btn.active { color: #fff; }
 body.glass.dark .page-btn.active { color: #0b1020; }
 body.glass .page-btn:disabled { color: var(--g-ph); opacity: .6; }
+
+/* ═════════════════════════════════════════════════════════════
+ * 階段 3b：報表／分析／看板頁（商機推進進度、銷售預測、商機動態＋Pipeline 月度變動、
+ *         商機分析、流失商機、YoY、管理儀表板）
+ * 原則：只改樣式；語意色（階段 D 灰／C 藍／B 橘／A 紅、紅綠橘狀態、達成燈號）不動，
+ *       只把「平面白／#161b22 實底」換成半透明玻璃，並在對比不足處同色系加深／提亮。
+ *       數量多的元素（看板卡、報表儲存格）不加 blur，只有欄／面板容器加。
+ * 全部包在 @media screen：YoY 的列印樣式與其他列印輸出不受影響（另見檔尾 print 還原 token）。
+ * ═════════════════════════════════════════════════════════════ */
+@media screen {
+body.glass { --g3-solid: #f1f5ff; --g3-green: 52, 168, 83; --g3-red: 220, 38, 38; --g3-amber: 245, 158, 11; --g3-blue: 37, 99, 235; --g3-purple: 124, 58, 237; --g3-pink: 233, 30, 140; }
+body.glass.dark { --g3-solid: color-mix(in srgb, var(--t-bg) 86%, #fff); --g3-green: 74, 222, 128; --g3-red: 248, 113, 113; --g3-amber: 251, 191, 36; --g3-blue: 96, 165, 250; --g3-purple: 167, 139, 250; --g3-pink: 244, 114, 182; }
+
+/* ── 3b-1 共用面板（數量少，可 blur）：舊樣式為不透明白 ／ #161b22 ── */
+body.glass :is(.pr-summary-card, .biz-chart-card, .biz-owner-card, .exec-filter-bar, .exec-kpi-card, .exec-funnel, .exec-chart-wrap, .yoy-kpi, .yoy-card, .forecast-summary-card, .biz-kpi-card, #pdcSection .card) {
+  background: var(--g-fill);
+  border: 1px solid var(--g-border);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  color: var(--g-text);
+  border-radius: var(--g-radius);
+}
+body.glass :is(.biz-chart-card, .biz-owner-card, .exec-chart-wrap, .yoy-card, #pdcSection .card, .exec-funnel) { background: var(--g-surface-strong); }   /* 內含表格／圖表：數字要清楚 */
+/* 摘要卡的語意色上緣／左緣：上面的 border 簡寫會洗掉，這裡補回 */
+body.glass .pr-summary-card { border-top-width: 3px; }
+body.glass .exec-kpi-card { border-left: 3px solid #1a73e8; }
+body.glass .biz-kpi-card { border-left-width: 4px; }
+body.glass .biz-kpi-new { border-left-color: #1a73e8; background: linear-gradient(135deg, rgba(26, 115, 232, .20), transparent 72%), var(--g-fill); }
+body.glass .biz-kpi-recurring { border-left-color: #1e8e3e; background: linear-gradient(135deg, rgba(30, 142, 62, .20), transparent 72%), var(--g-fill); }
+body.glass .biz-kpi-expansion { border-left-color: #9334e6; background: linear-gradient(135deg, rgba(147, 52, 230, .20), transparent 72%), var(--g-fill); }
+/* 流失商機／管理儀表板的 view-stat-card：舊深色模式用 !important 蓋成 #161b22 */
+body.glass .view-stat-card, body.glass.dark .view-stat-card { background: var(--g-fill) !important; border: 1px solid var(--g-border); box-shadow: var(--g-ring), var(--g-shadow) !important; }
+body.glass .view-stat-card .stat-label, body.glass.dark .view-stat-card .stat-label, body.glass .view-stat-card .stat-sub, body.glass.dark .view-stat-card .stat-sub { color: var(--g-text-2) !important; }
+body.glass.dark .view-stat-card .stat-val-text { color: var(--g-text) !important; }
+body.glass:not(.dark) .view-stat-card .stat-val-text { color: var(--g-text); }
+body.glass:not(.dark) .view-stat-card .stat-val-red { color: #b91c1c; }
+body.glass:not(.dark) .view-stat-card .stat-val-orange { color: #9a4a00; }
+body.glass.dark .view-stat-card .stat-val-red { color: #ff9b91 !important; }
+body.glass.dark .view-stat-card .stat-val-orange { color: #fbbf24 !important; }
+/* 標題／次要字 */
+body.glass :is(.exec-kpi-val, .biz-kpi-label, .pr-summary-value) { color: var(--g-text); }
+body.glass :is(.exec-kpi-label, .exec-kpi-sub, .biz-kpi-sublabel, .biz-kpi-unit, .biz-kpi-meta, .biz-kpi-won, .biz-hint, .biz-chart-hint, .biz-empty, .exec-empty, .exec-funnel-days, .exec-funnel-box-unit, .pr-summary-label, .pr-summary-sub, .pr-period-label, .pr-deal-product, .pr-funnel-cnt, .pr-empty-row, .forecast-hint, .exec-trend-legend) { color: var(--g-text-2); }
+body.glass.dark :is(.biz-hint, .biz-chart-hint) { color: var(--g-text-2); }
+body.glass :is(.biz-chart-title, .exec-section-title, .pr-card-title) { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass:not(.dark) .biz-chart-title { color: #1243a8; }
+body.glass.dark .biz-chart-title { color: var(--g-accent); }
+body.glass .biz-kpi-won { border-top-color: var(--g-edge); }
+body.glass .biz-kpi-pct { color: var(--g-accent); }
+body.glass:not(.dark) .biz-kpi-pct { color: color-mix(in srgb, var(--t-accent-l) 74%, #000); }
+body.glass .exec-funnel-arrow-line { color: var(--g-text-2); }
+body.glass:not(.dark) .exec-funnel-rate { color: #1243a8; }
+body.glass.dark .exec-funnel-rate { color: #8ec5ff; }
+
+/* ── 3b-2 分段鈕／期間鈕／分頁籤（pr-period-btn、biz-gran-btn、exec-tab-btn、fmet-btn） ── */
+body.glass :is(.pr-period-btn, .exec-tab-btn) { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text-2); }
+body.glass :is(.pr-period-btn, .exec-tab-btn):hover:not(.active) { background: var(--g-surface-hover); border-color: var(--g-accent); color: var(--g-accent); }
+body.glass :is(.pr-period-btn, .exec-tab-btn).active { background: var(--g-accent); border-color: var(--g-accent); color: #fff; box-shadow: 0 2px 10px color-mix(in srgb, var(--g-accent) 38%, transparent); }
+body.glass.dark :is(.pr-period-btn, .exec-tab-btn).active { color: #0b1020; }
+body.glass .biz-gran-tabs, body.glass.dark .biz-gran-tabs { border-color: var(--g-edge); background: var(--g-input); }
+body.glass .biz-gran-btn, body.glass.dark .biz-gran-btn { background: transparent; color: var(--g-text-2); border-right-color: var(--g-edge); }
+body.glass .biz-gran-btn:hover:not(.active), body.glass.dark .biz-gran-btn:hover:not(.active) { background: var(--g-row-hover); color: var(--g-text); }
+body.glass .biz-gran-btn.active, body.glass.dark .biz-gran-btn.active { background: var(--g-accent); color: #fff; }
+body.glass.dark .biz-gran-btn.active { color: #0b1020; }
+body.glass .forecast-metric-tabs, body.glass.dark .forecast-metric-tabs { border-color: var(--g-edge); }
+body.glass .fmet-btn, body.glass.dark .fmet-btn { background: var(--g-input); color: var(--g-text-2); border-left-color: var(--g-edge); }
+body.glass .fmet-btn.active, body.glass.dark .fmet-btn.active { background: var(--g-accent); color: #fff; }
+body.glass.dark .fmet-btn.active { color: #0b1020; }
+body.glass .pr-custom-range input[type="date"] { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text); border-radius: var(--g-radius-sm); }
+body.glass.dark input[type="date"], body.glass.dark input[type="month"] { color-scheme: dark; }
+/* 篩選列的行內 select／input（流失商機、商機動態、月度變動）：行內白底 */
+body.glass .main :is(#lostOppSearch, #lostOppReasonFilter, #lostOppMonth, #prOwnerSelect, #pdcYearSel) { background: var(--g-input) !important; border: 1px solid var(--g-edge) !important; color: var(--g-text) !important; border-radius: var(--g-radius-sm) !important; }
+body.glass .fc-multisel-btn, body.glass.dark .fc-multisel-btn { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+
+/* ── 3b-3 看板（商機推進進度）：欄＝玻璃（已在 §16），卡片不加 blur ── */
+body.glass .kanban-col-header, body.glass.dark .kanban-col-header, body.glass .kanban-col-won .kanban-col-header, body.glass.dark .kanban-col-won .kanban-col-header { background: transparent; }
+body.glass .kanban-col-won, body.glass.dark .kanban-col-won { background: linear-gradient(135deg, rgba(var(--g3-green), .16), rgba(var(--g3-green), .04) 80%), var(--g-fill); }
+body.glass .kanban-col-badge, body.glass.dark .kanban-col-badge { background: var(--g-input); color: var(--g-text-2); }
+body.glass .kanban-col-won .kanban-card { border-left: 3px solid #1e8e3e; }
+body.glass .kanban-card-won, body.glass.dark .kanban-card-won { background: linear-gradient(0deg, rgba(var(--g3-green), .12), rgba(var(--g3-green), .12)), var(--g-surface-strong); }
+body.glass .kanban-card:hover, body.glass.dark .kanban-card:hover { border-color: var(--g-accent); }
+body.glass .kanban-card.dragging { opacity: .5; border-style: dashed; border-color: var(--g-accent); box-shadow: 0 10px 28px color-mix(in srgb, var(--g-accent) 38%, transparent); }
+body.glass .kanban-cards.drag-over { background: color-mix(in srgb, var(--g-accent) 14%, transparent); outline: 2px dashed var(--g-accent); outline-offset: -6px; border-radius: 12px; }
+body.glass .kanban-col-won .kanban-cards.drag-over { background: rgba(var(--g3-green), .16); outline-color: #1e8e3e; }
+body.glass .kanban-card-company, body.glass.dark .kanban-card-company { color: var(--g-text); }
+body.glass .kanban-card-product, body.glass.dark .kanban-card-product { background: color-mix(in srgb, var(--g-text) 8%, transparent); color: var(--g-text-2); }
+body.glass .kanban-card-footer, body.glass.dark .kanban-card-footer { border-top-color: var(--g-edge); }
+body.glass .kanban-card-edit-hint, body.glass.dark .kanban-card-edit-hint { color: var(--g-text-2); }
+body.glass .kanban-empty-col, body.glass.dark .kanban-empty-col { color: var(--g-text-2); border-color: var(--g-edge); }
+/* 小標籤（類別、逾期）：深色模式不要一塊白斑，改半透明色塊＋提亮字 */
+body.glass.dark .kanban-card-cat { background: rgba(var(--g3-blue), .22); color: #b9d8ff; }
+body.glass.dark .kanban-card-overdue { background: rgba(var(--g3-red), .20); color: #ffc2bb; }
+body.glass:not(.dark) .kanban-card-cat { background: rgba(var(--g3-blue), .12); }
+body.glass:not(.dark) .kanban-card-overdue { background: rgba(var(--g3-red), .10); }
+body.glass.dark .kanban-badge-won { background: rgba(var(--g3-green), .22) !important; color: #86efac !important; }
+body.glass:not(.dark) .kanban-badge-won { background: rgba(var(--g3-green), .22) !important; color: #166534 !important; }
+
+/* ── 3b-4 銷售預測報表：摘要卡＋表格（列底色為語意色→半透明；固定欄用不透明混色才遮得住捲動內容） ── */
+body.glass .fsc-blue { background: linear-gradient(135deg, rgba(var(--g3-blue), .26), transparent 78%), var(--g-fill); }
+body.glass .fsc-green { background: linear-gradient(135deg, rgba(var(--g3-green), .26), transparent 78%), var(--g-fill); }
+body.glass .fsc-orange { background: linear-gradient(135deg, rgba(var(--g3-amber), .28), transparent 78%), var(--g-fill); }
+body.glass .fsc-red { background: linear-gradient(135deg, rgba(var(--g3-red), .24), transparent 78%), var(--g-fill); }
+body.glass .fsc-label { color: var(--g-text-2); }
+body.glass .fsc-value { color: var(--g-text); font-variant-numeric: tabular-nums; }
+body.glass .forecast-table td, body.glass.dark .forecast-table td { border-bottom-color: var(--g-edge); color: var(--g-text); background: transparent; }
+body.glass .forecast-table th { border-right-color: var(--g-edge); }
+body.glass .forecast-table td.ft-company-col, body.glass.dark .forecast-table td.ft-company-col { background: var(--g3-solid); color: var(--g-text); border-right: 2px solid var(--g-edge); }
+body.glass .forecast-table tbody tr:not(.ft-total-row):hover td, body.glass.dark .forecast-table tbody tr:not(.ft-total-row):hover td { background: var(--g-row-hover); }
+body.glass .forecast-table tbody tr:not(.ft-total-row):hover td.ft-company-col, body.glass.dark .forecast-table tbody tr:not(.ft-total-row):hover td.ft-company-col { background: color-mix(in srgb, var(--g-accent) 16%, var(--g3-solid)); }
+body.glass .forecast-table td.ft-cur-month, body.glass.dark .forecast-table td.ft-cur-month { background: rgba(var(--g3-amber), .14); }
+body.glass .forecast-table td.ft-subtotal, body.glass.dark .forecast-table td.ft-subtotal { background: color-mix(in srgb, var(--g-accent) 12%, transparent); color: var(--g-accent); }
+body.glass .forecast-table td.ft-zero { color: var(--g-ph); }
+body.glass:not(.dark) .forecast-table td.ft-positive { color: #166534; }
+body.glass.dark .forecast-table td.ft-positive { color: #4ade80; }
+/* 合計列 */
+body.glass .forecast-table tr.ft-total-row td, body.glass.dark .forecast-table tr.ft-total-row td { background: color-mix(in srgb, var(--g-accent) 14%, var(--g3-solid)); color: var(--g-text); border-top: 2px solid var(--g-accent); }
+body.glass .forecast-table tr.ft-total-row td.ft-company-col, body.glass.dark .forecast-table tr.ft-total-row td.ft-company-col { background: color-mix(in srgb, var(--g-accent) 20%, var(--g3-solid)); color: var(--g-text); }
+body.glass .forecast-table tr.ft-total-row:hover td, body.glass.dark .forecast-table tr.ft-total-row:hover td { background: color-mix(in srgb, var(--g-accent) 22%, var(--g3-solid)); }
+/* 粉色欄（把握度%、預估毛利率）／黃色欄（合約金額、毛利金額）：保留色相，改半透明 */
+body.glass .forecast-table th.ft-head-pink { background: color-mix(in srgb, rgb(var(--g3-pink)) 24%, var(--g-th)); color: var(--g-text); }
+body.glass .forecast-table th.ft-head-yellow { background: color-mix(in srgb, rgb(var(--g3-amber)) 26%, var(--g-th)); color: var(--g-text); }
+body.glass .forecast-table td.ft-cell-pink, body.glass.dark .forecast-table td.ft-cell-pink { background: rgba(var(--g3-pink), .10); }
+body.glass .forecast-table td.ft-cell-yellow, body.glass.dark .forecast-table td.ft-cell-yellow { background: rgba(var(--g3-amber), .10); }
+body.glass:not(.dark) .forecast-table td.ft-cell-pink { color: #880e4f; }
+body.glass:not(.dark) .forecast-table td.ft-cell-yellow { color: #5b3a00; }
+body.glass.dark .forecast-table td.ft-cell-pink { color: #f9a8d4; }
+body.glass.dark .forecast-table td.ft-cell-yellow { color: #f5d77a; }
+body.glass .forecast-table tr:hover td.ft-cell-pink, body.glass.dark .forecast-table tr:hover td.ft-cell-pink { background: rgba(var(--g3-pink), .20); }
+body.glass .forecast-table tr:hover td.ft-cell-yellow, body.glass.dark .forecast-table tr:hover td.ft-cell-yellow { background: rgba(var(--g3-amber), .20); }
+body.glass .forecast-table tr.ft-total-row td.ft-cell-pink, body.glass.dark .forecast-table tr.ft-total-row td.ft-cell-pink { background: color-mix(in srgb, rgb(var(--g3-pink)) 24%, var(--g3-solid)); }
+body.glass .forecast-table tr.ft-total-row td.ft-cell-yellow, body.glass.dark .forecast-table tr.ft-total-row td.ft-cell-yellow { background: color-mix(in srgb, rgb(var(--g3-amber)) 26%, var(--g3-solid)); }
+/* 成交列（綠）／A 階段列（橘）：語意色 */
+body.glass .forecast-table tr.ft-won td, body.glass.dark .forecast-table tr.ft-won td { background: rgba(var(--g3-green), .12); }
+body.glass .forecast-table tr.ft-won td.ft-cell-pink, body.glass.dark .forecast-table tr.ft-won td.ft-cell-pink { background: rgba(var(--g3-green), .20); }
+body.glass .forecast-table tr.ft-won td.ft-cell-yellow, body.glass.dark .forecast-table tr.ft-won td.ft-cell-yellow { background: rgba(var(--g3-green), .16); }
+body.glass .forecast-table tr.ft-won td.ft-company-col, body.glass.dark .forecast-table tr.ft-won td.ft-company-col { background: color-mix(in srgb, rgb(var(--g3-green)) 14%, var(--g3-solid)); }
+body.glass .forecast-table tr.ft-stage-a td, body.glass.dark .forecast-table tr.ft-stage-a td { background: rgba(var(--g3-amber), .13); }
+body.glass .forecast-table tr.ft-stage-a td.ft-company-col, body.glass.dark .forecast-table tr.ft-stage-a td.ft-company-col { background: color-mix(in srgb, rgb(var(--g3-amber)) 16%, var(--g3-solid)); }
+body.glass .forecast-table tr.ft-won:hover td, body.glass.dark .forecast-table tr.ft-won:hover td { background: rgba(var(--g3-green), .22); }
+body.glass .forecast-table tr.ft-stage-a:hover td, body.glass.dark .forecast-table tr.ft-stage-a:hover td { background: rgba(var(--g3-amber), .22); }
+
+/* ── 3b-5 商機動態報表：漏斗橫條、動態清單、Pipeline 月度變動表 ── */
+body.glass .pr-funnel-lbl { color: var(--g-text-2); }
+body.glass .pr-funnel-amt, body.glass .pr-deal-amt, body.glass .pr-deal-company { color: var(--g-text); }
+body.glass .pr-funnel-bar-wrap, body.glass.dark .pr-funnel-bar-wrap { background: color-mix(in srgb, var(--g-text) 10%, transparent); }
+body.glass .pr-deal-row { border-bottom-color: var(--g-edge); }
+body.glass .pr-deal-row:hover { background: var(--g-row-hover); }
+body.glass .pr-summary-icon[style*="background"] { background: color-mix(in srgb, var(--g-text) 10%, transparent) !important; }
+body.glass .pr-move-head { border: 1px solid transparent; }
+body.glass .pr-move-head-up { background: rgba(var(--g3-green), .16); border-color: rgba(var(--g3-green), .30); }
+body.glass .pr-move-head-down { background: rgba(var(--g3-amber), .16); border-color: rgba(var(--g3-amber), .32); }
+body.glass .pr-move-head-new { background: rgba(var(--g3-blue), .14); border-color: rgba(var(--g3-blue), .30); }
+body.glass .pr-move-head-lost { background: rgba(var(--g3-red), .14); border-color: rgba(var(--g3-red), .30); }
+body.glass .pr-move-head-date { background: rgba(var(--g3-purple), .16); border-color: rgba(var(--g3-purple), .30); }
+body.glass .pr-move-head-amt { background: rgba(var(--g3-amber), .16); border-color: rgba(var(--g3-amber), .32); }
+body.glass:not(.dark) .pr-move-head-up { color: #166534; }
+body.glass:not(.dark) .pr-move-head-down { color: #9a3412; }
+body.glass:not(.dark) .pr-move-head-new { color: #1243a8; }
+body.glass:not(.dark) .pr-move-head-lost { color: #b91c1c; }
+body.glass:not(.dark) .pr-move-head-date { color: #5b21b6; }
+body.glass:not(.dark) .pr-move-head-amt { color: #8a3b00; }
+body.glass.dark .pr-move-head-up { color: #86efac; }
+body.glass.dark .pr-move-head-down { color: #fdba74; }
+body.glass.dark .pr-move-head-new { color: #93c5fd; }
+body.glass.dark .pr-move-head-lost { color: #fca5a5; }
+body.glass.dark .pr-move-head-date { color: #c4b5fd; }
+body.glass.dark .pr-move-head-amt { color: #fcd34d; }
+/* Pipeline 月度變動表（#pdcSection）：標題列／列標籤是行內琥珀底與淺灰底 */
+body.glass #pdcSection > div:first-child[style] { color: var(--g-text) !important; border-bottom-color: var(--g-edge) !important; }
+body.glass #pdcSection label[style], body.glass #pdcSection p[style] { color: var(--g-text-2) !important; }
+body.glass #pdcTable th[style] { background: color-mix(in srgb, rgb(var(--g3-amber)) 24%, var(--g-th)) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass #pdcTable td[style] { border-color: var(--g-edge) !important; }
+body.glass #pdcTable tr[style] { background: transparent !important; border-bottom-color: var(--g-edge) !important; }
+body.glass #pdcTable td[style*="background:#fafafa"], body.glass #pdcTable td[style*="background:#f0f2f5"] { background: var(--g3-solid) !important; color: var(--g-text) !important; position: sticky; left: 0; z-index: 1; }
+body.glass:not(.dark) #pdcTable [style*="color:#e53935"] { color: #b91c1c !important; }
+body.glass:not(.dark) #pdcTable [style*="color:#1976d2"] { color: #1243a8 !important; }
+body.glass.dark #pdcTable [style*="color:#e53935"] { color: #ff9b91 !important; }
+body.glass.dark #pdcTable [style*="color:#1976d2"] { color: #8ec5ff !important; }
+body.glass #pdcTable [style*="color:#bbb"] { color: var(--g-ph) !important; }
+
+/* ── 3b-6 商機分析：表格與數字欄 ── */
+body.glass .biz-owner-tbl th, body.glass.dark .biz-owner-tbl th, body.glass .biz-drill-tbl th, body.glass.dark .biz-drill-tbl th { background: var(--g-th); color: var(--g-text-2); border-bottom: 1px solid var(--g-edge); }
+body.glass .biz-owner-tbl tr.biz-owner-tbl-sub th, body.glass.dark .biz-owner-tbl tr.biz-owner-tbl-sub th { background: color-mix(in srgb, var(--g-th) 80%, transparent); color: var(--g-text-2); }
+body.glass .biz-owner-tbl td, body.glass .biz-drill-tbl td { border-bottom-color: var(--g-edge); color: var(--g-text); }
+body.glass .biz-owner-tbl tr:hover td, body.glass .biz-drill-tbl tr:hover td { background: var(--g-row-hover); }
+body.glass:not(.dark) .biz-col-new { color: #1243a8; }
+body.glass:not(.dark) .biz-col-rec { color: #166534; }
+body.glass:not(.dark) .biz-col-exp { color: #6d28d9; }
+body.glass.dark .biz-col-new { color: #8ec5ff; }
+body.glass.dark .biz-col-rec { color: #86efac; }
+body.glass.dark .biz-col-exp { color: #c4b5fd; }
+
+/* ── 3b-7 流失商機：行內白底表格容器、行內表頭／統計卡 ── */
+body.glass #lostOppTableWrap { background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); border-radius: var(--g-radius) !important; box-shadow: var(--g-ring), var(--g-shadow) !important; -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
+body.glass #lostOppTableWrap tr[style*="background"] { background: transparent !important; border-bottom-color: var(--g-edge) !important; }
+body.glass #lostOppCount { color: var(--g-text-2) !important; }
+
+/* ── 3b-8 YoY 營收同期比（行內 <style> 為白底卡／淺灰表頭；列印樣式在原 @media print，這裡只管螢幕） ── */
+body.glass .yoy-title { color: var(--g-text); }
+body.glass :is(.yoy-meta, .yoy-vs, .yoy-kpi-label, .yoy-card-title) { color: var(--g-text-2); }
+body.glass .yoy-kpi-value { color: var(--g-text); font-variant-numeric: tabular-nums; }
+body.glass .yoy-empty { background: var(--g-surface); border-color: var(--g-edge); color: var(--g-text-2); }
+body.glass .yoy-search { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text); border-radius: var(--g-radius-sm); }
+body.glass table.yoy-tbl td { border-bottom-color: var(--g-edge); color: var(--g-text); }
+body.glass table.yoy-tbl td:first-child { color: var(--g-text); }
+body.glass table.yoy-tbl th { color: var(--g-text-2); border-bottom: 2px solid var(--g-edge); }
+body.glass table.yoy-tbl tr.yoy-cust-row:hover td { background: var(--g-row-hover); }
+body.glass table.yoy-tbl tr.yoy-sub td, body.glass table.yoy-tbl tr.yoy-sub td:first-child { background: color-mix(in srgb, var(--g-text) 5%, transparent); color: var(--g-text-2); }
+body.glass table.yoy-tbl tfoot td { background: var(--g-th); border-top: 2px solid var(--g-edge); color: var(--g-text); }
+body.glass:not(.dark) .yoy-up { color: #166534; }
+body.glass:not(.dark) .yoy-down { color: #b91c1c; }
+body.glass.dark .yoy-up { color: #4ade80; }
+body.glass.dark .yoy-down { color: #ff8a80; }
+body.glass .yoy-flat { color: var(--g-text-2); }
+body.glass #yoyLinksCaret, body.glass #yoyLinksWrap [style*="color:#9ca3af"], body.glass #yoyLinksWrap [style*="color:#6b7280"] { color: var(--g-text-2) !important; }
+
+/* ── 3b-9 管理儀表板：漏斗方塊（行內淺底＋階段色）、轉換率徽章、產品列、轉換明細表 ── */
+body.glass.dark .exec-funnel-box[style*="background"] { background: rgba(255, 255, 255, .07) !important; }
+body.glass:not(.dark) .exec-funnel-box[style*="background"] { background: rgba(255, 255, 255, .62) !important; }
+body.glass .exec-rate-badge[style*="background"] { background: color-mix(in srgb, var(--g-text) 9%, transparent) !important; }
+body.glass .exec-prod-row:nth-child(even), body.glass.dark .exec-prod-row:nth-child(even) { background: color-mix(in srgb, var(--g-text) 4%, transparent); }
+body.glass .exec-prod-row:hover, body.glass.dark .exec-prod-row:hover { background: var(--g-row-hover); }
+body.glass .stage-conv-thead, body.glass.dark .stage-conv-thead { background: var(--g-th) !important; border-bottom-color: var(--g-edge) !important; }
+body.glass .stage-conv-thead th, body.glass.dark .stage-conv-thead th { color: var(--g-text-2) !important; }
+body.glass .stage-conv-wrap { background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); border-radius: var(--g-radius) !important; box-shadow: var(--g-ring), var(--g-shadow) !important; -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
+
+/* ── 3b-10 對比補強：行內／JS 產生的階段色與語意色（同色系加深／提亮，語意不變） ── */
+body.glass:not(.dark) .main :is([style*="color:#f57c00"], [style*="color:#e37400"], [style*="color:#ef6c00"]):not(.qpv-paper *) { color: #9a4a00 !important; }
+body.glass.dark .main :is([style*="color:#e37400"], [style*="color:#ef6c00"]):not(.qpv-paper *) { color: #fbbf24 !important; }
+body.glass:not(.dark) .main [style*="color:#90a4ae"]:not(.qpv-paper *) { color: #5f6368 !important; }   /* 階段 D 灰 */
+body.glass:not(.dark) .main :is([style*="color:#e74c3c"], [style*="color:#c5221f"], [style*="color:#e53935"]):not(.qpv-paper *) { color: #a31515 !important; }
+body.glass.dark .main [style*="color:#e74c3c"]:not(.qpv-paper *) { color: #ff9b91 !important; }
+body.glass:not(.dark) .main [style*="color:#9334e6"]:not(.qpv-paper *) { color: #6d28d9 !important; }
+body.glass.dark .main [style*="color:#9334e6"]:not(.qpv-paper *) { color: #c4b5fd !important; }
+body.glass:not(.dark) .pr-move-head-lost { color: #a31515; }
+body.glass .pr-move-count { background: #157a37; }
+body.glass .pr-move-count-down { background: #b34000; }
+body.glass .pr-move-count-new { background: #1558d6; }
+body.glass .pr-move-count-lost { background: #b91c1c; }
+body.glass:not(.dark) .kanban-badge-won { color: #14532d !important; }
+/* 管理儀表板其他分頁：產品分析（行內白底表格容器／淺灰表頭）、BU 對比進度條底軌、業績趨勢 SVG（行內淺灰線／字） */
+body.glass #execTabProduct > div[style*="background:#fff"] { background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); border-radius: var(--g-radius) !important; box-shadow: var(--g-ring), var(--g-shadow) !important; -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
+body.glass #execDashView tr[style*="background:#fafafa"] { background: var(--g-th) !important; border-bottom-color: var(--g-edge) !important; }
+body.glass #execDashView :is([style*="background:#eee"], [style*="background:#eef0f3"]) { background: color-mix(in srgb, var(--g-text) 13%, transparent) !important; }
+body.glass #execDashView [style*="background:#d0d5e0"] { background: color-mix(in srgb, var(--g-text) 28%, transparent) !important; }
+body.glass .exec-chart-wrap svg line { stroke: var(--g-edge); }
+body.glass .exec-chart-wrap svg text { fill: var(--g-text-2); }
+body.glass.dark .exec-chart-wrap svg rect.exec-bar[fill="#c5d9f5"] { fill: #8aa3c9; }
+body.glass .stage-conv-wrap td { padding: 5px 16px; }
+/* 銷售預測「階段」多選下拉（行內白底浮層）與彈窗內的軟按鈕 */
+body.glass .fc-multisel-panel { background: rgba(255, 255, 255, .95); border: 1px solid var(--g-border); box-shadow: var(--g-shadow-lg); }
+body.glass.dark .fc-multisel-panel { background: color-mix(in srgb, color-mix(in srgb, var(--t-bg) 86%, var(--t-b1)) 96%, transparent); }
+body.glass .fc-chk-row { color: var(--g-text); }
+body.glass .fc-chk-row:hover { background: var(--g-row-hover); }
+body.glass .fc-chk-row input[type=checkbox] { accent-color: var(--g-accent); }
+body.glass.dark .fc-chk-row input[type=checkbox] { color-scheme: dark; }
+body.glass .fc-multisel-btn.active, body.glass.dark .fc-multisel-btn.active { border-color: var(--g-accent); color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 14%, var(--g-input)); }
+body.glass:not(.dark) .btn-soft-success { color: #14532d; }
+body.glass:not(.dark) .btn-soft-danger { color: #a31515; }
+}
+
+/* 列印：把玻璃 token 還原成淺色紙面值（深色玻璃模式下列印 YoY 等報表，字不會變白、底不會是黑的） */
+@media print {
+  body.glass, body.glass.dark {
+    --g-text: #111827; --g-text-2: #475569; --g-ph: #64748b;
+    --g-fill: #fff; --g-surface: #fff; --g-surface-strong: #fff; --g-input: #fff; --g-th: #f1f5f9;
+    --g-edge: rgba(15, 27, 53, .18); --g-border: rgba(15, 27, 53, .14);
+    --g-shadow: none; --g-ring: none; --g3-solid: #fff;
+    background: #fff; color: #111827;
+  }
+}
