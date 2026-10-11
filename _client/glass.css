@@ -36,25 +36,25 @@ body.glass {
 }
 body.glass[data-theme="noir"] {
   --t-bg: #09090a; --t-b1: #c9a227; --t-b2: #7a5a12; --t-b3: #3d3216;
-  --t-accent: #e8c15b; --t-accent-l: #8a6a0a;
+  --t-accent: #e8c15b; --t-accent-l: #6e5508;
   --t-tint: rgba(232, 193, 91, .10); --t-edge: rgba(232, 193, 91, .28); --t-edge2: rgba(232, 193, 91, .65); --t-glow: rgba(232, 193, 91, .42);
   --t-lmix: 55%;
 }
 body.glass[data-theme="aurora"] {
   --t-bg: #05181a; --t-b1: #0fb89a; --t-b2: #2563eb; --t-b3: #7c3aed;
-  --t-accent: #5eead4; --t-accent-l: #0f766e;
+  --t-accent: #5eead4; --t-accent-l: #0d635c;
   --t-tint: rgba(45, 212, 191, .12); --t-edge: rgba(94, 234, 212, .22); --t-edge2: rgba(94, 234, 212, .55); --t-glow: rgba(45, 212, 191, .42);
   --t-lmix: 55%;
 }
 body.glass[data-theme="dusk"] {
   --t-bg: #160a24; --t-b1: #d946ef; --t-b2: #f97316; --t-b3: #6366f1;
-  --t-accent: #f0abfc; --t-accent-l: #a21caf;
+  --t-accent: #f0abfc; --t-accent-l: #971aa3;
   --t-tint: rgba(217, 70, 239, .12); --t-edge: rgba(240, 171, 252, .22); --t-edge2: rgba(240, 171, 252, .55); --t-glow: rgba(217, 70, 239, .42);
   --t-lmix: 55%;
 }
 body.glass[data-theme="ember"] {
   --t-bg: #1a0a07; --t-b1: #ef4444; --t-b2: #f59e0b; --t-b3: #7f1d1d;
-  --t-accent: #fbbf24; --t-accent-l: #b45309;
+  --t-accent: #fbbf24; --t-accent-l: #904207;
   --t-tint: rgba(245, 158, 11, .11); --t-edge: rgba(251, 191, 36, .24); --t-edge2: rgba(251, 191, 36, .58); --t-glow: rgba(245, 158, 11, .42);
   --t-lmix: 55%;
 }
@@ -75,7 +75,7 @@ body.glass {
   --g-surface-strong: rgba(255, 255, 255, .76);   /* 表格／表單／彈窗：數字要清楚 */
   --g-surface-hover: rgba(255, 255, 255, .66);
   --g-input: rgba(255, 255, 255, .82);
-  --g-th: rgba(226, 235, 255, .95);
+  --g-th: color-mix(in srgb, var(--t-accent-l) calc(var(--t-lmix) * .16), rgb(226 235 255 / .95));
   --g-row-hover: color-mix(in srgb, var(--t-accent-l) 10%, transparent);
   --g-border: rgba(255, 255, 255, .85);           /* 1px 亮緣 */
   --g-edge: rgba(15, 27, 53, .16);                /* 分隔線／輸入框邊 */
@@ -83,7 +83,7 @@ body.glass {
   --g-shadow: 0 10px 32px rgba(30, 58, 138, .20), 0 2px 6px rgba(30, 58, 138, .10);
   --g-shadow-lg: 0 28px 70px rgba(20, 38, 100, .34);
   --g-text: #0f1b35;
-  --g-text-2: #475569;
+  --g-text-2: #3f4b5f;
   --g-ph: #64748b;
   --g-accent: var(--t-accent-l);
   --g-scrim: rgba(12, 20, 50, .42);
@@ -101,15 +101,15 @@ body.glass.dark {
   --g-surface-strong: rgba(12, 18, 38, .72);
   --g-surface-hover: rgba(255, 255, 255, .14);
   --g-input: rgba(6, 10, 24, .62);
-  --g-th: rgba(26, 36, 66, .94);
+  --g-th: color-mix(in srgb, var(--t-b1) calc(var(--t-lmix) * .12), rgb(26 36 66 / .94));
   --g-row-hover: color-mix(in srgb, var(--t-accent) 14%, transparent);
   --g-border: var(--t-edge);                       /* 亮緣：黑金→金邊、極光→青邊… */
   --g-edge: color-mix(in srgb, var(--t-edge) 80%, transparent);
-  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .04);
+  --g-ring: inset 0 1px 0 color-mix(in srgb, var(--t-edge2) var(--t-lmix), rgba(255, 255, 255, .22)), inset 0 0 0 1px rgba(255, 255, 255, .04);
   --g-shadow: 0 12px 38px rgba(0, 0, 0, .52), 0 2px 6px rgba(0, 0, 0, .30);
   --g-shadow-lg: 0 30px 80px rgba(0, 0, 0, .66);
   --g-text: rgba(255, 255, 255, .94);
-  --g-text-2: rgba(255, 255, 255, .76);
+  --g-text-2: rgba(255, 255, 255, .84);
   --g-ph: rgba(255, 255, 255, .62);
   --g-accent: var(--t-accent);
   --g-scrim: rgba(2, 5, 14, .60);
@@ -619,7 +619,8 @@ body.glass .gt-wrap { display: block; }
   background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); box-shadow: var(--g-ring);
   transition: background .18s, transform .18s;
 }
-.gt-btn:hover { background: var(--g-surface-hover); transform: scale(1.06); }
+.gt-btn:hover { background: var(--g-surface-hover); }
+@media (hover: hover) { .gt-btn:hover { transform: scale(1.06); } }
 .gt-btn:focus-visible, .gt-item:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
 body.glass .admin-topbar .gt-btn { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .3); border-radius: 8px; width: auto; height: auto; padding: 7px 12px; }
 .gt-pop {
@@ -707,10 +708,10 @@ body.glass {
   --gd-spot: color-mix(in srgb, var(--t-accent-l) 20%, transparent);
   --gd-spot-edge: var(--t-accent-l);
   --gd-track: rgba(15, 27, 53, .12);
-  --gd-pos: #047857; --gd-neg: #b91c1c;
+  --gd-pos: #065f46; --gd-neg: #b91c1c;
   --gd-cap-bg: rgba(255, 255, 255, .72); --gd-cap-edge: rgba(15, 27, 53, .22);
   --gd-blob: color-mix(in srgb, var(--t-accent-l) 40%, #fff);
-  --gd-sD: #666; --gd-sC: #1a56c0; --gd-sB: #b45309; --gd-sA: #c62828;
+  --gd-sD: #4f4f4f; --gd-sC: #1a56c0; --gd-sB: #92400e; --gd-sA: #ad1f1f;
 }
 body.glass.dark {
   --gd-spot: rgba(255, 255, 255, .20); --gd-spot-edge: rgba(255, 255, 255, .92);
@@ -756,7 +757,8 @@ body.glass.dark {
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box exclude, linear-gradient(#fff 0 0);
 }
-.gd-card:hover .gd-tilt::before, .gd-card:hover .gd-tilt::after { opacity: 1; }
+/* 滑鼠才有聚光（觸控裝置點一下後 :hover 會黏住，聚光會停在卡片正中央不消失） */
+@media (hover: hover) { .gd-card:hover .gd-tilt::before, .gd-card:hover .gd-tilt::after { opacity: 1; } }
 .gd-main { z-index: 5; cursor: default; }
 .gd-thumb { z-index: 3; }
 .gd-in { position: relative; height: 100%; display: flex; flex-direction: column; padding: 14px 16px; gap: 6px; min-height: 0; color: var(--g-text); }
@@ -871,7 +873,7 @@ body.glass #mgrGapBanner {
   -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
 }
 body.glass #mgrGapBanner [style*="color:#1e8e3e"] { color: #047857 !important; }
-body.glass #mgrGapBanner [style*="color:#e37400"] { color: #b45309 !important; }
+body.glass #mgrGapBanner [style*="color:#e37400"] { color: #92400e !important; }
 body.glass.dark #mgrGapBanner [style*="color:#1e8e3e"] { color: #34d399 !important; }
 body.glass.dark #mgrGapBanner [style*="color:#e37400"] { color: #fbbf24 !important; }
 
@@ -1145,7 +1147,7 @@ body.glass:not(.dark) .ka-diff-pos { color: #065f46; }
 body.glass .empty-msg, body.glass.dark .empty-msg { color: var(--g-text-2) !important; }
 /* 商機階段徽章 D/C/B/A：語意不變，淺色下字色同色系加深（淺底小膠囊） */
 body.glass:not(.dark) .opp-c { color: #1243a8; }
-body.glass:not(.dark) .opp-b { color: #9a4a00; }
+body.glass:not(.dark) .opp-b { color: #823e00; }
 body.glass:not(.dark) .opp-d { color: #5f6368; }
 body.glass:not(.dark) .zombie-chip-b { color: #8a5300; }
 body.glass.dark .main [style*="color:#c5221f"] { color: #ff9b91 !important; }
@@ -1215,7 +1217,7 @@ body.glass .view-stat-card .stat-label, body.glass.dark .view-stat-card .stat-la
 body.glass.dark .view-stat-card .stat-val-text { color: var(--g-text) !important; }
 body.glass:not(.dark) .view-stat-card .stat-val-text { color: var(--g-text); }
 body.glass:not(.dark) .view-stat-card .stat-val-red { color: #b91c1c; }
-body.glass:not(.dark) .view-stat-card .stat-val-orange { color: #9a4a00; }
+body.glass:not(.dark) .view-stat-card .stat-val-orange { color: #823e00; }
 body.glass.dark .view-stat-card .stat-val-red { color: #ff9b91 !important; }
 body.glass.dark .view-stat-card .stat-val-orange { color: #fbbf24 !important; }
 /* 標題／次要字 */
@@ -1405,7 +1407,7 @@ body.glass .stage-conv-thead th, body.glass.dark .stage-conv-thead th { color: v
 body.glass .stage-conv-wrap { background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); border-radius: var(--g-radius) !important; box-shadow: var(--g-ring), var(--g-shadow) !important; -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
 
 /* ── 3b-10 對比補強：行內／JS 產生的階段色與語意色（同色系加深／提亮，語意不變） ── */
-body.glass:not(.dark) .main :is([style*="color:#f57c00"], [style*="color:#e37400"], [style*="color:#ef6c00"]):not(.qpv-paper *) { color: #9a4a00 !important; }
+body.glass:not(.dark) .main :is([style*="color:#f57c00"], [style*="color:#e37400"], [style*="color:#ef6c00"]):not(.qpv-paper *) { color: #823e00 !important; }
 body.glass.dark .main :is([style*="color:#e37400"], [style*="color:#ef6c00"]):not(.qpv-paper *) { color: #fbbf24 !important; }
 body.glass:not(.dark) .main [style*="color:#90a4ae"]:not(.qpv-paper *) { color: #5f6368 !important; }   /* 階段 D 灰 */
 body.glass:not(.dark) .main :is([style*="color:#e74c3c"], [style*="color:#c5221f"], [style*="color:#e53935"]):not(.qpv-paper *) { color: #a31515 !important; }
@@ -2295,3 +2297,91 @@ body.glass.admin-page #versionHeroCard :is([style*="opacity:.6"], [style*="opaci
 /* 前端套件綠色徽章（白字 on #34a853 = 3.06）→ 加深底色 */
 body.glass.admin-page #sec-version [style*="color:#fff;background:#34a853"] { background: #15803d !important; }
 /* ═══ 階段 5d 結束 ═══ */
+
+/* ═══════════════════════════════════════════════════════════════
+ * 階段 6：全頁驗收（手機寬度／觸控／主題掃描）——全部掛 body.glass，關閉玻璃時計算樣式不變
+ * ═══════════════════════════════════════════════════════════════ */
+/* 6-1 觸控裝置：點過的側欄項目不留 :hover 殘影 */
+@media (hover: none) {
+  body.glass .sg-hd:hover, body.glass .sidebar-nav-item:not(.active):hover { background: transparent; }
+}
+/* 6-2 手機：時間膠囊列（資料期間＋284px 膠囊）窄於 362px 時換行，不撐出橫向捲軸 */
+@media (max-width: 900px) { .gd-bar-r { flex-wrap: wrap; } }
+/* 6-3 手機：展開詳情時底部縮圖（約 110×76）——標題不再被數字擠成一個字；改為上標題、下數值 */
+@media (max-width: 480px) {
+  .gd-thumb .gd-in { flex-direction: column; align-items: flex-start; justify-content: center; flex-wrap: nowrap; padding: 8px 10px; gap: 3px; }
+  .gd-thumb .gd-hd { flex: none; width: 100%; font-size: 12px; }
+  .gd-thumb .gd-num { margin-left: 0; max-width: 100%; font-size: 15px; }
+}
+/* 6-4 手機：通知下拉原本 360px 寬、靠右對齊鈴鐺，在 ≤420px 螢幕左側被切掉（玻璃多了主題鈕，更嚴重）→ 貼齊畫面兩側 */
+@media (max-width: 480px) {
+  body.glass .topbar { position: relative; }
+  body.glass .notif-bell-wrap { position: static; }
+  body.glass .notif-dropdown { position: absolute; left: 8px; right: 8px; top: calc(100% + 6px); width: auto; max-width: none; }
+}
+/* 6-5 對比修正（全頁掃描，六主題×淺深）
+ * 直接坐在背景光暈上（沒有卡片墊底）的字：淺色玻璃下 --g-text-2（#475569）壓在藍／紫光暈上只有 2.7～3.8:1 → 改主字色 */
+body.glass:not(.dark) :is(.welcome-sub, .dashboard-welcome *, .gd-bar-note, .gd-bar-lbl, .section-sub) { color: var(--g-text); }
+/* 殭屍警示 A 級小標籤：紅底上的深紅字 4.1:1 → 加深 */
+body.glass:not(.dark) .zombie-alert-card .z-chip-a { color: #7f1d1d; }
+/* 側欄使用者列的 BU 徽章（行內 style 的亮藍／橘／紫字，壓在 10px 小字＋藍底上不足 4.5:1）→ 提亮一階 */
+body.glass .sidebar [style*="color:#60a5fa"] { color: #a5cdfe !important; }
+body.glass .sidebar [style*="color:#fb923c"] { color: #fdba74 !important; }
+body.glass .sidebar [style*="color:#a78bfa"] { color: #c4b5fd !important; }
+/* 後台首頁領域卡：標題色（領域色）與指標字在淺色／極光深色玻璃上不足 4.5:1 */
+body.glass.admin-page:not(.dark) .home-card-title { color: color-mix(in srgb, var(--dc) 66%, #000); }
+body.glass.admin-page:not(.dark) .home-metric { color: #334155; }
+body.glass.admin-page.dark .home-metric { color: var(--g-text); }
+/* 極光（深色）：青綠光暈很亮，頂欄／側欄再壓暗一階，頂欄徽章與選取項目字才讀得清楚 */
+body.glass.dark[data-theme="aurora"] { --g-side-bg: linear-gradient(180deg, color-mix(in srgb, color-mix(in srgb, var(--t-b1) 8%, var(--t-bg)) 88%, transparent) 0%, color-mix(in srgb, var(--t-bg) 86%, transparent) 100%); }
+body.glass.dark[data-theme="aurora"] .topbar { background: linear-gradient(rgba(2, 20, 24, .5), rgba(2, 20, 24, .5)), var(--g-fill); }
+/* 6-6 列印（深色玻璃）：列印 token 已還原成淺色紙面，但舊版 body.dark 的表格底色（#161b22）仍在——勾選「背景圖形」時變成深色底＋深色字、整張表看不到字 → 表格也還原成淺色 */
+@media print {
+  body.glass.dark :is(.table-wrap, table, tbody, tr, td):not(.qpv-paper *) { background: #fff !important; color: #111827 !important; border-color: rgba(15, 27, 53, .18) !important; box-shadow: none !important; }
+  body.glass.dark :is(thead, th):not(.qpv-paper *) { background: #f1f5f9 !important; color: #475569 !important; }
+}
+/* 展開卡標題列（淺色）：琥珀紅主題的卡片色調上 --g-text-2 只有 4.4:1 → 往主字色靠一點 */
+body.glass:not(.dark) .gd-hd { color: color-mix(in srgb, var(--g-text-2) 72%, var(--g-text)); }
+/* 6-7 效能（預防性）：手機上整頁寬的大表格容器（佔畫面 75～88%）不再做 backdrop 模糊——底色本來就是 76% 不透明白，模糊幾乎看不出來，卻是低階手機最吃 GPU 的一塊（實機效果 未驗證；無頭瀏覽器軟體算圖下玻璃開關差異在雜訊內） */
+@media (max-width: 768px) {
+  body.glass :is(.table-wrap, .ka-table-wrap, .cm-table-wrap, .forecast-table-wrap, .mail-tablewrap, .rp-wrap, .import-preview-wrap) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* 6-8 光暈上的字（續）：全頁掃描找到的、沒有卡片墊底而直接壓在背景光暈的說明字／計數／日期（淺色玻璃），一律用主字色 */
+body.glass:not(.dark) :is(.cm-hint, .cm-count, .ka-page-sub, .ka-tip, .pr-period-label, .yoy-meta, .yoy-vs) { color: var(--g-text); }
+body.glass:not(.dark) .empty-msg { color: var(--g-text) !important; }
+body.glass:not(.dark) :is(#kanbanResultHint, #kanbanResultHint b, #lostOppCount) { color: var(--g-text) !important; }
+body.glass:not(.dark) #transferView > div[style*="color:#888"] { color: var(--g-text) !important; }
+/* 月曆：非當月的格子原本透明（日期字直接壓在光暈上）→ 墊一層淺玻璃 */
+body.glass:not(.dark) .cal-cell.other-month { background: var(--g-surface); }
+/* 報表摘要卡：淺色玻璃下底色太透，紅字（-0 K 等）壓在紫色光暈上 3.9:1 → 用較實的表面 */
+body.glass:not(.dark) #prSummaryCards .pr-summary-card { background: var(--g-surface-strong); }
+/* 行銷首頁「未分類」琥珀字：淺色 4.2:1／深色 3.3:1 */
+body.glass:not(.dark) .rh-none { color: #92400e; }
+body.glass.dark .rh-none { color: #fbbf24; }
+/* 6-9 已刪除（流失）商機列：舊樣式用 !important 寫死淡粉底（#fdf5f5），玻璃深色下字是白色 → 白字壓淡粉底 1.06:1（整塊看不到字）；改成吃主題的半透明紅底 */
+body.glass .opp-lost-row td { background: rgba(244, 63, 94, .08) !important; color: var(--g-text-2); }
+body.glass.dark .opp-lost-row td { background: rgba(244, 63, 94, .13) !important; }
+body.glass .opp-lost-row:hover td { background: rgba(244, 63, 94, .17) !important; }
+body.glass .opp-lost-date { color: var(--g-text-2); }
+body.glass:not(.dark) .opp-lost-reason { color: #a82a1d; }
+body.glass.dark .opp-lost-reason { color: #ff9b91; }
+/* 年度目標頁：商機列表標題舊樣式寫死 #111（深色玻璃下 1.09:1）；無權限提示的橘字在紫色卡片上 2.4:1（淺）／2.6:1（深） */
+body.glass .opp-list-title { color: var(--g-text); }
+body.glass:not(.dark) #noTargetPermNotice { color: #7c2d12 !important; }
+body.glass.dark #noTargetPermNotice { color: #fdba74 !important; }
+/* 6-10 第三輪掃描（六主題）剩下的小缺口
+ * (1) 亮色系深色主題（極光／暮光／琥珀紅）：卡片色調疊在很亮的光暈上，白色次要字只有 3.8～4.2:1 → 卡片底再壓一層 16% 黑 */
+body.glass.dark:is([data-theme="aurora"], [data-theme="dusk"], [data-theme="ember"]) {
+  --g-fill: linear-gradient(135deg, var(--t-tint) 0%, rgba(255, 255, 255, .05) 100%), linear-gradient(rgba(0, 0, 0, .16), rgba(0, 0, 0, .16));
+}
+/* (2) 首頁「停滯／逾期」大數字（行內 style 寫死的亮紅／亮綠）在淺色卡片上 3.0:1／2.4:1 */
+body.glass:not(.dark) .gd-n[style*="#ef4444"] { color: #dc2626 !important; }
+body.glass:not(.dark) .gd-n[style*="#10b981"] { color: #047857 !important; }
+/* 6-11 報表階段標籤的紅字（10px）在淺色玻璃下 4.3:1；深色琥珀紅的藍色粗體數字 4.1:1 */
+body.glass:not(.dark) .main .pr-stage-tag[style*="color:#d32f2f"] { color: #9b1414 !important; }
+body.glass.dark #kanbanResultHint b { color: var(--g-text) !important; }
+/* 6-12 舊版深色表頭用「ID＋!important」寫死灰字 #8b949e（流失商機表、階段轉換表）——玻璃表頭底色隨主題變亮後只剩 3.8～4.3:1 → 玻璃深色下改回次要字色 */
+body.glass.dark :is(#lostOppTableWrap th, .stage-conv-thead th) { color: var(--g-text-2) !important; border-bottom-color: var(--g-edge) !important; }
+/* 琥珀紅（深色）下 B 階段標籤的橘字壓在深棕色卡片上 4.4:1 */
+body.glass.dark .main .pr-stage-tag[style*="color:#f57c00"] { color: #ffb74d !important; }
+/* ═══ 階段 6 結束 ═══ */

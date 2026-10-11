@@ -418,8 +418,8 @@
       ST.forEach(function (k, j) {
         var w = FW[j], w2 = FW[j + 1];
         var x1 = 50 - w / 2, x2 = 50 + w / 2, x3 = 50 + w2 / 2, x4 = 50 - w2 / 2;
-        fs += '<polygon points="' + x1.toFixed(1) + ',' + y + ' ' + x2.toFixed(1) + ',' + y + ' ' + x3.toFixed(1) + ',' + (y + fh) + ' ' + x4.toFixed(1) + ',' + (y + fh) + '" fill="' + SC[k] + '" stroke="' + SC[k] + '" stroke-width="1.6" stroke-linejoin="round" opacity=".94"/>' +
-          '<text x="50" y="' + (y + fh / 2 + 2) + '" text-anchor="middle" font-size="5.4" font-weight="600" fill="#fff">' + k + '　' + Math.round(c4[j]) + '</text>';
+        fs += '<polygon points="' + x1.toFixed(1) + ',' + y + ' ' + x2.toFixed(1) + ',' + y + ' ' + x3.toFixed(1) + ',' + (y + fh) + ' ' + x4.toFixed(1) + ',' + (y + fh) + '" fill="' + SC[k] + '" stroke="' + SC[k] + '" stroke-width="1.6" stroke-linejoin="round"/>' +
+          '<text x="50" y="' + (y + fh / 2 + 2) + '" text-anchor="middle" font-size="5.4" font-weight="600" fill="' + (k === 'D' || k === 'B' ? '#1a1a1a' : '#fff') + '">' + k + '　' + Math.round(c4[j]) + '</text>';
         y += fh + 2.5;
       });
       st.put('E', '<span class="gd-n">' + Math.round(c4[3] / total * 100) + '%</span><small>A｜Commit 占比</small>',
