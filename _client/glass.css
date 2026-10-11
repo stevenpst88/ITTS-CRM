@@ -1439,6 +1439,291 @@ body.glass:not(.dark) .btn-soft-success { color: #14532d; }
 body.glass:not(.dark) .btn-soft-danger { color: #a31515; }
 }
 
+/* ═════════════════════════════════════════════════════════════
+ * 階段 4 報價單：報價單管理列表、新增／編輯彈窗（含逐步填寫）、成本明細編輯器（.qcl-*）、顧問填成本對話框、
+ *         簽核對話框／簽核板、牌價簿挑選、各種小視窗（確認、說明／備註）
+ * 原則：只改樣式；語意色（紅綠橘狀態、毛利好／警告／危險、STALE／成本警示／已刪除品項徽章）不使用 --t-*，不隨主題變，
+ *       只把「平面白／#161b22 實底」換成半透明玻璃，並在對比不足處同色系加深／提亮。
+ * 這些模組各自在執行期注入 <style>（比 glass.css 晚載入、且自帶 body.dark 規則），所以這裡用 `body.glass.glass`
+ * （同一個 class 寫兩次＝提高一級權重，不改變比對條件）或多帶一個 class 贏過它們；.qcl-root 優先覆寫自己的 --qcl-* 變數。
+ * 硬性排除：.qpv-*（客戶用報價單預覽／PDF 擷取區／毛利分析預覽紙面）完全不碰；簽呈列印視窗是獨立文件，不載入本檔。
+ * 全部包在 @media screen：列印與 html2canvas 擷取的外觀不受影響。
+ * ═════════════════════════════════════════════════════════════ */
+@media screen {
+/* 語意色底：淺色與深色各一組（半透明，疊在玻璃上不會變成平面色塊）；不隨 data-theme 改變 */
+body.glass {
+  --q4-ok-bg: rgba(30, 122, 58, .13);   --q4-ok-bd: rgba(30, 122, 58, .38);   --q4-ok: #1b6b34;
+  --q4-warn-bg: rgba(245, 158, 11, .17); --q4-warn-bd: rgba(217, 119, 6, .50);  --q4-warn: #7a4200;
+  --q4-bad-bg: rgba(234, 67, 53, .11);   --q4-bad-bd: rgba(220, 38, 38, .38);   --q4-bad: #a31515;
+  --q4-info-bg: rgba(26, 115, 232, .11); --q4-info-bd: rgba(26, 115, 232, .36); --q4-info: #1558b0;
+}
+body.glass.dark {
+  --q4-ok-bg: rgba(74, 222, 128, .14);   --q4-ok-bd: rgba(74, 222, 128, .38);   --q4-ok: #6fdc8c;
+  --q4-warn-bg: rgba(245, 158, 11, .16); --q4-warn-bd: rgba(245, 158, 11, .46); --q4-warn: #f0b866;
+  --q4-bad-bg: rgba(248, 113, 113, .15); --q4-bad-bd: rgba(248, 113, 113, .42); --q4-bad: #ff9b91;
+  --q4-info-bg: rgba(88, 166, 255, .15); --q4-info-bd: rgba(88, 166, 255, .38); --q4-info: #8ecfff;
+}
+
+/* ── 4-0 PDF 產生相容性（html2canvas）──
+ * 報價單 PDF 由瀏覽器端 html2canvas 產生（quote-pdf.js），它會讀 <body> 的 computed 背景色並自己解析顏色；
+ * 淺色玻璃的 body 底色原本是 color-mix()，Chrome 會把它序列化成 color(srgb …)，html2canvas 1.4.1 不支援 → 丟出
+ * 「unsupported color function "color"」，淺色玻璃模式下整個 PDF 產生失敗。
+ * 這裡把淺色 body 底色改成「與原本 color-mix 結果相同（±1/255）」的純 rgb() 字面值（深色本來就是 hex，不受影響）。
+ * 只改 background-color，背景光暈（::before/::after）與其他外觀不變。 */
+body.glass:not(.dark) { background-color: rgb(205 220 255); }
+body.glass:not(.dark)[data-theme="noir"] { background-color: rgb(204 212 225); }
+body.glass:not(.dark)[data-theme="aurora"] { background-color: rgb(179 215 241); }
+body.glass:not(.dark)[data-theme="dusk"] { background-color: rgb(207 199 253); }
+body.glass:not(.dark)[data-theme="ember"] { background-color: rgb(210 199 229); }
+body.glass:not(.dark)[data-theme="graphite"] { background-color: rgb(191 206 239); }
+
+/* 客戶用報價單（.qpv-paper）與 legacy 完全一致：
+ *  · color-scheme：深色玻璃（body.glass.dark）把 color-scheme:dark 繼承進紙張 → 還原成預設（normal）；
+ *  · 本階段新增的 --q4-* 語意色變數不要繼承進紙張（紙張本身完全不使用它們，這只是讓紙張子孫的 computed style 與 legacy 逐項相同）；
+ *  · 預覽視窗的 1px 邊框會讓紙張置中位置差 1px（24px→23px）→ 預覽視窗改用 outline（不佔版面）畫亮緣，紙張位置與 legacy 相同。 */
+body.glass .qpv-paper { color-scheme: normal; --q4-ok-bg: initial; --q4-ok-bd: initial; --q4-ok: initial; --q4-warn-bg: initial; --q4-warn-bd: initial; --q4-warn: initial; --q4-bad-bg: initial; --q4-bad-bd: initial; --q4-bad: initial; --q4-info-bg: initial; --q4-info-bd: initial; --q4-info: initial; }
+body.glass .modal.qpv-modal { border: 0; outline: 1px solid var(--g-border); outline-offset: -1px; }
+
+/* ── 4-1 列表：單號晶片、狀態小標籤、進度條、成本欄 ── */
+body.glass.dark .quote-no { background: color-mix(in srgb, var(--g-accent) 20%, transparent); color: #bcdcff; }
+body.glass:not(.dark) .quote-st-wait, body.glass:not(.dark) .q-cost.warn { color: #a84300; }
+body.glass:not(.dark) .quote-st-ready { color: #1558b0; }
+body.glass:not(.dark) .quote-st-pending { color: #0a4fb8; }
+body.glass:not(.dark) .quote-st-draft { color: #4b5563; }
+body.glass:not(.dark) .quote-st-approved { color: #166534; }
+body.glass.dark .quote-st-draft { background: rgba(255, 255, 255, .10); color: var(--g-text-2); border-color: rgba(255, 255, 255, .16); }
+body.glass .q-cost { color: var(--g-text-2); }
+body.glass.dark .q-cost.ok { color: #6fdc8c; }
+body.glass:not(.dark) .q-cost.ok { color: #166534; }
+body.glass.glass .q-pg .s { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text-2); }
+body.glass:not(.dark) .q-pg .s.approved { background: rgba(30, 122, 58, .14); border-color: rgba(30, 122, 58, .4); color: #166534; }
+body.glass:not(.dark) .q-pg .s.pending { background: rgba(26, 115, 232, .13); border-color: rgba(26, 115, 232, .4); color: #0a4fb8; }
+body.glass:not(.dark) .q-pg .s.returned { background: rgba(234, 67, 53, .12); border-color: rgba(220, 38, 38, .4); color: #a31515; }
+body.glass.dark .q-pg .s.approved { background: var(--q4-ok-bg); border-color: var(--q4-ok-bd); color: var(--q4-ok); }
+body.glass.dark .q-pg .s.pending { background: var(--q4-info-bg); border-color: var(--q4-info-bd); color: var(--q4-info); }
+body.glass.dark .q-pg .s.returned { background: var(--q4-bad-bg); border-color: var(--q4-bad-bd); color: var(--q4-bad); }
+body.glass .q-legacy, body.glass .q-sec-sub, body.glass .q-hint, body.glass .qp-count, body.glass .qp-empty, body.glass .q-arrow { color: var(--g-text-2); }
+
+/* ── 4-2 新增／編輯彈窗：頁籤、區段標題、橫幅、商品勾選 ── */
+body.glass.glass .q-modal-tabs { background: var(--g-surface); border-bottom-color: var(--g-edge); }
+body.glass.glass .q-tab-btn { color: var(--g-text-2); }
+body.glass.glass .q-tab-btn:hover { color: var(--g-accent); background: var(--g-row-hover); }
+body.glass.glass .q-tab-btn.active { color: var(--g-accent); border-bottom-color: var(--g-accent); }
+body.glass.glass .quote-section-title { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .quote-section-title .required, body.glass.glass #quoteModalOverlay .required { color: var(--q4-bad); }
+body.glass.glass .q-ro-state, body.glass.glass .q-costby { background: var(--g-surface); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .q-ro-state .q-sub { color: var(--g-text-2); }
+body.glass.glass .q-infobar, body.glass.glass .q-cs-banner { background: var(--q4-info-bg); border-color: var(--q4-info-bd); color: var(--q4-info); }
+body.glass.glass .q-warnbar, body.glass.glass .q-cs-banner .q-cs-need, body.glass.glass .qi-needchip, body.glass.glass .q-textedit-badge { background: var(--q4-warn-bg); border-color: var(--q4-warn-bd); color: var(--q4-warn); }
+body.glass.glass .q-errbar { background: var(--q4-bad-bg); border-color: var(--q4-bad-bd); color: var(--q4-bad); }
+body.glass.glass .q-textedit { color: var(--q4-warn) !important; }
+body.glass.glass .q-textedit a { color: var(--g-accent); }
+body.glass.glass input.qi-price.qi-need { background: var(--q4-warn-bg); border-color: var(--q4-warn-bd) !important; }
+body.glass.glass .qp-search { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .qp-list { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.glass .qp-grp-h { background: var(--g-th); color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .qp-item { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .qp-item:hover { background: var(--g-row-hover); }
+body.glass.glass .qp-chip, body.glass.glass .q-chip { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.glass .q-chip.dim, body.glass.glass .qp-tag { background: var(--g-input); color: var(--g-text-2); }
+body.glass.glass .qp-tag.qp-un { background: var(--q4-warn-bg); color: var(--q4-warn); }
+body.glass.glass .qp-tag.qp-self { background: var(--q4-ok-bg); color: var(--q4-ok); }
+
+/* ── 4-3 報價項目表、優惠設定、合計列、付款條款（Remarks） ── */
+body.glass.glass .quote-items-table thead th { background: var(--g-th); color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .quote-items-table tbody td { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .quote-items-table tbody tr:hover td { background: var(--g-row-hover); }
+body.glass.glass .quote-items-table tbody tr.qi-title td { background: color-mix(in srgb, var(--g-accent) 12%, transparent); }
+body.glass.glass .quote-items-table tbody tr.qi-subrow td { background: var(--g-surface); }
+/* ▲▼ 上下移鈕的顏色是行內 style（#5f6b7a）→ 用屬性選擇器＋!important 蓋過 */
+body.glass.glass .quote-items-table :is(.qi-up, .qi-down)[style*="5f6b7a"] { color: var(--g-text-2) !important; }
+body.glass.glass .quote-items-table :is(.qi-up, .qi-down)[style*="5f6b7a"]:hover:not(:disabled) { color: var(--g-accent) !important; }
+body.glass.glass .quote-items-table .qi-drag { color: var(--g-text-2); }
+body.glass.glass .quote-items-table .qi-drag:hover { color: var(--g-accent); background: var(--g-row-hover); }
+body.glass.glass .qi-notes input { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .qi-notes input.qi-note { background: var(--q4-warn-bg); border-left-color: #f29900; }
+body.glass.glass .qi-notes-toggle { color: var(--g-accent); }
+body.glass.glass .quote-discount-bar { background: var(--q4-warn-bg); border-color: var(--q4-warn-bd); color: var(--g-text); }
+body.glass.glass .quote-discount-label { color: var(--q4-warn); }
+body.glass.glass .quote-disc-radio { color: var(--g-text); }
+body.glass.glass .quote-total-bar { background: var(--g-surface); border-top-color: var(--g-edge); border-radius: 0 0 var(--g-radius-sm) var(--g-radius-sm); padding: 10px 12px; }
+body.glass.glass .quote-total-row, body.glass.glass .quote-total-row td { color: var(--g-text-2); border-color: var(--g-edge); }
+body.glass.glass .quote-total-row span:last-child { color: var(--g-text); }
+body.glass.glass .quote-grand-total { border-top-color: var(--g-edge); }
+body.glass.glass .quote-grand-total span:first-child { color: var(--g-text); }
+body.glass.glass .quote-grand-total, body.glass.glass .quote-grand-total span:last-child { color: var(--g-accent); }
+body.glass.glass .qrm-sub, body.glass.glass .qrm-fx, body.glass.glass .qrm-inst .n, body.glass.glass .qrm-cl .n, body.glass.glass .qrm-fixed summary { color: var(--g-text-2); }
+body.glass.glass .qrm-row select, body.glass.glass .qrm-inst input, body.glass.glass .qrm-cl input { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .qrm-preview, body.glass.glass .qrm-fixed { background: var(--g-surface); border-color: var(--g-edge); color: var(--g-text-2); }
+body.glass:not(.dark) .qrm-sum { color: #166534; }
+body.glass.dark .qrm-sum { color: #6fdc8c; }
+body.glass .qrm-sum.bad { color: var(--q4-bad); }
+body.glass .qrm-del { color: var(--q4-bad); }
+body.glass:not(.dark) .qrm-del:disabled { color: #8a94a3; }
+body.glass.dark .qrm-del:disabled { color: rgba(255, 255, 255, .35); }
+body.glass.glass .qn-row { border-color: var(--g-edge); }
+body.glass.glass .qn-row input { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .qn-row input.qn-note { background: var(--q4-warn-bg); border-left-color: #f29900; }
+body.glass.glass .qn-err { color: var(--q4-bad); }
+body.glass.glass .q-dlg-body { color: var(--g-text); }
+body.glass.glass .q-dlg-body .q-kv .k { color: var(--g-text-2); }
+
+/* 行內淡灰字／行內紅字（模組裡的 style="color:#8a94a3" 等）：玻璃上對比不足 → 次要字色；紅字同色系加深／提亮（語意不變） */
+body.glass.glass :is(#quoteModalOverlay, #quoteTable, .qap-modal, .q-dlg, .qpb-wrap) :is([style*="color:#8a94a3"], [style*="color:#999"], [style*="color:#5f6b7a"], [style*="color:#6b7686"], [style*="color:#8b949e"]) { color: var(--g-text-2) !important; }
+body.glass:not(.dark) :is(#quoteModalOverlay, .qap-modal, .q-dlg) :is([style*="color:#e53935"], [style*="color:#c62828"], [style*="color:#c5221f"]) { color: #b3261e !important; }
+body.glass.dark :is(#quoteModalOverlay, .qap-modal, .q-dlg) :is([style*="color:#e53935"], [style*="color:#c62828"], [style*="color:#c5221f"]) { color: #ff9b91 !important; }
+
+/* ── 4-4 毛利與簽核路徑（試算卡片、簽核路徑預覽） ── */
+body.glass.glass .pnl-note { background: var(--q4-warn-bg); border-color: var(--q4-warn-bd); color: var(--g-text); }
+body.glass.glass .pnl-discount-note { background: var(--q4-ok-bg); border-color: var(--q4-ok-bd); color: var(--q4-ok); }
+body.glass.glass .pnl-summary-bar { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.glass .pnl-sum-card { background: var(--g-input); border: 1px solid var(--g-edge); box-shadow: none; }
+body.glass.glass .pnl-sum-label { color: var(--g-text-2); }
+body.glass.glass .pnl-sum-value { color: var(--g-text); }
+body.glass:not(.dark) .pnl-gp-val.positive, body.glass:not(.dark) .pnl-gross-pos { color: #166534; }
+body.glass:not(.dark) .pnl-gp-val.negative, body.glass:not(.dark) .pnl-gross-neg { color: #a31515; }
+body.glass.dark .pnl-gp-val.positive, body.glass.dark .pnl-gross-pos { color: #6fdc8c; }
+body.glass.dark .pnl-gp-val.negative, body.glass.dark .pnl-gross-neg { color: #ff9b91; }
+/* 毛利率卡：維持「深色強調卡」（底色吃一點主題色；白字與好／警告／危險的字色是語意色，不動），加亮緣讓它在玻璃上有邊 */
+body.glass.glass .pnl-margin-card { background: linear-gradient(135deg, color-mix(in srgb, var(--t-b1) 14%, #0b1226), color-mix(in srgb, var(--t-b1) 30%, #0b1226)); border: 1px solid rgba(255, 255, 255, .18); }
+body.glass.glass .pnl-margin-card .pnl-sum-label { color: rgba(255, 255, 255, .74); }
+/* 毛利率數字：.pnl-sum-value 與 .pnl-margin-val 同時掛在同一元素上，要把毛利率卡裡的字色（白／好 #69f0ae／警告 #ffcc02／危險 #ff5252）原樣還原 */
+body.glass.glass .pnl-margin-card .pnl-sum-value, body.glass.glass .pnl-margin-card .pnl-margin-val { color: #fff; }
+body.glass.glass .pnl-margin-card .pnl-margin-val.good { color: #69f0ae; }
+body.glass.glass .pnl-margin-card .pnl-margin-val.warn { color: #ffcc02; }
+body.glass.glass .pnl-margin-card .pnl-margin-val.danger { color: #ff5252; }
+body.glass.glass .pnl-cost-input { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .q-pv { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.glass .q-pv-h, body.glass.glass .q-pv-cell .v { color: var(--g-text); }
+body.glass.glass .q-pv-cell { background: var(--g-input); box-shadow: none; border: 1px solid var(--g-edge); }
+body.glass.glass .q-pv-cell .k { color: var(--g-text-2); }
+body.glass.glass .q-pv ul { color: var(--g-text); }
+body.glass.glass .pnl-table th { background: var(--g-th); color: var(--g-text); }
+
+/* ── 4-5 成本明細編輯器 .qcl-*（業務／顧問共用）：改寫它自己的 --qcl-* 變數，其餘規則自動跟著走 ── */
+body.glass .qcl-root, body.glass.dark .qcl-root {
+  --qcl-bg: var(--g-surface); --qcl-bd: var(--g-edge); --qcl-th: var(--g-th); --qcl-tx: var(--g-text); --qcl-h: var(--g-text); --qcl-mu: var(--g-text-2);
+  --qcl-pri: var(--g-accent); --qcl-pri-bg: color-mix(in srgb, var(--g-accent) 18%, transparent); --qcl-in-bd: var(--g-edge); --qcl-in-bg: var(--g-input);
+  --qcl-bad: var(--q4-bad); --qcl-bad-bg: var(--q4-bad-bg); --qcl-warn: var(--q4-warn); --qcl-warn-bg: var(--q4-warn-bg); --qcl-warn-bd: var(--q4-warn-bd); --qcl-del: var(--q4-bad);
+}
+body.glass .qcl-sec { -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--g-ring); }
+body.glass.glass .qcl-table th { background: var(--g-th); }
+body.glass.glass .qcl-orph, body.glass.glass .qcl-stamprow td, body.glass.glass .qcl-table tfoot td { background: var(--g-th); }
+body.glass.glass .qcl-mv:disabled { opacity: .45; }
+body.glass.glass .qcl-ostag { color: var(--g-accent); background: var(--g-row-hover); border-color: var(--g-edge); }
+body.glass.glass .qcl-os-bar { background: var(--g-edge); }
+body.glass.glass .qcl-os-fill { background: var(--g-accent); }
+body.glass.glass .qcl-os-l1, body.glass.glass .qcl-os-l2 { color: var(--g-text-2); }
+body.glass .qcl-dnd-ghost { background: var(--g-surface-strong); color: var(--g-text); border-color: var(--g-accent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+body.glass .qcl-dnd-ghost .qcl-dnd-grip { color: var(--g-accent); }
+body.glass.glass .qcl-dnd-line, body.glass.glass .qcl-dnd-line::before { background: var(--g-accent); }
+body.glass .qcl-in:focus, body.glass .qap-form :is(input, textarea, select):focus, body.glass .qap-input:focus { border-color: var(--g-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 22%, transparent); }
+
+/* ── 4-6 簽核／顧問填成本對話框（.qap-*） ── */
+body.glass.glass .qap-body { background: transparent; }
+body.glass.glass .qap-sec { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.glass .qap-sec h3, body.glass.glass .qap-ref > summary, body.glass.glass .qap-cf-head h3, body.glass.glass .qap-cdh, body.glass.glass .qap-cf-bar h3 { color: var(--g-text); }
+body.glass.glass .qap-grid .k, body.glass.glass .qap-muted, body.glass.glass .qap-arrow, body.glass.glass .qap-cf-note, body.glass.glass .qap-cf-tot, body.glass.glass .qap-cf-extra, body.glass.glass .qap-cf-pv .k, body.glass.glass .qap-tdiff-row .k { color: var(--g-text-2); }
+body.glass.glass .qap-cf-extra b { color: var(--g-text); }
+body.glass.glass .qap-cf-tot b, body.glass.glass .qap-cf-help > summary { color: var(--g-accent); }
+body.glass.glass .qap-badge { background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); }
+body.glass.glass .qap-badge.ok, body.glass.glass .qap-ci .qci-chip.new { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
+body.glass.glass .qap-badge.warn, body.glass.glass .qap-ci .qci-chip.need { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+body.glass.glass .qap-badge.bad, body.glass.glass .qap-ci .qci-chip.bad { background: var(--q4-bad-bg); color: var(--q4-bad); border-color: var(--q4-bad-bd); }
+body.glass.glass .qap-badge.info, body.glass.glass .qap-ci .qci-chip.chg { background: var(--q4-info-bg); color: var(--q4-info); border-color: var(--q4-info-bd); }
+body.glass.glass .qap-ci .qci-chip { background: var(--g-input); color: var(--g-text-2); }
+body.glass.glass .qap-table th { background: var(--g-th); color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .qap-table td { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass.glass .qap-table tr.qap-uncls td { background: var(--q4-warn-bg); }
+body.glass.glass .qap-chip { background: var(--g-input); color: var(--g-text); }
+body.glass.glass .qap-chip.sel { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.glass .qap-alert.warn { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+body.glass.glass .qap-alert.bad { background: var(--q4-bad-bg); color: var(--q4-bad); border-color: var(--q4-bad-bd); }
+body.glass.glass .qap-alert.info { background: var(--q4-info-bg); color: var(--q4-info); border-color: var(--q4-info-bd); }
+body.glass.glass .qap-steps li { border-bottom-color: var(--g-edge); }
+body.glass.glass .qap-steps .ic { background: var(--g-input); color: var(--g-text-2); }
+body.glass.glass .qap-steps .cm { color: var(--g-text-2); }
+body.glass.glass .qap-form label { color: var(--g-text-2); }
+body.glass.glass .qap-form input, body.glass.glass .qap-form textarea, body.glass.glass .qap-form select, body.glass.glass .qap-input { background: var(--g-input); color: var(--g-text); border-color: var(--g-edge); }
+body.glass.glass .qap-cin.bad, body.glass.glass .qap-ci input.qci-bad { background: var(--q4-bad-bg); border-color: var(--q4-bad-bd) !important; }
+body.glass.glass .qap-tabs { background: var(--g-surface); border-bottom-color: var(--g-edge); }
+body.glass.glass .qap-tab { color: var(--g-text-2); }
+body.glass.glass .qap-tab.on { color: var(--g-accent); border-bottom-color: var(--g-accent); }
+body.glass.glass .qap-cf-pv { border-top-color: var(--g-edge); }
+body.glass.glass .qap-cf-mis { color: var(--q4-bad); }
+body.glass.glass .qap-ci .qci-old, body.glass.glass .qap-tdiff-row .old { color: var(--g-text-2); }
+body.glass:not(.dark) .qap-tdiff-row .new { color: #166534; }
+body.glass.dark .qap-tdiff-row .new { color: #6fdc8c; }
+body.glass.glass .qap-ci tr.qci-hit td { background: var(--q4-info-bg); }
+body.glass.glass .qap-ci tr.qci-bad td { background: var(--q4-bad-bg); }
+body.glass.glass .qap-ci input.qci-linked { background: var(--q4-info-bg); }
+body.glass.glass .qap-ci .qci-rm { color: var(--q4-bad); }
+body.glass.glass .qap-hist tr { border-bottom-color: var(--g-edge); }
+body.glass:not(.dark) .qap-steps li.approved .ic { background: #1e7a3a; color: #fff; }
+body.glass:not(.dark) .qap-steps li.pending .ic { background: #1a73e8; color: #fff; }
+body.glass:not(.dark) .qap-steps li.returned .ic { background: #b3261e; color: #fff; }
+body.glass.dark .qap-steps li.approved .ic { background: #1e7a3a; color: #fff; }
+body.glass.dark .qap-steps li.pending .ic { background: #2563eb; color: #fff; }
+body.glass.dark .qap-steps li.returned .ic { background: #c62828; color: #fff; }
+body.glass.glass .qap-seal-img { border-color: var(--g-edge); }
+@media (min-width: 900px) and (min-height: 900px) {
+  body.glass.glass .qap-cf-live.cs-sticky { background: var(--g-surface-strong); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: 0 8px 14px -10px rgba(0, 0, 0, .45); }
+}
+
+/* ── 4-7 逐步填寫（新增報價單 .qs-*、顧問填成本 .qap-cs） ── */
+body.glass.glass .qs-rail-h, body.glass.glass .qs-ri, body.glass.glass .qs-sub, body.glass.glass .qs-hint, body.glass.glass .qs-conf-note { color: var(--g-text-2); }
+body.glass.glass .qs-ri.done, body.glass.glass .qs-cr.ok .m { color: var(--q4-ok); }
+body.glass.glass .qs-ri.cur { color: var(--g-accent); background: var(--g-row-hover); }
+body.glass.glass .qs-ri.todo.go:hover { background: var(--g-row-hover); }
+body.glass.glass .qs-ri.done:hover { background: var(--q4-ok-bg); }
+body.glass.glass .qs-on .qs-step { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.glass .qs-on .qs-step[data-st="done"], body.glass.glass .qs-on .qs-step[data-st="pending"] { background: var(--g-input); }
+body.glass.glass .qs-on .qs-step[data-st="active"], body.glass.glass .qs-on .qs-step[data-st="edit"], body.glass.glass .qs-on .qs-step[data-st="review"] { border-color: var(--g-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 16%, transparent); }
+body.glass.glass .qs-badge { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.glass .qs-step[data-st="done"] .qs-badge { background: var(--q4-ok-bg); color: var(--q4-ok); }
+body.glass.glass .qs-step[data-st="pending"] .qs-badge { background: var(--g-input); color: var(--g-text-2); }
+body.glass.glass .qs-title, body.glass.glass .qs-cr .n { color: var(--g-text); }
+body.glass.glass .qs-txt, body.glass.glass .qs-cr .s { color: var(--g-text); }
+body.glass.glass .qs-step[data-st="active"] .qs-txt, body.glass.glass .qs-step[data-st="edit"] .qs-txt, body.glass.glass .qs-step[data-st="review"] .qs-txt, body.glass.glass .qs-step[data-st="pending"] .qs-txt { color: var(--g-text-2); }
+body.glass.glass .qs-edit, body.glass.glass .qs-cr .g { color: var(--g-accent); }
+body.glass.glass .qs-edit:hover, body.glass.glass .qs-cr .g:hover { background: var(--g-row-hover); }
+body.glass.glass .qs-hint.need { color: var(--q4-warn); }
+body.glass.glass .qs-cr { border-bottom-color: var(--g-edge); }
+body.glass.glass .qs-cr.bad .m, body.glass.glass .qs-cr.bad .s { color: var(--q4-bad); }
+body.glass.glass .qs-cr.todo .m, body.glass.glass .qs-cr.todo .s { color: var(--g-text-2); }
+body.glass.glass .qs-conf-msg.ok { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
+body.glass.glass .qs-conf-msg.bad { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+body.glass.glass .qs-rail-mini { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.glass #quoteTabContentInfo.qs-on > .qs-rail { background: var(--g-surface-strong); }
+body.glass.glass .qap-cs .qs-ri { background: var(--g-input); border-color: var(--g-edge); }
+body.glass.glass .qap-cs .qs-ri.cur { background: var(--q4-info-bg); border-color: var(--q4-info-bd); color: var(--q4-info); }
+body.glass.glass .qap-cs .qs-ri.done { background: var(--q4-ok-bg); border-color: var(--q4-ok-bd); color: var(--q4-ok); }
+body.glass.glass .qap-cs .cs-tot i, body.glass.glass .qap-cs .qs-cr.skip .m, body.glass.glass .qap-cs .qs-cr.skip .s { color: var(--g-text-2); }
+body.glass.glass .qap-cs .cs-tot b, body.glass.glass .qap-cs .cs-note-h { color: var(--g-text); }
+body.glass.glass .qap-cs .cs-note { background: var(--g-surface); border-color: var(--g-edge); color: var(--g-text-2); }
+body.glass.glass .qap-body.cs-mode > .qs-rail, body.glass.glass .qap-cs > .qs-rail { background: transparent; }
+@media (max-width: 639px) {
+  body.glass.glass .qap-body.cs-mode > .qs-rail, body.glass.glass .qap-cs > .qs-rail { background: var(--g-surface-strong); }
+}
+
+/* ── 4-8 牌價簿挑選（.qpb-*） ── */
+body.glass.glass .qpb-hint, body.glass.glass .qpb-spec, body.glass.glass .qpb-empty { color: var(--g-text-2); }
+body.glass.glass .qpb-wrap { border-color: var(--g-edge); background: var(--g-surface); }
+body.glass.glass .qpb-tbl th { background: var(--g-th); color: var(--g-text); }
+body.glass.glass .qpb-tbl td { border-top-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .qpb-tbl tr.qpb-on { background: var(--q4-info-bg); }
+body.glass.glass .qpb-qty { background: var(--g-input); color: var(--g-text); border-color: var(--g-edge); }
+body.glass.glass .qpb-qty.qpb-bad { background: var(--q4-bad-bg); border-color: var(--q4-bad-bd); }
+body.glass.glass .qpb-err, body.glass.glass .qpb-neg { color: var(--q4-bad); }
+body.glass.glass .qpb-tabs { border-bottom-color: var(--g-edge); }
+body.glass.glass .qpb-tab { color: var(--g-text-2); }
+body.glass.glass .qpb-tab[aria-selected="true"] { color: var(--g-accent); border-bottom-color: var(--g-accent); }
+body.glass.glass .qpb-tab .qpb-n { background: var(--g-input); }
+body.glass.glass .qpb-tab[aria-selected="true"] .qpb-n { background: var(--q4-info-bg); }
+body.glass.glass .qpb-tab .qpb-sel { color: var(--q4-ok); }
+}
+/* ═══ 階段 4 結束 ═══ */
+
 /* 列印：把玻璃 token 還原成淺色紙面值（深色玻璃模式下列印 YoY 等報表，字不會變白、底不會是黑的） */
 @media print {
   body.glass, body.glass.dark {
