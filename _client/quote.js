@@ -583,7 +583,7 @@ function _qActionButtons(q) {
   if ((p.isOwner || me.isAdmin) && a && (a.state === 'pending' || a.state === 'approved')) out.push(b('notes', '📝 說明／備註', '', '只修改各品項的說明與備註（印在客戶報價單上）：不影響金額與簽核，會留下修改紀錄'));
   if (p.canApprove || p.canReturn) {
     out.push(b('approve', '✍ 簽核', 'btn-primary', '開啟簽核面板'));
-  } else if (a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) {
+  } else if ((a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) || (p.canSeePrice !== false && q.timelineCount > 0)) {   // 草稿也有編輯時間軸（q.timeline）可看
     out.push(b('approve', '📜 簽核進度', '', '檢視簽核進度與歷程'));
   }
   if (p.isCostProvider && p.canEditCost) out.push(b('cost', '💲 填成本', 'btn-primary', '填寫專案成本明細'));

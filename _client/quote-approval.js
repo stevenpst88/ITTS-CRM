@@ -31,6 +31,8 @@ const ACTION_LABEL = {
   SUBMIT: '送簽', APPROVE: '核准', RETURN: '駁回', WITHDRAW: '撤回', REASSIGN: '改派',
   INVALIDATE: '核准作廢', COST_REQUEST: '通知顧問填成本', COST_DONE: '顧問完成成本',
   ITEM_TEXT_EDIT: '修改品項說明／備註（不影響核准）',
+  // 編輯事件時間軸（q.timeline，伺服器 pushEdit 寫入）
+  DRAFT_CREATE: '建立報價單', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
 };
 const COST_STATE_LABEL = { na: '無需顧問填寫', needed: '需顧問填寫（尚未通知）', requested: '等待顧問填寫', filled: '顧問已填寫完成' };
 const CLASS_ORDER = ['consult', 'software', 'hardware', 'crm', 'mdm', 'ot', 'other'];
@@ -652,11 +654,23 @@ function textEditNotice(q) {
   return `${lead}（最後修改：${fmtTime(te.lastAt)}　${te.lastByName || ''}；共 ${te.count || 0} 次）`;
 }
 
-function buildHistorySection(q) {
+/** 簽核歷程＋編輯事件時間軸（q.timeline）合併並依時間排序；同一時間簽核事件在前。舊單沒有 timeline 就只有簽核歷程（輸出不變） */
+function mergedHistory(q) {
   const h = q.approval && Array.isArray(q.approval.history) ? q.approval.history : [];
+  const t = Array.isArray(q.timeline) ? q.timeline : [];
+  if (!t.length) return h;
+  return h.map((x, i) => ({ x, k: String(x.at || ''), o: i })).concat(t.map((x, i) => ({ x, k: String(x.at || ''), o: 100000 + i })))
+    .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.o - b.o)).map((r) => r.x);
+}
+
+function buildHistorySection(q) {
+  const h = mergedHistory(q);
   if (!h.length) return '';
-  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${e(ACTION_LABEL[x.action] || x.action || '')}</td><td class="desc">${x.action === 'ITEM_TEXT_EDIT' ? buildTextDiff(x) : e(x.comment || '')}</td></tr>`).join('');
-  return sec('簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
+  const hasEdit = h.some((x) => x.kind === 'edit');
+  const cell = (x) => (x.action === 'ITEM_TEXT_EDIT' ? buildTextDiff(x) : e(x.comment || '') + (Number(x.count) > 1 ? `<span class="qap-muted">（連續 ${e(x.count)} 次）</span>` : ''));
+  const lbl = (x) => e(ACTION_LABEL[x.action] || x.action || '');
+  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${x.kind === 'edit' ? `<span class="qap-badge">${lbl(x)}</span>` : lbl(x)}</td><td class="desc">${cell(x)}</td></tr>`).join('');
+  return sec(hasEdit ? '簽核與編輯歷程' : '簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
 }
 
 /** 目前輪到的關卡是否為董事會（僅決定「要不要顯示決議欄位」，能不能簽仍看 perm） */
@@ -1615,7 +1629,7 @@ function renderCostFill(s) {
         <select class="qap-input" data-risk="1" style="width:auto;min-width:110px"${can && !s.busy ? '' : ' disabled'}>${riskOpts}</select>
         <span class="qap-muted">依這個專案的風險預估；毛利分析（內部）會把成本明細「顧問服務成本」區的小計 × 此比例另計為成本（風險預留不計入簽核用的毛利）。沒有風險請選 0%。</span>
       </div>
-    </div>`;
+    </div>${buildHistorySection(q)}`;
   let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="qap-cf-tot">成本合計 <b id="qapCfTotal"></b><span class="qap-cf-note" id="qapCfNote"></span></span>`;
   if (sync) f += '<span class="qap-cf-extra">毛利率 <b id="qapCfFootMargin">—</b>　委外佔比 <b id="qapCfFootOs">0.00%</b></span>';
   f += '<span class="sp"></span>';
