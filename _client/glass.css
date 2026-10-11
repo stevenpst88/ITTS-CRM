@@ -918,3 +918,32 @@ body.glass .gd-detail :is(.mgr-commit-hint, .mgr-commit-prod, .mgr-commit-stat, 
   .gd-card:not(.gd-main) .gd-note { display: none; }
 }
 @media (max-width: 900px) { .gd-donut-row { gap: 8px; } .gd-donut-row svg { max-height: 76px; } }
+
+/* ───────────── 淺色玻璃：警示橫幅改淺色（暖玫瑰色調）；月度計畫表緊湊化 ───────────── */
+body.glass:not(.dark) .zombie-alert-card {
+  background: linear-gradient(135deg, rgba(255, 238, 240, .82) 0%, rgba(255, 255, 255, .55) 100%);
+  border: 1px solid rgba(244, 63, 94, .32);
+  box-shadow: var(--g-ring), 0 8px 26px rgba(244, 63, 94, .14);
+}
+body.glass:not(.dark) .zombie-alert-title { color: #7f1d1d; }
+body.glass:not(.dark) .zombie-alert-card .zombie-alert-sub { color: #6b3a40; }
+body.glass:not(.dark) .zombie-alert-card .z-chip-a { background: rgba(220, 38, 38, .13); color: #991b1b; border-color: rgba(220, 38, 38, .38); }
+body.glass:not(.dark) .zombie-alert-card .z-chip-b { background: rgba(217, 119, 6, .14); color: #92400e; border-color: rgba(217, 119, 6, .4); }
+body.glass:not(.dark) .zombie-alert-card .z-chip-c { background: rgba(37, 99, 235, .12); color: #1e3a8a; border-color: rgba(37, 99, 235, .36); }
+body.glass:not(.dark) .zombie-alert-goto { background: rgba(15, 27, 53, .07); color: #0f1b35; border-color: rgba(15, 27, 53, .22); }
+body.glass:not(.dark) .zombie-alert-goto:hover { background: rgba(15, 27, 53, .14); color: #0f1b35; }
+body.glass:not(.dark) .zombie-alert-dismiss { color: #64748b; }
+body.glass:not(.dark) .zombie-alert-dismiss:hover { color: #0f1b35; background: rgba(15, 27, 53, .08); }
+
+/* 月度業績計畫表：17 欄盡量一次放進展開視圖；放不下時固定第一欄並顯示可捲動陰影 */
+body.glass .gd-detail .mb-table { min-width: 0; font-size: 11.5px; }
+body.glass .gd-detail .mb-th,
+body.glass .gd-detail .mb-td { padding-left: 3px; padding-right: 3px; min-width: 0; }
+body.glass .gd-detail .mb-th { min-width: 46px; }
+body.glass .gd-detail .mb-th-label,
+body.glass .gd-detail .mb-row-label { position: sticky; left: 0; z-index: 2; background: var(--g-surface-strong); padding-left: 6px; padding-right: 6px; }
+body.glass .gd-detail .mb-table-wrap {
+  background:
+    linear-gradient(to left, var(--g-surface-strong) 30%, transparent) right center / 26px 100% no-repeat local,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .30), transparent) right center / 12px 100% no-repeat scroll;
+}
