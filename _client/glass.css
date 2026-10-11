@@ -656,12 +656,12 @@ body.glass:not(.dark) select option { background-color: #fff; color: #0f1b35; }
 /* 無樣式的次要按鈕（集團管理＝.btn-outline、報價單列表的 .btn.btn-sm…） */
 body.glass .btn-outline,
 body.glass .btn:not([class*="btn-"]),
-body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]) {
+body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]):not(.ax-surface-text):not(.ax-accent-fill) {
   background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); box-shadow: var(--g-ring);
 }
 body.glass .btn-outline:hover,
 body.glass .btn:not([class*="btn-"]):hover,
-body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]):hover { background: var(--g-surface-hover); }
+body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]):not(.ax-surface-text):not(.ax-accent-fill):hover { background: var(--g-surface-hover); }
 /* 頂欄：身分徽章不要被擠成直排；其餘空間讓給搜尋框 */
 body.glass #topbarUserBadge { flex: none; white-space: nowrap; }
 /* 側欄底部：連結與按鈕列在窄側欄會被擠成直排文字 → 允許換行 */
@@ -1734,3 +1734,163 @@ body.glass.glass .qpb-tab .qpb-sel { color: var(--q4-ok); }
     background: #fff; color: #111827;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+ * 階段 5-0b：後台 ax-* 共用 class 的玻璃色（取代原本對行內 style 的屬性選擇器）
+ * admin.html 的 <style id="ax-classes"> 把行內色改成 var(--ax-*, 舊值)。
+ * 下面把「原本由 [style*="color:…"] !important 規則達成的玻璃外觀」改成定義這些變數，
+ * 作用範圍（.main/.admin-main/.modal/.topbar）與深淺色分支和原規則逐一相同，
+ * 所以 ocean 主題下的計算樣式與轉換前完全一致；範圍外沒有定義 → 回落到舊色。
+ * ═══════════════════════════════════════════════════════════════ */
+/* 灰字（原 §15）：#888 #bbb #6b7280 #9ca3af → 次要字色 */
+body.glass :is(.main, .admin-main, .modal) {
+  --ax-muted: var(--g-text-2); --ax-muted-2: var(--g-text-2); --ax-faint: var(--g-text-2); --ax-faint-2: var(--g-text-2);
+}
+/* 品牌色字（原 §16：淺色 #1243a8／深色 #8ec5ff）→ 改由 5a-1 的 --ax-accent 統一定義（ocean 值相同、其他主題跟主題色） */
+/* 深色模式的行內深字（原 §3a-9，只含 .main/.modal）→ 主字色 */
+body.glass.dark :is(.main, .modal) { --ax-text: var(--g-text); --ax-heading: var(--g-text); }
+
+/* ═══════════════════════════════════════════════════════════════
+ * 階段 5a 後台外殼＋共用元件（只作用在 admin.html：<body class="admin-page">）
+ * 5-0b 之後 admin.html 的灰字／品牌字／面板色都走 --ax-* 變數，這裡給它們玻璃值（深淺色＋六主題），
+ * 再補外殼（側欄／頂欄）、表單、按鈕、徽章、分頁籤、空狀態、捲軸等共用元件。
+ * 語意色（紅／綠／琥珀）固定不隨主題變；主題只換強調色與亮緣。
+ * 區段內容（5b 帳號／客戶、5c 匯出入／修復、5d 簽核／寄信／整合／稽核／監控）另階段處理，這裡只放共用規則。
+ * ═══════════════════════════════════════════════════════════════ */
+/* ── 5a-1 --ax-* 變數的玻璃值（淺色預設＝ocean） ── */
+body.glass.admin-page {
+  --ax-text: var(--g-text); --ax-heading: var(--g-text);
+  --ax-surface: var(--g-input); --ax-surface-2: var(--g-surface);
+  --ax-border: var(--g-edge); --ax-border-2: var(--g-edge); --ax-border-3: var(--g-edge); --ax-border-4: var(--g-edge);
+  --ax-muted: var(--g-text-2); --ax-muted-2: var(--g-text-2); --ax-faint: var(--g-text-2); --ax-faint-2: var(--g-text-2);
+  --ax-accent: #1243a8; --ax-accent-fill: #1a73e8; --ax-on-accent: #fff;
+  --ax-bad: #b3261e; --ax-bad-bg: rgba(220, 38, 38, .10); --ax-bad-border: rgba(220, 38, 38, .34);
+  --a5-p1: #1f6fe0; --a5-p2: #1558d6;                    /* 主按鈕漸層（ocean 藍；白字對比 ≥4.7） */
+  --a5-top-a: rgba(16, 38, 96, .90); --a5-top-b: rgba(20, 80, 180, .88);   /* 頂欄漸層 */
+  --a5-danger-bg: rgba(220, 38, 38, .12); --a5-danger-bd: rgba(220, 38, 38, .36); --a5-danger: #b3261e;
+  --a5-warn-bg: rgba(245, 158, 11, .18); --a5-warn-bd: rgba(217, 119, 6, .42); --a5-warn: #8a3b00;
+}
+body.glass.admin-page.dark {
+  --ax-accent: #8ec5ff;
+  --ax-bad: #ff9b91; --ax-bad-bg: rgba(255, 107, 95, .14); --ax-bad-border: rgba(255, 138, 128, .38);
+  --a5-danger-bg: rgba(255, 107, 95, .18); --a5-danger-bd: rgba(255, 138, 128, .42); --a5-danger: #ffb4ab;
+  --a5-warn-bg: rgba(251, 191, 36, .16); --a5-warn-bd: rgba(251, 191, 36, .40); --a5-warn: #fbbf24;
+}
+/* 其他主題：強調色字／填色／主按鈕／頂欄跟著主題（ocean 維持原樣） */
+body.glass.admin-page:is([data-theme="noir"], [data-theme="aurora"], [data-theme="dusk"], [data-theme="ember"], [data-theme="graphite"]) {
+  --ax-accent: color-mix(in srgb, var(--t-accent-l) 78%, #000); --ax-accent-fill: var(--t-accent-l);
+  --a5-p1: var(--t-accent-l); --a5-p2: color-mix(in srgb, var(--t-accent-l) 84%, #000);
+  --a5-top-a: color-mix(in srgb, color-mix(in srgb, var(--t-b1) 20%, var(--t-bg)) 92%, transparent);
+  --a5-top-b: color-mix(in srgb, var(--t-accent-l) 78%, transparent);
+}
+body.glass.admin-page.dark:is([data-theme="noir"], [data-theme="aurora"], [data-theme="dusk"], [data-theme="ember"], [data-theme="graphite"]) { --ax-accent: var(--t-accent); }
+
+/* ── 5a-2 外殼：頂欄／側欄 ── */
+body.glass.admin-page .admin-topbar { background: linear-gradient(135deg, var(--a5-top-a) 0%, var(--a5-top-b) 100%); }
+/* 側欄底色：淺色模式略加不透明，白字對比更穩（深色沿用主題色底） */
+body.glass.admin-page:not(.dark) { --g-side-bg: linear-gradient(180deg, rgba(14, 36, 92, .93) 0%, rgba(9, 18, 48, .92) 100%); }
+body.glass.admin-page .admin-topbar [style*="#d97706"] { background: rgba(8, 16, 44, .5); padding: 2px 9px; border-radius: 10px; color: #ffd666 !important; }
+body.glass.admin-page .admin-nav-item.active { border-left-color: var(--t-accent); }
+body.glass.admin-page .admin-nav-group-header { color: rgba(255, 255, 255, .86); }
+body.glass.admin-page .admin-nav-group-header:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+body.glass.admin-page .nav-domain-count { color: #fff; background: rgba(255, 255, 255, .12); border-radius: 10px; padding: 0 7px; font-weight: 700; }
+body.glass.admin-page .admin-sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .26); }
+body.glass.admin-page .admin-main::-webkit-scrollbar-track, body.glass.admin-page ::-webkit-scrollbar-track { background: transparent; }
+body.glass.admin-page ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--g-text) 26%, transparent); border-radius: 3px; }
+body.glass.admin-page ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--g-text) 42%, transparent); }
+body.glass.admin-page .admin-main { background: transparent; }
+
+/* ── 5a-3 區段標題／副標／卡片 ── */
+body.glass.admin-page .section-title { color: var(--g-text); }
+body.glass.admin-page .section-sub { color: var(--g-text-2); }
+body.glass.admin-page .admin-card-hint { color: var(--g-text-2); }
+body.glass.admin-page .admin-card-title { color: var(--g-text); }
+
+/* ── 5a-4 表單：輸入／下拉／文字區／勾選 ── */
+body.glass.admin-page :is(.admin-main, .modal) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="button"]), select, textarea) {
+  background-color: var(--g-input); color: var(--g-text); border-color: var(--g-edge);
+}
+body.glass.admin-page :is(.admin-main, .modal) :is(input, select, textarea):focus {
+  border-color: var(--g-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 24%, transparent); outline: none;
+}
+body.glass.admin-page :is(.admin-main, .modal) :is(input, textarea)::placeholder { color: var(--g-ph); }
+body.glass.admin-page input[type="checkbox"], body.glass.admin-page input[type="radio"] { accent-color: var(--g-accent); }
+body.glass.admin-page :is(.modal, .admin-card) label:not([class]) { color: var(--g-text-2); }
+body.glass.admin-page .perm-label { color: var(--g-text); }
+body.glass.admin-page .perm-desc { color: var(--g-text-2); }
+body.glass.admin-page .perm-row { border-bottom-color: var(--g-edge); }
+body.glass.admin-page .toggle-slider { background: color-mix(in srgb, var(--g-text) 24%, transparent); box-shadow: inset 0 0 0 1px var(--g-edge); }
+body.glass.admin-page .toggle input:checked + .toggle-slider { background: var(--ax-accent-fill); box-shadow: none; }
+body.glass.admin-page .toggle input:focus-visible + .toggle-slider { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+
+/* ── 5a-5 按鈕 ── */
+body.glass.admin-page .btn-primary { background: linear-gradient(180deg, var(--a5-p1) 0%, var(--a5-p2) 100%); color: #fff; }
+body.glass.admin-page .btn-primary:hover { background: linear-gradient(180deg, var(--a5-p1) 0%, var(--a5-p2) 100%); filter: brightness(1.08); opacity: 1; }
+body.glass.admin-page .btn-danger { background: var(--a5-danger-bg); color: var(--a5-danger); border: 1px solid var(--a5-danger-bd); box-shadow: var(--g-ring); }
+body.glass.admin-page .btn-danger:hover { background: color-mix(in srgb, var(--a5-danger-bg) 100%, var(--a5-danger) 14%); }
+body.glass.admin-page .btn-warning { background: var(--a5-warn-bg); color: var(--a5-warn); border: 1px solid var(--a5-warn-bd); box-shadow: var(--g-ring); }
+body.glass.admin-page .btn:focus-visible, body.glass.admin-page .btn-back:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+body.glass.admin-page .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── 5a-6 徽章（淺色加深文字；深色改半透明色塊＋亮字，語意色不變） ── */
+body.glass.admin-page .badge-admin { background: #e8f0fe; color: #1243a8; }
+body.glass.admin-page .badge-user { background: #eceff3; color: #4b5563; }
+body.glass.admin-page .badge-manager1 { background: #fce4ec; color: #a3154f; }
+body.glass.admin-page .badge-manager2 { background: #f3e5f5; color: #6a1b9a; }
+body.glass.admin-page .badge-secretary { background: #e0f7fa; color: #00606b; }
+body.glass.admin-page .badge-tecopm { background: #ede9fe; color: #5b21b6; }
+body.glass.admin-page .badge-active { background: #e6f4ea; color: #166534; }
+body.glass.admin-page .badge-inactive { background: #fce8e6; color: #b3261e; }
+body.glass.admin-page.dark .badge-admin { background: rgba(124, 184, 255, .18); color: #8ec5ff; }
+body.glass.admin-page.dark .badge-user { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .80); }
+body.glass.admin-page.dark .badge-manager1 { background: rgba(244, 114, 182, .18); color: #ff9ec4; }
+body.glass.admin-page.dark .badge-manager2 { background: rgba(192, 132, 252, .18); color: #d8b4fe; }
+body.glass.admin-page.dark .badge-secretary { background: rgba(34, 211, 238, .16); color: #67e8f9; }
+body.glass.admin-page.dark .badge-tecopm { background: rgba(167, 139, 250, .18); color: #c4b5fd; }
+body.glass.admin-page.dark .badge-active { background: rgba(74, 222, 128, .16); color: #86efac; }
+body.glass.admin-page.dark .badge-inactive { background: rgba(255, 107, 95, .18); color: #ff9b91; }
+
+body.glass.admin-page .mail-badge-warn { background: #fff3e0; color: #a84300; }
+body.glass.admin-page .mail-badge-bad { background: #fce8e6; color: #b3261e; }
+body.glass.admin-page .mail-badge-ok { background: #e6f4ea; color: #166534; }
+body.glass.admin-page .mail-badge-info { background: #e8f0fe; color: #1243a8; }
+body.glass.admin-page .mail-badge-mute { background: #eceff3; color: #4b5563; }
+body.glass.admin-page.dark .mail-badge-warn { background: rgba(251, 191, 36, .16); color: #fbbf24; }
+body.glass.admin-page.dark .mail-badge-bad { background: rgba(255, 107, 95, .18); color: #ff9b91; }
+body.glass.admin-page.dark .mail-badge-ok { background: rgba(74, 222, 128, .16); color: #86efac; }
+body.glass.admin-page.dark .mail-badge-info { background: rgba(124, 184, 255, .18); color: #8ec5ff; }
+body.glass.admin-page.dark .mail-badge-mute { background: rgba(255, 255, 255, .10); color: rgba(255, 255, 255, .80); }
+/* 行內淡底面板（#f8f9fa／#f0f2f5／#fafafa…）→ 半透明玻璃；行內琥珀字在深色提亮（語意不變） */
+body.glass.admin-page :is(.admin-main, .modal) :is([style*="background:#f8f9fa"], [style*="background: #f8f9fa"], [style*="background:#f8f9fb"], [style*="background:#f0f2f5"], [style*="background:#fafafa"], [style*="background:#f4f7fe"], [style*="background:#f8faff"]):not(tr):not(td):not(th):not(.qpv-paper *) { background: var(--g-surface) !important; border-color: var(--g-edge) !important; }
+body.glass.admin-page :is(.admin-main, .modal) :is(tr, td, th)[style*="background:#f8f9fa"] { background: var(--g-th) !important; }
+body.glass.admin-page.dark :is(.admin-main, .modal) [style*="color:#d97706"]:not(.admin-topbar *) { color: #fbbf24 !important; }
+/* 深色模式的行內深色字（原 §3a-9 只涵蓋 .main/.modal，後台主區補上；已自帶行內底色的元素不動，避免淺底變白字） */
+body.glass.admin-page.dark .admin-main :is([style*="color:#1a2d52"], [style*="color:#1a3c7a"], [style*="color:#1a2c5e"], [style*="color:#111"], [style*="color:#222"], [style*="color:#333"], [style*="color:#202124"], [style*="color:#000"]):not([style*="background"]):not(.qpv-paper *) { color: var(--g-text) !important; }
+body.glass.admin-page.dark .admin-main :is([style*="color:#444"], [style*="color:#555"], [style*="color:#5f6368"], [style*="color:#374151"], [style*="color:#4b5563"], [style*="color:#636e7b"]):not([style*="background"]):not(.qpv-paper *) { color: var(--g-text-2) !important; }
+body.glass.admin-page:not(.dark) .admin-main :is([style*="color:#555"], [style*="color:#5f6368"]):not([style*="background"]) { color: var(--g-text-2) !important; }
+
+/* ── 5a-7 分頁籤／分段鈕／分頁列／空狀態 ── */
+body.glass.admin-page [role="tab"] { color: var(--g-text-2); }
+body.glass.admin-page [role="tab"][aria-selected="true"] { color: var(--g-accent); border-bottom-color: var(--g-accent); }
+body.glass.admin-page .uv-seg, body.glass.admin-page .uv-tabs { border-color: var(--g-edge); }
+body.glass.admin-page .uv-seg button { background: var(--g-input); color: var(--g-text-2); }
+body.glass.admin-page .uv-seg button + button { border-left-color: var(--g-edge); }
+body.glass.admin-page .uv-seg button[aria-pressed="true"] { background: var(--ax-accent-fill); color: #fff; }
+body.glass.admin-page .mail-pager { border-top-color: var(--g-edge); color: var(--g-text-2); }
+body.glass.admin-page .mail-empty, body.glass.admin-page .transfer-item-empty { color: var(--g-text-2); }
+body.glass.admin-page .mail-muted { color: var(--g-text-2); }
+
+/* ── 5a-8 帳號管理（最常用）搭配共用元件的最小補強：其餘細節留給 5b ── */
+body.glass.admin-page #sec-users :is(.uv-input, .uv-select) { background: var(--g-input); color: var(--g-text); border-color: var(--g-edge); }
+body.glass.admin-page #sec-users .uv-toolbar { border-bottom-color: var(--g-edge); }
+body.glass.admin-page #sec-users .uv-summary { color: var(--g-text-2); }
+body.glass.admin-page #sec-users .uv-clear { color: var(--g-accent); }
+body.glass.admin-page #sec-users .uv-count, body.glass.admin-page #sec-users .uv-gcount { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text); }
+body.glass.admin-page #sec-users .uv-tabs [aria-selected="true"] .uv-count { background: color-mix(in srgb, var(--g-accent) 22%, transparent); color: var(--g-text); }
+body.glass.admin-page #sec-users .admin-table tr.uv-grouprow td { background: color-mix(in srgb, var(--g-text) 7%, transparent); border-bottom-color: var(--g-edge); }
+body.glass.admin-page #sec-users .admin-table tr.uv-grouprow:hover td { background: color-mix(in srgb, var(--g-text) 11%, transparent); }
+body.glass.admin-page #sec-users .uv-gbtn { color: var(--g-text); }
+body.glass.admin-page #sec-users .uv-cgroup .uv-gbtn { background: color-mix(in srgb, var(--g-text) 7%, transparent); }
+body.glass.admin-page #sec-users .uv-card { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass.admin-page #sec-users .uv-cuser, body.glass.admin-page #sec-users .uv-ctoggles { color: var(--g-text-2); }
+/* ═══ 階段 5a 結束 ═══ */

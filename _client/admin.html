@@ -699,29 +699,46 @@
   /* Phase 5-0: inline style -> shared class. Specificity (3,0,0) via :is(#id,.cls) so classes win exactly where the inline style used to win (never !important).
      Theme colors read --ax-* variables; fallback = exact legacy literal. Undefined vars => legacy look. */
   :is(#ax-i, .ax-fs12):is(#ax-i, .ax-fs12):is(#ax-i, .ax-fs12) { font-size:12px; }
+  :is(#ax-i, .ax-surface-text):is(#ax-i, .ax-surface-text):is(#ax-i, .ax-surface-text) { background:var(--ax-surface, #f0f2f5); color:var(--ax-text, #333); }
+  :is(#ax-i, .ax-bad):is(#ax-i, .ax-bad):is(#ax-i, .ax-bad) { color:var(--ax-bad, #c62828); }
   :is(#ax-i, .ax-mb16):is(#ax-i, .ax-mb16):is(#ax-i, .ax-mb16) { margin-bottom:16px; }
+  :is(#ax-i, .ax-label):is(#ax-i, .ax-label):is(#ax-i, .ax-label) { display:block; font-size:12px; color:var(--ax-muted, #6b7280); margin-bottom:4px; }
+  :is(#ax-i, .ax-empty-lg):is(#ax-i, .ax-empty-lg):is(#ax-i, .ax-empty-lg) { text-align:center; color:var(--ax-faint-2, #bbb); padding:40px; }
   :is(#ax-i, .ax-input):is(#ax-i, .ax-input):is(#ax-i, .ax-input) { width:100%; padding:8px 10px; border:1px solid var(--ax-border, #d1d5db); border-radius:6px; font-size:13px; }
+  :is(#ax-i, .ax-accent):is(#ax-i, .ax-accent):is(#ax-i, .ax-accent) { color:var(--ax-accent, #1a73e8); }
   :is(#ax-i, .ax-mb12):is(#ax-i, .ax-mb12):is(#ax-i, .ax-mb12) { margin-bottom:12px; }
   :is(#ax-i, .ax-p6-8):is(#ax-i, .ax-p6-8):is(#ax-i, .ax-p6-8) { padding:6px 8px; }
+  :is(#ax-i, .ax-muted-12):is(#ax-i, .ax-muted-12):is(#ax-i, .ax-muted-12) { font-size:12px; color:var(--ax-muted, #6b7280); }
   :is(#ax-i, .ax-title-15):is(#ax-i, .ax-title-15):is(#ax-i, .ax-title-15) { font-size:15px; font-weight:700; color:var(--ax-heading, #1a2d52); margin-bottom:6px; }
   :is(#ax-i, .ax-mt14):is(#ax-i, .ax-mt14):is(#ax-i, .ax-mt14) { margin-top:14px; }
   :is(#ax-i, .ax-td-row):is(#ax-i, .ax-td-row):is(#ax-i, .ax-td-row) { padding:8px 12px; text-align:left; border-bottom:1px solid var(--ax-border-3, #eee); }
+  :is(#ax-i, .ax-th-box):is(#ax-i, .ax-th-box):is(#ax-i, .ax-th-box) { padding:8px; text-align:left; font-size:11px; color:var(--ax-muted, #6b7280); border:1px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-hint-11):is(#ax-i, .ax-hint-11):is(#ax-i, .ax-hint-11) { font-size:11px; color:var(--ax-faint, #9ca3af); margin-top:4px; }
   :is(#ax-i, .ax-mt16):is(#ax-i, .ax-mt16):is(#ax-i, .ax-mt16) { margin-top:16px; }
   :is(#ax-i, .ax-ox-auto):is(#ax-i, .ax-ox-auto):is(#ax-i, .ax-ox-auto) { overflow-x:auto; }
+  :is(#ax-i, .ax-faint):is(#ax-i, .ax-faint):is(#ax-i, .ax-faint) { color:var(--ax-faint, #9ca3af); }
   :is(#ax-i, .ax-flex-c4):is(#ax-i, .ax-flex-c4):is(#ax-i, .ax-flex-c4) { display:flex; align-items:center; gap:4px; }
+  :is(#ax-i, .ax-sub-12):is(#ax-i, .ax-sub-12):is(#ax-i, .ax-sub-12) { font-size:12px; color:var(--ax-muted-2, #888); margin-bottom:4px; }
+  :is(#ax-i, .ax-label-b):is(#ax-i, .ax-label-b):is(#ax-i, .ax-label-b) { font-size:12px; font-weight:600; color:var(--ax-muted, #6b7280); margin-bottom:6px; }
+  :is(#ax-i, .ax-muted-13):is(#ax-i, .ax-muted-13):is(#ax-i, .ax-muted-13) { font-size:13px; color:var(--ax-muted, #6b7280); }
   :is(#ax-i, .ax-th-c):is(#ax-i, .ax-th-c):is(#ax-i, .ax-th-c) { padding:10px 8px; text-align:center; border-bottom:2px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-th-l):is(#ax-i, .ax-th-l):is(#ax-i, .ax-th-l) { padding:6px 8px; text-align:left; border-bottom:1px solid var(--ax-border-2, #e5e7eb); color:var(--ax-muted, #6b7280); }
   :is(#ax-i, .ax-p8-0):is(#ax-i, .ax-p8-0):is(#ax-i, .ax-p8-0) { padding:8px 0; }
   :is(#ax-i, .ax-input-lg):is(#ax-i, .ax-input-lg):is(#ax-i, .ax-input-lg) { width:100%; padding:9px 10px; border:1px solid var(--ax-border, #d1d5db); border-radius:8px; font-size:15px; font-weight:700; text-align:center; }
+  :is(#ax-i, .ax-accent-fill):is(#ax-i, .ax-accent-fill):is(#ax-i, .ax-accent-fill) { background:var(--ax-accent-fill, #1a73e8); color:var(--ax-on-accent, #fff); }
   :is(#ax-i, .ax-card):is(#ax-i, .ax-card):is(#ax-i, .ax-card) { background:var(--ax-surface-2, #f8f9fb); border-radius:12px; padding:24px; }
+  :is(#ax-i, .ax-alert-bad):is(#ax-i, .ax-alert-bad):is(#ax-i, .ax-alert-bad) { background:var(--ax-bad-bg, #fdecea); border:1px solid var(--ax-bad-border, #f5c6cb); border-radius:8px; padding:10px 14px; color:var(--ax-bad, #c62828); }
+  :is(#ax-i, .ax-hint-11b):is(#ax-i, .ax-hint-11b):is(#ax-i, .ax-hint-11b) { font-size:11px; color:var(--ax-muted-2, #888); margin-top:3px; }
   :is(#ax-i, .ax-input-sm):is(#ax-i, .ax-input-sm):is(#ax-i, .ax-input-sm) { padding:6px 10px; border:1px solid var(--ax-border-4, #ddd); border-radius:6px; font-size:13px; }
   :is(#ax-i, .ax-p6-8-l):is(#ax-i, .ax-p6-8-l):is(#ax-i, .ax-p6-8-l) { padding:6px 8px; text-align:left; }
   :is(#ax-i, .ax-p7-12):is(#ax-i, .ax-p7-12):is(#ax-i, .ax-p7-12) { padding:7px 12px; }
+  :is(#ax-i, .ax-empty-md):is(#ax-i, .ax-empty-md):is(#ax-i, .ax-empty-md) { text-align:center; color:var(--ax-faint, #9ca3af); padding:24px; }
   :is(#ax-i, .ax-ta-r):is(#ax-i, .ax-ta-r):is(#ax-i, .ax-ta-r) { text-align:right; }
   :is(#ax-i, .ax-table-12):is(#ax-i, .ax-table-12):is(#ax-i, .ax-table-12) { width:100%; border-collapse:collapse; font-size:12px; }
   :is(#ax-i, .ax-sq16):is(#ax-i, .ax-sq16):is(#ax-i, .ax-sq16) { width:16px; height:16px; }
   </style>
 </head>
-<body>
+<body class="admin-page">
 <script>(function(){try{var b=document.body;if(window.__glassOn){b.classList.add('glass');var t=localStorage.getItem('glassTheme');if(/^(ocean|noir|aurora|dusk|ember|graphite)$/.test(t))b.dataset.theme=t;}var d=localStorage.getItem('darkMode');if(d==='1'||(d===null&&window.__glassOn))b.classList.add('dark');}catch(e){}})();</script>
 
   <!-- ── 管理者登入畫面（session 過期時才顯示）── -->
@@ -938,7 +955,7 @@
           <div class="admin-card-header">
             <span class="admin-card-title">使用者列表</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn" id="emailImportBtn" type="button" style="background:#f0f2f5;color:#333">📧 批次匯入 Email</button>
+              <button class="btn ax-surface-text" id="emailImportBtn" type="button">📧 批次匯入 Email</button>
               <button class="btn btn-primary" id="addUserBtn">＋ 新增帳號</button>
             </div>
           </div>
@@ -1042,21 +1059,21 @@
         <div class="admin-card ax-mt16">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">企業主檔清單</span>
-            <span id="companiesCount" style="font-size:12px;color:#6b7280">—</span>
+            <span id="companiesCount" class="ax-muted-12">—</span>
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <input id="companySearchInput" type="text" placeholder="🔍 搜尋公司/統編" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
               <select id="companyIndustryFilter" title="依產業篩選" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;cursor:pointer;max-width:200px"><option value="">🏷️ 全部產業</option></select>
-              <button class="btn btn-sm" id="companyRefreshBtn" style="background:#f0f2f5;color:#333">↻ 重新整理</button>
+              <button class="btn btn-sm ax-surface-text" id="companyRefreshBtn">↻ 重新整理</button>
               <button class="btn btn-sm btn-primary" id="companyBuildBtn">🏗️ 建立/更新企業主檔</button>
               <button class="btn btn-sm" id="companyEnrichBtn" style="background:#0b8043;color:#fff">🏛️ GCIS 一鍵補全</button>
               <button class="btn btn-sm" id="companyEnrichStopBtn" style="background:#b91c1c;color:#fff;display:none">⏸ 停止補全</button>
               <button class="btn btn-sm" id="companyTemplateBtn" style="background:#fff7ed;color:#9a3412">⬇ 範本</button>
-              <button class="btn btn-sm" id="companyExportBtn" style="background:#f0f2f5;color:#333">⬇ 匯出</button>
-              <button class="btn btn-sm" id="companyImportBtn" style="background:#f0f2f5;color:#333">⬆ 匯入</button>
+              <button class="btn btn-sm ax-surface-text" id="companyExportBtn">⬇ 匯出</button>
+              <button class="btn btn-sm ax-surface-text" id="companyImportBtn">⬆ 匯入</button>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;cursor:pointer" title="勾選後，匯入的無名片公司會建成『待補名片』放入客戶池，供 Manager 分配給業務">
                 <input type="checkbox" id="companyImportToPool" checked> 匯入後放入客戶池
               </label>
-              <button class="btn btn-sm" id="companyIndustryBtn" style="background:#f0f2f5;color:#333">🏷️ 產業分類</button>
+              <button class="btn btn-sm ax-surface-text" id="companyIndustryBtn">🏷️ 產業分類</button>
               <input type="file" id="companyImportFile" accept=".xlsx,.xls" style="display:none">
             </div>
           </div>
@@ -1080,7 +1097,7 @@
                 </tr>
               </thead>
               <tbody id="companiesTbody">
-                <tr><td colspan="11" style="text-align:center;color:#9ca3af;padding:24px">點「建立/更新企業主檔」開始</td></tr>
+                <tr><td colspan="11" class="ax-empty-md">點「建立/更新企業主檔」開始</td></tr>
               </tbody>
             </table>
           </div>
@@ -1090,7 +1107,7 @@
         <div class="admin-card" style="margin-top:18px">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">📋 資料一致性檢查</span>
-            <span style="font-size:12px;color:#6b7280">匯入歷史資料前，先檢視主檔資料品質</span>
+            <span class="ax-muted-12">匯入歷史資料前，先檢視主檔資料品質</span>
             <button class="btn btn-sm btn-primary" id="companyReportBtn" style="margin-left:auto">🔍 執行檢查</button>
           </div>
           <div id="companyReportSummary" style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
@@ -1155,7 +1172,7 @@
         <div class="admin-card ax-mt16">
           <div class="admin-card-header" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
             <span class="admin-card-title">池中客戶清單</span>
-            <span id="poolCount" style="font-size:12px;color:#6b7280">載入中…</span>
+            <span id="poolCount" class="ax-muted-12">載入中…</span>
             <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <input id="poolSearchInput" type="text" placeholder="🔍 搜尋公司/姓名" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;width:200px">
               <select id="poolAssignTarget" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px">
@@ -1184,7 +1201,7 @@
                 </tr>
               </thead>
               <tbody id="poolTbody">
-                <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>
+                <tr><td colspan="8" class="ax-empty-md">載入中…</td></tr>
               </tbody>
             </table>
           </div>
@@ -1302,13 +1319,13 @@
           <!-- 選項列 -->
           <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">預設業務（無帳號欄位時使用）</div>
+              <div class="ax-sub-12">預設業務（無帳號欄位時使用）</div>
               <select id="contactImportOwnerSel" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:160px">
                 <option value="">-- 不設預設 --</option>
               </select>
             </div>
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">重複資料</div>
+              <div class="ax-sub-12">重複資料</div>
               <select id="contactImportSkipDup" class="ax-input-sm">
                 <option value="true">略過重複（同業務+公司+姓名）</option>
                 <option value="false">全部匯入</option>
@@ -1364,7 +1381,7 @@
             把握度請填：A（Commit）、B（Upside）、C（Pipeline）、成交
           </div>
           <div style="margin-bottom:14px">
-            <button class="btn btn-sm" id="oppImportTemplateBtn" style="background:#f0f2f5;color:#333">⬇ 下載商機匯入範本</button>
+            <button class="btn btn-sm ax-surface-text" id="oppImportTemplateBtn">⬇ 下載商機匯入範本</button>
             <span style="font-size:12px;color:#888;margin-left:10px">含 2 筆示範資料（歷史補登 + 客戶池 / 進行中商機）</span>
           </div>
           <div style="background:#fff3e0;border:1px dashed #fb923c;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;line-height:1.6;color:#9a3412">
@@ -1582,7 +1599,7 @@
 
             <!-- 按鈕 -->
             <div style="display:flex;gap:12px;margin-top:20px">
-              <button class="btn" id="ocrPreviewBtn" style="background:#1a73e8;color:#fff">🔍 預覽</button>
+              <button class="btn ax-accent-fill" id="ocrPreviewBtn">🔍 預覽</button>
               <button class="btn btn-primary" id="ocrImportBtn" style="display:none">✅ 確認匯入</button>
               <button class="btn" id="ocrClearBtn" style="background:#f0f2f5;color:#555">清除</button>
             </div>
@@ -1616,7 +1633,7 @@
           <div class="ax-mt14">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:14px" id="qrGrid">
               <div>
-                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q1（1 - 3 月）</div>
+                <div class="ax-label-b">Q1（1 - 3 月）</div>
                 <div class="ax-flex-c4">
                   <input type="number" id="qrQ1" min="0" step="1" placeholder="0"
                     class="ax-input-lg" oninput="calcQrSum()">
@@ -1624,7 +1641,7 @@
                 </div>
               </div>
               <div>
-                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q2（4 - 6 月）</div>
+                <div class="ax-label-b">Q2（4 - 6 月）</div>
                 <div class="ax-flex-c4">
                   <input type="number" id="qrQ2" min="0" step="1" placeholder="0"
                     class="ax-input-lg" oninput="calcQrSum()">
@@ -1632,7 +1649,7 @@
                 </div>
               </div>
               <div>
-                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q3（7 - 9 月）</div>
+                <div class="ax-label-b">Q3（7 - 9 月）</div>
                 <div class="ax-flex-c4">
                   <input type="number" id="qrQ3" min="0" step="1" placeholder="0"
                     class="ax-input-lg" oninput="calcQrSum()">
@@ -1640,7 +1657,7 @@
                 </div>
               </div>
               <div>
-                <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">Q4（10 - 12 月）</div>
+                <div class="ax-label-b">Q4（10 - 12 月）</div>
                 <div class="ax-flex-c4">
                   <input type="number" id="qrQ4" min="0" step="1" placeholder="0"
                     class="ax-input-lg" oninput="calcQrSum()">
@@ -1649,7 +1666,7 @@
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <div id="qrSumLabel" style="font-size:13px;color:#6b7280">合計：—</div>
+              <div id="qrSumLabel" class="ax-muted-13">合計：—</div>
               <button id="qrSaveBtn" class="btn btn-primary">儲存預設目標</button>
             </div>
           </div>
@@ -1661,14 +1678,14 @@
           <div style="font-size:12px;color:#6b7280;margin-bottom:16px">OPR＝各季 Pipeline（A+B+C）÷ 季度目標。設定達標區間，業務首頁季度卡將以顏色顯示狀態。</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:360px;margin-bottom:16px">
             <div>
-              <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">下限（min）</div>
+              <div class="ax-label-b">下限（min）</div>
               <div class="ax-flex-c4">
                 <input type="number" id="oprMin" min="0.1" max="3" step="0.05" value="1.1"
                   class="ax-input-lg" oninput="validateOpr()">
               </div>
             </div>
             <div>
-              <div style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px">上限（max）</div>
+              <div class="ax-label-b">上限（max）</div>
               <div class="ax-flex-c4">
                 <input type="number" id="oprMax" min="0.1" max="3" step="0.05" value="1.2"
                   class="ax-input-lg" oninput="validateOpr()">
@@ -1753,11 +1770,11 @@
             <div style="background:#f8f9fa;border-radius:10px;padding:14px 16px;margin-bottom:16px">
               <div style="font-size:13px;font-weight:700;color:#444;margin-bottom:10px">職能分類說明</div>
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
-                <div style="background:#fce8e6;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#c0392b">決策領導層</span><div style="font-size:11px;color:#888;margin-top:3px">董事長・總經理・副總・協理・總監</div></div>
-                <div style="background:#fff3e0;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#e67e22">營運與生產核心</span><div style="font-size:11px;color:#888;margin-top:3px">廠長・生管・課長・組長・作業員</div></div>
-                <div style="background:#e8f0fe;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1565c0">研發與技術工程</span><div style="font-size:11px;color:#888;margin-top:3px">研發・製程・設備・工業工程師・PM</div></div>
-                <div style="background:#e6f4ea;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1b7e34">品質控管體系</span><div style="font-size:11px;color:#888;margin-top:3px">品保・品管・QA・QC・IQC・TE</div></div>
-                <div style="background:#f3e5f5;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#6a1b9a">行政與市場幕僚</span><div style="font-size:11px;color:#888;margin-top:3px">業務・採購・財務・會計・HR・ESH</div></div>
+                <div style="background:#fce8e6;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#c0392b">決策領導層</span><div class="ax-hint-11b">董事長・總經理・副總・協理・總監</div></div>
+                <div style="background:#fff3e0;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#e67e22">營運與生產核心</span><div class="ax-hint-11b">廠長・生管・課長・組長・作業員</div></div>
+                <div style="background:#e8f0fe;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1565c0">研發與技術工程</span><div class="ax-hint-11b">研發・製程・設備・工業工程師・PM</div></div>
+                <div style="background:#e6f4ea;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#1b7e34">品質控管體系</span><div class="ax-hint-11b">品保・品管・QA・QC・IQC・TE</div></div>
+                <div style="background:#f3e5f5;border-radius:8px;padding:8px 12px"><span style="font-weight:700;color:#6a1b9a">行政與市場幕僚</span><div class="ax-hint-11b">業務・採購・財務・會計・HR・ESH</div></div>
               </div>
             </div>
             <button class="btn btn-primary" id="migrateJobFuncBtn">🏷️ 開始自動 Mapping</button>
@@ -1814,10 +1831,10 @@
         <div class="admin-card">
           <div class="admin-card-header">
             <span class="admin-card-title">操作日誌</span>
-            <button class="btn btn-sm" onclick="loadLogs()" style="background:#f0f2f5;color:#333">重新整理</button>
+            <button class="btn btn-sm ax-surface-text" onclick="loadLogs()">重新整理</button>
           </div>
           <div style="overflow-x:auto;max-height:620px;overflow-y:auto" id="logList">
-            <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
+            <div class="ax-empty-lg">載入中...</div>
           </div>
         </div>
       </div>
@@ -1832,13 +1849,13 @@
           </div>
           <div class="admin-card-body" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:16px">
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">操作人員</div>
+              <div class="ax-sub-12">操作人員</div>
               <select id="auditFilterUser" class="ax-input-sm">
                 <option value="">全部人員</option>
               </select>
             </div>
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">動作類型</div>
+              <div class="ax-sub-12">動作類型</div>
               <select id="auditFilterAction" class="ax-input-sm">
                 <option value="">全部動作</option>
                 <option value="CREATE">新增</option>
@@ -1849,11 +1866,11 @@
               </select>
             </div>
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">開始日期</div>
+              <div class="ax-sub-12">開始日期</div>
               <input type="date" id="auditFilterFrom" class="ax-input-sm">
             </div>
             <div>
-              <div style="font-size:12px;color:#888;margin-bottom:4px">結束日期</div>
+              <div class="ax-sub-12">結束日期</div>
               <input type="date" id="auditFilterTo" class="ax-input-sm">
             </div>
             <button class="btn" onclick="loadContactAudit()" style="background:#1a73e8;color:#fff;padding:7px 18px">🔍 查詢</button>
@@ -1866,7 +1883,7 @@
             <span id="auditCount" style="font-size:13px;color:#888"></span>
           </div>
           <div class="admin-card-body" id="auditList" style="max-height:600px;overflow-y:auto">
-            <div style="text-align:center;color:#bbb;padding:40px">請設定篩選條件後點擊查詢</div>
+            <div class="ax-empty-lg">請設定篩選條件後點擊查詢</div>
           </div>
         </div>
       </div>
@@ -1878,10 +1895,10 @@
         <div class="admin-card">
           <div class="admin-card-header">
             <span class="admin-card-title">已刪除聯絡人</span>
-            <button class="btn btn-sm" onclick="loadDeletedContacts()" style="background:#f0f2f5;color:#333">重新整理</button>
+            <button class="btn btn-sm ax-surface-text" onclick="loadDeletedContacts()">重新整理</button>
           </div>
           <div class="admin-card-body" id="deletedList" style="max-height:600px;overflow-y:auto">
-            <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
+            <div class="ax-empty-lg">載入中...</div>
           </div>
         </div>
       </div>
@@ -1926,7 +1943,7 @@
         <!-- 重新整理 -->
         <div style="text-align:right;margin-top:4px">
           <span id="storageGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
-          <button class="btn btn-sm" onclick="loadStorageInfo()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+          <button class="btn btn-sm ax-accent-fill" onclick="loadStorageInfo()">🔄 重新整理</button>
         </div>
       </div>
 
@@ -1980,7 +1997,7 @@
         </div>
         <div style="text-align:right;margin-top:4px">
           <span id="apiStatsGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
-          <button class="btn btn-sm" onclick="loadApiStats()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+          <button class="btn btn-sm ax-accent-fill" onclick="loadApiStats()">🔄 重新整理</button>
         </div>
       </div>
 
@@ -2001,7 +2018,7 @@
         </div>
         <div style="text-align:right;margin-top:4px">
           <span id="infraGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
-          <button class="btn btn-sm" onclick="loadInfraStats()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+          <button class="btn btn-sm ax-accent-fill" onclick="loadInfraStats()">🔄 重新整理</button>
         </div>
       </div>
 
@@ -2112,13 +2129,13 @@
         <div class="admin-card" style="padding:20px">
           <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:18px">
             <div style="flex:0 0 220px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">送給哪個帳號</label>
+              <label class="ax-label">送給哪個帳號</label>
               <select id="pushTestTarget" class="ax-input">
                 <option value="">（自己）</option>
               </select>
             </div>
             <div style="flex:0 0 200px">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">情境</label>
+              <label class="ax-label">情境</label>
               <select id="pushTestType" class="ax-input">
                 <option value="all">5 種全部（預設）</option>
                 <option value="test">🔔 基本測試</option>
@@ -2171,18 +2188,18 @@
             </div>
 
             <div class="ax-mb16">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">連線名稱</label>
+              <label class="ax-label">連線名稱</label>
               <input id="integName" type="text" placeholder="SAP Sales Cloud V2" class="ax-input">
             </div>
 
             <div class="ax-mb16">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Base URL（租戶網址）</label>
+              <label class="ax-label">Base URL（租戶網址）</label>
               <input id="integBaseUrl" type="text" placeholder="https://myXXXXXX.crm.cloud.sap" class="ax-input">
-              <div style="font-size:11px;color:#9ca3af;margin-top:4px">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
+              <div class="ax-hint-11">不含結尾斜線；API 路徑（/sap/c4c/api/v1/...）由系統自動補上</div>
             </div>
 
             <div class="ax-mb16">
-              <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">認證方式</label>
+              <label class="ax-label">認證方式</label>
               <select id="integAuthType" class="ax-input">
                 <option value="basic">Basic（帳號 / 密碼）</option>
                 <option value="oauth">OAuth2（Client Credentials）</option>
@@ -2192,11 +2209,11 @@
             <!-- Basic 欄位 -->
             <div id="integBasicFields">
               <div class="ax-mb16">
-                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">API User 帳號</label>
+                <label class="ax-label">API User 帳號</label>
                 <input id="integUsername" type="text" autocomplete="off" class="ax-input">
               </div>
               <div class="ax-mb16">
-                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
+                <label class="ax-label">密碼 <span id="integPwdHint" style="color:#9ca3af;font-size:11px"></span></label>
                 <input id="integPassword" type="password" autocomplete="new-password" placeholder="輸入密碼" class="ax-input">
               </div>
             </div>
@@ -2204,15 +2221,15 @@
             <!-- OAuth 欄位 -->
             <div id="integOauthFields" style="display:none">
               <div class="ax-mb16">
-                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Token Endpoint</label>
+                <label class="ax-label">Token Endpoint</label>
                 <input id="integTokenEndpoint" type="text" placeholder="https://.../oauth/token" class="ax-input">
               </div>
               <div class="ax-mb16">
-                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client ID</label>
+                <label class="ax-label">Client ID</label>
                 <input id="integClientId" type="text" autocomplete="off" class="ax-input">
               </div>
               <div class="ax-mb16">
-                <label style="display:block;font-size:12px;color:#6b7280;margin-bottom:4px">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
+                <label class="ax-label">Client Secret <span id="integSecretHint" style="color:#9ca3af;font-size:11px"></span></label>
                 <input id="integClientSecret" type="password" autocomplete="new-password" placeholder="輸入 Client Secret" class="ax-input">
               </div>
             </div>
@@ -2263,10 +2280,10 @@
                 <thead>
                   <tr style="background:#f9fafb">
                     <th style="padding:8px;text-align:center;font-size:11px;color:#6b7280;width:56px;border:1px solid #e5e7eb">推送</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">CRM 欄位</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">SAP 欄位</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">處理方式</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">說明</th>
+                    <th class="ax-th-box">CRM 欄位</th>
+                    <th class="ax-th-box">SAP 欄位</th>
+                    <th class="ax-th-box">處理方式</th>
+                    <th class="ax-th-box">說明</th>
                   </tr>
                 </thead>
                 <tbody id="mapAccFieldBody"></tbody>
@@ -2295,10 +2312,10 @@
                 <thead>
                   <tr style="background:#f9fafb">
                     <th style="padding:8px;text-align:center;font-size:11px;color:#6b7280;width:56px;border:1px solid #e5e7eb">推送</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">CRM 欄位</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">SAP 欄位</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">處理方式</th>
-                    <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280;border:1px solid #e5e7eb">說明</th>
+                    <th class="ax-th-box">CRM 欄位</th>
+                    <th class="ax-th-box">SAP 欄位</th>
+                    <th class="ax-th-box">處理方式</th>
+                    <th class="ax-th-box">說明</th>
                   </tr>
                 </thead>
                 <tbody id="mapConFieldBody"></tbody>
@@ -2328,7 +2345,7 @@
             <div id="pushListWrap" style="display:none;margin-bottom:14px">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
                 <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="pushSelectAll" checked> 全選</label>
-                <span id="pushSelectedCount" style="font-size:12px;color:#6b7280"></span>
+                <span id="pushSelectedCount" class="ax-muted-12"></span>
                 <input id="pushSearch" type="search" placeholder="🔍 搜尋公司名稱 / 統編" autocomplete="off" style="margin-left:auto;width:240px;padding:5px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;outline:none">
               </div>
               <div style="max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">
@@ -2383,7 +2400,7 @@
           <div id="pcPanel"></div>
           <div style="display:flex;align-items:center;gap:12px;margin-top:16px;border-top:1px solid #eee;padding-top:14px">
             <button id="pcSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存變更</button>
-            <span id="pcStatus" style="font-size:13px;color:#6b7280"></span>
+            <span id="pcStatus" class="ax-muted-13"></span>
           </div>
         </div>
       </div>
@@ -2406,7 +2423,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:12px;margin-top:20px;border-top:1px solid #eee;padding-top:14px">
             <button id="afSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存設定</button>
-            <span id="afStatus" style="font-size:13px;color:#6b7280"></span>
+            <span id="afStatus" class="ax-muted-13"></span>
           </div>
         </div>
       </div>
@@ -2498,7 +2515,7 @@
 
         <div style="text-align:right;margin-top:4px">
           <span id="vGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
-          <button class="btn btn-sm" onclick="loadVersionInfo()" style="background:#1a73e8;color:#fff">🔄 重新整理</button>
+          <button class="btn btn-sm ax-accent-fill" onclick="loadVersionInfo()">🔄 重新整理</button>
         </div>
       </div>
 
@@ -2556,13 +2573,13 @@
                 <input type="date" id="mailFSince">
               </div>
               <button type="button" class="btn btn-primary" id="mailFSearch">🔍 查詢</button>
-              <button type="button" class="btn" id="mailFClear" style="background:#f0f2f5;color:#333">清除</button>
+              <button type="button" class="btn ax-surface-text" id="mailFClear">清除</button>
             </div>
           </div>
           <div class="admin-card">
             <div class="admin-card-header">
               <span class="admin-card-title">寄信紀錄</span>
-              <button type="button" class="btn btn-sm" id="mailRefresh" style="background:#f0f2f5;color:#333">重新整理</button>
+              <button type="button" class="btn btn-sm ax-surface-text" id="mailRefresh">重新整理</button>
             </div>
             <div class="mail-tablewrap" id="mailLogBody"><div class="mail-empty">載入中...</div></div>
             <div class="mail-pager" id="mailPager" hidden></div>
@@ -2603,7 +2620,7 @@
         <div id="pbImpMsg" role="status" style="font-size:13px;margin-top:10px;min-height:18px"></div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn" style="background:#f0f2f5;color:#333" id="pbImpCancel">取消</button>
+        <button type="button" class="btn ax-surface-text" id="pbImpCancel">取消</button>
         <button type="button" class="btn btn-primary" id="pbImpOk" disabled>確認匯入</button>
       </div>
     </div>
@@ -2633,7 +2650,7 @@
         <div id="emailImportResult" class="mail-banner ok" role="status" hidden></div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn" style="background:#f0f2f5;color:#333" id="emailImportCancel">關閉</button>
+        <button type="button" class="btn ax-surface-text" id="emailImportCancel">關閉</button>
         <button type="button" class="btn btn-primary" id="emailImportApply" disabled>確認套用</button>
       </div>
     </div>
@@ -2648,7 +2665,7 @@
       </div>
       <div class="modal-body" id="mailConfirmBody"></div>
       <div class="modal-footer">
-        <button type="button" class="btn" style="background:#f0f2f5;color:#333" id="mailConfirmCancel">取消</button>
+        <button type="button" class="btn ax-surface-text" id="mailConfirmCancel">取消</button>
         <button type="button" class="btn btn-primary" id="mailConfirmOk">確定</button>
       </div>
     </div>
@@ -2711,12 +2728,12 @@
           <select id="fieldViewOwnerScope">
             <option value="">— 請選擇 —</option>
           </select>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">集團PM 只能看這位業務名下的資料</div>
+          <div class="ax-hint-11">集團PM 只能看這位業務名下的資料</div>
           <label style="margin-top:12px;display:block">查看的集團 <span style="color:#ef4444;font-size:12px">*</span></label>
           <select id="fieldViewGroupId">
             <option value="">— 請選擇 —</option>
           </select>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">只能看這個集團 memberCompanies 名單內公司的資料</div>
+          <div class="ax-hint-11">只能看這個集團 memberCompanies 名單內公司的資料</div>
         </div>
         <div class="form-group" id="buFieldGroup">
           <label>所屬 BU <span id="buRequiredHint" style="color:#ef4444;font-size:12px">*至少選一個（可複選）</span></label>
@@ -2727,21 +2744,21 @@
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb ax-sq16" value="CRM"> CRM</label>
           </div>
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
+          <div class="ax-hint-11">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
         </div>
         <div class="form-group" id="supervisorFieldGroup">
           <label>直屬主管</label>
           <select id="fieldSupervisor">
             <option value="">（無 / 頂層）</option>
           </select>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">決定業績達成率的組織樹與歸屬。未設定者沿用「同 BU 自動推斷」（同 BU 有多位同級主管時會歸錯人，建議明確指定）。</div>
+          <div class="ax-hint-11">決定業績達成率的組織樹與歸屬。未設定者沿用「同 BU 自動推斷」（同 BU 有多位同級主管時會歸錯人，建議明確指定）。</div>
         </div>
         <div class="form-group" id="pureSupervisorFieldGroup">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:normal">
             <input type="checkbox" id="fieldPureSupervisor" class="ax-sq16">
             <span>唯讀掛名主管（業績由部屬彙總，不計本人）</span>
           </label>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">勾選後：此帳號在「業績達成率」不列入自己名下數字，卡片改為即時彙總其部屬；上層主管加總時也只算其部屬一次，不重複。適用「掛名主管、實際業務由部屬執行」的情形。</div>
+          <div class="ax-hint-11">勾選後：此帳號在「業績達成率」不列入自己名下數字，卡片改為即時彙總其部屬；上層主管加總時也只算其部屬一次，不重複。適用「掛名主管、實際業務由部屬執行」的情形。</div>
         </div>
         <div class="form-group">
           <label>狀態</label>
@@ -2760,7 +2777,7 @@
               <input type="radio" name="fieldAccessMode" value="view"> 🔒 只能查看（View Only）
             </label>
           </div>
-          <div id="fieldAccessModeHint" style="font-size:11px;color:#9ca3af;margin-top:4px">View 模式下：使用者可看見有權限的頁面，但無法新增/編輯/刪除任何資料</div>
+          <div id="fieldAccessModeHint" class="ax-hint-11">View 模式下：使用者可看見有權限的頁面，但無法新增/編輯/刪除任何資料</div>
         </div>
         <script>
           function onRoleChange() {
@@ -2829,7 +2846,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn" style="background:#f0f2f5;color:#333" id="userModalCancel">取消</button>
+        <button class="btn ax-surface-text" id="userModalCancel">取消</button>
         <button class="btn btn-primary" id="userModalSave">儲存</button>
       </div>
     </div>
@@ -2851,7 +2868,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn" style="background:#f0f2f5;color:#333" id="pwModalCancel">取消</button>
+        <button class="btn ax-surface-text" id="pwModalCancel">取消</button>
         <button class="btn btn-primary" id="pwModalSave">確認重設</button>
       </div>
     </div>
@@ -2895,7 +2912,7 @@
         <p style="font-size:14px;color:#555">確定要刪除帳號 <strong id="delUsernameDisplay"></strong> 嗎？此操作無法復原。</p>
       </div>
       <div class="modal-footer">
-        <button class="btn" style="background:#f0f2f5;color:#333" id="delModalCancel">取消</button>
+        <button class="btn ax-surface-text" id="delModalCancel">取消</button>
         <button class="btn btn-danger" id="delModalConfirm">確認刪除</button>
       </div>
     </div>
@@ -3515,11 +3532,11 @@
       try {
         const r = await adminFetch(`${API}/admin/product-catalog`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ catalog, renames: applyRenames }) });
         const d = await r.json();
-        if (!r.ok || d.error) { st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return; }
+        if (!r.ok || d.error) { st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return; }
         _pcData = pcBuildModel(catalog); pcRender();
         const extra = (d.updatedOpps || d.updatedContracts) ? `（連動商機 ${d.updatedOpps}、合約 ${d.updatedContracts}）` : '';
         st.textContent = `已儲存 ${new Date().toLocaleTimeString()}${extra}`;
-      } catch (e) { st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(e.message)}</span>`; }
+      } catch (e) { st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(e.message)}</span>`; }
       finally { btn.disabled = false; btn.textContent = orig; }
     }
 
@@ -3577,7 +3594,7 @@
 
     function pbMarginHtml(r) {
       const p = pbMoney(r.price), c = pbMoney(r.cost);
-      if (!(p > 0) || !(c >= 0)) return '<span style="color:#9ca3af">—</span>';
+      if (!(p > 0) || !(c >= 0)) return '<span class="ax-faint">—</span>';
       const m = (p - c) / p * 100;
       return `<span style="color:${m < 0 ? '#c62828' : '#0a8a4a'};font-weight:600">${m.toFixed(1)}%</span>`;
     }
@@ -3707,7 +3724,7 @@
         pbApply(d);
       } catch (e) {
         _pbInited = false;   // 讓下次點進來可重試
-        if (e.message !== 'Session expired') $('pbStatus').innerHTML = `<span style="color:#c62828">載入失敗：${pcEsc(e.message)}（按「重新載入」重試）</span>`;
+        if (e.message !== 'Session expired') $('pbStatus').innerHTML = `<span class="ax-bad">載入失敗：${pcEsc(e.message)}（按「重新載入」重試）</span>`;
       }
     }
 
@@ -3792,7 +3809,7 @@
       const eb = pbErrBus(errs);
       if (eb.length) {
         if (!eb.includes(_pbTab)) pbSetTab(eb[0]); else pbRender();
-        st.innerHTML = `<span style="color:#c62828">請先修正標示的欄位（${pcEsc(eb.join('、'))}）</span>`;
+        st.innerHTML = `<span class="ax-bad">請先修正標示的欄位（${pcEsc(eb.join('、'))}）</span>`;
         const first = document.querySelector('#pbPanel .pb-err:not(:empty)'); if (first && first.previousElementSibling) first.previousElementSibling.focus();
         return;
       }
@@ -3801,21 +3818,21 @@
       try {
         const r = await adminFetch(`${API}/admin/quote-pricebook`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: pbSerialize(), updatedAt: _pbUpdatedAt }) });
         const d = await r.json().catch(() => ({}));
-        if (r.status === 409 && d.code === 'STALE_PRICEBOOK') { _pbLive = d.live || null; _pbSaving = false; pbRenderBanner(); pbRefreshState(); st.innerHTML = '<span style="color:#c62828">儲存失敗：牌價簿已被其他人更新</span>'; return; }
+        if (r.status === 409 && d.code === 'STALE_PRICEBOOK') { _pbLive = d.live || null; _pbSaving = false; pbRenderBanner(); pbRefreshState(); st.innerHTML = '<span class="ax-bad">儲存失敗：牌價簿已被其他人更新</span>'; return; }
         if (!r.ok || d.error) {
           if (typeof d.index === 'number') {
             _pbSrvErr = { index: d.index, field: d.field, message: d.error || '' };
             const bad = pbOrdered()[d.index]; if (bad && bad.bu !== _pbTab) _pbTab = bad.bu;   // 錯誤在別的分頁 → 切過去
           }
           _pbSaving = false; pbRender();
-          st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return;
+          st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(d.error || ('HTTP ' + r.status))}</span>`; return;
         }
         _pbSaving = false;
         pbApply(d);
         st.textContent = `已儲存 ${new Date().toLocaleTimeString()}`;
       } catch (e) {
         _pbSaving = false; pbRefreshState();
-        st.innerHTML = `<span style="color:#c62828">儲存失敗：${pcEsc(e.message)}</span>`;
+        st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(e.message)}</span>`;
       }
     }
 
@@ -3890,13 +3907,13 @@
     function pbSpecCell(o, n) {
       if (!n) return '';
       const ns = pbClip(n.spec);
-      if (o && (o.spec || '') !== (n.spec || '')) return `<span style="color:#9ca3af">${o.spec ? pcEsc(pbClip(o.spec)) : '（無）'}</span> → <b>${ns ? pcEsc(ns) : '（無）'}</b>`;
+      if (o && (o.spec || '') !== (n.spec || '')) return `<span class="ax-faint">${o.spec ? pcEsc(pbClip(o.spec)) : '（無）'}</span> → <b>${ns ? pcEsc(ns) : '（無）'}</b>`;
       return ns ? pcEsc(ns) : '<span style="color:#d1d5db">—</span>';
     }
     function pbDiffCell(o, n, key) {
       if (!n) return '';
       if (!o || o[key] === n[key]) return pbNum(n[key]);
-      return `<span style="color:#9ca3af">${pbNum(o[key])}</span> → <b>${pbNum(n[key])}</b>`;
+      return `<span class="ax-faint">${pbNum(o[key])}</span> → <b>${pbNum(n[key])}</b>`;
     }
     function pbImpRender() {
       const d = _pbImp; if (!d) return;
@@ -3910,7 +3927,7 @@
       $('pbImpBu').innerHTML = bb('all', '全部 BU', '') + PB_BUS.map(b => {
         const x = (sm.byBu && sm.byBu[b]) || { added: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0 };
         const miss = (d.missingBus || []).includes(b);
-        return bb(b, b, miss ? '<span style="color:#9ca3af">檔案無此工作表（不變動）</span>' : `新增 ${x.added}、更新 ${x.updated}、不變 ${x.unchanged}${x.skipped ? '、略過 ' + x.skipped : ''}${x.errors ? '、<span style="color:#c62828">問題 ' + x.errors + '</span>' : ''}`);
+        return bb(b, b, miss ? '<span class="ax-faint">檔案無此工作表（不變動）</span>' : `新增 ${x.added}、更新 ${x.updated}、不變 ${x.unchanged}${x.skipped ? '、略過 ' + x.skipped : ''}${x.errors ? '、<span class="ax-bad">問題 ' + x.errors + '</span>' : ''}`);
       }).join('');
       const rows = d.rows.filter(r => (f === 'all' || r.action === f) && (bf === 'all' || r.bu === bf));
       $('pbImpBody').innerHTML = rows.length ? rows.map(r => {
@@ -3923,14 +3940,14 @@
           + `<td style="padding:5px 8px;white-space:nowrap"><span style="background:${a[2]};color:${a[1]};border-radius:6px;padding:1px 8px;font-size:12.5px;font-weight:600">${a[0]}</span></td>`
           + `<td style="padding:5px 8px;text-align:right;white-space:nowrap">${pbDiffCell(o, n, 'price')}</td>`
           + `<td style="padding:5px 8px;text-align:right;white-space:nowrap">${pbDiffCell(o, n, 'cost')}</td>`
-          + `<td style="padding:5px 8px;text-align:center;white-space:nowrap">${n ? (o && o.active !== n.active ? `<span style="color:#9ca3af">${pbYN(o.active)}</span> → <b>${pbYN(n.active)}</b>` : pbYN(n.active)) : ''}</td>`
+          + `<td style="padding:5px 8px;text-align:center;white-space:nowrap">${n ? (o && o.active !== n.active ? `<span class="ax-faint">${pbYN(o.active)}</span> → <b>${pbYN(n.active)}</b>` : pbYN(n.active)) : ''}</td>`
           + `<td data-pbspec style="padding:5px 8px;font-size:12.5px;word-break:break-all;min-width:150px">${pbSpecCell(o, n)}</td>`
           + `<td style="padding:5px 8px;color:#c62828;font-size:12.5px">${r.error ? pcEsc(r.error) : ''}</td></tr>`;
       }).join('') : '<tr><td colspan="9" style="padding:16px;text-align:center;color:#9ca3af">沒有符合的列</td></tr>';
       const can = sm.added + sm.updated;
       const notes = ['依「BU＋項目名稱」合併：同一個 BU 內名稱相同＝更新牌價／成本（保留原順序）、新名稱＝附加在該 BU 最後；檔案沒有的既有項目不會被刪除；檔案沒有的 BU 工作表＝該 BU 不變動。'];
       if ((d.skippedSheets || []).length) notes.push('已略過的工作表（名稱不是 ' + PB_BUS.join('／') + '）：' + d.skippedSheets.map(x => pcEsc(x)).join('、'));
-      if (sm.errors) notes.push(`<span style="color:#c62828">有 ${sm.errors} 列有問題，不會匯入；其餘列照常匯入。</span>`);
+      if (sm.errors) notes.push(`<span class="ax-bad">有 ${sm.errors} 列有問題，不會匯入；其餘列照常匯入。</span>`);
       if (!can) notes.push('<b>沒有可匯入的變更</b>（全部不變，或都有問題）。');
       $('pbImpNote').innerHTML = notes.join('<br>');
       $('pbImpOk').textContent = can ? `確認匯入（新增 ${sm.added}、更新 ${sm.updated}）` : '確認匯入';
@@ -4262,7 +4279,7 @@
         try {
           const r = await adminFetch(`${API}/admin/integrations/push/preview`);
           const d = await r.json();
-          if (!d.ok) { $('pushPreviewCount').innerHTML = `<span style="color:#c62828">⚠️ ${d.reason}</span>`; return; }
+          if (!d.ok) { $('pushPreviewCount').innerHTML = `<span class="ax-bad">⚠️ ${d.reason}</span>`; return; }
           $('pushPreviewCount').innerHTML = `共 <b>${d.total}</b> 家有統編的企業主檔　·　<span style="color:#0369a1">🆕 新建 ${d.toCreate}</span>　·　<span style="color:#374151">🔄 更新 ${d.toUpdate}</span>`;
           const tbody = $('pushCompanyBody');
           tbody.innerHTML = (d.list || []).map((c, i) => `
@@ -4277,7 +4294,7 @@
           $('pushSearch').value = '';
           $('pushListWrap').style.display = '';
           applyPushFilter();
-        } catch (e) { $('pushPreviewCount').innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
+        } catch (e) { $('pushPreviewCount').innerHTML = `<span class="ax-bad">❌ ${e.message}</span>`;
         } finally { btn.disabled = false; btn.textContent = orig; }
       });
 
@@ -4369,7 +4386,7 @@
           container.innerHTML = logs.map(log => `
             <details style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">
               <summary style="padding:10px 14px;cursor:pointer;background:#f9fafb;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <span style="font-size:12px;color:#6b7280">${new Date(log.startedAt).toLocaleString('zh-TW')}</span>
+                <span class="ax-muted-12">${new Date(log.startedAt).toLocaleString('zh-TW')}</span>
                 <span style="font-weight:600">${(log.pushed||0) + (log.failed||0)} 筆</span>
                 <span style="color:#166534">成功 ${log.pushed||0}</span>
                 ${log.failed ? `<span style="color:#991b1b">失敗 ${log.failed}</span>` : ''}
@@ -4379,12 +4396,12 @@
               <div class="ax-ox-auto">
               <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
                 <thead><tr style="background:#f9fafb">
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">類型</th>
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">名稱</th>
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">動作</th>
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">SAP ID</th>
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">結果</th>
-                  <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280">訊息</th>
+                  <th class="ax-th-l">類型</th>
+                  <th class="ax-th-l">名稱</th>
+                  <th class="ax-th-l">動作</th>
+                  <th class="ax-th-l">SAP ID</th>
+                  <th class="ax-th-l">結果</th>
+                  <th class="ax-th-l">訊息</th>
                 </tr></thead>
                 <tbody>
                   ${(log.records || []).map((rec, i) => `
@@ -4638,7 +4655,7 @@
       const canDL   = allUsers.filter(u => u.canDownloadContacts).length;
       $('userStatRow').innerHTML = `
         <div class="stat-card"><div class="stat-label">總帳號數</div><div class="stat-value">${total}</div></div>
-        <div class="stat-card"><div class="stat-label">管理者</div><div class="stat-value" style="color:#1a73e8">${admins}</div></div>
+        <div class="stat-card"><div class="stat-label">管理者</div><div class="stat-value ax-accent">${admins}</div></div>
         <div class="stat-card"><div class="stat-label">啟用中</div><div class="stat-value" style="color:#1e7e34">${active}</div></div>
         <div class="stat-card"><div class="stat-label">可下載名單</div><div class="stat-value" style="color:#e65100">${canDL}</div></div>`;
     }
@@ -5195,12 +5212,12 @@
     }
 
     async function loadLogs() {
-      $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
+      $('logList').innerHTML = '<div class="ax-empty-lg">載入中...</div>';
       try {
         const r = await adminFetch(`${API}/admin/logs`);
         const logs = await r.json();
         if (!logs.length) {
-          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">尚無異動記錄</div>';
+          $('logList').innerHTML = '<div class="ax-empty-lg">尚無異動記錄</div>';
           return;
         }
         const rows = logs.map(l => {
@@ -5227,7 +5244,7 @@
           </table>`;
       } catch (e) {
         if (e.message !== 'Session expired')
-          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入失敗</div>';
+          $('logList').innerHTML = '<div class="ax-empty-lg">載入失敗</div>';
       }
     }
 
@@ -5688,7 +5705,7 @@
     }
 
     async function loadContactAudit() {
-      $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">查詢中...</div>';
+      $('auditList').innerHTML = '<div class="ax-empty-lg">查詢中...</div>';
       const params = new URLSearchParams();
       const u = $('auditFilterUser').value;
       const a = $('auditFilterAction').value;
@@ -5702,7 +5719,7 @@
         const logs = await adminFetch(`${API}/admin/contact-audit?${params}`);
         $('auditCount').textContent = `共 ${logs.length} 筆`;
         if (!logs.length) {
-          $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">無符合條件的紀錄</div>';
+          $('auditList').innerHTML = '<div class="ax-empty-lg">無符合條件的紀錄</div>';
           return;
         }
         $('auditList').innerHTML = logs.map(l => {
@@ -5740,11 +5757,11 @@
 
     // ── 已刪除名單 ────────────────────────────────────────
     async function loadDeletedContacts() {
-      $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
+      $('deletedList').innerHTML = '<div class="ax-empty-lg">載入中...</div>';
       try {
         const list = await adminFetch(`${API}/admin/deleted-contacts`);
         if (!list.length) {
-          $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">目前無已刪除的聯絡人</div>';
+          $('deletedList').innerHTML = '<div class="ax-empty-lg">目前無已刪除的聯絡人</div>';
           return;
         }
         $('deletedList').innerHTML = `
@@ -6267,7 +6284,7 @@
 
           result.innerHTML = `
             ⏳ 進度：<strong>${Math.min(d.nextOffset, totalCompanies)} / ${totalCompanies}</strong> 家公司<br>
-            ✅ 已填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆聯絡人`;
+            ✅ 已填入：<strong class="ax-accent">${totalUpdated}</strong> 筆聯絡人`;
 
           if (!d.hasMore) break;
           offset = d.nextOffset;
@@ -6281,13 +6298,13 @@
           `<div style="font-size:11px;color:#666;border-top:1px dashed #ccc;padding:4px 0">
             <strong>${escapeAttr(s.company || '?')}</strong> ${s.taxId ? '統編:'+escapeAttr(s.taxId) : ''}
             ${s.stockCode ? '股票:'+escapeAttr(s.stockCode)+'('+escapeAttr(s.listedType)+')' : ''}<br>
-            ${s.website ? '<span style="color:#1a73e8">✓ ' + escapeAttr(s.website) + '</span>' : '<span style="color:#999">未找到</span>'}
+            ${s.website ? '<span class="ax-accent">✓ ' + escapeAttr(s.website) + '</span>' : '<span style="color:#999">未找到</span>'}
             <span style="color:#aaa">| ${escapeAttr(s.debug || s.err || '')}</span>
           </div>`).join('');
         result.innerHTML = `
           <strong style="color:#1a5c2a">✅ 批次作業完成</strong><br>
           📊 待填入聯絡人：<strong>${totalContacts}</strong> 筆，共 <strong>${totalCompanies}</strong> 家公司<br>
-          ✅ 成功填入：<strong style="color:#1a73e8">${totalUpdated}</strong> 筆<br>
+          ✅ 成功填入：<strong class="ax-accent">${totalUpdated}</strong> 筆<br>
           ❌ 未找到網址：<strong>${totalNotFound}</strong> 筆
           ${debugHtml ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #c5e0b4"><strong class="ax-fs12">🔍 診斷樣本（前 8 筆）：</strong>' + debugHtml + '</div>' : ''}`;
         hint.textContent = '完成！重新整理客戶頁面即可看到更新結果。';
@@ -7206,7 +7223,7 @@
         if (!r.ok) { wrap.innerHTML = '<span style="color:#ef4444">載入失敗</span>'; return; }
         _mbAllBudgets = await r.json();
         if (!_mbAllBudgets.length) {
-          wrap.innerHTML = '<span style="color:#9ca3af">尚無設定記錄</span>';
+          wrap.innerHTML = '<span class="ax-faint">尚無設定記錄</span>';
           return;
         }
         const monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
@@ -7227,7 +7244,7 @@
           return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <span style="font-size:13px;font-weight:700;color:#374151">${userLabel} — ${b.year} 年</span>
-              <span style="font-size:12px;color:#6b7280">收入合計 ${revTotal.toLocaleString()} K　by ${b.setBy || '—'}</span>
+              <span class="ax-muted-12">收入合計 ${revTotal.toLocaleString()} K　by ${b.setBy || '—'}</span>
             </div>
             <div style="font-size:11px;font-weight:600;color:#1a3c7a;margin-bottom:4px">收入金額</div>
             <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">
@@ -7578,7 +7595,7 @@
       const tbody = document.getElementById('poolTbody');
       const countEl = document.getElementById('poolCount');
       const targetSel = document.getElementById('poolAssignTarget');
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">載入中…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="ax-empty-md">載入中…</td></tr>';
       try {
         const r = await fetch('/api/admin/pool/contacts');
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -7606,7 +7623,7 @@
         (c.company || '').toLowerCase().includes(kw)
       );
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">${_poolFilter ? '沒有符合搜尋條件的客戶' : '客戶池目前是空的'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="ax-empty-md">${_poolFilter ? '沒有符合搜尋條件的客戶' : '客戶池目前是空的'}</td></tr>`;
         return;
       }
       tbody.innerHTML = list.map(c => {
@@ -7783,7 +7800,7 @@
       const hasFilter = !!(_companyFilter || indF);
       countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#9ca3af;padding:24px">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="ax-empty-md">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
       const fmtCap = (n) => {
@@ -8038,7 +8055,7 @@
       return `
         <div class="admin-card ax-mt16">
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <button class="btn btn-sm" id="companyDetailBack" style="background:#f0f2f5;color:#333">← 返回清單</button>
+            <button class="btn btn-sm ax-surface-text" id="companyDetailBack">← 返回清單</button>
             <span style="font-size:18px;font-weight:700">${c.gcisEnriched ? '🏛️ ' : '🏢 '}${escapeAttr(c.name)}</span>
             ${c.gcisEnriched ? '<span style="font-size:11px;color:#0b8043;background:#e6f4ea;border-radius:999px;padding:2px 8px">GCIS 已補全</span>' : ''}
           </div>
@@ -8078,7 +8095,7 @@
         resultEl.innerHTML = html;
         loadCompaniesView();
       } catch (e) {
-        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
+        resultEl.innerHTML = `<div class="ax-alert-bad">❌ ${e.message}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🏗️ 建立/更新企業主檔';
       }
@@ -8141,7 +8158,7 @@
           + (totalEnriched === 0 && totalTaxIdError === 0 && lastRemaining === 0 ? '（沒有待補全的主檔，可能尚未建立主檔或皆已補全）' : '') + `</div>`;
         loadCompaniesView();
       } catch (e) {
-        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
+        resultEl.innerHTML = `<div class="ax-alert-bad">❌ ${e.message}（已補 ${totalEnriched} 家，可再按一次繼續）</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🏛️ GCIS 一鍵補全';
         if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.textContent = '⏸ 停止補全'; }
@@ -8183,7 +8200,7 @@
       const resultEl = document.getElementById('companyBuildResult');
       const toPool = document.getElementById('companyImportToPool').checked;
       _companyImportToPool = toPool;
-      resultEl.innerHTML = '<div style="color:#1a73e8">分析中…</div>';
+      resultEl.innerHTML = '<div class="ax-accent">分析中…</div>';
       let d;
       try {
         const fd = new FormData(); fd.append('file', file);
@@ -8191,7 +8208,7 @@
         d = await r.json();
         if (!r.ok) throw new Error(d.error || '分析失敗');
       } catch (err) {
-        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${escapeAttr(err.message)}</div>`;
+        resultEl.innerHTML = `<div class="ax-alert-bad">❌ ${escapeAttr(err.message)}</div>`;
         return;
       }
       resultEl.innerHTML = '';
@@ -8237,7 +8254,7 @@
         }
       }
       if (d.industriesAdded && d.industriesAdded.length) {
-        html += `<div style="font-size:13px;color:#6b7280">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeAttr).join('、')}</div>`;
+        html += `<div class="ax-muted-13">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeAttr).join('、')}</div>`;
       }
       document.getElementById('companyImportPreviewBody').innerHTML = html;
       const btn = document.getElementById('companyImportPreviewConfirm');
@@ -8248,7 +8265,7 @@
       const file = _companyImportFile; if (!file) return;
       document.getElementById('companyImportPreviewModal').style.display = 'none';
       const resultEl = document.getElementById('companyBuildResult');
-      resultEl.innerHTML = '<div style="color:#1a73e8">寫入中…</div>';
+      resultEl.innerHTML = '<div class="ax-accent">寫入中…</div>';
       try {
         const fd = new FormData(); fd.append('file', file);
         const r = await fetch('/api/companies/import' + (_companyImportToPool ? '?toPool=1' : ''), { method: 'POST', body: fd });
@@ -8262,7 +8279,7 @@
           + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '') + `</div>`;
         loadCompaniesView();
       } catch (err) {
-        resultEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${escapeAttr(err.message)}</div>`;
+        resultEl.innerHTML = `<div class="ax-alert-bad">❌ ${escapeAttr(err.message)}</div>`;
       } finally { _companyImportFile = null; }
     }
     document.getElementById('companyImportPreviewClose').addEventListener('click', () => { document.getElementById('companyImportPreviewModal').style.display = 'none'; });
@@ -8373,7 +8390,7 @@
 
         // ⚪ 缺資本額
         const capRows = (d.missingCapital || []).length
-          ? `<div style="font-size:12px;color:#6b7280">共 ${d.missingCapital.length} 家缺資本額，待未來 GCIS 一鍵補全：<br>` +
+          ? `<div class="ax-muted-12">共 ${d.missingCapital.length} 家缺資本額，待未來 GCIS 一鍵補全：<br>` +
             d.missingCapital.slice(0, 30).map(m => escH(m.masterName)).join('、') +
             (d.missingCapital.length > 30 ? ' …' : '') + `</div>`
           : '';
@@ -8383,7 +8400,7 @@
           section(`🟡 無統編主檔（${d.noTaxId.length}）`, '#b45309', noTaxRows, '✅ 全部主檔都有統編') +
           section(`⚪ 缺資本額（${d.missingCapital.length}）`, '#6b7280', capRows, '✅ 資本額皆已填');
       } catch (e) {
-        bodyEl.innerHTML = `<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;color:#c62828">❌ ${e.message}</div>`;
+        bodyEl.innerHTML = `<div class="ax-alert-bad">❌ ${e.message}</div>`;
       } finally {
         btn.disabled = false; btn.textContent = '🔍 執行檢查';
       }
@@ -8994,7 +9011,7 @@
         ['失敗重試', esc('一輪最多 ' + ((Array.isArray(rty.delaysSec) ? rty.delaysSec.length : 0) + 1) + ' 次嘗試；退避 ' + (Array.isArray(rty.delaysSec) ? rty.delaysSec.join('／') : '?') + ' 秒；最終失敗後需在「寄信紀錄」手動重送')],
         ['機會式清理（輪詢）', esc('本實例已執行 ' + ((rt.poll && rt.poll.runs) || 0) + ' 次' + ((rt.poll && rt.poll.lastAt) ? '；最近一次 ' + fmtTime(rt.poll.lastAt) : ''))],
       ];
-      html += '<div class="admin-card"><div class="admin-card-header"><span class="admin-card-title">寄信設定（唯讀）</span><button type="button" class="btn btn-sm" id="mailCfgRefresh" style="background:#f0f2f5;color:#333">重新整理</button></div>' + kv(rows) + '</div>';
+      html += '<div class="admin-card"><div class="admin-card-header"><span class="admin-card-title">寄信設定（唯讀）</span><button type="button" class="btn btn-sm ax-surface-text" id="mailCfgRefresh">重新整理</button></div>' + kv(rows) + '</div>';
       $('mailConfigBody').innerHTML = html;
     }
     const MISSING_REASON = { NO_EMAIL: ['warn', '沒有 email'], BAD_EMAIL: ['bad', 'email 格式不正確'], DOMAIN_NOT_ALLOWED: ['bad', 'email 網域不在允許清單'] };
