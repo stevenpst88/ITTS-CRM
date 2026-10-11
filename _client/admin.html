@@ -785,6 +785,18 @@
   :is(#ax-i, .ax-ok-box14):is(#ax-i, .ax-ok-box14):is(#ax-i, .ax-ok-box14) { background:var(--ax-ok-bg-2, #d1fae5); border:1px solid var(--ax-ok-border-2, #10b981); border-radius:8px; padding:14px; color:var(--ax-ok-text-2, #166534); }
   :is(#ax-i, .ax-bad-box14):is(#ax-i, .ax-bad-box14):is(#ax-i, .ax-bad-box14) { background:var(--ax-bad-bg-2, #fee2e2); border:1px solid var(--ax-bad-3, #ef4444); border-radius:8px; padding:14px; color:var(--ax-bad-5, #c5221f); }
   :is(#ax-i, .ax-warn-b):is(#ax-i, .ax-warn-b):is(#ax-i, .ax-warn-b) { color:var(--ax-warn-text-2, #b45309); font-weight:600; }
+  /* Phase 5c: inline styles of the quote/integration sections extracted to classes (same rules as 5-0) */
+  :is(#ax-i, .ax-faint-12):is(#ax-i, .ax-faint-12):is(#ax-i, .ax-faint-12) { font-size:12px; color:var(--ax-faint, #9ca3af); }
+  :is(#ax-i, .ax-bd-p8):is(#ax-i, .ax-bd-p8):is(#ax-i, .ax-bd-p8) { padding:8px; border:1px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-td-bb):is(#ax-i, .ax-td-bb):is(#ax-i, .ax-td-bb) { padding:5px 8px; border-bottom:1px solid var(--ax-border-6, #f3f4f6); }
+  :is(#ax-i, .ax-del-15):is(#ax-i, .ax-del-15):is(#ax-i, .ax-del-15) { border:none; background:none; color:var(--ax-bad-3, #ef4444); cursor:pointer; font-size:15px; }
+  :is(#ax-i, .ax-bd-p5-8):is(#ax-i, .ax-bd-p5-8):is(#ax-i, .ax-bd-p5-8) { padding:5px 8px; border:1px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-bd-p8-c):is(#ax-i, .ax-bd-p8-c):is(#ax-i, .ax-bd-p8-c) { padding:8px; text-align:center; border:1px solid var(--ax-border-2, #e5e7eb); }
+  :is(#ax-i, .ax-bd-mono):is(#ax-i, .ax-bd-mono):is(#ax-i, .ax-bd-mono) { padding:8px; border:1px solid var(--ax-border-2, #e5e7eb); font-family:monospace; font-size:12px; }
+  :is(#ax-i, .ax-bd-note):is(#ax-i, .ax-bd-note):is(#ax-i, .ax-bd-note) { padding:8px; border:1px solid var(--ax-border-2, #e5e7eb); font-size:11px; color:var(--ax-muted, #6b7280); }
+  :is(#ax-i, .ax-empty-pad20):is(#ax-i, .ax-empty-pad20):is(#ax-i, .ax-empty-pad20) { color:var(--ax-faint, #9ca3af); padding:20px; text-align:center; }
+  :is(#ax-i, .ax-faint-15):is(#ax-i, .ax-faint-15):is(#ax-i, .ax-faint-15) { color:var(--ax-faint, #9ca3af); font-size:15px; }
+  :is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10) { font-size:10px; color:var(--ax-faint, #9ca3af); }
 </style>
 </head>
 <body class="admin-page">
@@ -2378,7 +2390,7 @@
             <!-- Save -->
             <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
               <button id="mapSaveBtn" class="btn btn-primary" style="padding:9px 22px;font-weight:700">💾 儲存欄位對照</button>
-              <span id="mapSavedAt" style="font-size:12px;color:#9ca3af"></span>
+              <span id="mapSavedAt" class="ax-faint-12"></span>
             </div>
           </div>
         </div>
@@ -2433,7 +2445,7 @@
           <div class="admin-card" style="padding:20px;max-width:900px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
               <button id="logsRefreshBtn" class="btn" style="padding:7px 16px;font-size:13px">🔄 重新整理</button>
-              <span style="font-size:12px;color:#9ca3af">最近 50 筆推送紀錄（最新排前）</span>
+              <span class="ax-faint-12">最近 50 筆推送紀錄（最新排前）</span>
             </div>
             <div id="logsContainer" style="font-size:13px"></div>
           </div>
@@ -3436,7 +3448,7 @@
     function pcRenderTabs() {
       $('pcBuTabs').innerHTML = PC_BUS.map(bu => {
         const on = bu === _pcActive, c = PC_BU_COLOR[bu];
-        return `<button data-pcact="tab" data-bu="${bu}" style="padding:8px 16px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${on ? c : 'transparent'};color:${on ? c : '#6b7280'}">${bu} <span style="font-size:12px;color:#9ca3af">(${pcCount(bu)})</span></button>`;
+        return `<button data-pcact="tab" data-bu="${bu}" style="padding:8px 16px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:2px solid ${on ? c : 'transparent'};color:${on ? c : '#6b7280'}">${bu} <span class="ax-faint-12">(${pcCount(bu)})</span></button>`;
       }).join('');
     }
 
@@ -3452,7 +3464,7 @@
           + (g.enabled ? '' : '<span style="font-size:11px;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px">停用</span>')
           + `<button data-pcact="toggle-grp" data-gi="${gi}" style="font-size:12px;border:1px solid #e5e7eb;background:none;border-radius:6px;padding:4px 10px;cursor:pointer">${g.enabled ? '停用' : '啟用'}</button>`
           + `<button data-pcact="add-prod" data-gi="${gi}" style="font-size:12px;border:1px dashed #cbd5e1;background:none;border-radius:6px;padding:4px 10px;cursor:pointer">＋產品</button>`
-          + `<button data-pcact="del-grp" data-gi="${gi}" title="刪除分類" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px">🗑</button>`
+          + `<button data-pcact="del-grp" data-gi="${gi}" title="刪除分類" class="ax-del-15">🗑</button>`
           + `</div>`;
         g.items.forEach((p, pi) => {
           h += `<div data-drop="product" data-gi="${gi}" data-pi="${pi}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid #f3f4f6;${p.enabled ? '' : 'opacity:.5;'}">`
@@ -3708,7 +3720,7 @@
           + `<td data-pbmargin="${r.k}" style="padding:6px 8px;text-align:right;white-space:nowrap">${pbMarginHtml(r)}</td>`
           + `<td style="padding:6px 4px;white-space:nowrap"><button data-pbact="up" data-k="${r.k}" ${i === 0 ? 'disabled' : ''} title="上移（只在 ${_pbTab} 內移動）" aria-label="上移" style="border:1px solid #e5e7eb;background:none;border-radius:6px;padding:2px 8px;cursor:pointer">↑</button> `
           + `<button data-pbact="down" data-k="${r.k}" ${i === tabItems.length - 1 ? 'disabled' : ''} title="下移（只在 ${_pbTab} 內移動）" aria-label="下移" style="border:1px solid #e5e7eb;background:none;border-radius:6px;padding:2px 8px;cursor:pointer">↓</button> `
-          + `<button data-pbact="del" data-k="${r.k}" title="刪除" aria-label="刪除" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px">🗑</button></td></tr>`;
+          + `<button data-pbact="del" data-k="${r.k}" title="刪除" aria-label="刪除" class="ax-del-15">🗑</button></td></tr>`;
       }).join('');
       const empty = tabItems.length ? '' : `<div style="text-align:center;color:#9ca3af;font-size:14px;border:1px dashed #d1d5db;border-radius:10px;padding:22px;margin-bottom:12px">${_pbTab} 尚無牌價項目，點下方「新增項目」開始建立。</div>`;
       const pnl = $('pbPanel');
@@ -4181,30 +4193,30 @@
       const renderAccFieldRows = (fields) => {
         $('mapAccFieldBody').innerHTML = fields.map((f, i) => `
           <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
-            <td style="padding:8px;text-align:center;border:1px solid #e5e7eb">
+            <td class="ax-bd-p8-c">
               ${f.locked
-                ? '<span title="必填，不可關閉" style="color:#9ca3af;font-size:15px">🔒</span>'
+                ? '<span title="必填，不可關閉" class="ax-faint-15">🔒</span>'
                 : `<input type="checkbox" data-acc-field="${f.crmField}" ${f.push !== false ? 'checked' : ''}>`}
             </td>
-            <td style="padding:8px;border:1px solid #e5e7eb"><strong>${f.label}</strong><br><span style="font-size:10px;color:#9ca3af">${f.crmField}</span></td>
-            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px">${f.sapField}</td>
-            <td style="padding:8px;border:1px solid #e5e7eb"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
-            <td style="padding:8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280">${NOTE_ACC[f.crmField] || ''}</td>
+            <td class="ax-bd-p8"><strong>${f.label}</strong><br><span class="ax-faint-10">${f.crmField}</span></td>
+            <td class="ax-bd-mono">${f.sapField}</td>
+            <td class="ax-bd-p8"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
+            <td class="ax-bd-note">${NOTE_ACC[f.crmField] || ''}</td>
           </tr>`).join('');
       };
 
       const renderConFieldRows = (fields) => {
         $('mapConFieldBody').innerHTML = fields.map((f, i) => `
           <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
-            <td style="padding:8px;text-align:center;border:1px solid #e5e7eb">
+            <td class="ax-bd-p8-c">
               ${f.locked
-                ? '<span title="必填，不可關閉" style="color:#9ca3af;font-size:15px">🔒</span>'
+                ? '<span title="必填，不可關閉" class="ax-faint-15">🔒</span>'
                 : `<input type="checkbox" data-con-field="${f.crmField}" ${f.push !== false ? 'checked' : ''}>`}
             </td>
-            <td style="padding:8px;border:1px solid #e5e7eb"><strong>${f.label}</strong><br><span style="font-size:10px;color:#9ca3af">${f.crmField}</span></td>
-            <td style="padding:8px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px">${f.sapField}</td>
-            <td style="padding:8px;border:1px solid #e5e7eb"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
-            <td style="padding:8px;border:1px solid #e5e7eb;font-size:11px;color:#6b7280"></td>
+            <td class="ax-bd-p8"><strong>${f.label}</strong><br><span class="ax-faint-10">${f.crmField}</span></td>
+            <td class="ax-bd-mono">${f.sapField}</td>
+            <td class="ax-bd-p8"><span style="padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-size:11px">${modeLabel[f.mode] || f.mode}</span></td>
+            <td class="ax-bd-note"></td>
           </tr>`).join('');
       };
 
@@ -4216,8 +4228,8 @@
         }
         tbody.innerHTML = rows.map((row, i) => `
           <tr>
-            <td style="padding:5px 8px;border:1px solid #e5e7eb"><input type="text" class="ind-crm" value="${escapeAttr(row.crmValue || '')}" placeholder="CRM 産業名稱" style="width:100%;border:none;outline:none;font-size:12px;background:transparent"></td>
-            <td style="padding:5px 8px;border:1px solid #e5e7eb"><input type="text" class="ind-sap" value="${escapeAttr(row.sapCode || '')}" placeholder="SAP 代碼" style="width:100%;border:none;outline:none;font-size:12px;background:transparent;font-family:monospace"></td>
+            <td class="ax-bd-p5-8"><input type="text" class="ind-crm" value="${escapeAttr(row.crmValue || '')}" placeholder="CRM 産業名稱" style="width:100%;border:none;outline:none;font-size:12px;background:transparent"></td>
+            <td class="ax-bd-p5-8"><input type="text" class="ind-sap" value="${escapeAttr(row.sapCode || '')}" placeholder="SAP 代碼" style="width:100%;border:none;outline:none;font-size:12px;background:transparent;font-family:monospace"></td>
             <td style="padding:5px 8px;text-align:center;border:1px solid #e5e7eb"><button class="ind-del-btn" data-idx="${i}" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button></td>
           </tr>`).join('');
         tbody.querySelectorAll('.ind-del-btn').forEach(btn => {
@@ -4422,12 +4434,12 @@
       // ══ ④ 執行紀錄 ══════════════════════════════════════════
       async function loadIntegLogs() {
         const container = $('logsContainer');
-        container.innerHTML = '<div style="color:#9ca3af;padding:20px;text-align:center">載入中…</div>';
+        container.innerHTML = '<div class="ax-empty-pad20">載入中…</div>';
         try {
           const r = await adminFetch(`${API}/admin/integrations/logs`);
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const logs = await r.json();
-          if (!logs.length) { container.innerHTML = '<div style="color:#9ca3af;padding:20px;text-align:center">尚無執行紀錄</div>'; return; }
+          if (!logs.length) { container.innerHTML = '<div class="ax-empty-pad20">尚無執行紀錄</div>'; return; }
           const badge = s => s === 'ok'
             ? '<span style="color:#166534;background:#f0fdf4;border-radius:10px;padding:1px 8px;font-size:11px">✅ 成功</span>'
             : '<span style="color:#991b1b;background:#fef2f2;border-radius:10px;padding:1px 8px;font-size:11px">❌ 失敗</span>';
@@ -4455,11 +4467,11 @@
                 <tbody>
                   ${(log.records || []).map((rec, i) => `
                     <tr style="${i % 2 === 0 ? '' : 'background:#fafafa'}">
-                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${rec.type === 'account' ? '🏢 公司' : '👤 名片'}</td>
-                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escapeAttr(rec.crmName || '')}</td>
-                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${actLabel(rec.action)}</td>
+                      <td class="ax-td-bb">${rec.type === 'account' ? '🏢 公司' : '👤 名片'}</td>
+                      <td class="ax-td-bb">${escapeAttr(rec.crmName || '')}</td>
+                      <td class="ax-td-bb">${actLabel(rec.action)}</td>
                       <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;font-family:monospace;font-size:11px;color:#374151">${rec.sapId || '—'}</td>
-                      <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${badge(rec.status)}</td>
+                      <td class="ax-td-bb">${badge(rec.status)}</td>
                       <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:${rec.status === 'error' ? '#991b1b' : '#6b7280'};font-size:11px;word-break:break-all">${escapeAttr(rec.error || rec.sapResponse || '')}</td>
                     </tr>`).join('')}
                 </tbody>
