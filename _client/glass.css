@@ -2385,3 +2385,13 @@ body.glass.dark :is(#lostOppTableWrap th, .stage-conv-thead th) { color: var(--g
 /* 琥珀紅（深色）下 B 階段標籤的橘字壓在深棕色卡片上 4.4:1 */
 body.glass.dark .main .pr-stage-tag[style*="color:#f57c00"] { color: #ffb74d !important; }
 /* ═══ 階段 6 結束 ═══ */
+
+/* ───────────── 99. 自動縮放（glass-theme.js 依視窗寬高算 --gz；僅 body.glass；≤1024 寬恆為 1）─────────────
+ * 列印一律還原；報價 PDF 離屏畫布帶 data-gz-off 且放在 body 外（見 quote-pdf.js／glass-theme.js hold）。 */
+body.glass { zoom: var(--gz, 1); }
+@media print { body.glass { zoom: 1 !important; } }
+.gt-size-title { margin-top: 10px; }
+.gt-size { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 6px; }
+.gt-sz { padding: 6px 2px; border: 1px solid var(--g-edge); border-radius: 10px; background: var(--g-input); color: var(--g-text); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.gt-sz:hover { background: var(--g-surface-hover); }
+.gt-sz:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
