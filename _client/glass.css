@@ -947,3 +947,234 @@ body.glass .gd-detail .mb-table-wrap {
     linear-gradient(to left, var(--g-surface-strong) 30%, transparent) right center / 26px 100% no-repeat local,
     radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .30), transparent) right center / 12px 100% no-repeat scroll;
 }
+
+/* ═════════════════════════════════════════════════════════════
+ * 階段 3a：列表／表單頁（潛在客戶、我的客戶、企業主檔、Key Account、日報、年度目標、
+ *         Lead、行銷活動、Call-in、名單移轉、應收帳款、ERP/SAP 合約）與其彈窗
+ * 原則：只改樣式；顏色一律走 --g-* / --t-*（隨主題），語意色（紅綠橘、階段、燈號）不動，
+ *       只在對比不足時「同色系加深／提亮」。
+ * ═════════════════════════════════════════════════════════════ */
+
+/* ── 3a-1 面板卡（數量少，可加 blur）：舊樣式是不透明白／#161b22 ── */
+body.glass :is(.target-set-card, .pr-card, .recv-stat, .contract-stat-card, .sap-notice-bar, .transfer-panel, .campaign-card, .cm-card, .view-stat-card) {
+  background: var(--g-fill);
+  border: 1px solid var(--g-border);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  color: var(--g-text);
+}
+body.glass .campaign-card:hover { background: var(--g-fill-hover); }
+body.glass .contract-stat-card { border-top: 4px solid transparent; }
+body.glass .csc-active { border-top-color: #34a853; }   /* 上緣色條是語意色（有效／即將到期／逾期），保留 */
+body.glass .csc-expiring { border-top-color: #f57c00; }
+body.glass .csc-expired { border-top-color: #ea4335; }
+body.glass .csc-total { border-top-color: var(--g-accent); }
+body.glass :is(.target-set-title, .pr-card-title, .campaign-card-name, .csc-value, .recv-stat-val, .sap-notice-title, .cm-co-name) { color: var(--g-text); }
+body.glass :is(.csc-label, .csc-sub, .recv-stat-label, .campaign-card-date, .campaign-card-desc, .campaign-stat-lbl, .cm-label, .cm-empty, .cm-count, .cm-hint, .ct-days, .ct-days.overdue, .sap-notice-prod, .sap-notice-no, .transfer-item-company, .transfer-item-empty, .ka-expand-icon, .ka-remove-btn) { color: var(--g-text-2); }
+body.glass .campaign-card-actions { border-top-color: var(--g-edge); }
+body.glass .campaign-stat-val { color: var(--g-text); }
+body.glass :is(.csc-value, .recv-stat-val, .campaign-stat-val) { font-variant-numeric: tabular-nums; }
+
+/* Key Account KPI：保留四色語意（金／藍／綠／紫）左緣＋淡色調，底層改玻璃 */
+body.glass .ka-kpi-card { border: 1px solid var(--g-border); border-left-width: 4px; box-shadow: var(--g-ring), var(--g-shadow); -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); }
+body.glass .ka-kpi-gold { border-left-color: #f59e0b; background: linear-gradient(135deg, rgba(245, 158, 11, .20), transparent 72%), var(--g-fill); }
+body.glass .ka-kpi-blue { border-left-color: #3b82f6; background: linear-gradient(135deg, rgba(59, 130, 246, .18), transparent 72%), var(--g-fill); }
+body.glass .ka-kpi-green { border-left-color: #10b981; background: linear-gradient(135deg, rgba(16, 185, 129, .18), transparent 72%), var(--g-fill); }
+body.glass .ka-kpi-purple { border-left-color: #8b5cf6; background: linear-gradient(135deg, rgba(139, 92, 246, .18), transparent 72%), var(--g-fill); }
+body.glass :is(.ka-kpi-value, .ka-page-title) { color: var(--g-text); }
+body.glass :is(.ka-kpi-label, .ka-kpi-sub, .ka-page-sub, .ka-muted, .ka-empty, .ka-tip) { color: var(--g-text-2); }
+body.glass:not(.dark) .ka-diff-pos { color: #047857; }
+body.glass:not(.dark) .ka-star-btn { color: #92400e; }
+
+/* ── 3a-2 大量列的卡（公司列、集團卡）：不用 blur（上百個會拖慢），用半透明實底 ── */
+body.glass :is(.company-group, .group-card) {
+  background: var(--g-surface-strong);
+  border: 1px solid var(--g-border);
+  box-shadow: var(--g-ring), 0 3px 14px rgba(30, 58, 138, .12);
+}
+body.glass.dark :is(.company-group, .group-card) { box-shadow: var(--g-ring), 0 4px 18px rgba(0, 0, 0, .38); }
+body.glass .company-group-header:hover { background: var(--g-row-hover); }
+body.glass .company-group.expanded .company-group-header { background: var(--g-row-hover); border-bottom-color: var(--g-edge); }
+body.glass .company-group-name { color: var(--g-text); }
+body.glass .company-group-primary { color: var(--g-text-2); }
+body.glass .company-group-count { background: var(--g-input); color: var(--g-text-2); }
+body.glass .company-group-chevron { color: var(--g-text-2); }
+body.glass .company-group-recent, body.glass .company-group-members { border-top-color: var(--g-edge); }
+/* 集團卡標頭：保留深海軍藍識別，但染上主題色 */
+body.glass .group-card-header { background: linear-gradient(135deg, color-mix(in srgb, var(--t-b1) 20%, #0e1c42) 0%, color-mix(in srgb, var(--t-b1) 44%, #0e1c42) 100%); }
+body.glass.dark .group-card-header { background: linear-gradient(135deg, color-mix(in srgb, var(--t-b1) 24%, var(--t-bg)) 0%, color-mix(in srgb, var(--t-b1) 50%, var(--t-bg)) 100%); }
+body.glass .group-card-footer { background: var(--g-surface); border-top-color: var(--g-edge); }
+body.glass .cg-add-contact-btn { background: var(--g-input); border: 1px solid var(--g-edge); }
+body.glass.dark .cg-add-contact-btn { color: var(--g-accent); }
+
+/* ── 3a-3 業務日報：月曆 ── */
+body.glass .cal-weekdays,
+body.glass .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }   /* 原為 1fr：長拜訪標籤把欄撐寬、整個月曆橫向溢出 */
+body.glass .cal-weekdays { background: color-mix(in srgb, var(--t-accent-l) 92%, #000); border: 1px solid var(--g-border); border-bottom: 0; }
+body.glass.dark .cal-weekdays { background: color-mix(in srgb, var(--t-b1) 38%, var(--t-bg)); }
+body.glass .cal-weekdays div { color: #fff; }
+body.glass .cal-weekdays div:first-child { color: #ffd2cd; }
+body.glass .cal-weekdays div:last-child { color: #cfe3ff; }
+body.glass .cal-cell { background: var(--g-surface); border: 1px solid var(--g-edge); }
+body.glass .cal-cell:hover { background: var(--g-surface-hover); border-color: var(--g-accent); }
+body.glass .cal-cell.other-month { background: transparent; }
+body.glass .cal-cell.other-month .cal-date { color: var(--g-ph); }
+body.glass .cal-cell.today { border-color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 16%, var(--g-surface-strong)); }
+body.glass .cal-date { color: var(--g-text); }
+body.glass:not(.dark) .cal-cell.sunday .cal-date { color: #c62828; }
+body.glass.dark .cal-cell.sunday .cal-date { color: #ff9b91; }
+body.glass:not(.dark) .cal-cell.saturday .cal-date { color: #1243a8; }
+body.glass.dark .cal-cell.saturday .cal-date { color: #8ec5ff; }
+body.glass .cal-month-title { color: var(--g-text); }
+body.glass .cal-nav-btn { background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); }
+body.glass .cal-nav-btn:hover { background: var(--g-surface-hover); }
+body.glass .cal-more, body.glass .cal-add-btn { color: var(--g-text-2); }
+body.glass .cal-visit-badge, body.glass .badge-type { color: #1243a8; }   /* 淺藍底小標籤：兩種主題都維持深藍字 */
+
+/* ── 3a-4 業務年度目標 ── */
+body.glass .target-history-chip { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text); }
+body.glass .target-history-chip:hover { background: var(--g-surface-hover); }
+body.glass .target-history-year { color: var(--g-accent); }
+body.glass .target-history-amt { color: var(--g-text); }
+body.glass:not(.dark) .target-history-ach { color: #166534; }
+body.glass.dark .target-history-ach { color: #4ade80; }
+
+/* ── 3a-5 名單移轉 ── */
+body.glass .transfer-panel-head { background: linear-gradient(135deg, color-mix(in srgb, var(--t-accent-l) 90%, #000), color-mix(in srgb, var(--t-accent-l) 70%, #0b1a3d)); }
+body.glass.dark .transfer-panel-head { background: linear-gradient(135deg, color-mix(in srgb, var(--t-b1) 42%, var(--t-bg)), color-mix(in srgb, var(--t-b1) 28%, var(--t-bg))); }
+body.glass .transfer-list { background: var(--g-surface); }
+body.glass .transfer-item { border-bottom-color: var(--g-edge); color: var(--g-text); }
+body.glass .transfer-item:hover { background: var(--g-row-hover); }
+body.glass .transfer-item.selected { background: color-mix(in srgb, var(--g-accent) 20%, transparent); border-left-color: var(--g-accent); color: var(--g-text); }
+body.glass .transfer-item-name { color: var(--g-text); }
+body.glass .transfer-footer { background: var(--g-surface); border-top-color: var(--g-edge); }
+body.glass .transfer-select-all, body.glass .transfer-arrow-icon { color: var(--g-accent); }
+body.glass .transfer-panel-head select { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .38); }
+body.glass .transfer-panel-head select option { background-color: #0f1b35; color: #fff; }
+
+/* ── 3a-6 合約／帳款／企業主檔的表格容器與列底色 ── */
+body.glass .contract-table-wrap { background: var(--g-surface-strong); border: 1px solid var(--g-border); box-shadow: var(--g-ring), var(--g-shadow); -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%); }
+body.glass .data-table { background: transparent; box-shadow: none; }
+body.glass .contract-table td { color: var(--g-text); border-bottom-color: var(--g-edge); }
+body.glass .contract-table th { color: var(--g-text-2); border-right-color: var(--g-edge); }
+/* 逾期／即將到期／已過期的列底色是語意色：改半透明，玻璃底看得穿，仍分得出紅／橘／灰 */
+body.glass .contract-table tr.ct-urgent td { background: rgba(234, 67, 53, .09); }
+body.glass .contract-table tr.ct-expiring td { background: rgba(245, 124, 0, .10); }
+body.glass .contract-table tr.ct-expired td { background: rgba(120, 130, 150, .08); color: var(--g-text-2); }
+body.glass .contract-table tr.ct-urgent:hover td { background: rgba(234, 67, 53, .16); }
+body.glass .contract-table tr.ct-expiring:hover td { background: rgba(245, 124, 0, .17); }
+body.glass .contract-table tr.ct-expired:hover td { background: rgba(120, 130, 150, .15); }
+body.glass.dark .contract-table tr.ct-urgent td { background: rgba(248, 113, 113, .10); }
+body.glass.dark .contract-table tr.ct-expiring td { background: rgba(251, 191, 36, .09); }
+body.glass.dark .contract-table tr.ct-expired td { background: rgba(255, 255, 255, .04); }
+body.glass.dark .contract-table tr.ct-urgent:hover td { background: rgba(248, 113, 113, .18); }
+body.glass.dark .contract-table tr.ct-expiring:hover td { background: rgba(251, 191, 36, .16); }
+body.glass.dark .contract-table tr.ct-expired:hover td { background: rgba(255, 255, 255, .09); }
+body.glass .ct-days.urgent { color: #b91c1c; }
+body.glass.dark .ct-days.urgent { color: #ff9b91; }
+body.glass:not(.dark) .ct-renew-label { color: #1243a8; }
+body.glass.dark .ct-renew-label { color: #8ec5ff; }
+/* ERP/SAP 到期通知列：底色是行內的淺橘（語意色），所以文字一律深色，不隨深色模式變白 */
+body.glass .sap-notice-item { color: #3d2a00; }
+body.glass .sap-notice-item .sap-notice-co { color: #1f1300; }
+body.glass .sap-notice-item .sap-notice-prod, body.glass .sap-notice-item .sap-notice-no { color: #5b4520; }
+body.glass .sap-notice-item .sap-notice-badge, body.glass .ct-notice-badge { color: #a84300 !important; }
+body.glass .sap-notice-item strong:not([style*="color"]) { color: #3d2a00; }
+body.glass .sap-notice-title { color: var(--g-text); }
+body.glass .sap-notice-bar { border-color: rgba(245, 158, 11, .55); }
+
+/* ── 3a-7 徽章／小按鈕：語意色維持，只在對比不足時同色系加深 ── */
+body.glass .btn-danger { background: #d32f2f; }
+body.glass .btn-danger:hover { background: #b71c1c; }
+body.glass .btn-xs[style*="#1e8e3e"], body.glass .btn-xs[style*="background:#34a853"] { background: #157a37 !important; }
+body.glass :is(.ct-badge-expiring, .badge-pending, .ci-assigned, .recv-badge.badge-pending) { color: #a84300; }
+body.glass :is(.ct-btn-edit, .campaign-type-badge, .ci-pending) { color: #1243a8; }
+body.glass .ci-contacted { color: #1b6b2a; }
+body.glass .ct-badge-expired { color: #5f6368; }
+/* 企業主檔的刪除鈕：行內是平面粉紅底（深色下像一塊白斑）→ 紅色半透明玻璃 */
+body.glass .cm-del { background: rgba(220, 38, 38, .14) !important; color: #b91c1c !important; border: 1px solid rgba(220, 38, 38, .34) !important; }
+body.glass.dark .cm-del { background: rgba(248, 113, 113, .16) !important; color: #ffb4ab !important; border-color: rgba(255, 150, 140, .38) !important; }
+body.glass .cm-del:hover { background: rgba(220, 38, 38, .26) !important; }
+body.glass .cm-back-btn { background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); }
+body.glass .cm-gcis-badge { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4); }
+body.glass:not(.dark) .cm-gcis-badge { color: #166534; }
+
+/* ── 3a-8 彈窗／表單內的次要字、必填星號、radio ── */
+body.glass :is(.view-label, .view-section-title, .glist-sub, .upload-hint, .search-icon, .glist-role) { color: var(--g-text-2); }
+body.glass :is(.glist-name, .glist-title, .view-value) { color: var(--g-text); }
+body.glass .glist-row { border-bottom-color: var(--g-edge); }
+body.glass .glist-row:hover { background: var(--g-row-hover); }
+body.glass .modal .radio-text { color: var(--g-text); }
+body.glass .modal .radio-text.primary-yes { color: #1243a8; }
+body.glass.dark .modal .radio-text.primary-yes { color: #8ec5ff; }
+body.glass .modal .radio-text.resigned-text { color: var(--g-text-2); }
+body.glass:not(.dark) .modal .radio-text[style*="#b45309"] { color: #8a3b00 !important; }
+body.glass.dark .modal .radio-text[style*="#b45309"] { color: #fbbf24 !important; }
+body.glass .modal label, body.glass .modal .group-co-check { color: var(--g-text); }
+body.glass .modal .form-group label { color: var(--g-text-2); }
+body.glass:not(.dark) .modal :is([style*="color:red"], [style*="color: red"], [style*="color:#ef4444"], [style*="color:#f00"]) { color: #c62828 !important; }
+body.glass.dark .modal :is([style*="color:red"], [style*="color: red"], [style*="color:#ef4444"], [style*="color:#f00"]) { color: #ff8a80 !important; }
+body.glass .card-image-preview { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass .card-image-preview:hover { border-color: var(--g-accent); }
+body.glass .modal-tabs .tab-btn { color: var(--g-text-2); }
+
+/* ── 3a-9 行內深色／灰色字（深色模式下變成看不見）與行內語意色 ── */
+body.glass.dark :is(.main, .modal) :is([style*="color:#1a2d52"], [style*="color:#1a2c5e"], [style*="color:#111"], [style*="color:#222"], [style*="color:#333"], [style*="color:#202124"], [style*="color:#000"]):not(.qpv-paper *) { color: var(--g-text) !important; }
+body.glass.dark :is(.main, .modal) :is([style*="color:#444"], [style*="color:#555"], [style*="color:#5f6368"], [style*="color:#374151"], [style*="color:#4b5563"], [style*="color:#636e7b"]):not(.qpv-paper *) { color: var(--g-text-2) !important; }
+body.glass:not(.dark) :is(.main, .modal) :is([style*="color:#555"], [style*="color:#5f6368"]):not(.qpv-paper *) { color: var(--g-text-2) !important; }
+body.glass.dark .main :is([style*="color:#d32f2f"], [style*="color:#c62828"], [style*="color:#e53935"]):not(.qpv-paper *) { color: #ff9b91 !important; }
+body.glass:not(.dark) .main :is([style*="color:#1e8e3e"], [style*="color:#34a853"], [style*="color:#388e3c"]):not(.qpv-paper *) { color: #166534 !important; }
+body.glass.dark .main :is([style*="color:#1e8e3e"], [style*="color:#34a853"], [style*="color:#388e3c"]):not(.qpv-paper *) { color: #4ade80 !important; }
+
+/* ── 3a-10 搜尋／篩選列的裸輸入框 ── */
+body.glass .main input[type="search"], body.glass .main .form-control { -webkit-appearance: none; appearance: none; border: 1px solid var(--g-edge); border-radius: var(--g-radius-sm); padding: 7px 10px; background-color: var(--g-input); color: var(--g-text); }
+body.glass .main input[type="search"]:focus, body.glass .main .form-control:focus { border-color: var(--g-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 24%, transparent); outline: none; }
+
+/* ── 3a-11 第二輪修正（對比＆細節）── */
+/* 集團卡標頭：淺色不要黑沉沉一塊——吃主題強調色的中深色漸層（白字對比 ≥4.5） */
+body.glass:not(.dark) .group-card-header { background: linear-gradient(135deg, color-mix(in srgb, var(--t-accent-l) 84%, #08122e) 0%, color-mix(in srgb, var(--t-accent-l) 64%, #08122e) 100%); }
+/* 日曆：今天那格的日期是實心圓（白字），要壓過週日／週六的顏色；非當月日期改用次要字色 */
+body.glass .cal-cell.today .cal-date { color: #fff !important; }
+body.glass .cal-cell.other-month .cal-date, body.glass:not(.dark) .cal-cell.other-month.sunday .cal-date, body.glass:not(.dark) .cal-cell.other-month.saturday .cal-date { color: var(--g-text-2); }
+body.glass.dark .cal-cell.other-month.sunday .cal-date, body.glass.dark .cal-cell.other-month.saturday .cal-date { color: var(--g-text-2); }
+/* 刪除鈕／語意字再深一階 */
+body.glass:not(.dark) .cm-del { color: #a31515 !important; }
+body.glass:not(.dark) .ka-diff-pos { color: #065f46; }
+/* 空狀態文字（legacy dark 用 #636e7b !important，只有 3.3:1） */
+body.glass .empty-msg, body.glass.dark .empty-msg { color: var(--g-text-2) !important; }
+/* 商機階段徽章 D/C/B/A：語意不變，淺色下字色同色系加深（淺底小膠囊） */
+body.glass:not(.dark) .opp-c { color: #1243a8; }
+body.glass:not(.dark) .opp-b { color: #9a4a00; }
+body.glass:not(.dark) .opp-d { color: #5f6368; }
+body.glass:not(.dark) .zombie-chip-b { color: #8a5300; }
+body.glass.dark .main [style*="color:#c5221f"] { color: #ff9b91 !important; }
+/* SAP 到期通知列：行內 strong（天數）是橘字 + 淺橘底 */
+body.glass .sap-notice-item strong[style*="#e65100"] { color: #a84300 !important; }
+body.glass .group-card-chevron { color: rgba(255, 255, 255, .88); }
+/* 應收帳款摘要卡：標籤與數字原本擠在同一行（inline span）→ 上下排列 */
+body.glass .recv-stat { display: flex; flex-direction: column; gap: 2px; }
+body.glass .gc-badge { color: #fff; }
+body.glass .group-card-stats { color: rgba(255, 255, 255, .88); }
+body.glass .group-edit-btn { color: #fff; }
+body.glass .cal-weekdays { background: color-mix(in srgb, var(--t-accent-l) 78%, #000); }
+/* 日曆「今天」按鈕與當日圓點：原為固定藍色 → 跟主題強調色（淺色用較深的 --t-accent-l，白字對比 ≥4.5） */
+body.glass .cal-today-btn, body.glass .cal-cell.today .cal-date { background: var(--t-accent-l); color: #fff !important; }
+/* 淺色＋有色調的主題：玻璃底比 ocean 深一點，次要字／語意紅綠再深一階以維持 ≥4.5:1 */
+body.glass:not(.dark) :is(.ka-kpi-label, .ka-kpi-sub) { color: #334155; }
+body.glass:not(.dark) .ka-diff-pos { color: #064e3b; }
+body.glass:not(.dark) .main [style*="color:#d32f2f"] { color: #b01818 !important; }
+body.glass:not(.dark) .cal-cell.sunday .cal-date { color: #b01818; }
+
+/* ── 3a-12 浮出選單、分頁鈕、右鍵選單（行內多為不透明白／#161b22）── */
+body.glass :is(.rel-picker, .ctx-menu) { background: rgba(255, 255, 255, .95); border: 1px solid var(--g-border); box-shadow: var(--g-shadow-lg); color: var(--g-text); }
+body.glass.dark :is(.rel-picker, .ctx-menu) { background: color-mix(in srgb, color-mix(in srgb, var(--t-bg) 86%, var(--t-b1)) 96%, transparent); }
+body.glass :is(.rel-picker-item, .ctx-menu-item) { color: var(--g-text); }
+body.glass :is(.rel-picker-item, .ctx-menu-item):hover { background: var(--g-row-hover); }
+body.glass .ctx-menu-sep { border-color: var(--g-edge); }
+body.glass .page-btn { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text); border-radius: var(--g-radius-sm); }
+body.glass .page-btn:hover { background: var(--g-surface-hover); }
+body.glass .page-btn.active { background: var(--g-accent); border-color: var(--g-accent); color: #fff; }
+body.glass:not(.dark) .page-btn.active { color: #fff; }
+body.glass.dark .page-btn.active { color: #0b1020; }
+body.glass .page-btn:disabled { color: var(--g-ph); opacity: .6; }
