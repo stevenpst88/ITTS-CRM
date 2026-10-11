@@ -2213,3 +2213,85 @@ body.glass.admin-page #subStatusCard [style*="opacity:.5"] { opacity: .82 !impor
 body.glass.admin-page #sec-subscription td[style*="opacity:.5"] { opacity: .78 !important; }
 body.glass.admin-page #sec-push-test [style*="border-left:3px solid #1a73e8"] { border-left-color: var(--g-accent) !important; }
 /* ═══ 階段 5c 結束 ═══ */
+
+/* ═══════════════════════════════════════════════════════════════
+ * 階段 5d 稽核與監控（後台：異動記錄／名片操作紀錄／容量空間監控／API 使用監控／雲端基礎設施／版本資訊）
+ * 5d-1 異動記錄動作徽章（5 色群）、名片操作紀錄 .audit-*
+ * 5d-2 監控頁共用：摘要卡（行內純白卡）、進度條軌道、列分隔線、行內文字色
+ * 5d-3 版本資訊主卡／套件徽章
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* ── 5d-1 異動記錄：動作徽章 ── */
+body.glass.admin-page #sec-logs :is(.log-time, .log-device) { color: var(--g-text-2); }
+body.glass.admin-page.dark #sec-logs .log-action-badge:is(.log-CREATE_USER, .log-IMPORT_CONTACTS, .log-IMPORT_JSON, .log-IMPORT_CONTACTS_ADMIN, .log-CREATE_VISIT, .log-CREATE_OPP, .log-CREATE_CONTRACT, .log-CREATE_RECEIVABLE) { background: rgba(74,222,128,.16); color: #86efac; }
+body.glass.admin-page.dark #sec-logs .log-action-badge:is(.log-UPDATE_USER, .log-LOGIN, .log-CHANGE_PASSWORD, .log-UPDATE_VISIT, .log-UPDATE_OPP, .log-UPDATE_CONTRACT, .log-UPDATE_RECEIVABLE, .log-SET_TARGET, .log-IMPORT_USER_EMAILS, .log-REQUEUE_MAIL) { background: rgba(96,165,250,.18); color: #93c5fd; }
+body.glass.admin-page.dark #sec-logs .log-action-badge:is(.log-DELETE_USER, .log-DELETE_VISIT, .log-DELETE_OPP, .log-DELETE_CONTRACT, .log-DELETE_RECEIVABLE, .log-QUOTE_MAIL_FAILED) { background: rgba(255,107,95,.16); color: #ff9b91; }
+body.glass.admin-page.dark #sec-logs .log-action-badge:is(.log-RESET_PASSWORD, .log-TRANSFER_CONTACTS, .log-QUOTE_MAIL_SKIPPED) { background: rgba(251,191,36,.16); color: #fcd34d; }
+body.glass.admin-page.dark #sec-logs .log-action-badge:is(.log-UPDATE_PERMISSION, .log-MIGRATE_JOB_FUNCTION) { background: rgba(167,139,250,.18); color: #d8b4fe; }
+body.glass.admin-page:not(.dark) #sec-logs .log-action-badge:is(.log-CREATE_USER, .log-IMPORT_CONTACTS, .log-IMPORT_JSON, .log-IMPORT_CONTACTS_ADMIN, .log-CREATE_VISIT, .log-CREATE_OPP, .log-CREATE_CONTRACT, .log-CREATE_RECEIVABLE) { background: rgba(34,197,94,.16); color: #166534; }
+body.glass.admin-page:not(.dark) #sec-logs .log-action-badge:is(.log-UPDATE_USER, .log-LOGIN, .log-CHANGE_PASSWORD, .log-UPDATE_VISIT, .log-UPDATE_OPP, .log-UPDATE_CONTRACT, .log-UPDATE_RECEIVABLE, .log-SET_TARGET, .log-IMPORT_USER_EMAILS, .log-REQUEUE_MAIL) { background: rgba(59,130,246,.14); color: #1e40af; }
+body.glass.admin-page:not(.dark) #sec-logs .log-action-badge:is(.log-DELETE_USER, .log-DELETE_VISIT, .log-DELETE_OPP, .log-DELETE_CONTRACT, .log-DELETE_RECEIVABLE, .log-QUOTE_MAIL_FAILED) { background: rgba(239,68,68,.13); color: #b91c1c; }
+body.glass.admin-page:not(.dark) #sec-logs .log-action-badge:is(.log-RESET_PASSWORD, .log-TRANSFER_CONTACTS, .log-QUOTE_MAIL_SKIPPED) { background: rgba(245,158,11,.18); color: #92400e; }
+body.glass.admin-page:not(.dark) #sec-logs .log-action-badge:is(.log-UPDATE_PERMISSION, .log-MIGRATE_JOB_FUNCTION) { background: rgba(139,92,246,.14); color: #6b21a8; }
+body.glass.admin-page #sec-logs .log-detail { color: var(--g-text); }
+
+/* ── 5d-1b 名片操作紀錄 ── */
+body.glass.admin-page #sec-contact-audit .audit-item { border-bottom-color: var(--g-edge); }
+body.glass.admin-page #sec-contact-audit :is(.audit-time, .audit-user, .audit-field, .audit-arrow) { color: var(--g-text-2); }
+body.glass.admin-page #sec-contact-audit .audit-target { color: var(--g-text); }
+body.glass.admin-page.dark #sec-contact-audit .audit-changes { background: rgba(255,255,255,.07); }
+body.glass.admin-page:not(.dark) #sec-contact-audit .audit-changes { background: rgba(255,255,255,.55); }
+body.glass.admin-page #sec-contact-audit .audit-change-row { border-bottom-color: var(--g-edge); }
+body.glass.admin-page.dark #sec-contact-audit .audit-old { color: #ff8a80; }
+body.glass.admin-page.dark #sec-contact-audit .audit-new { color: #86efac; }
+body.glass.admin-page:not(.dark) #sec-contact-audit .audit-old { color: #991b1b; }
+body.glass.admin-page:not(.dark) #sec-contact-audit .audit-new { color: #166534; }
+
+/* ── 5d-2 監控頁共用（只限 5d 區段） ── */
+/* 摘要卡：行內純白卡 → 玻璃面板（上緣 3px 語意色保留） */
+body.glass.admin-page :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) [style*="background:#fff;border-radius:12px"] {
+  background: var(--g-fill) !important; border-right: 1px solid var(--g-border) !important; border-bottom: 1px solid var(--g-border) !important; border-left: 1px solid var(--g-border) !important;
+  box-shadow: var(--g-ring), var(--g-shadow) !important;
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); color: var(--g-text); }
+/* 進度條軌道 */
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="height:14px;background:#f5f5f5"], [style*="height:12px;background:#f5f5f5"], [style*="height:16px;background:#f0f2f5"]) { background: rgba(255,255,255,.12) !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="height:14px;background:#f5f5f5"], [style*="height:12px;background:#f5f5f5"], [style*="height:16px;background:#f0f2f5"]) { background: rgba(15,27,53,.10) !important; }
+/* 列分隔線 */
+body.glass.admin-page :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="border-bottom:1px solid #f5f5f5"], [style*="border-top:1px solid #f0f0f0"]) { border-color: var(--g-edge) !important; }
+/* 灰字 → 次要文字色；深色字 → 主文字色 */
+body.glass.admin-page :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#888"], [style*="color: #888"], [style*="color: rgb(136, 136, 136)"], [style*="color:#aaa"], [style*="color: #aaa"], [style*="color: rgb(170, 170, 170)"], [style*="color:#bbb"], [style*="color: #bbb"], [style*="color: rgb(187, 187, 187)"], [style*="color:#666"], [style*="color: #666"], [style*="color: rgb(102, 102, 102)"], [style*="color:#999"], [style*="color: #999"], [style*="color: rgb(153, 153, 153)"]):not(button):not([class*="btn"]) { color: var(--g-text-2) !important; }
+body.glass.admin-page :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#333"], [style*="color: #333"], [style*="color: rgb(51, 51, 51)"], [style*="color:#444"], [style*="color: #444"], [style*="color: rgb(68, 68, 68)"], [style*="color:#1a2d52"], [style*="color: #1a2d52"], [style*="color: rgb(26, 45, 82)"]) { color: var(--g-text) !important; }
+body.glass.admin-page :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#555"], [style*="color: #555"], [style*="color: rgb(85, 85, 85)"]) { color: var(--g-text-2) !important; }
+/* 淺色：語意色字補對比（語意不變） */
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#1a73e8"], [style*="color: #1a73e8"], [style*="color: rgb(26, 115, 232)"]) { color: #1558b0 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#34a853"], [style*="color: #34a853"], [style*="color: rgb(52, 168, 83)"]) { color: #166534 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#f57c00"], [style*="color: #f57c00"], [style*="color: rgb(245, 124, 0)"]) { color: #a14f00 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#ea4335"], [style*="color: #ea4335"], [style*="color: rgb(234, 67, 53)"]) { color: #991b1b !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#9c27b0"], [style*="color: #9c27b0"], [style*="color: rgb(156, 39, 176)"]) { color: #7b1fa2 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#fb8c00"], [style*="color: #fb8c00"], [style*="color: rgb(251, 140, 0)"]) { color: #8a4b00 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#6d4c41"], [style*="color: #6d4c41"], [style*="color: rgb(109, 76, 65)"]) { color: #5d4037 !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#c62828"], [style*="color: #c62828"], [style*="color: rgb(198, 40, 40)"]) { color: #b3261e !important; }
+body.glass.admin-page:not(.dark) :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#e65100"], [style*="color: #e65100"], [style*="color: rgb(230, 81, 0)"]) { color: #9a3412 !important; }
+/* 深色：淡色塊 → 半透明色塊；語意色字 → 亮色 */
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#fff3e0"], [style*="background: #fff3e0"], [style*="background-color:#fff3e0"], [style*="background: rgb(255, 243, 224)"]) { background: rgba(251,191,36,.16) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#fce8e6"], [style*="background: #fce8e6"], [style*="background-color:#fce8e6"], [style*="background: rgb(252, 232, 230)"]) { background: rgba(255,107,95,.16) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#e6f4ea"], [style*="background: #e6f4ea"], [style*="background-color:#e6f4ea"], [style*="background: rgb(230, 244, 234)"]) { background: rgba(74,222,128,.14) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#e8f0fe"], [style*="background: #e8f0fe"], [style*="background-color:#e8f0fe"], [style*="background: rgb(232, 240, 254)"]) { background: rgba(96,165,250,.16) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#f3e5f5"], [style*="background: #f3e5f5"], [style*="background-color:#f3e5f5"], [style*="background: rgb(243, 229, 245)"]) { background: rgba(167,139,250,.16) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="background:#f8f9fa"], [style*="background: #f8f9fa"], [style*="background-color:#f8f9fa"], [style*="background: rgb(248, 249, 250)"]) { background: rgba(255,255,255,.07) !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#1a73e8"], [style*="color: #1a73e8"], [style*="color: rgb(26, 115, 232)"]) { color: #8ec5ff !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#34a853"], [style*="color: #34a853"], [style*="color: rgb(52, 168, 83)"]) { color: #86efac !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#f57c00"], [style*="color: #f57c00"], [style*="color: rgb(245, 124, 0)"]) { color: #fbbf24 !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#9c27b0"], [style*="color: #9c27b0"], [style*="color: rgb(156, 39, 176)"]) { color: #d8b4fe !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#ea4335"], [style*="color: #ea4335"], [style*="color: rgb(234, 67, 53)"]) { color: #ff8a80 !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#fb8c00"], [style*="color: #fb8c00"], [style*="color: rgb(251, 140, 0)"]) { color: #fbbf24 !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#6d4c41"], [style*="color: #6d4c41"], [style*="color: rgb(109, 76, 65)"]) { color: #e0bfa9 !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#c62828"], [style*="color: #c62828"], [style*="color: rgb(198, 40, 40)"]) { color: #ff9b91 !important; }
+body.glass.admin-page.dark :is(#sec-logs, #sec-contact-audit, #sec-storage, #sec-api-stats, #sec-infra-stats, #sec-version) :is([style*="color:#e65100"], [style*="color: #e65100"], [style*="color: rgb(230, 81, 0)"]) { color: #fbbf24 !important; }
+
+/* ── 5d-3 版本資訊 ── */
+/* 主卡小字 opacity .6 在藍色漸層上對比不足 → 玻璃模式提高不透明度 */
+body.glass.admin-page #versionHeroCard :is([style*="opacity:.6"], [style*="opacity:.75"]) { opacity: .92 !important; }
+/* 前端套件綠色徽章（白字 on #34a853 = 3.06）→ 加深底色 */
+body.glass.admin-page #sec-version [style*="color:#fff;background:#34a853"] { background: #15803d !important; }
+/* ═══ 階段 5d 結束 ═══ */

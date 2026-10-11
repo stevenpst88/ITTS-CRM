@@ -797,6 +797,8 @@
   :is(#ax-i, .ax-empty-pad20):is(#ax-i, .ax-empty-pad20):is(#ax-i, .ax-empty-pad20) { color:var(--ax-faint, #9ca3af); padding:20px; text-align:center; }
   :is(#ax-i, .ax-faint-15):is(#ax-i, .ax-faint-15):is(#ax-i, .ax-faint-15) { color:var(--ax-faint, #9ca3af); font-size:15px; }
   :is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10) { font-size:10px; color:var(--ax-faint, #9ca3af); }
+  /* Phase 5d: inline styles of the audit/monitoring sections extracted to classes (same rules as 5-0) */
+  :is(#ax-i, .ax-gen-time):is(#ax-i, .ax-gen-time):is(#ax-i, .ax-gen-time) { font-size:11px; color:var(--ax-faint-2, #bbb); margin-right:12px; }
 </style>
 </head>
 <body class="admin-page">
@@ -1934,8 +1936,8 @@
               <div class="ax-sub-12">結束日期</div>
               <input type="date" id="auditFilterTo" class="ax-input-sm">
             </div>
-            <button class="btn" onclick="loadContactAudit()" style="background:#1a73e8;color:#fff;padding:7px 18px">🔍 查詢</button>
-            <button class="btn" onclick="clearAuditFilter()" style="background:#f0f2f5;color:#333;padding:7px 14px">清除</button>
+            <button class="btn ax-accent-fill" onclick="loadContactAudit()" style="padding:7px 18px">🔍 查詢</button>
+            <button class="btn ax-surface-text" onclick="clearAuditFilter()" style="padding:7px 14px">清除</button>
           </div>
         </div>
         <div class="admin-card ax-mt16">
@@ -2003,7 +2005,7 @@
 
         <!-- 重新整理 -->
         <div style="text-align:right;margin-top:4px">
-          <span id="storageGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <span id="storageGenTime" class="ax-gen-time"></span>
           <button class="btn btn-sm ax-accent-fill" onclick="loadStorageInfo()">🔄 重新整理</button>
         </div>
       </div>
@@ -2057,7 +2059,7 @@
           </div>
         </div>
         <div style="text-align:right;margin-top:4px">
-          <span id="apiStatsGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <span id="apiStatsGenTime" class="ax-gen-time"></span>
           <button class="btn btn-sm ax-accent-fill" onclick="loadApiStats()">🔄 重新整理</button>
         </div>
       </div>
@@ -2078,7 +2080,7 @@
           </div>
         </div>
         <div style="text-align:right;margin-top:4px">
-          <span id="infraGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <span id="infraGenTime" class="ax-gen-time"></span>
           <button class="btn btn-sm ax-accent-fill" onclick="loadInfraStats()">🔄 重新整理</button>
         </div>
       </div>
@@ -2575,7 +2577,7 @@
         </div>
 
         <div style="text-align:right;margin-top:4px">
-          <span id="vGenTime" style="font-size:11px;color:#bbb;margin-right:12px"></span>
+          <span id="vGenTime" class="ax-gen-time"></span>
           <button class="btn btn-sm ax-accent-fill" onclick="loadVersionInfo()">🔄 重新整理</button>
         </div>
       </div>
