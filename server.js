@@ -312,6 +312,9 @@ const FEATURE_REGISTRY = [
   { key: 'campaigns',       label: '行銷活動',              icon: '🎪', navId: 'navCampaigns' },
   { key: 'leads',           label: 'Lead 管理',             icon: '🎣', navId: 'navLeads' },
   { key: 'quotations',      label: '報價單',                icon: '📋', navId: 'navQuotations' },
+  // 職能專屬首頁（玻璃 UI 階段 2c）：只預設開給對應角色；其他角色在「功能權限」頁可自行勾選
+  { key: 'marketingHome',   label: '行銷首頁',              icon: '🎣', navId: 'navMarketingHome' },
+  { key: 'consultHome',     label: '顧問首頁（報價成本）',  icon: '🧮', navId: 'navConsultHome' },
 ];
 const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','groupsales','marketing','user','accounting_manager','finance_manager','consult_manager_south','consult_manager_north'];
 const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
@@ -325,14 +328,14 @@ const DEFAULT_ROLE_PERMISSIONS = {
   secretary:          ['home','managerHome','targets','forecast','accountingGroup','callin','yoy','quotations'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   groupsales:         ['forecast','prospects','contacts','visits','pipeline'],
-  marketing:          ['campaigns','leads','contacts','prospects','companyMaster','pipeline'],
+  marketing:          ['marketingHome','campaigns','leads','contacts','prospects','companyMaster','pipeline'],
   user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
   finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
   // 南區／北區顧問主管：目前只開「首頁」與「報價單」（主要用途是擔任報價單的成本填寫人，名單在報價單頁的簽核設定維護）。
   // 資料可視範圍沿用「未列舉角色」的預設＝只看自己；要放寬（例如看顧問團隊）需另外決定，管理員可在「功能權限」頁調整導覽。
-  consult_manager_south: ['home','quotations'],
-  consult_manager_north: ['home','quotations'],
+  consult_manager_south: ['home','consultHome','quotations'],
+  consult_manager_north: ['home','consultHome','quotations'],
 };
 
 function getRolePermissions() {

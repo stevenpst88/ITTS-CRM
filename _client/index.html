@@ -93,6 +93,16 @@
                     <span class="nav-icon">&#11088;</span>
                     <span class="nav-label">主管首頁</span>
                   </div>
+          <!-- 行銷首頁（marketing 專用；功能鍵 marketingHome） -->
+          <div class="sidebar-nav-item" id="navMarketingHome" data-section="marketingHome" style="display:none">
+                    <span class="nav-icon">&#127907;</span>
+                    <span class="nav-label">行銷首頁</span>
+                  </div>
+          <!-- 顧問首頁（南／北區顧問主管；功能鍵 consultHome） -->
+          <div class="sidebar-nav-item" id="navConsultHome" data-section="consultHome" style="display:none">
+                    <span class="nav-icon">&#129518;</span>
+                    <span class="nav-label">顧問首頁</span>
+                  </div>
           <!-- 管理儀表板（主管/Admin 專用） -->
           <div class="sidebar-nav-item" id="navExecDash" data-section="execDash" style="display:none">
                     <span class="nav-icon">&#128208;</span>
@@ -1374,6 +1384,10 @@
             </div>
           </div>
         </div>
+
+        <!-- ── 行銷首頁／顧問首頁（內容由 role-homes.js 填入）── -->
+        <div id="marketingHomeView" style="display:none"></div>
+        <div id="consultHomeView" style="display:none"></div>
 
         <!-- ── 主管首頁 ── -->
         <div id="managerHomeView" style="display:none">
@@ -3138,6 +3152,7 @@
   <script src="glass-theme.js"></script>
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
+  <script src="role-homes.js"></script>
   <script src="tw-workdays.js"></script>
   <script src="quote-pricebook.js"></script>
   <script src="quote-costlines.js"></script>

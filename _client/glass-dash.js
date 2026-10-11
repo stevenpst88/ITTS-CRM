@@ -213,8 +213,9 @@
   }
 
   /* 時間膠囊（metaball）：選取後其餘融合，onSelect(key) 在「選了不同期間」時呼叫 */
-  function makeCapsule(initial, onSelect) {
+  function makeCapsule(initial, onSelect, gooId) {
     var tf = el('div', 'gd-tf collapsed'), goo = el('div', 'gd-goo'), W = 64, G = 8;
+    if (gooId) goo.style.filter = 'url(#' + gooId + ')';      // 其他首頁自帶 SVG filter（避免引用到被 display:none 的業務首頁裡的那份）
     tf.setAttribute('role', 'group'); tf.setAttribute('aria-label', '資料期間');
     tf.appendChild(goo);
     var sel = initial, expanded = false, busy = false, parts = [];
@@ -702,6 +703,12 @@
     setPeriod: function (p) { if (PK.indexOf(p) < 0) return; GD.period = p; salesRefresh(true); },
     state: function () { return { built: GD.built, period: GD.period, focus: GD.stage && GD.stage.focus }; },
     focus: function (id) { if (GD.stage) GD.stage.setFocus(id); }
+  };
+  /* 供 role-homes.js（行銷／顧問首頁）重用卡片舞台、補間、時間膠囊；不重複實作 */
+  window.GlassKit = {
+    makeStage: makeStage, makeTweener: makeTweener, makeCapsule: makeCapsule, glassOn: glassOn, reduce: reduce, esc: esc, fmt: fmt, el: el,
+    dropStage: function (st) { var i = STAGES.indexOf(st); if (i >= 0) STAGES.splice(i, 1); },
+    gooDefs: function (id) { return '<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><filter id="' + id + '" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9"/></filter></defs></svg>'; }
   };
   window.GlassMgr = {
     update: mgrUpdate,

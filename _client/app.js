@@ -195,6 +195,8 @@ function applyPermissions() {
   const FEATURE_NAV_MAP = {
     home: 'navHome',
     managerHome: 'navManagerHome',
+    marketingHome: 'navMarketingHome',
+    consultHome: 'navConsultHome',
     execDash: 'navExecDash',
     prospects: 'navProspects',
     contacts: 'navContacts',
@@ -221,6 +223,10 @@ function applyPermissions() {
     const el = $(navId);
     if (el) el.style.display = allowedFeatures.has(key) ? '' : 'none';
   });
+  // 顧問角色有專屬首頁時，不再顯示業務版「首頁」（避免兩個首頁）；其他角色不受影響
+  if (allowedFeatures.has('consultHome') && (userPermissions.role === 'consult_manager_south' || userPermissions.role === 'consult_manager_north')) {
+    const nh = $('navHome'); if (nh) nh.style.display = 'none';
+  }
   // YoY 營收同期比（BI 報表）：併入角色功能權限表（key 'yoy'），由上方迴圈統一控管；伺服器端 /api/yoy 另有把關
 
   // Pipeline 月度變動：嵌入商機動態報表下方（仍以角色硬編，未列入勾選表）
@@ -770,11 +776,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navManagerHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin', transfer:'navTransfer' };
+  ['navHome','navManagerHome','navMarketingHome','navConsultHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', marketingHome:'navMarketingHome', consultHome:'navConsultHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin', transfer:'navTransfer' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理', transfer:'責任業務名單移轉' };
+  const titles = { null:'首頁', managerHome:'主管首頁', marketingHome:'行銷首頁', consultHome:'顧問首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理', transfer:'責任業務名單移轉' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -793,7 +799,7 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','companyMasterView','keyAccountView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','execDashView','yoyView','managerHomeView','campaignsView','leadsView',
+   'forecastView','lostOppView','execDashView','yoyView','managerHomeView','marketingHomeView','consultHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
@@ -861,6 +867,8 @@ function showSection(section) {
   $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
   if ($('yoyView')) $('yoyView').style.display = section === 'yoy' ? '' : 'none';
   $('managerHomeView').style.display  = section === 'managerHome' ? '' : 'none';
+  if ($('marketingHomeView')) $('marketingHomeView').style.display = section === 'marketingHome' ? '' : 'none';
+  if ($('consultHomeView')) $('consultHomeView').style.display = section === 'consultHome' ? '' : 'none';
   $('campaignsView').style.display    = section === 'campaigns'   ? '' : 'none';
   $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
@@ -887,6 +895,8 @@ function showSection(section) {
   if (section === 'execDash')    loadExecDash();
   if (section === 'yoy')         loadYoyView();
   if (section === 'managerHome') loadManagerHome();
+  if (section === 'marketingHome' && window.RoleHomes) window.RoleHomes.loadMarketing();
+  if (section === 'consultHome' && window.RoleHomes) window.RoleHomes.loadConsult();
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
@@ -1390,6 +1400,8 @@ $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
 $('navExecDash').addEventListener('click',        () => showSection('execDash'));
 if ($('navYoy')) $('navYoy').addEventListener('click', () => showSection('yoy'));
 $('navManagerHome').addEventListener('click',     () => showSection('managerHome'));
+$('navMarketingHome').addEventListener('click',   () => showSection('marketingHome'));
+$('navConsultHome').addEventListener('click',      () => showSection('consultHome'));
 $('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
@@ -3429,6 +3441,13 @@ function _rememberDeepLink(forLogin) {
 function _clearDeepLink() {
   try { if (window.ITTSDeepLink) window.ITTSDeepLink.clear(); } catch (_) { /* 忽略 */ }
 }
+// 行銷／顧問專屬首頁：回傳 section 名稱或 ''（features 來自 /api/me/permissions，載入後存在 userPermissions）
+function _roleHomeSection(role, user) {
+  const f = new Set((userPermissions && userPermissions.features) || []);
+  if (role === 'marketing' && f.has('marketingHome')) return 'marketingHome';
+  if ((role === 'consult_manager_south' || role === 'consult_manager_north') && f.has('consultHome')) return 'consultHome';
+  return '';
+}
 async function initUser() {
   try {
     const res = await fetch('/api/me');
@@ -3498,6 +3517,8 @@ async function initUser() {
     $('dashboardGreeting').textContent = greet + '，' + user.displayName + ' 👋';
 
     // ── 登入後依角色決定預設頁面 ──────────────────────────
+    // 行銷／顧問要依功能權限決定首頁：features 可能還沒回來（loadPermissions 與 initUser 並行），先等
+    if ((user.role === 'marketing' || /^consult_manager_/.test(user.role || '')) && !userPermissions.features) await loadPermissions();
     const isFirstLoad = !!sessionStorage.getItem('justLoggedIn');
     if (isFirstLoad) {
       sessionStorage.removeItem('justLoggedIn');
@@ -3508,6 +3529,9 @@ async function initUser() {
       } else if (role === 'manager1' || role === 'manager2' || role === 'executive') {
         // 一級 / 二級主管 / 董總 → 主管首頁
         showSection('managerHome');
+      } else if (_roleHomeSection(role, user)) {
+        // 行銷 → 行銷首頁；南／北區顧問主管 → 顧問首頁（該角色有對應功能權限才導向）
+        showSection(_roleHomeSection(role, user));
       } else {
         // 其他角色（業務、秘書、行銷、admin 等）→ 一般首頁
         // 若有上次記錄則還原，否則顯示首頁
@@ -3521,6 +3545,9 @@ async function initUser() {
     } else if ((user.role || 'user') === 'tecopm') {
       // 非首次載入時的安全網：tecopm 一律強制進預測表
       showSection('forecast');
+    } else if (currentSection === null && _roleHomeSection(user.role, user)) {
+      // 重新整理後落在業務版首頁（舊 lastSection=dashboard）：行銷／顧問改進自己的首頁
+      showSection(_roleHomeSection(user.role, user));
     }
     // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單。
     // 信件連結（/q/<id> → 登入頁 → 這裡）：網址片段優先；網址上沒有時改用 sessionStorage 暫存的那一份（取一次即清，不會重複開）
