@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v5';   // v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
+const SW_VERSION = 'itts-crm-v6';   // v6：glass 色彩主題＋側欄分組（glass-theme.js、glass.css、app.js 變動）；v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 

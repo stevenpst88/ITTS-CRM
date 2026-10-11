@@ -6,52 +6,120 @@
  * 硬性排除：報價單預覽／PDF 擷取區（.qpv-*）、列印樣式、login.html、help.html。
  */
 
+/* ───────────── 0. 色彩主題（body.glass[data-theme="<key>"]）─────────────
+ * 六套：ocean 深海藍（預設）/ noir 黑金 / aurora 極光 / dusk 暮光 / ember 琥珀紅 / graphite 石墨。
+ * 切換方式：window.setGlassTheme(key)（寫入 body.dataset.theme 與 localStorage 'glassTheme'）；UI 在 glass-theme.js。
+ * 變數：--t-bg 底色、--t-b1/b2/b3 三團光暈、--t-accent 強調色（深色用，亮）、--t-accent-l 強調色（淺色用，深一階，對比≥4.5:1）、
+ *       --t-tint 卡片色調、--t-edge/--t-edge2 亮緣／高亮邊、--t-glow 側欄選取光暈、--t-lmix 淺色模式混入主題色的比例。
+ * 深色：完整換色；淺色：只在光暈與強調色輕輕染色（ocean = 0% 即原樣）。
+ * 語意色（商機 D/C/B/A、紅綠狀態、達成率燈號）不使用這些變數，不隨主題變。
+ * @property 註冊後，切換主題時顏色會 0.9s 漸變（不支援的瀏覽器直接跳換，功能不受影響）。 */
+@property --t-bg { syntax: "<color>"; inherits: true; initial-value: #050914; }
+@property --t-b1 { syntax: "<color>"; inherits: true; initial-value: #2563eb; }
+@property --t-b2 { syntax: "<color>"; inherits: true; initial-value: #d946ef; }
+@property --t-b3 { syntax: "<color>"; inherits: true; initial-value: #0d9488; }
+@property --t-accent { syntax: "<color>"; inherits: true; initial-value: #7cb8ff; }
+@property --t-accent-l { syntax: "<color>"; inherits: true; initial-value: #1558d6; }
+@property --t-tint { syntax: "<color>"; inherits: true; initial-value: rgba(120, 160, 255, .13); }
+@property --t-edge { syntax: "<color>"; inherits: true; initial-value: rgba(255, 255, 255, .20); }
+@property --t-edge2 { syntax: "<color>"; inherits: true; initial-value: rgba(255, 255, 255, .45); }
+@property --t-glow { syntax: "<color>"; inherits: true; initial-value: rgba(120, 160, 255, .45); }
+@property --t-lmix { syntax: "<percentage>"; inherits: true; initial-value: 0%; }
+
+body.glass {
+  /* ocean 深海藍（預設；即原本的藍／紫／青外觀） */
+  --t-bg: #050914; --t-b1: #2563eb; --t-b2: #d946ef; --t-b3: #0d9488;
+  --t-accent: #7cb8ff; --t-accent-l: #1558d6;
+  --t-tint: rgba(120, 160, 255, .13); --t-edge: rgba(255, 255, 255, .20); --t-edge2: rgba(255, 255, 255, .45); --t-glow: rgba(120, 160, 255, .45);
+  --t-lmix: 0%;
+  transition: --t-bg .9s, --t-b1 .9s, --t-b2 .9s, --t-b3 .9s, --t-accent .9s, --t-accent-l .9s, --t-tint .9s, --t-edge .9s, --t-edge2 .9s, --t-glow .9s, --t-lmix .9s;
+}
+body.glass[data-theme="noir"] {
+  --t-bg: #09090a; --t-b1: #c9a227; --t-b2: #7a5a12; --t-b3: #3d3216;
+  --t-accent: #e8c15b; --t-accent-l: #8a6a0a;
+  --t-tint: rgba(232, 193, 91, .10); --t-edge: rgba(232, 193, 91, .28); --t-edge2: rgba(232, 193, 91, .65); --t-glow: rgba(232, 193, 91, .42);
+  --t-lmix: 55%;
+}
+body.glass[data-theme="aurora"] {
+  --t-bg: #05181a; --t-b1: #0fb89a; --t-b2: #2563eb; --t-b3: #7c3aed;
+  --t-accent: #5eead4; --t-accent-l: #0f766e;
+  --t-tint: rgba(45, 212, 191, .12); --t-edge: rgba(94, 234, 212, .22); --t-edge2: rgba(94, 234, 212, .55); --t-glow: rgba(45, 212, 191, .42);
+  --t-lmix: 55%;
+}
+body.glass[data-theme="dusk"] {
+  --t-bg: #160a24; --t-b1: #d946ef; --t-b2: #f97316; --t-b3: #6366f1;
+  --t-accent: #f0abfc; --t-accent-l: #a21caf;
+  --t-tint: rgba(217, 70, 239, .12); --t-edge: rgba(240, 171, 252, .22); --t-edge2: rgba(240, 171, 252, .55); --t-glow: rgba(217, 70, 239, .42);
+  --t-lmix: 55%;
+}
+body.glass[data-theme="ember"] {
+  --t-bg: #1a0a07; --t-b1: #ef4444; --t-b2: #f59e0b; --t-b3: #7f1d1d;
+  --t-accent: #fbbf24; --t-accent-l: #b45309;
+  --t-tint: rgba(245, 158, 11, .11); --t-edge: rgba(251, 191, 36, .24); --t-edge2: rgba(251, 191, 36, .58); --t-glow: rgba(245, 158, 11, .42);
+  --t-lmix: 55%;
+}
+body.glass[data-theme="graphite"] {
+  --t-bg: #0d1015; --t-b1: #64748b; --t-b2: #475569; --t-b3: #334155;
+  --t-accent: #cbd5e1; --t-accent-l: #475569;
+  --t-tint: rgba(203, 213, 225, .08); --t-edge: rgba(203, 213, 225, .18); --t-edge2: rgba(203, 213, 225, .5); --t-glow: rgba(148, 163, 184, .4);
+  --t-lmix: 55%;
+}
+@media (prefers-reduced-motion: reduce) { body.glass { transition: none; } }
+
 /* ───────────── 1. Tokens ───────────── */
 body.glass {
-  --g-base: #e9eefb;
-  --g-surface: rgba(255, 255, 255, .58);          /* 一般卡片／側欄／頂欄 */
-  --g-surface-strong: rgba(255, 255, 255, .86);   /* 表格／表單／彈窗：數字要清楚 */
-  --g-surface-hover: rgba(255, 255, 255, .72);
-  --g-input: rgba(255, 255, 255, .78);
-  --g-th: rgba(236, 242, 255, .92);
-  --g-row-hover: rgba(26, 115, 232, .07);
-  --g-border: rgba(255, 255, 255, .72);           /* 1px 亮緣 */
-  --g-edge: rgba(24, 44, 96, .10);                /* 分隔線／輸入框邊 */
-  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .85);
-  --g-shadow: 0 8px 28px rgba(31, 54, 110, .12), 0 1px 3px rgba(31, 54, 110, .06);
-  --g-shadow-lg: 0 24px 64px rgba(25, 42, 96, .26);
-  --g-text: #1b2540;
-  --g-text-2: #4b5878;
-  --g-accent: #1a73e8;
-  --g-scrim: rgba(18, 28, 56, .38);
-  --g-side-bg: linear-gradient(180deg, rgba(15, 27, 53, .86) 0%, rgba(26, 45, 82, .78) 100%);
-  --g-blur: 18px;
+  --g-base: color-mix(in srgb, var(--t-b1) calc(var(--t-lmix) * .25), #cddcff);   /* 淺色：主題只輕輕染色 */
+  --g-fill: linear-gradient(135deg, rgba(255, 255, 255, .58) 0%, rgba(255, 255, 255, .34) 100%);   /* 一般玻璃面板：真正半透明 */
+  --g-fill-hover: linear-gradient(135deg, rgba(255, 255, 255, .70) 0%, rgba(255, 255, 255, .46) 100%);
+  --g-surface: rgba(255, 255, 255, .46);
+  --g-surface-strong: rgba(255, 255, 255, .76);   /* 表格／表單／彈窗：數字要清楚 */
+  --g-surface-hover: rgba(255, 255, 255, .66);
+  --g-input: rgba(255, 255, 255, .82);
+  --g-th: rgba(226, 235, 255, .95);
+  --g-row-hover: color-mix(in srgb, var(--t-accent-l) 10%, transparent);
+  --g-border: rgba(255, 255, 255, .85);           /* 1px 亮緣 */
+  --g-edge: rgba(15, 27, 53, .16);                /* 分隔線／輸入框邊 */
+  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 0 0 1px rgba(255, 255, 255, .25);
+  --g-shadow: 0 10px 32px rgba(30, 58, 138, .20), 0 2px 6px rgba(30, 58, 138, .10);
+  --g-shadow-lg: 0 28px 70px rgba(20, 38, 100, .34);
+  --g-text: #0f1b35;
+  --g-text-2: #475569;
+  --g-ph: #64748b;
+  --g-accent: var(--t-accent-l);
+  --g-scrim: rgba(12, 20, 50, .42);
+  --g-side-bg: linear-gradient(180deg, rgba(18, 44, 108, .84) 0%, rgba(11, 22, 54, .80) 100%);
+  --g-blur: 20px;
+  --g-sat: 175%;
   --g-radius: 16px;
   --g-radius-sm: 10px;
 }
 body.glass.dark {
-  --g-base: #070b18;
-  --g-surface: rgba(24, 31, 52, .56);
-  --g-surface-strong: rgba(17, 23, 40, .86);
-  --g-surface-hover: rgba(32, 41, 68, .66);
-  --g-input: rgba(8, 12, 24, .58);
-  --g-th: rgba(30, 40, 68, .94);
-  --g-row-hover: rgba(88, 166, 255, .09);
-  --g-border: rgba(255, 255, 255, .10);
-  --g-edge: rgba(255, 255, 255, .11);
-  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .08);
-  --g-shadow: 0 10px 34px rgba(0, 0, 0, .46), 0 1px 3px rgba(0, 0, 0, .3);
-  --g-shadow-lg: 0 28px 70px rgba(0, 0, 0, .6);
-  --g-text: #e6edf6;
-  --g-text-2: #9fb0cc;
-  --g-accent: #58a6ff;
-  --g-scrim: rgba(2, 5, 14, .55);
-  --g-side-bg: linear-gradient(180deg, rgba(6, 10, 24, .82) 0%, rgba(14, 22, 46, .74) 100%);
+  --g-base: var(--t-bg);
+  --g-fill: linear-gradient(135deg, var(--t-tint) 0%, rgba(255, 255, 255, .05) 100%);   /* 卡片色調由主題 tint 決定 */
+  --g-fill-hover: linear-gradient(135deg, color-mix(in srgb, var(--t-tint) 135%, rgba(255, 255, 255, .06)) 0%, rgba(255, 255, 255, .08) 100%);
+  --g-surface: rgba(255, 255, 255, .08);
+  --g-surface-strong: rgba(12, 18, 38, .72);
+  --g-surface-hover: rgba(255, 255, 255, .14);
+  --g-input: rgba(6, 10, 24, .62);
+  --g-th: rgba(26, 36, 66, .94);
+  --g-row-hover: color-mix(in srgb, var(--t-accent) 14%, transparent);
+  --g-border: var(--t-edge);                       /* 亮緣：黑金→金邊、極光→青邊… */
+  --g-edge: color-mix(in srgb, var(--t-edge) 80%, transparent);
+  --g-ring: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .04);
+  --g-shadow: 0 12px 38px rgba(0, 0, 0, .52), 0 2px 6px rgba(0, 0, 0, .30);
+  --g-shadow-lg: 0 30px 80px rgba(0, 0, 0, .66);
+  --g-text: rgba(255, 255, 255, .94);
+  --g-text-2: rgba(255, 255, 255, .76);
+  --g-ph: rgba(255, 255, 255, .62);
+  --g-accent: var(--t-accent);
+  --g-scrim: rgba(2, 5, 14, .60);
+  /* 側欄：保留深海軍藍識別，但底色吃主題背景＋一點主色 */
+  --g-side-bg: linear-gradient(180deg, color-mix(in srgb, color-mix(in srgb, var(--t-b1) 18%, var(--t-bg)) 80%, transparent) 0%, color-mix(in srgb, var(--t-bg) 74%, transparent) 100%);
 }
 
 /* ───────────── 2. 背景（彩色柔焦光暈）─────────────
  * 固定在最底層（z-index:-1，body 本身不建立 stacking context），pointer-events:none，
- * 不會蓋住 modal / toast（它們的 z-index 都是正值）。 */
+ * 不會蓋住 modal / toast（它們的 z-index 都是正值）。光暈鋪滿整個畫面，玻璃才看得出來。 */
 body.glass {
   background: var(--g-base);
   color: var(--g-text);
@@ -60,23 +128,36 @@ body.glass::before,
 body.glass::after {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
 }
+/* 光暈顏色全部走 --t-b1/b2/b3（主題）。淺色：以原本的淺色光暈為底，依 --t-lmix（ocean=0%）混入主題色。 */
+body.glass {
+  --l1: color-mix(in srgb, var(--t-b1) var(--t-lmix), rgb(37 99 235));
+  --l2: color-mix(in srgb, var(--t-b2) var(--t-lmix), rgb(168 85 247));
+  --l3: color-mix(in srgb, var(--t-b3) var(--t-lmix), rgb(20 184 166));
+  --l4: color-mix(in srgb, color-mix(in srgb, var(--t-b1) 50%, var(--t-b2)) var(--t-lmix), rgb(244 114 182));
+}
 body.glass::before {
   background:
-    radial-gradient(46vmax 46vmax at 8% 12%, rgba(99, 153, 255, .50), transparent 62%),
-    radial-gradient(40vmax 40vmax at 92% 8%, rgba(167, 139, 250, .42), transparent 62%),
-    radial-gradient(44vmax 44vmax at 78% 96%, rgba(45, 212, 191, .38), transparent 62%);
+    radial-gradient(52vmax 46vmax at 6% 10%, color-mix(in srgb, var(--l1) 72%, transparent), transparent 66%),
+    radial-gradient(46vmax 42vmax at 96% 6%, color-mix(in srgb, var(--l2) 62%, transparent), transparent 66%),
+    radial-gradient(50vmax 44vmax at 90% 96%, color-mix(in srgb, var(--l3) 62%, transparent), transparent 66%),
+    radial-gradient(44vmax 40vmax at 8% 94%, color-mix(in srgb, var(--l4) 56%, transparent), transparent 66%);
 }
 body.glass::after {
-  background: radial-gradient(34vmax 34vmax at 30% 88%, rgba(244, 114, 182, .20), transparent 62%);
+  background:
+    radial-gradient(34vmax 30vmax at 52% 42%, color-mix(in srgb, color-mix(in srgb, var(--t-b3) var(--t-lmix), rgb(56 189 248)) 46%, transparent), transparent 68%),
+    radial-gradient(28vmax 26vmax at 70% 62%, color-mix(in srgb, color-mix(in srgb, var(--t-b2) var(--t-lmix), rgb(251 191 36)) 26%, transparent), transparent 68%);
 }
 body.glass.dark::before {
   background:
-    radial-gradient(46vmax 46vmax at 8% 12%, rgba(37, 99, 235, .46), transparent 62%),
-    radial-gradient(40vmax 40vmax at 92% 8%, rgba(192, 38, 211, .30), transparent 62%),
-    radial-gradient(44vmax 44vmax at 78% 96%, rgba(13, 148, 136, .34), transparent 62%);
+    radial-gradient(52vmax 46vmax at 6% 10%, color-mix(in srgb, var(--t-b1) 70%, transparent), transparent 66%),
+    radial-gradient(46vmax 42vmax at 96% 6%, color-mix(in srgb, var(--t-b2) 52%, transparent), transparent 66%),
+    radial-gradient(50vmax 44vmax at 90% 96%, color-mix(in srgb, var(--t-b3) 58%, transparent), transparent 66%),
+    radial-gradient(44vmax 40vmax at 8% 94%, color-mix(in srgb, color-mix(in srgb, var(--t-b1) 55%, var(--t-b2)) 50%, transparent), transparent 66%);
 }
 body.glass.dark::after {
-  background: radial-gradient(34vmax 34vmax at 30% 88%, rgba(79, 70, 229, .24), transparent 62%);
+  background:
+    radial-gradient(34vmax 30vmax at 52% 42%, color-mix(in srgb, var(--t-b1) 34%, transparent), transparent 68%),
+    radial-gradient(28vmax 26vmax at 70% 62%, color-mix(in srgb, var(--t-b2) 26%, transparent), transparent 68%);
 }
 
 /* 讓容器透出背景 */
@@ -88,7 +169,9 @@ body.glass.dark .admin-main,
 body.glass .admin-main { background: transparent; }
 
 /* ───────────── 3. 玻璃表面（一般）─────────────
- * 只掛在「主要大面」上；backdrop-filter 不用在每個格子。 */
+ * 只掛在「主要大面」上；backdrop-filter 不用在每個格子。
+ * 備註：原本 .stat-card 等已是半透明，但背景頁面太淡所以看起來像平面白卡——主因是光暈太淡，
+ * 其次是填色 .58 白太實；這裡改為漸層半透明＋ saturate 放大背後色彩。 */
 body.glass .topbar,
 body.glass .stat-card,
 body.glass .contact-card,
@@ -98,11 +181,11 @@ body.glass .home-card,
 body.glass .mail-panel,
 body.glass .mail-stat,
 body.glass .chart-card {
-  background: var(--g-surface);
+  background: var(--g-fill);
   border: 1px solid var(--g-border);
   box-shadow: var(--g-ring), var(--g-shadow);
-  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(160%);
-  backdrop-filter: blur(var(--g-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
   color: var(--g-text);
 }
 body.glass .stat-card,
@@ -111,9 +194,9 @@ body.glass .dash-pipeline-card,
 body.glass .admin-card,
 body.glass .chart-card,
 body.glass .home-card { border-radius: var(--g-radius); }
-body.glass .topbar { border-radius: 0; border-width: 0 0 1px 0; border-bottom-color: var(--g-edge); }
+body.glass .topbar { border-radius: 0; border-width: 0 0 1px 0; border-bottom-color: var(--g-border); }
 body.glass .contact-card:hover,
-body.glass .stat-card:hover { background: var(--g-surface-hover); }
+body.glass .stat-card:hover { background: var(--g-fill-hover); }
 body.glass .admin-card-header { border-bottom-color: var(--g-edge); }
 body.glass .topbar-title,
 body.glass .card-name,
@@ -124,28 +207,83 @@ body.glass .section-sub,
 body.glass .stat-label,
 body.glass .card-title-company,
 body.glass .card-info-row,
-body.glass .contact-count { color: var(--g-text-2); }
+body.glass .contact-count,
+body.glass .dashboard-welcome p,
+body.glass .dashboard-welcome small,
+body.glass .dashboard-sub { color: var(--g-text-2); }
 body.glass .contact-count { background: var(--g-input); }
 body.glass .search-box { background: var(--g-input); border: 1px solid var(--g-edge); }
 body.glass .search-box input { color: var(--g-text); }
+body.glass ::placeholder { color: var(--g-ph); opacity: 1; }
 
-/* ───────────── 4. 側欄（保留海軍藍識別，更通透）───────────── */
+/* 深色底的橫幅卡（逾期警示、年度目標）：保持深色識別，但改半透明＋ blur 才看得到玻璃 */
+body.glass .zombie-alert-card,
+body.glass .target-achievement-card {
+  background: linear-gradient(135deg, rgba(12, 22, 54, .88) 0%, rgba(22, 52, 124, .76) 100%);
+  border: 1px solid rgba(255, 255, 255, .30);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+}
+body.glass .dash-pipeline-col {
+  background: rgba(255, 255, 255, .30);
+  border: 1px solid var(--g-border);
+}
+body.glass.dark .dash-pipeline-col { background: rgba(255, 255, 255, .07); }
+
+/* ───────────── 4. 側欄（保留海軍藍識別，更通透＋文字高對比）───────────── */
 body.glass .sidebar,
 body.glass .admin-sidebar {
-  background: var(--g-side-bg);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
-  border-right: 1px solid rgba(255, 255, 255, .10);
-  box-shadow: 4px 0 24px rgba(8, 16, 40, .16);
+  background:
+    radial-gradient(120% 34% at 0% 0%, color-mix(in srgb, var(--t-accent) 34%, transparent), transparent 70%),
+    radial-gradient(110% 30% at 100% 100%, color-mix(in srgb, var(--t-b3) 30%, transparent), transparent 70%),
+    var(--g-side-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(var(--g-sat));
+  backdrop-filter: blur(24px) saturate(var(--g-sat));
+  border-right: 1px solid rgba(255, 255, 255, .26);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, .10), inset 1px 0 0 rgba(255, 255, 255, .16), 6px 0 32px rgba(8, 16, 48, .30);
+}
+body.glass .sidebar-nav-item,
+body.glass .sidebar-sub-item,
+body.glass .sidebar-nav-group-hd,
+body.glass .admin-nav-item,
+body.glass .admin-nav-subitem,
+body.glass .admin-nav-group-header,
+body.glass .nav-domain-header,
+body.glass .nav-domain-name { color: rgba(255, 255, 255, .92); }
+body.glass .nav-label,
+body.glass .nav-icon,
+body.glass .admin-nav-icon { color: rgba(255, 255, 255, .94); opacity: 1; }
+body.glass .sidebar-sub,
+body.glass .sidebar-brand,
+body.glass .sidebar-user,
+body.glass .sidebar-footer,
+body.glass .sidebar-footer a,
+body.glass .sidebar-footer button,
+body.glass .sidebar-changepw,
+body.glass .sidebar-logout,
+body.glass .nav-arrow,
+body.glass .nav-group-arrow,
+body.glass .nav-domain-count { color: rgba(255, 255, 255, .90); opacity: 1; }
+body.glass .sidebar-nav-item:hover,
+body.glass .admin-nav-item:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+body.glass .sidebar-nav-item.active,
+body.glass .admin-nav-item.active,
+body.glass .admin-nav-subitem.active,
+body.glass .sidebar-sub-item.active {
+  background: linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .12));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 0 0 1px rgba(255, 255, 255, .24), 0 4px 14px rgba(5, 12, 40, .30);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 body.glass .admin-topbar {
-  background: linear-gradient(135deg, rgba(26, 45, 82, .86) 0%, rgba(26, 115, 232, .78) 100%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-  border-bottom: 1px solid rgba(255, 255, 255, .18);
+  background: linear-gradient(135deg, rgba(18, 44, 108, .80) 0%, rgba(26, 115, 232, .62) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(var(--g-sat));
+  backdrop-filter: blur(20px) saturate(var(--g-sat));
+  border-bottom: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 6px 24px rgba(8, 16, 48, .22);
 }
-body.glass .sidebar-nav-item.active,
-body.glass .admin-nav-item.active { background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .10); }
 
 /* ───────────── 5. 表格容器（更不透明）+ 表格本體 ───────────── */
 body.glass .table-wrap,
@@ -159,8 +297,8 @@ body.glass .import-preview-wrap {
   border: 1px solid var(--g-border);
   border-radius: var(--g-radius);
   box-shadow: var(--g-ring), var(--g-shadow);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
 }
 /* 管理後台表格住在 .admin-card 內：卡片本身改為強玻璃 */
 body.glass .admin-card:has(> .admin-card-body table),
@@ -247,8 +385,8 @@ body.glass .modal {
   border: 1px solid var(--g-border);
   border-radius: 20px;
   box-shadow: var(--g-ring), var(--g-shadow-lg);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(var(--g-sat));
+  backdrop-filter: blur(26px) saturate(var(--g-sat));
   color: var(--g-text);
 }
 body.glass .modal-header h2,
@@ -298,4 +436,264 @@ body.glass .qpv-paper { background: #fff; color: #111; }
 @media print {
   body.glass::before, body.glass::after { display: none !important; }
   body.glass * { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+
+/* ───────────── 15. 灰字補強（行內 style 的淡灰字在玻璃上太淡）─────────────
+ * 只作用在主內容／後台主區／modal 內，且排除報價預覽紙張。 */
+body.glass :is(.main, .admin-main, .modal) :is(
+  [style*="color:#888"], [style*="color: #888"], [style*="color:#999"], [style*="color: #999"],
+  [style*="color:#aaa"], [style*="color: #aaa"], [style*="color:#bbb"], [style*="color: #bbb"],
+  [style*="color:#666"], [style*="color: #666"], [style*="color:#777"], [style*="color: #777"],
+  [style*="color:#6b7280"], [style*="color:#8a93a0"], [style*="color:#9aa0a6"], [style*="color:#9ca3af"]
+):not(.qpv-paper *) { color: var(--g-text-2) !important; }
+
+/* ───────────── 16. 對比修正（WCAG AA：一般字 ≥4.5:1、大字 ≥3:1）───────────── */
+/* 側欄底部連結（行內 style 帶 opacity / 藍灰色） */
+body.glass .sidebar a { color: rgba(255, 255, 255, .92) !important; opacity: 1 !important; }
+body.glass .sidebar button { color: #fff; }
+/* 首頁標題與副標 */
+body.glass .welcome-sub,
+body.glass .dashboard-welcome * { color: var(--g-text-2); }
+body.glass .dashboard-welcome h1,
+body.glass .dashboard-welcome h2,
+body.glass .welcome-title { color: var(--g-text); }
+/* 頂欄範圍徽章／角色字 */
+body.glass .topbar span[style*="color"] { color: var(--g-text-2) !important; }
+body.glass .topbar span[style*="#d97706"] { color: #8a3b00 !important; }
+body.glass.dark .topbar span[style*="#d97706"] { color: #fbbf24 !important; }
+/* 深色橫幅卡內的次要字 */
+body.glass .target-ach-year,
+body.glass .target-ach-label,
+body.glass .zombie-alert-sub { color: rgba(255, 255, 255, .86); }
+body.glass .z-chip-a { color: #ffd2cd; }
+body.glass .z-chip-b { color: #ffe6b8; }
+body.glass .z-chip-c { color: #c6e9ff; }
+body.glass .zombie-alert-goto { color: #fff; }
+/* 月度業績表的語意色（淺色模式改深一階，維持紅綠橘語意） */
+body.glass .mb-td-green { color: #047857 !important; }
+body.glass .mb-td-orange { color: #b45309 !important; }
+body.glass .mb-td-red { color: #b91c1c !important; }
+body.glass .mb-td-muted { color: #64748b !important; }
+body.glass .mb-td-purple, body.glass .mb-gm-label { color: #6d28d9 !important; }
+body.glass.dark .mb-td-green { color: #34d399 !important; }
+body.glass.dark .mb-td-orange { color: #fbbf24 !important; }
+body.glass.dark .mb-td-red { color: #fca5a5 !important; }
+body.glass.dark .mb-td-muted { color: rgba(255, 255, 255, .62) !important; }
+body.glass.dark .mb-td-purple, body.glass.dark .mb-gm-label { color: #c4b5fd !important; }
+
+/* 淺色：品牌藍／綠／紅字在玻璃上加深一階（對比 ≥4.5:1） */
+body.glass .cg-add-contact-btn,
+body.glass:not(.dark) .cg-add-contact-btn,
+body.glass:not(.dark) .kanban-card-cat,
+body.glass:not(.dark) .kanban-card-amount,
+body.glass:not(.dark) .quote-no,
+body.glass:not(.dark) .kanban-col-badge { color: #1243a8; }
+body.glass:not(.dark) .kanban-card-amount[style], body.glass:not(.dark) .kanban-card-amount { color: #1243a8; }
+body.glass:not(.dark) .kanban-card-date,
+body.glass:not(.dark) .kanban-col-total-label,
+body.glass:not(.dark) .kanban-card-contact,
+body.glass:not(.dark) .company-group-primary { color: var(--g-text-2); }
+body.glass:not(.dark) .kanban-card-overdue { color: #b91c1c; }
+body.glass:not(.dark) .kanban-badge-won,
+body.glass:not(.dark) .kanban-col-total,
+body.glass:not(.dark) .industry-badge { color: #166534; }
+body.glass:not(.dark) .kanban-card-won .kanban-card-amount,
+body.glass:not(.dark) .kanban-card-won .kanban-card-date { color: #166534; }
+body.glass:not(.dark) .btn-export,
+body.glass:not(.dark) .btn-success,
+body.glass:not(.dark) .main [style*="background:#34a853"],
+body.glass:not(.dark) .main [style*="background: #34a853"] { background: #157a37 !important; color: #fff !important; }
+body.glass .btn-primary { background: linear-gradient(180deg, #2f6fe0 0%, #1558d6 100%); color: #fff; }
+body.glass .btn-primary:hover { background: linear-gradient(180deg, #3b7bea 0%, #1b60e0 100%); }
+body.glass .notif-badge { background: #d32f2f; color: #fff; }
+/* 深色：看板／次要字 */
+body.glass.dark .kanban-card-date,
+body.glass.dark .kanban-col-total-label,
+body.glass.dark .kanban-card-contact,
+body.glass.dark .company-group-primary { color: var(--g-text-2); }
+body.glass.dark .kanban-card-overdue { color: #ff9b91; }
+body.glass.dark .kanban-col-badge.kanban-badge-won { color: #86efac; }
+
+/* 行內 style 的品牌色字（光暈背景上加深／提亮），排除報價預覽紙張 */
+body.glass:not(.dark) :is(.main, .admin-main, .topbar, .modal) :is([style*="color:#1a73e8"], [style*="color: #1a73e8"]):not(.qpv-paper *) { color: #1243a8 !important; }
+body.glass:not(.dark) :is(.main, .admin-main, .topbar, .modal) :is([style*="color:#d97706"], [style*="color:#fbbf24"], [style*="color:#f59e0b"]):not(.qpv-paper *) { color: #8a3b00 !important; }
+body.glass:not(.dark) .kanban-col-badge.kanban-badge-won { color: #166534; }
+body.glass.dark :is(.main, .admin-main, .topbar, .modal) :is([style*="color:#1a73e8"], [style*="color: #1a73e8"]):not(.qpv-paper *) { color: #8ec5ff !important; }
+body.glass.dark .btn-export { background: #157a37; color: #fff; }
+/* 看板的淺底小標籤（pill）在兩種主題都維持淺底，所以字色用深色 */
+body.glass .kanban-card-cat { color: #1243a8; }
+body.glass .kanban-card-overdue,
+body.glass.dark .kanban-card-overdue { color: #b91c1c; }
+body.glass .kanban-col-badge.kanban-badge-won,
+body.glass.dark .kanban-col-badge.kanban-badge-won { color: #166534; }
+body.glass.dark .kanban-card-amount { color: #8ec5ff; }
+body.glass.dark .kanban-card-won .kanban-card-amount,
+body.glass.dark .kanban-card-won .kanban-card-date { color: #86efac; }
+
+/* 管理後台補強 */
+body.glass .home-card-count,
+body.glass .nav-domain-count { color: var(--g-text-2); }
+body.glass .admin-sidebar .nav-domain-count { color: rgba(255, 255, 255, .90); }
+body.glass .admin-topbar { background: linear-gradient(135deg, rgba(16, 38, 96, .92) 0%, rgba(22, 88, 200, .80) 100%); }
+body.glass .admin-topbar [style*="#d97706"] { color: #fbbf24 !important; }
+body.glass .admin-topbar,
+body.glass .admin-topbar .admin-user,
+body.glass .admin-topbar .admin-title { color: #fff; }
+body.glass .btn-warning,
+body.glass .btn-sm.btn-warning { color: #8a3b00; }
+body.glass .badge-admin { color: #1243a8; }
+body.glass.dark .admin-main :is([style*="color:#d32f2f"]) { color: #ffb4ab !important; }
+body.glass:not(.dark) .admin-main :is([style*="color:#d32f2f"]) { color: #a31515 !important; }
+
+/* 看板欄：半透明玻璃欄（欄內卡片維持較實的白） */
+body.glass .kanban-col {
+  background: var(--g-fill);
+  border: 1px solid var(--g-border);
+  box-shadow: var(--g-ring), var(--g-shadow);
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+  backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
+}
+body.glass .kanban-col-header { background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.glass .kanban-col-name { color: var(--g-text); }
+
+/* ───────────── 17. 側欄分組（手風琴）＋ 滑動膠囊 ─────────────
+ * 結構（index.html）：nav.sidebar-nav > section.sg > button.sg-hd + .sg-body > .sg-inner > 項目；最後一個子節點是 #navPill。
+ * 基礎樣式刻意不掛 body.glass：?glass=0 時仍保有分組與膠囊（只是回到舊的藍色實心外觀）。 */
+.sidebar-nav { position: relative; gap: 8px; }
+.sg { position: relative; z-index: 1; display: flex; flex-direction: column; }
+.sg.sg-empty { display: none; }
+.sg-hd {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 12px; border: 0; border-radius: 10px; background: transparent;
+  color: rgba(255, 255, 255, .78); font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .06em;
+  text-align: left; cursor: pointer; user-select: none; transition: background .18s, color .18s;
+}
+.sg-hd:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.sg-hd:focus-visible { outline: 2px solid #7cb8ff; outline-offset: 1px; }
+.sg-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--sg-color, #7cb8ff); box-shadow: 0 0 9px color-mix(in srgb, var(--sg-color, #7cb8ff) 75%, transparent); }
+.sg-name { flex: 1; }
+.sg-count { flex: none; min-width: 20px; padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: rgba(255, 255, 255, .92); font-size: 11px; font-weight: 600; letter-spacing: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.sg-chev { flex: none; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); opacity: .75; transition: transform .25s; }
+.sg-open > .sg-hd .sg-chev { transform: rotate(45deg); }
+.sg-has-active > .sg-hd { color: #fff; }
+.sg-has-active > .sg-hd .sg-count { background: var(--sg-color, #7cb8ff); color: #08122e; }
+/* 展開動畫：grid 0fr↔1fr（內容高度自動）；收合時 visibility:hidden，鍵盤焦點不會跑進看不見的項目 */
+.sg-body { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows .3s cubic-bezier(.2, .8, .2, 1), visibility 0s .3s; }
+.sg-open > .sg-body { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows .3s cubic-bezier(.2, .8, .2, 1), visibility 0s 0s; }
+.sg-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 3px; padding: 2px 2px 4px 8px; }
+.sg .sidebar-nav-item { padding: 9px 12px; }
+.sg .sidebar-nav-group-hd { justify-content: flex-start; }
+
+/* 滑動膠囊（JS 就緒後由 nav.pill-on 接管 .active 的底色；JS 沒跑時 .active 自帶底色） */
+.sg-pill {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 0; box-sizing: border-box;
+  border-radius: 10px; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(135deg, #1a73e8, #1558b0); box-shadow: 0 4px 12px rgba(26, 115, 232, .4);
+}
+.sg-pill.on { opacity: 1; }
+.sidebar-nav.pill-on .sidebar-nav-item.active,
+.sidebar-nav.pill-on .sidebar-sub-item.active { background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; border-left-color: transparent !important; }
+
+body.glass .sg-hd { color: rgba(255, 255, 255, .86); }
+body.glass .sg-hd:hover { background: rgba(255, 255, 255, .12); }
+body.glass .sg-count { background: rgba(255, 255, 255, .16); color: rgba(255, 255, 255, .96); }
+body.glass .sg-pill {
+  background: linear-gradient(135deg, rgba(255, 255, 255, .28), rgba(255, 255, 255, .10));
+  border: 1px solid rgba(255, 255, 255, .5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), inset 0 0 14px rgba(255, 255, 255, .12), 0 6px 20px rgba(5, 12, 40, .38);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+body.glass.dark .sg-pill {
+  border-color: var(--t-edge2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), inset 0 0 14px rgba(255, 255, 255, .10), 0 6px 22px var(--t-glow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sg-body, .sg-open > .sg-body, .sg-chev, .sg-pill { transition: none; }
+}
+
+/* ───────────── 18. 色彩主題選擇器（topbar 小按鈕＋玻璃彈出層）───────────── */
+.gt-wrap { display: none; position: relative; flex: none; margin-right: 6px; }
+body.glass .gt-wrap { display: block; }
+.gt-btn {
+  width: 34px; height: 34px; border-radius: 50%; padding: 0; cursor: pointer; font-size: 16px; line-height: 1;
+  background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); box-shadow: var(--g-ring);
+  transition: background .18s, transform .18s;
+}
+.gt-btn:hover { background: var(--g-surface-hover); transform: scale(1.06); }
+.gt-btn:focus-visible, .gt-item:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+body.glass .admin-topbar .gt-btn { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .3); border-radius: 8px; width: auto; height: auto; padding: 7px 12px; }
+.gt-pop {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 700; width: 232px; padding: 12px 12px 10px;
+  border-radius: 16px; background: var(--g-surface-strong); border: 1px solid var(--g-border); color: var(--g-text);
+  box-shadow: var(--g-ring), var(--g-shadow-lg);
+  -webkit-backdrop-filter: blur(26px) saturate(var(--g-sat)); backdrop-filter: blur(26px) saturate(var(--g-sat));
+  animation: gtPop .22s cubic-bezier(.2, .8, .2, 1);
+}
+.gt-pop[hidden] { display: none; }
+@keyframes gtPop { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+.gt-pop-title { font-size: 12px; font-weight: 700; color: var(--g-text-2); margin: 0 2px 8px; letter-spacing: .06em; }
+.gt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.gt-item { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 2px 6px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--g-text); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
+.gt-item:hover { background: var(--g-surface-hover); }
+.gt-item.on { border-color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 14%, transparent); }
+.gt-sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .7); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+body.glass .topbar, body.glass .admin-topbar { position: relative; z-index: 40; }
+@media (prefers-reduced-motion: reduce) { .gt-pop { animation: none; } }
+@media print { .gt-wrap { display: none !important; } }
+
+/* ───────────── 19. 殘餘「平面白」元素 ─────────────
+ * 這些元素只有行內邊框、底色是瀏覽器預設白（或 .btn-outline 完全沒樣式），在玻璃底上變成白色死板塊。
+ * 以「主內容區／頂欄／後台主區內的裸表單控制項」統一處理；少數有行內 background:#fff 的才用屬性選擇器＋!important。 */
+body.glass.dark { color-scheme: dark; }
+body.glass :is(.main, .topbar, .admin-main) :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="hidden"]):not(.search-box input):not(.qpv-paper *) {
+  background-color: var(--g-input); color: var(--g-text); border-color: var(--g-edge);
+}
+body.glass :is(.main, .topbar, .admin-main) :is(select, input, textarea):is([style*="background:#fff"], [style*="background: #fff"], [style*="background:white"], [style*="background: white"]):not(.qpv-paper *) {
+  background-color: var(--g-input) !important; color: var(--g-text) !important;
+}
+body.glass.dark select option, body.glass.dark select optgroup { background-color: #141b32; color: #f1f5ff; }
+body.glass:not(.dark) select option { background-color: #fff; color: #0f1b35; }
+/* 無樣式的次要按鈕（集團管理＝.btn-outline、報價單列表的 .btn.btn-sm…） */
+body.glass .btn-outline,
+body.glass .btn:not([class*="btn-"]),
+body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]) {
+  background: var(--g-input); color: var(--g-text); border: 1px solid var(--g-edge); box-shadow: var(--g-ring);
+}
+body.glass .btn-outline:hover,
+body.glass .btn:not([class*="btn-"]):hover,
+body.glass .btn-sm:not([class*="btn-primary"]):not([class*="btn-danger"]):not([class*="btn-success"]):not([class*="btn-secondary"]):not([class*="btn-warning"]):not([class*="btn-export"]):not([class*="btn-soft"]):not([class*="btn-email"]):not(.btn-ai-suggest):not([style*="background"]):hover { background: var(--g-surface-hover); }
+/* 頂欄：身分徽章不要被擠成直排；其餘空間讓給搜尋框 */
+body.glass #topbarUserBadge { flex: none; white-space: nowrap; }
+/* 側欄底部：連結與按鈕列在窄側欄會被擠成直排文字 → 允許換行 */
+.sidebar-footer { flex-wrap: wrap; }
+.sidebar-footer a { flex: none; }
+.sidebar-footer > div[style*="width:100%"] { flex: 1 1 100%; }
+/* 後台頂欄：「返回系統」「登出」在深藍玻璃上維持半透明；登出用紅色玻璃（取代行內的平面粉紅） */
+body.glass .admin-topbar a.btn-back, body.glass .admin-topbar button.btn-back { background: rgba(255, 255, 255, .16); color: #fff; border: 1px solid rgba(255, 255, 255, .34); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3); }
+body.glass .admin-topbar a.btn-back:hover { background: rgba(255, 255, 255, .26); }
+body.glass .admin-topbar button.btn-back[style*="fee2e2"] { background: rgba(220, 38, 38, .34) !important; color: #ffe4e1 !important; border-color: rgba(255, 150, 140, .6) !important; }
+body.glass .admin-topbar button.btn-back[style*="fee2e2"]:hover { background: rgba(220, 38, 38, .5) !important; }
+body.glass .admin-topbar #adminDarkToggle, body.glass .admin-topbar .pal-btn { background: rgba(255, 255, 255, .16) !important; color: #fff !important; border: 1px solid rgba(255, 255, 255, .34) !important; }
+/* 公司頭像：淡色漸層底 + 白字 → 加深底色（行內 gradient 上疊一層暗色）並加字影，字永遠清楚 */
+body.glass .company-avatar { box-shadow: inset 0 0 0 100px rgba(8, 16, 48, .34); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .55); font-weight: 700; }
+
+/* 深色主題：深色橫幅卡（年度目標、逾期警示）的底色跟著主題，不再固定海軍藍 */
+body.glass.dark .zombie-alert-card,
+body.glass.dark .target-achievement-card {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--t-bg) 90%, transparent) 0%, color-mix(in srgb, color-mix(in srgb, var(--t-b1) 38%, var(--t-bg)) 80%, transparent) 100%);
+  border-color: var(--t-edge2);
+}
+/* 彈出層放在自帶 backdrop-filter 的頂欄內時，自己的 blur 會失效 → 底色用近乎不透明，避免後面的卡片字透出來 */
+body.glass .gt-pop { background: rgba(255, 255, 255, .95); }
+body.glass.dark .gt-pop { background: color-mix(in srgb, color-mix(in srgb, var(--t-bg) 86%, var(--t-b1)) 96%, transparent); }
+/* 後台：帳號管理／牌價簿的 BU 分頁（ERP/ITS/MDM/CRM）— 淺色下未選中的 #6b7280 在玻璃上只有 ~4.49:1，改用 --g-text-2；選中改吃主題強調色 */
+body.glass:not(.dark) #sec-users .uv-tabs [role="tab"]:not([aria-selected="true"]),
+body.glass:not(.dark) #sec-quote-pricebook #pbTabs [role="tab"]:not([aria-selected="true"]) { color: var(--g-text-2) !important; }
+body.glass:not(.dark) #sec-users .uv-tabs [role="tab"][aria-selected="true"],
+body.glass:not(.dark) #sec-quote-pricebook #pbTabs [role="tab"][aria-selected="true"] { color: var(--g-accent) !important; border-bottom-color: var(--g-accent) !important; }
+body.glass.dark #sec-users .uv-tabs [role="tab"][aria-selected="true"],
+body.glass.dark #sec-quote-pricebook #pbTabs [role="tab"][aria-selected="true"] { color: var(--g-accent) !important; border-bottom-color: var(--g-accent) !important; }
+/* 後台行內的淡灰底提示條／統計格（#f9fafb、#f3f4f6…）→ 半透明玻璃 */
+body.glass .admin-main :is([style*="background:#f9fafb"], [style*="background: #f9fafb"], [style*="background:#f3f4f6"], [style*="background: #f3f4f6"], [style*="background:#f8fafc"], [style*="background:#f5f7fa"]):not(.qpv-paper *) {
+  background: var(--g-surface) !important; border-color: var(--g-edge) !important;
 }

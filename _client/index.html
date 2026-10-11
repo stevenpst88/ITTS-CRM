@@ -27,6 +27,12 @@
       try { localStorage.setItem('glassUI', v ? '1' : '0'); } catch (e) {}
       if (document.body) document.body.classList.toggle('glass', !!v);
     };
+    /* 玻璃色彩主題：localStorage 'glassTheme'（ocean/noir/aurora/dusk/ember/graphite；預設 ocean）。完整選色 UI 在 glass-theme.js。 */
+    window.setGlassTheme = function(k){
+      if (!/^(ocean|noir|aurora|dusk|ember|graphite)$/.test(k)) k = 'ocean';
+      try { localStorage.setItem('glassTheme', k); } catch (e) {}
+      if (document.body) document.body.dataset.theme = k;
+    };
   })();
   </script>
   <link rel="stylesheet" href="glass.css">
@@ -59,7 +65,7 @@
   </script>
 </head>
 <body>
-<script>(function(){try{if(window.__glassOn)document.body.classList.add('glass');if(localStorage.getItem('darkMode')==='1')document.body.classList.add('dark');}catch(e){}})();</script>
+<script>(function(){try{var b=document.body;if(window.__glassOn){b.classList.add('glass');var t=localStorage.getItem('glassTheme');if(/^(ocean|noir|aurora|dusk|ember|graphite)$/.test(t))b.dataset.theme=t;}var d=localStorage.getItem('darkMode');if(d==='1'||(d===null&&window.__glassOn))b.classList.add('dark');}catch(e){}})();</script>
   <!-- 手機側邊遮罩 -->
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -71,146 +77,174 @@
         <img src="/itts-logo.png" alt="ITTS Logo" style="height:36px; max-width:120px; object-fit:contain;">
       </div>
 
-      <nav class="sidebar-nav">
-        <div class="sidebar-nav-item active" id="navHome" data-section="home">
-          <span class="nav-icon">&#127968;</span>
-          <span class="nav-label">首頁</span>
-        </div>
-        <!-- 主管首頁（manager1/manager2/admin 專用） -->
-        <div class="sidebar-nav-item" id="navManagerHome" data-section="managerHome" style="display:none">
-          <span class="nav-icon">&#11088;</span>
-          <span class="nav-label">主管首頁</span>
-        </div>
-        <div class="sidebar-nav-item" id="navProspects" data-section="prospects">
-          <span class="nav-icon">&#128270;</span>
-          <span class="nav-label">潛在客戶</span>
-        </div>
-        <div class="sidebar-nav-item" id="navContacts" data-section="contacts">
-          <span class="nav-icon">&#127942;</span>
-          <span class="nav-label">我的客戶</span>
-        </div>
-        <div class="sidebar-nav-item" id="navCompanyMaster" data-section="companyMaster">
-          <span class="nav-icon">&#127970;</span>
-          <span class="nav-label">企業主檔</span>
-        </div>
-        <div class="sidebar-nav-item" id="navKeyAccount" data-section="keyAccount">
-          <span class="nav-icon">&#11088;</span>
-          <span class="nav-label">Key Account</span>
-        </div>
-        <div class="sidebar-nav-item" id="navVisits" data-section="visits">
-          <span class="nav-icon">&#128203;</span>
-          <span class="nav-label">業務日報</span>
-        </div>
-        <div class="sidebar-nav-item" id="navTargets" data-section="targets">
-          <span class="nav-icon">&#127919;</span>
-          <span class="nav-label">業務年度目標</span>
-        </div>
-        <div class="sidebar-nav-item" id="navPipeline" data-section="pipeline">
-          <span class="nav-icon">&#128202;</span>
-          <span class="nav-label">商機推進進度</span>
-        </div>
-        <div class="sidebar-nav-item" id="navForecast" data-section="forecast">
-          <span class="nav-icon">&#128200;</span>
-          <span class="nav-label">銷售預測報表</span>
-        </div>
-
-        <div class="sidebar-nav-item" id="navPipelineReport" data-section="pipelineReport">
-          <span class="nav-icon">&#127775;</span>
-          <span class="nav-label">商機動態報表</span>
-        </div>
-
-        <div class="sidebar-nav-item" id="navBizAnalysis" data-section="bizAnalysis">
-          <span class="nav-icon">&#128200;</span>
-          <span class="nav-label">商機分析</span>
-        </div>
-
-        <!-- Pipeline 月度變動（一級主管/秘書專用） -->
-        <div class="sidebar-nav-item" id="navPipelineDateChange" data-section="pipelineDateChange" style="display:none">
-          <span class="nav-icon">&#128202;</span>
-          <span class="nav-label">Pipeline 月度變動</span>
-        </div>
-
-        <div class="sidebar-nav-item" id="navLostOpp" data-section="lostOpp">
-          <span class="nav-icon">&#128197;</span>
-          <span class="nav-label">流失商機分析</span>
-        </div>
-
-        <!-- 管理儀表板（主管/Admin 專用） -->
-        <div class="sidebar-nav-item" id="navExecDash" data-section="execDash" style="display:none">
-          <span class="nav-icon">&#128208;</span>
-          <span class="nav-label">管理儀表板</span>
-        </div>
-
-        <!-- YoY 營收同期比（長官 BI 報表，executive / admin） -->
-        <div class="sidebar-nav-item" id="navYoy" data-section="yoy" style="display:none">
-          <span class="nav-icon">&#128202;</span>
-          <span class="nav-label">YoY 營收同期比</span>
-        </div>
-
-        <!-- 行銷活動（marketing / manager / admin） -->
-        <div class="sidebar-nav-item" id="navCampaigns" data-section="campaigns" style="display:none">
-          <span class="nav-icon">&#128226;</span>
-          <span class="nav-label">行銷活動</span>
-        </div>
-
-        <!-- Lead 管理（marketing / manager / user 被分配者） -->
-        <div class="sidebar-nav-item" id="navLeads" data-section="leads" style="display:none">
-          <span class="nav-icon">&#127919;</span>
-          <span class="nav-label">Lead 管理</span>
-          <span class="nav-badge" id="leadsBadge" style="display:none">0</span>
-        </div>
-
-        <div class="sidebar-nav-item" id="navQuotations" data-section="quotations">
-          <span class="nav-icon">&#128203;</span>
-          <span class="nav-label">報價單管理</span>
-        </div>
-
-        <!-- 合約管理群組 -->
-        <div class="sidebar-nav-group" id="navGroupContract">
-          <div class="sidebar-nav-item sidebar-nav-group-hd" id="navContractGroup">
-            <span class="nav-icon">&#128196;</span>
-            <span class="nav-label">合約管理</span>
-            <span class="nav-arrow">&#9654;</span>
-          </div>
-          <div class="sidebar-sub-menu" id="subMenuContract">
-            <div class="sidebar-nav-item sidebar-sub-item" id="navErpMa">
-              <span class="nav-icon">&#128221;</span>
-              <span class="nav-label">ERP MA 管理</span>
-            </div>
-            <div class="sidebar-nav-item sidebar-sub-item" id="navSapMa">
-              <span class="nav-icon">&#128200;</span>
-              <span class="nav-label">SAP License MA</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 帳務管理群組 -->
-        <div class="sidebar-nav-group" id="navGroupAccounting">
-          <div class="sidebar-nav-item sidebar-nav-group-hd" id="navAccountingGroup">
-            <span class="nav-icon">&#128184;</span>
-            <span class="nav-label">帳務管理</span>
-            <span class="nav-arrow">&#9654;</span>
-          </div>
-          <div class="sidebar-sub-menu" id="subMenuAccounting">
-            <div class="sidebar-nav-item sidebar-sub-item" id="navReceivables">
-              <span class="nav-icon">&#128202;</span>
-              <span class="nav-label">應收帳款逾期</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Call-in Pass -->
-        <div class="sidebar-nav-item" id="navCallin" data-section="callin">
-          <span class="nav-icon">&#128222;</span>
-          <span class="nav-label">Call-in Pass</span>
-          <span class="nav-badge" id="callinBadge" style="display:none">0</span>
-        </div>
-
-        <!-- 名單移轉（主管專用） -->
-        <div class="sidebar-nav-item" id="navTransfer" data-section="transfer" style="display:none">
-          <span class="nav-icon">&#128260;</span>
-          <span class="nav-label">名單移轉</span>
-        </div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <!-- ── 分組：工作台 ── -->
+        <section class="sg" id="sgWorkbench" data-sg="workbench" style="--sg-color:#5b9dff">
+          <button type="button" class="sg-hd" id="sgWorkbenchHd" aria-expanded="false" aria-controls="sgWorkbenchBody">
+            <span class="sg-dot" aria-hidden="true"></span><span class="sg-name">工作台</span><span class="sg-count" aria-label="項目數">0</span><span class="sg-chev" aria-hidden="true"></span>
+          </button>
+          <div class="sg-body" id="sgWorkbenchBody"><div class="sg-inner" data-sg-inner="workbench">
+          <div class="sidebar-nav-item active" id="navHome" data-section="home">
+                    <span class="nav-icon">&#127968;</span>
+                    <span class="nav-label">首頁</span>
+                  </div>
+          <!-- 主管首頁（manager1/manager2/admin 專用） -->
+          <div class="sidebar-nav-item" id="navManagerHome" data-section="managerHome" style="display:none">
+                    <span class="nav-icon">&#11088;</span>
+                    <span class="nav-label">主管首頁</span>
+                  </div>
+          <!-- 管理儀表板（主管/Admin 專用） -->
+          <div class="sidebar-nav-item" id="navExecDash" data-section="execDash" style="display:none">
+                    <span class="nav-icon">&#128208;</span>
+                    <span class="nav-label">管理儀表板</span>
+                  </div>
+          </div></div>
+        </section>
+        <!-- ── 分組：客戶管理 ── -->
+        <section class="sg" id="sgCustomers" data-sg="customers" style="--sg-color:#2dd4bf">
+          <button type="button" class="sg-hd" id="sgCustomersHd" aria-expanded="false" aria-controls="sgCustomersBody">
+            <span class="sg-dot" aria-hidden="true"></span><span class="sg-name">客戶管理</span><span class="sg-count" aria-label="項目數">0</span><span class="sg-chev" aria-hidden="true"></span>
+          </button>
+          <div class="sg-body" id="sgCustomersBody"><div class="sg-inner" data-sg-inner="customers">
+          <div class="sidebar-nav-item" id="navProspects" data-section="prospects">
+                    <span class="nav-icon">&#128270;</span>
+                    <span class="nav-label">潛在客戶</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navContacts" data-section="contacts">
+                    <span class="nav-icon">&#127942;</span>
+                    <span class="nav-label">我的客戶</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navCompanyMaster" data-section="companyMaster">
+                    <span class="nav-icon">&#127970;</span>
+                    <span class="nav-label">企業主檔</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navKeyAccount" data-section="keyAccount">
+                    <span class="nav-icon">&#11088;</span>
+                    <span class="nav-label">Key Account</span>
+                  </div>
+          <!-- Call-in Pass -->
+          <div class="sidebar-nav-item" id="navCallin" data-section="callin">
+                    <span class="nav-icon">&#128222;</span>
+                    <span class="nav-label">Call-in Pass</span>
+                    <span class="nav-badge" id="callinBadge" style="display:none">0</span>
+                  </div>
+          <!-- 名單移轉（主管專用） -->
+          <div class="sidebar-nav-item" id="navTransfer" data-section="transfer" style="display:none">
+                    <span class="nav-icon">&#128260;</span>
+                    <span class="nav-label">名單移轉</span>
+                  </div>
+          </div></div>
+        </section>
+        <!-- ── 分組：銷售作業 ── -->
+        <section class="sg" id="sgSales" data-sg="sales" style="--sg-color:#fbbf24">
+          <button type="button" class="sg-hd" id="sgSalesHd" aria-expanded="false" aria-controls="sgSalesBody">
+            <span class="sg-dot" aria-hidden="true"></span><span class="sg-name">銷售作業</span><span class="sg-count" aria-label="項目數">0</span><span class="sg-chev" aria-hidden="true"></span>
+          </button>
+          <div class="sg-body" id="sgSalesBody"><div class="sg-inner" data-sg-inner="sales">
+          <div class="sidebar-nav-item" id="navVisits" data-section="visits">
+                    <span class="nav-icon">&#128203;</span>
+                    <span class="nav-label">業務日報</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navPipeline" data-section="pipeline">
+                    <span class="nav-icon">&#128202;</span>
+                    <span class="nav-label">商機推進進度</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navQuotations" data-section="quotations">
+                    <span class="nav-icon">&#128203;</span>
+                    <span class="nav-label">報價單管理</span>
+                  </div>
+          <!-- Lead 管理（marketing / manager / user 被分配者） -->
+          <div class="sidebar-nav-item" id="navLeads" data-section="leads" style="display:none">
+                    <span class="nav-icon">&#127919;</span>
+                    <span class="nav-label">Lead 管理</span>
+                    <span class="nav-badge" id="leadsBadge" style="display:none">0</span>
+                  </div>
+          <!-- 行銷活動（marketing / manager / admin） -->
+          <div class="sidebar-nav-item" id="navCampaigns" data-section="campaigns" style="display:none">
+                    <span class="nav-icon">&#128226;</span>
+                    <span class="nav-label">行銷活動</span>
+                  </div>
+          </div></div>
+        </section>
+        <!-- ── 分組：分析與目標 ── -->
+        <section class="sg" id="sgAnalytics" data-sg="analytics" style="--sg-color:#a78bfa">
+          <button type="button" class="sg-hd" id="sgAnalyticsHd" aria-expanded="false" aria-controls="sgAnalyticsBody">
+            <span class="sg-dot" aria-hidden="true"></span><span class="sg-name">分析與目標</span><span class="sg-count" aria-label="項目數">0</span><span class="sg-chev" aria-hidden="true"></span>
+          </button>
+          <div class="sg-body" id="sgAnalyticsBody"><div class="sg-inner" data-sg-inner="analytics">
+          <div class="sidebar-nav-item" id="navTargets" data-section="targets">
+                    <span class="nav-icon">&#127919;</span>
+                    <span class="nav-label">業務年度目標</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navForecast" data-section="forecast">
+                    <span class="nav-icon">&#128200;</span>
+                    <span class="nav-label">銷售預測報表</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navPipelineReport" data-section="pipelineReport">
+                    <span class="nav-icon">&#127775;</span>
+                    <span class="nav-label">商機動態報表</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navBizAnalysis" data-section="bizAnalysis">
+                    <span class="nav-icon">&#128200;</span>
+                    <span class="nav-label">商機分析</span>
+                  </div>
+          <!-- Pipeline 月度變動（一級主管/秘書專用；目前以 pdcSection 嵌入商機動態報表，此項保持隱藏） -->
+          <div class="sidebar-nav-item" id="navPipelineDateChange" data-section="pipelineDateChange" style="display:none">
+                    <span class="nav-icon">&#128202;</span>
+                    <span class="nav-label">Pipeline 月度變動</span>
+                  </div>
+          <div class="sidebar-nav-item" id="navLostOpp" data-section="lostOpp">
+                    <span class="nav-icon">&#128197;</span>
+                    <span class="nav-label">流失商機分析</span>
+                  </div>
+          <!-- YoY 營收同期比（長官 BI 報表，executive / admin） -->
+          <div class="sidebar-nav-item" id="navYoy" data-section="yoy" style="display:none">
+                    <span class="nav-icon">&#128202;</span>
+                    <span class="nav-label">YoY 營收同期比</span>
+                  </div>
+          </div></div>
+        </section>
+        <!-- ── 分組：合約與帳務 ── -->
+        <section class="sg" id="sgContract" data-sg="contract" style="--sg-color:#fb7185">
+          <button type="button" class="sg-hd" id="sgContractHd" aria-expanded="false" aria-controls="sgContractBody">
+            <span class="sg-dot" aria-hidden="true"></span><span class="sg-name">合約與帳務</span><span class="sg-count" aria-label="項目數">0</span><span class="sg-chev" aria-hidden="true"></span>
+          </button>
+          <div class="sg-body" id="sgContractBody"><div class="sg-inner" data-sg-inner="contract">
+          <!-- 合約管理群組 -->
+          <div class="sidebar-nav-group" id="navGroupContract">
+                    <div class="sidebar-nav-item sidebar-nav-group-hd" id="navContractGroup">
+                      <span class="nav-icon">&#128196;</span>
+                      <span class="nav-label">合約管理</span>
+                      <span class="nav-arrow">&#9654;</span>
+                    </div>
+                    <div class="sidebar-sub-menu" id="subMenuContract">
+                      <div class="sidebar-nav-item sidebar-sub-item" id="navErpMa">
+                        <span class="nav-icon">&#128221;</span>
+                        <span class="nav-label">ERP MA 管理</span>
+                      </div>
+                      <div class="sidebar-nav-item sidebar-sub-item" id="navSapMa">
+                        <span class="nav-icon">&#128200;</span>
+                        <span class="nav-label">SAP License MA</span>
+                      </div>
+                    </div>
+                  </div>
+          <!-- 帳務管理群組 -->
+          <div class="sidebar-nav-group" id="navGroupAccounting">
+                    <div class="sidebar-nav-item sidebar-nav-group-hd" id="navAccountingGroup">
+                      <span class="nav-icon">&#128184;</span>
+                      <span class="nav-label">帳務管理</span>
+                      <span class="nav-arrow">&#9654;</span>
+                    </div>
+                    <div class="sidebar-sub-menu" id="subMenuAccounting">
+                      <div class="sidebar-nav-item sidebar-sub-item" id="navReceivables">
+                        <span class="nav-icon">&#128202;</span>
+                        <span class="nav-label">應收帳款逾期</span>
+                      </div>
+                    </div>
+                  </div>
+          </div></div>
+        </section>
+        <div class="sg-pill" id="navPill" aria-hidden="true"></div>
       </nav>
 
       <div class="sidebar-footer">
@@ -250,6 +284,8 @@
             <div class="notif-list" id="notifList"><div class="notif-empty">暫無通知</div></div>
           </div>
         </div>
+        <!-- 玻璃色彩主題選擇（glass-theme.js 填入內容；僅玻璃模式顯示） -->
+        <div class="gt-wrap" id="glassThemeWrap"></div>
         <div class="topbar-actions" id="prospectsToolbar" style="display:none">
           <div class="search-box">
             <span class="search-icon">&#128269;</span>
@@ -3099,6 +3135,7 @@
           integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
           crossorigin="anonymous"></script>
   <script src="deep-link.js"></script>
+  <script src="glass-theme.js"></script>
   <script src="app.js"></script>
   <script src="tw-workdays.js"></script>
   <script src="quote-pricebook.js"></script>
