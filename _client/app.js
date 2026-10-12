@@ -1890,6 +1890,7 @@ function openProductLineModal(c) {
         <button class="pl-btn pl-its" data-pl="ITS">ITS</button>
         <button class="pl-btn pl-crm" data-pl="CRM">CRM</button>
         <button class="pl-btn pl-mdm" data-pl="MDM">MDM</button>
+        <button class="pl-btn pl-sec" data-pl="資安">資安</button>
       </div>
       <button class="pl-cancel">取消</button>
     </div>`;
@@ -2805,7 +2806,7 @@ function setupBuSelector(selectId, groupId, presetBu) {
   const myBus = window._myBus || [];
   const role = window._myRole || '';
   const isCrossBu = ['admin','executive','accounting_manager','finance_manager'].includes(role);
-  const ALL_BUS = ['ERP','ITS','MDM','CRM'];
+  const ALL_BUS = ['ERP','ITS','MDM','CRM','資安'];
   const options = isCrossBu ? ALL_BUS : myBus;
 
   if (options.length <= 1 && !isCrossBu) {
@@ -3449,7 +3450,7 @@ async function initUser() {
     const topbarBadge = document.getElementById('topbarUserBadge');
     if (topbarBadge) {
       const ROLE_LBL = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', accounting_manager:'會計主管', finance_manager:'財務主管', secretary:'秘書', user:'業務', marketing:'行銷', tecopm:'集團PM（唯讀）', groupsales:'集團業務', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
-      const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
+      const BU_C = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48','全公司':'#d97706'};
       // 集團範圍角色：badge 顯示集團名稱（取代 BU 徽章）
       if (user.role === 'tecopm' || user.role === 'groupsales') {
         const groupName = user.viewGroupName || '未設定集團';
@@ -3477,7 +3478,7 @@ async function initUser() {
       metaEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.65);margin-top:2px;display:flex;gap:4px;align-items:center;flex-wrap:wrap';
       const parts = [];
       if (roleLabel) parts.push(`<span>${roleLabel}</span>`);
-      const BU_COLOR = {ERP:'#60a5fa',ITS:'#34d399',MDM:'#fb923c',CRM:'#a78bfa','全公司':'#fbbf24'};
+      const BU_COLOR = {ERP:'#60a5fa',ITS:'#34d399',MDM:'#fb923c',CRM:'#a78bfa','資安':'#fb7185','全公司':'#fbbf24'};
       if (isCrossBu && myBus.length === 0) {
         parts.push(`<span style="background:${BU_COLOR['全公司']}33;color:${BU_COLOR['全公司']};padding:1px 6px;border-radius:6px;font-weight:600">全公司</span>`);
       } else {
@@ -4448,7 +4449,7 @@ async function promptConvertToCustomer(opp) {
   const linkedContact = allContacts.find(c => c.id === opp.contactId) || companyContacts[0];
   if (!linkedContact) return;
 
-  // 顯示 ERP / ITS 選擇對話框
+  // 顯示 ERP / ITS / MDM / CRM / 資安 選擇對話框
   document.querySelectorAll('.product-line-overlay').forEach(el => el.remove());
   const overlay = document.createElement('div');
   overlay.className = 'product-line-overlay';
@@ -4461,6 +4462,7 @@ async function promptConvertToCustomer(opp) {
         <button class="pl-btn pl-its" data-pl="ITS">ITS 客戶</button>
         <button class="pl-btn pl-crm" data-pl="CRM">CRM 客戶</button>
         <button class="pl-btn pl-mdm" data-pl="MDM">MDM 客戶</button>
+        <button class="pl-btn pl-sec" data-pl="資安">資安 客戶</button>
       </div>
       <button class="pl-cancel">稍後再設定</button>
     </div>`;
@@ -5333,8 +5335,8 @@ function renderBuBreakdown() {
     return;
   }
   const year = new Date().getFullYear();
-  const BUS = ['ERP','ITS','MDM','CRM'];
-  const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+  const BUS = ['ERP','ITS','MDM','CRM','資安'];
+  const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48'};
 
   const cards = BUS.map(bu => {
     // 此 BU 包含的人員（用於 target / 手動認列計算）

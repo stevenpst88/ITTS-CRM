@@ -4,7 +4,7 @@
  *   Node  ：require('../_client/admin-users-view.js')（scripts/check-admin-users-view.js 用它；Vercel 的 includeFiles 已含 _client/**）
  *
  * 規則（業主 2026-10 核可）：
- *   1) BU 分頁固定五個：ERP、ITS、MDM、CRM、全公司／集團。帳號的 bu 陣列有幾個 BU，就出現在幾個 BU 分頁（各分頁數字因此會重疊）。
+ *   1) BU 分頁固定六個：ERP、ITS、MDM、CRM、資安、全公司／集團。帳號的 bu 陣列有幾個 BU，就出現在幾個 BU 分頁（各分頁數字因此會重疊）。
  *      沒有任何有效 BU 的帳號（admin／executive／accounting_manager／finance_manager、系統帳號池 pool、資料壞掉的帳號）一律放「全公司／集團」。
  *      集團角色（tecopm／groupsales）以集團界定範圍、不掛 BU，也固定放「全公司／集團」。
  *   2) 分頁內依角色（職能＝帳號 role）分組，組序固定（見 ROLE_ORDER）；沒登記的角色排在後面、組名用原始值；系統帳號池 pool 永遠最後。
@@ -19,13 +19,14 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const BU_LIST = ['ERP', 'ITS', 'MDM', 'CRM'];
+  const BU_LIST = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
   const TAB_CORP = 'CORP';
   const TABS = [
     { id: 'ERP', label: 'ERP' },
     { id: 'ITS', label: 'ITS' },
     { id: 'MDM', label: 'MDM' },
     { id: 'CRM', label: 'CRM' },
+    { id: '資安', label: '資安' },
     { id: TAB_CORP, label: '全公司／集團' }
   ];
   const TAB_IDS = TABS.map(t => t.id);
@@ -91,7 +92,7 @@
     return v.toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  /** 帳號的有效 BU：trim + 轉大寫、只留 ERP/ITS/MDM/CRM、去重；非陣列的字串視為單一 BU；其他型別當空 */
+  /** 帳號的有效 BU：trim + 轉大寫、只留 ERP/ITS/MDM/CRM/資安、去重（toUpperCase 對中文代碼「資安」是原樣，不影響比對）；非陣列的字串視為單一 BU；其他型別當空 */
   function effectiveBus(u) {
     if (!isUser(u)) return [];
     let raw = u.bu;

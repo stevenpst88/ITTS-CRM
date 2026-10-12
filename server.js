@@ -930,7 +930,7 @@ const TECOPM_ALLOWED_PATHS = new Set([
   '/api/visits',            // 拜訪記錄
   '/api/groups',            // 載入 group → 取 memberCompanies
   '/api/usermap',           // 預測表業務員名稱對應
-  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
 ]);
 // 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
 // （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
@@ -943,7 +943,7 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/me', '/api/logout', '/api/user/password',
   '/api/opportunities', '/api/contacts', '/api/visits',
   '/api/groups', '/api/usermap', '/api/company-lookup',
-  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
 ];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
@@ -1793,7 +1793,7 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
 });
 
 // 合法 BU 值
-const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
 // 集團PM（tecopm）= 唯讀角色，不走 BU 過濾、改用 viewOwnerScope + viewGroupId 二維過濾
 const READONLY_ROLES = ['tecopm'];
 // 以「集團」而非 BU 界定範圍的角色：一律 bu=null，改用 viewOwnerScope + viewGroupId 過濾。
@@ -1873,7 +1873,7 @@ function validateBuInput(role, buInput) {
   const arr = Array.isArray(buInput) ? buInput : (buInput ? [buInput] : []);
   const cleaned = [...new Set(arr.filter(b => VALID_BUS.includes(b)))];
   if (cleaned.length === 0) {
-    return { error: '此角色必須至少指定一個 BU（ERP / ITS / MDM / CRM）' };
+    return { error: '此角色必須至少指定一個 BU（ERP / ITS / MDM / CRM / 資安）' };
   }
   return { bu: cleaned };
 }
@@ -9909,7 +9909,7 @@ app.get('/api/exec/bu-comparison', requireAuth, (req, res) => {
   const yearNum = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
   const auth = loadAuth();
-  const BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+  const BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
 
   const result = BUS.map(bu => {
     // 屬於此 BU 的業務人員

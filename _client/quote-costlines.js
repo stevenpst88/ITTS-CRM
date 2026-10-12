@@ -2468,7 +2468,7 @@ function cleanNames(list) {
 
 // ── 牌價簿 ─────────────────────────────────────────
 const PB_UNIT = '人天';
-const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
+const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];   // 與 lib/quotePricebook.js BUS 同值同序
 const cleanBu = (v) => (typeof v === 'string' && PB_BUS.indexOf(v) >= 0) ? v : '';
 /** 品名比對用的鍵：NFKC＋trim＋小寫（內部空白不收合，所以「PM  顧問」與「PM 顧問」不算相同——和改版前的完全相符規則一致） */
 const pbKey = (v) => String(v === undefined || v === null ? '' : v).normalize('NFKC').trim().toLowerCase();
