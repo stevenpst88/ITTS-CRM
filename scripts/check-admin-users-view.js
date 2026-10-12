@@ -39,12 +39,14 @@ const noThrow = (fn) => { try { fn(); return true; } catch (e) { return false; }
 
 // ═════════ 0) 載入 ═════════
 t('0.1 瀏覽器載入掛 window.AdminUsersView；Node 載入同一份', sandbox.self.AdminUsersView && typeof sandbox.self.AdminUsersView.buildView === 'function' && typeof V.buildView === 'function');
-t('0.2 五個分頁固定且順序是 ERP、ITS、MDM、CRM、全公司／集團（沒有「全部」分頁）', J(V.TABS.map((x) => x.label)) === J(['ERP', 'ITS', 'MDM', 'CRM', '全公司／集團']) && V.TAB_IDS.length === 5);
+t('0.2 六個分頁固定且順序是 ERP、ITS、MDM、CRM、資安、全公司／集團（沒有「全部」分頁）', J(V.TABS.map((x) => x.label)) === J(['ERP', 'ITS', 'MDM', 'CRM', '資安', '全公司／集團']) && V.TAB_IDS.length === 6 && J(V.BU_LIST) === J(['ERP', 'ITS', 'MDM', 'CRM', '資安']));
 
 // ═════════ 1) 分割規則 ═════════
 {
   const multi = mk('multi', 'user', ['ERP', 'CRM']);
   const all4 = mk('all4', 'manager1', ['ERP', 'ITS', 'MDM', 'CRM']);
+  const sec1 = mk('sec1', 'user', ['資安']);
+  const all5 = mk('all5', 'manager1', ['ERP', 'ITS', 'MDM', 'CRM', '資安']);
   const one = mk('one', 'user', ['ITS']);
   const adm = mk('adm', 'admin', []);
   const exe = mk('exe', 'executive', []);
@@ -53,10 +55,11 @@ t('0.2 五個分頁固定且順序是 ERP、ITS、MDM、CRM、全公司／集團
   const tpm = mk('tpm', 'tecopm', []);
   const gs = mk('gs', 'groupsales', []);
   const pool = mk('_pool', 'pool', []);
-  const p = V.partition([multi, all4, one, adm, exe, acc, fin, tpm, gs, pool]);
-  t('1.1 多 BU 帳號出現在每個所屬的 BU 分頁（ERP+CRM → 兩個分頁都有；四個 BU → 四個分頁都有）', p.ERP.includes(multi) && p.CRM.includes(multi) && !p.ITS.includes(multi) && !p.MDM.includes(multi) && ['ERP', 'ITS', 'MDM', 'CRM'].every((b) => p[b].includes(all4)));
+  const p = V.partition([multi, all4, sec1, all5, one, adm, exe, acc, fin, tpm, gs, pool]);
+  t('1.1 多 BU 帳號出現在每個所屬的 BU 分頁（ERP+CRM → 兩個分頁都有；四個 BU → 四個分頁都有）', p.ERP.includes(multi) && p.CRM.includes(multi) && !p.ITS.includes(multi) && !p.MDM.includes(multi) && ['ERP', 'ITS', 'MDM', 'CRM'].every((b) => p[b].includes(all4)) && !p['資安'].includes(all4) && ['ERP', 'ITS', 'MDM', 'CRM', '資安'].every((b) => p[b].includes(all5)));
+  t('1.1b 資安 帳號只出現在「資安」分頁（不在其他 BU 分頁、不在全公司）；字串 bu "資安"（舊格式）與前後空白也歸入；toUpperCase 對中文代碼是原樣', p['資安'].includes(sec1) && ['ERP', 'ITS', 'MDM', 'CRM', 'CORP'].every((b) => !p[b].includes(sec1)) && J(V.tabsOf(mk('s2', 'user', '資安'))) === J(['資安']) && J(V.tabsOf(mk('s3', 'user', [' 資安 ', '資安']))) === J(['資安']) && J(V.tabsOf(mk('s4', 'user', ['資安部']))) === J(['CORP']));
   t('1.2 單一 BU 只在該分頁；各分頁數字因多 BU 而重疊（總和大於帳號數）', p.ITS.includes(one) && !p.ERP.includes(one) && Object.values(p).reduce((n, l) => n + l.length, 0) > 10);
-  t('1.3 空 bu 的 admin／executive／accounting_manager／finance_manager → 只在「全公司／集團」', [adm, exe, acc, fin].every((u) => p.CORP.includes(u) && ['ERP', 'ITS', 'MDM', 'CRM'].every((b) => !p[b].includes(u))));
+  t('1.3 空 bu 的 admin／executive／accounting_manager／finance_manager → 只在「全公司／集團」', [adm, exe, acc, fin].every((u) => p.CORP.includes(u) && ['ERP', 'ITS', 'MDM', 'CRM', '資安'].every((b) => !p[b].includes(u))));
   t('1.4 tecopm／groupsales／pool → 全公司／集團', [tpm, gs, pool].every((u) => p.CORP.includes(u)));
   t('1.5 集團角色即使資料裡殘留 bu，仍只放全公司／集團（畫面上它們顯示的是「集團限制」而不是 BU）', J(V.tabsOf(mk('x', 'tecopm', ['ERP']))) === J(['CORP']) && J(V.tabsOf(mk('y', 'groupsales', ['ITS', 'CRM']))) === J(['CORP']));
   t('1.6 每個帳號在 CORP 以外的分頁數＝有效 BU 數；CORP 只收沒有有效 BU 的', V.tabsOf(multi).length === 2 && V.tabsOf(one).length === 1 && V.tabsOf(adm).length === 1);
