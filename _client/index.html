@@ -2446,6 +2446,12 @@
           </div>
         </div>
       </div>
+      <!-- 報價單：已連結幾張＋建立報價單（只有能建單的角色、自己的 A／B／C／D 商機才顯示；由 quote.js 的 qOppModalRow 控制） -->
+      <div id="oppEditQuoteRow" class="q-opp-modalrow" style="display:none">
+        <div class="q-opp-modalrow-main"><span id="oppEditQuoteCount">📄 已連結報價單：0 張</span>
+          <span id="oppEditQuoteList" class="q-opp-qlist"></span></div>
+        <button type="button" class="btn btn-primary btn-sm" id="oppEditNewQuoteBtn" style="display:none">＋ 建立報價單</button>
+      </div>
       <!-- AI 贏率結果面板 -->
       <div id="oppWinRatePanel" style="display:none;margin:0 20px 12px;padding:12px 16px;background:#f0faf0;border:1px solid #a8d5b0;border-radius:10px;font-size:13px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -2645,6 +2651,20 @@
         <nav class="qs-rail" id="qsRail" aria-label="填寫進度"></nav>
         <div class="qs-main" id="qsMain">
 
+        <!-- 連結商機（新報價單必填；舊單沒有商機時顯示「未連結商機」，可選擇補連）。選單內容由 quote.js 的 qOpp* 函式填 -->
+        <div class="qs-step" data-qs="opp" id="qOppStep">
+        <div class="quote-section-title">🎯 連結商機 <span class="required">*</span>
+          <span class="q-sec-sub">每張新報價單都要連結一筆自己的商機（A／B／C／D 階段）</span></div>
+        <input type="hidden" id="qOppId">
+        <div id="qOppChosen" class="q-opp-chosen" style="display:none"></div>
+        <div id="qOppPicker" class="q-opp-picker">
+          <input type="search" id="qOppSearch" placeholder="搜尋公司、商品或聯絡人…" autocomplete="off" aria-label="搜尋商機">
+          <div id="qOppList" class="q-opp-list" role="listbox" aria-label="我的商機"></div>
+          <div class="q-opp-foot"><button type="button" class="btn btn-secondary btn-sm" id="qOppCreateBtn">找不到？先建立商機</button></div>
+        </div>
+        <div id="qOppAmountHint" class="q-hint" style="display:none"></div>
+        </div><!-- end step opp -->
+
         <div class="qs-step" data-qs="customer">
         <!-- 基本資訊 -->
         <div class="quote-section-title">📋 基本資訊</div>
@@ -2652,6 +2672,7 @@
           <div class="form-group">
             <label>客戶公司 <span class="required">*</span></label>
             <input type="text" id="qCompany" placeholder="客戶公司名稱" list="quoteCompanyList" autocomplete="off">
+            <div id="qOppLockNote" class="q-hint" style="display:none">來自商機，不可改；要換客戶請先換商機</div>
             <datalist id="quoteCompanyList"></datalist>
           </div>
           <div class="form-group">
