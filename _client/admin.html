@@ -2363,7 +2363,7 @@
 
       <div class="admin-section" id="sec-quote-pricebook">
         <div class="section-title">💼 報價牌價簿</div>
-        <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM 四個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
+        <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM／資安 五個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
         <div class="admin-card" style="padding:18px;max-width:980px">
           <div style="font-size:12.5px;color:#6b7280;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:8px 12px;margin-bottom:14px">委外費用依供應商報價，於填成本時輸入，不在此維護。業務端看得到這裡的牌價與成本（標準費率表）。</div>
           <div id="pbIoBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -2675,6 +2675,7 @@
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ITS" style="width:16px;height:16px"> ITS</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="MDM" style="width:16px;height:16px"> MDM</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="CRM" style="width:16px;height:16px"> CRM</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="資安" style="width:16px;height:16px"> 資安</label>
           </div>
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
@@ -3141,7 +3142,7 @@
     }
 
     // ── 簽核流程設定（Admin）───────────────────────────────────
-    const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+    const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const AF_ACTIONS = [{ value: 'skip_mgr1', label: '跳過一級主管' }];
     let _afInited = false, _afCfg = null, _afUsers = null;
 
@@ -3185,7 +3186,7 @@
       const exs = (_afCfg.exceptions || []).filter(e => e.action === 'skip_mgr1');
       for (const bu of AF_BUS) {
         const on = !!(_afCfg.buSettings && _afCfg.buSettings[bu] && _afCfg.buSettings[bu].hasMgr2Step);
-        const skipNames = exs.map(e => _afUsers.find(u => u.username === e.username)).filter(u => u && u.bu === bu).map(u => u.displayName || u.username);
+        const skipNames = exs.map(e => _afUsers.find(u => u.username === e.username)).filter(u => u && (Array.isArray(u.bu) ? u.bu[0] : u.bu) === bu).map(u => u.displayName || u.username);
         const skip = on && skipNames.length > 0;
         const nodes = [_afNode('起點', '業務送簽')];
         if (on) nodes.push(_afNode('二級主管', '複核'));
@@ -3280,8 +3281,8 @@
     }
 
     // ── 銷售商品維護（Admin）───────────────────────────────────
-    const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
-    const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed' };
+    const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
+    const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed', '資安': '#e11d48' };
     let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null;
     const pcEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -3292,7 +3293,7 @@
       try {
         const r = await adminFetch(`${API}/product-catalog`);
         _pcData = pcBuildModel(await r.json());
-      } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [] }; }
+      } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [], '資安': [] }; }
       $('pcStatus').textContent = '';
       pcAttachOnce();
       pcRender();
@@ -3474,12 +3475,12 @@
     }
 
     // ── 報價牌價簿（Admin）─────────────────────────────────────
-    // data.pricebook：顧問角色 × 人天牌價／人天成本，依 BU（ERP／ITS／MDM／CRM）分四個分頁維護。整份取代儲存（四個 BU 一次送出）＋樂觀並行
+    // data.pricebook：顧問角色 × 人天牌價／人天成本，依 BU（ERP／ITS／MDM／CRM／資安）分五個分頁維護。整份取代儲存（五個 BU 一次送出）＋樂觀並行
     // （送出載入時的 updatedAt，不符→409 STALE_PRICEBOOK）。所有使用者可控字串（項目名稱、伺服器訊息、updatedBy）一律 pcEsc 後才進 innerHTML。
-    // _pbItems 是扁平陣列（每列有 bu）；同一個 BU 內的順序＝陣列順序；送出時依 ERP、ITS、MDM、CRM 分組（pbOrdered）。
+    // _pbItems 是扁平陣列（每列有 bu）；同一個 BU 內的順序＝陣列順序；送出時依 ERP、ITS、MDM、CRM、資安 分組（pbOrdered）。
     let _pbInited = false, _pbAttached = false, _pbItems = [], _pbUpdatedAt = null, _pbUpdatedBy = null, _pbSnap = '[]', _pbSnapBy = {};
     let _pbSeq = 0, _pbShowErr = false, _pbSrvErr = null, _pbLive = null, _pbSaving = false, _pbTab = 'ERP';
-    const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
+    const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];   // 與 lib/quotePricebook.js BUS 同值同序
     const PB_MAX_ITEMS = 60, PB_MAX_NAME = 40, PB_MAX_SPEC = 200, PB_MAX_MONEY = 1e9;   // 與 lib/quotePricebook.js 相同（PB_MAX_ITEMS 是「每個 BU」）
     const PB_MONEY_RE = /^\s*\d+(\.\d+)?\s*$/;
     const PB_TAB_KEY = 'pbActiveBu';
@@ -4478,7 +4479,7 @@
         const u = await r.json();
         if (u.role !== 'admin') { showLoginScreen(); return false; }
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
-        const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
+        const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48','全公司':'#d97706'};
         const badges = buArr.length === 0
           ? `<span style="background:${BU_COLOR['全公司']}20;color:${BU_COLOR['全公司']};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px">全公司</span>`
           : buArr.map(b => {
@@ -4598,7 +4599,7 @@
     // 畫面狀態放在模組層級的 uvState：loadUsers() 重抓資料、新增／編輯／刪除後重畫、quickToggle 失敗後重抓，分頁／篩選／收合都不會掉。
     // 只有「分頁、檢視方式、收合的群組」存 sessionStorage（讀回來一律先驗證）；搜尋與篩選重新整理後歸零。
     const UV = window.AdminUsersView;
-    const UV_BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+    const UV_BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48'};
     const UV_KEY = { tab: 'admin.users.tab', view: 'admin.users.view', collapsed: 'admin.users.collapsed' };
     function uvStoreGet(k) { try { return sessionStorage.getItem(k); } catch (_) { return null; } }
     function uvStoreSet(k, v) { try { sessionStorage.setItem(k, v); } catch (_) { /* 沒有 sessionStorage 也能用 */ } }
@@ -4632,7 +4633,7 @@
       if (buArr.length === 0) return `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`;
       return buArr.map(b => {
         const c = UV_BU_BADGE[b] || '#6b7280';
-        return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${escH(b)}</span>`;
+        return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px;white-space:nowrap">${escH(b)}</span>`;
       }).join('');
     }
     function uvAccessHtml(u) {

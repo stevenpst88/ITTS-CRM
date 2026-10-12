@@ -5,7 +5,7 @@
 //   QPB.peek()                   目前快取的項目陣列 [{id,bu,name,price,cost}]（bu 一定有值，缺漏＝ERP）；從未載入成功＝null（成本明細編輯器用：沒有就等於沒有牌價簿，行為不變）
 //   QPB.openPicker(hooks)        「從牌價簿選取」對話框：每次開啟都重新向伺服器取最新清單；勾選＋人天數 → 加入報價單品項
 //                                hooks = { getCurrent():目前品項列, onApply(items, info):套用到畫面, maxRows:列數上限（預設 50）, bu:預設分頁（可省略） }
-//                                對話框依 BU 分四個分頁（ERP／ITS／MDM／CRM，各顯示項目數）；跨分頁勾選的項目會保留，「加入」一次加入所有分頁勾選的項目。
+//                                對話框依 BU 分五個分頁（ERP／ITS／MDM／CRM／資安，各顯示項目數）；跨分頁勾選的項目會保留，「加入」一次加入所有分頁勾選的項目。
 //                                預設分頁＝hooks.bu（有項目才採用），否則第一個有項目的 BU。目前報價單沒有可靠的 BU 欄位（lib/quoteRoutes.js 不收也不存 bu），所以呼叫端沒傳 bu。
 //   純函式（可單元測試，不碰 DOM）：parseQty／marginPct／marginText／buildItems／isBlankDefaultRow／planAppend／sanitizeList／groupByBu／pickDefaultBu
 // 選取是「複製」：品項只帶 desc／unit('人天')／qty／unitPrice／cat('consult')／spec（牌價簿的說明，有才帶；之後可在報價單上逐單修改），沒有參照也沒有出處欄位，之後牌價簿怎麼改都不影響已存的報價單；
@@ -18,7 +18,7 @@ var QTY_MAX = 100000;
 var TTL_MS = 60 * 1000;
 var UNIT = '人天';
 var ENDPOINT = '/api/quote-pricebook';
-var BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
+var BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];   // 與 lib/quotePricebook.js BUS 同值同序
 
 // ── 純函式 ─────────────────────────────────────────
 function esc(v) {
@@ -73,7 +73,7 @@ function sanitizeList(raw) {
   return out;
 }
 
-/** 依 BU 分組（各 BU 內保持原順序）：{ERP:[],ITS:[],MDM:[],CRM:[]}；缺 bu 的算 ERP */
+/** 依 BU 分組（各 BU 內保持原順序）：{ERP:[],ITS:[],MDM:[],CRM:[],資安:[]}；缺 bu 的算 ERP */
 function groupByBu(list) {
   var g = {};
   BUS.forEach(function (b) { g[b] = []; });
@@ -89,7 +89,7 @@ function pickDefaultBu(list, hint) {
   return BUS[0];
 }
 
-/** 依勾選結果產生報價品項（依牌價簿順序：ERP、ITS、MDM、CRM 分頁順序，各 BU 內依清單順序；不依點選順序；找不到的 id 略過）。picks = [{id, qty}]。品名只有名稱（不帶 BU）；牌價簿有說明就複製到品項的 spec */
+/** 依勾選結果產生報價品項（依牌價簿順序：ERP、ITS、MDM、CRM、資安 分頁順序，各 BU 內依清單順序；不依點選順序；找不到的 id 略過）。picks = [{id, qty}]。品名只有名稱（不帶 BU）；牌價簿有說明就複製到品項的 spec */
 function buildItems(list, picks) {
   var want = Object.create(null);
   (Array.isArray(picks) ? picks : []).forEach(function (p) { if (p && p.id !== undefined) want[p.id] = p.qty; });

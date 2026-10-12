@@ -1816,6 +1816,7 @@ body.dark .ft-filter-chip-x { background: #d97706; }
 .pl-its { background: linear-gradient(135deg, #34a853, #1e7e34); color: #fff; }
 .pl-crm { background: linear-gradient(135deg, #7c3aed, #5b21b6); color: #fff; }
 .pl-mdm { background: linear-gradient(135deg, #e37400, #b35a00); color: #fff; }
+.pl-sec { background: linear-gradient(135deg, #e11d48, #9f1239); color: #fff; }
 .pl-cancel {
   background: none; border: 1px solid #ddd; border-radius: 8px;
   padding: 8px 24px; font-size: 14px; color: #666; cursor: pointer;
@@ -3767,7 +3768,7 @@ th.mb-q-col {
 .bu-breakdown-card { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.07); padding: 16px 18px; }
 .bu-breakdown-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .bu-breakdown-title { font-size: 14px; font-weight: 700; color: #1a3c7a; }
-.bu-breakdown-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.bu-breakdown-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }   /* 5 個 BU：ERP／ITS／MDM／CRM／資安 */
 .bu-card { background: #fff; border: 1px solid #e5e7eb; border-top: 3px solid #6b7280; border-radius: 12px; padding: 14px 14px 12px; transition: .2s; }
 .bu-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
 .bu-card-name { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
@@ -3777,6 +3778,9 @@ th.mb-q-col {
 .bu-card-rate { font-size: 22px; font-weight: 800; text-align: right; margin: 6px 0 4px; }
 .bu-card-bar { background: #f3f4f6; border-radius: 4px; height: 5px; overflow: hidden; margin-top: 4px; }
 .bu-card-bar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+@media (max-width: 1100px) {
+  .bu-breakdown-grid { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 900px) {
   .bu-breakdown-grid { grid-template-columns: repeat(2, 1fr); }
 }
