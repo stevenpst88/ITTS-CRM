@@ -206,6 +206,8 @@ app.use((req, res, next) => {
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
   if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  // 公告「我知道了」：只寫入自己的已讀回條，唯讀帳號也必須能確認，否則一次性公告會永遠彈出
+  if (/^\/api\/announcements\/[^/]+\/ack$/.test(req.path)) return next();
   // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響
   if (/^\/api\/quotations\/[^/]+\/cost-draft\/(?:summary|pnl-preview)$/.test(req.path)) return next();
   if (!req.session || !req.session.user) return next(); // 未登入交由後續 requireAuth 處理
@@ -931,6 +933,7 @@ const TECOPM_ALLOWED_PATHS = new Set([
   '/api/groups',            // 載入 group → 取 memberCompanies
   '/api/usermap',           // 預測表業務員名稱對應
   '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/announcements/active', // 公告彈窗（GET）
 ]);
 // 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
 // （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
@@ -944,6 +947,7 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/opportunities', '/api/contacts', '/api/visits',
   '/api/groups', '/api/usermap', '/api/company-lookup',
   '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/announcements',     // 公告彈窗：GET active、POST :id/ack（只寫自己的已讀）
 ];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
@@ -951,6 +955,7 @@ app.use((req, res, next) => {
   const rp = req.path.toLowerCase();   // 路由不分大小寫，白名單比對也必須不分大小寫（雙保險；最上方已擋非小寫 /api/ 前綴）
   if (!rp.startsWith('/api/')) return next();
   if (TECOPM_WRITE_EXEMPT_PATHS.has(rp)) return next(); // 改密碼/登出放行（含強制改密碼流程）
+  if (req.method === 'POST' && /^\/api\/announcements\/[^/]+\/ack$/.test(rp)) return next(); // 公告已讀回條：集團PM 雖唯讀，仍須能按「我知道了」
 
   if (role === 'tecopm') {
     if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
@@ -1004,6 +1009,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       bu: userBus,
       mustChangePassword: !!pwReason,
       passwordChangeReason: pwReason,
+      loginAt: Date.now(),   // 公告「每次登入」判斷用：每次真正登入都換新值，F5/還原 session 不變
       ...tecopmExtra
     };
     writeLog('LOGIN', username, username, `登入成功${pwReason ? `（需更換密碼:${pwReason}）` : ''}`, req);
@@ -6959,6 +6965,129 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
     `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆`, req);
   res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
+});
+
+// ── 公告（announcements）────────────────────────────────────
+// 儲存於主資料 blob 的 data.announcements（獨立命名空間）。邏輯在 lib/announcements.js。
+// 使用者端：GET /api/announcements/active、POST /api/announcements/:id/ack（只寫自己的已讀回條）
+// 管理端：/api/admin/announcements（CRUD，全部 requireAdmin + writeLog）
+// 使用者「我知道了」不寫 writeLog：這是已讀回條不是業務異動，全員每次確認都寫會把 audit.log（地端僅留 500 筆）洗掉；已讀資訊本身存在 readBy。
+const announcementsLib = require('./lib/announcements');
+
+app.get('/api/announcements/active', requireAuth, (req, res) => {
+  try {
+    const data = db.load();
+    const u = req.session.user;
+    const now = Date.now();
+    const items = announcementsLib.activeFor(data.announcements, { username: u.username, role: u.role }, now);
+    // 強制閱讀防繞過：記下「送達時間」shownAt（ack 須晚於它至少 READ_MIN_MS）。同批一次存檔。
+    let dirty = false;
+    for (const it of items) {
+      const a = data.announcements.find(x => x.id === it.id);
+      if (a && announcementsLib.markShown(a, u.username, now)) dirty = true;
+    }
+    if (dirty) db.save(data);
+    res.set('Cache-Control', 'no-store');
+    res.json({ loginAt: u.loginAt || 0, items });
+  } catch (e) {
+    console.error('[ANNOUNCEMENTS ACTIVE ERROR]', e);
+    res.status(500).json({ error: '公告載入失敗' });
+  }
+});
+
+app.post('/api/announcements/:id/ack', requireAuth, (req, res) => {
+  try {
+    const u = req.session.user;
+    const data = db.load();
+    const a = (data.announcements || []).find(x => x.id === req.params.id);
+    // 不存在或不是給這個角色的：一律當作不存在（不洩漏他人公告是否存在）
+    if (!a || !announcementsLib.targetsRole(a, u.role)) return res.status(404).json({ error: '公告不存在' });
+    // 強制閱讀：送達後不足 READ_MIN_MS（或根本沒被送達過）就 ack → 拒絕，不記已讀
+    if (announcementsLib.ackTooEarly(a, u.username, Date.now())) {
+      return res.status(409).json({ error: '請先閱讀公告內容', code: 'TOO_EARLY' });
+    }
+    // 以使用者看到的版本為準（上限為目前版本）：管理員在彈窗期間「重新公告」時，舊版確認不會吃掉新版
+    let v = parseInt(req.body && req.body.version, 10);
+    if (!Number.isFinite(v) || v < 1 || v > a.version) v = a.version;
+    if (!a.readBy || typeof a.readBy !== 'object') a.readBy = {};
+    const prev = a.readBy[u.username];
+    if (!prev || prev.version < v) {
+      a.readBy[u.username] = { version: v, at: new Date().toISOString() };
+      db.save(data);
+    } // 已確認過同版本就不重寫（everyLogin 每次登入都會 ack，避免每次登入都改寫整顆資料）
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[ANNOUNCEMENTS ACK ERROR]', e);
+    res.status(500).json({ error: '確認失敗，請稍後再試' });
+  }
+});
+
+app.get('/api/admin/announcements', requireAdmin, (req, res) => {
+  const data = db.load();
+  const users = loadAuth().users || [];
+  const now = Date.now();
+  const list = (data.announcements || []).map(a => announcementsLib.adminView(a, users, now))
+    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+  res.set('Cache-Control', 'no-store');
+  res.json({ items: list, roles: KNOWN_ROLES, limits: { title: announcementsLib.MAX_TITLE, body: announcementsLib.MAX_BODY, max: announcementsLib.MAX_ANNOUNCEMENTS } });
+});
+
+app.post('/api/admin/announcements', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const v = announcementsLib.validateInput(req.body, KNOWN_ROLES, false);
+  if (v.error) return res.status(400).json({ error: v.error });
+  const werr = announcementsLib.checkWindow(v.fields);
+  if (werr) return res.status(400).json({ error: werr });
+  const data = db.load();
+  if (!Array.isArray(data.announcements)) data.announcements = [];
+  if (data.announcements.length >= announcementsLib.MAX_ANNOUNCEMENTS) {
+    return res.status(400).json({ error: `公告數量已達上限 ${announcementsLib.MAX_ANNOUNCEMENTS} 則，請先刪除舊公告` });
+  }
+  const nowIso = new Date().toISOString();
+  const a = {
+    id: uuidv4(), version: 1, ...v.fields, readBy: {},
+    createdAt: nowIso, createdBy: operator, updatedAt: nowIso, updatedBy: operator,
+  };
+  data.announcements.push(a);
+  db.save(data);
+  writeLog('CREATE_ANNOUNCEMENT', operator, a.id, `新增公告「${a.title}」（${a.mode === 'once' ? '一次性' : '每次登入'}，${a.enabled ? '啟用' : '停用'}）`, req);
+  res.json({ ok: true, id: a.id });
+});
+
+app.put('/api/admin/announcements/:id', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  const a = (data.announcements || []).find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '公告不存在' });
+  const v = announcementsLib.validateInput(req.body, KNOWN_ROLES, true);
+  if (v.error) return res.status(400).json({ error: v.error });
+  const merged = { ...a, ...v.fields };
+  const werr = announcementsLib.checkWindow(merged);
+  if (werr) return res.status(400).json({ error: werr });
+  const changed = Object.keys(v.fields).filter(k => JSON.stringify(a[k]) !== JSON.stringify(v.fields[k]));
+  Object.assign(a, v.fields);
+  // 「重新公告給所有人」：版本 +1，所有人（含已確認者）會再看到一次
+  const renotify = !!(req.body && req.body.renotify);
+  if (renotify) a.version = (a.version || 1) + 1;
+  if (!changed.length && !renotify) return res.json({ ok: true, version: a.version, unchanged: true });
+  a.updatedAt = new Date().toISOString();
+  a.updatedBy = operator;
+  db.save(data);
+  writeLog('UPDATE_ANNOUNCEMENT', operator, a.id,
+    `更新公告「${a.title}」：${changed.join('、') || '（無欄位變更）'}${renotify ? `；重新公告給所有人（v${a.version}）` : ''}`, req);
+  res.json({ ok: true, version: a.version });
+});
+
+app.delete('/api/admin/announcements/:id', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  const list = data.announcements || [];
+  const idx = list.findIndex(x => x.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: '公告不存在' });
+  const [a] = list.splice(idx, 1);
+  db.save(data);
+  writeLog('DELETE_ANNOUNCEMENT', operator, a.id, `刪除公告「${a.title}」`, req);
+  res.json({ ok: true });
 });
 
 // ── Call-in Pass CRUD ─────────────────────────────────────

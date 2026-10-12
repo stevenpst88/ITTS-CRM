@@ -3525,6 +3525,8 @@ async function initUser() {
       try { stored = window.ITTSDeepLink ? window.ITTSDeepLink.consume() : ''; } catch (_) { stored = ''; }
       if (!_handleQuoteDeepLink() && stored) _handleQuoteDeepLink(stored);
     }
+    // 公告彈窗（announcements.js）：不 await、自帶 try/catch，失敗絕不影響登入與載入
+    try { if (window.ITTSAnnounce) window.ITTSAnnounce.start(user); } catch (_) { /* ignore */ }
   } catch { window.location.href = '/login.html'; }
 }
 
