@@ -768,11 +768,12 @@
               <option value="returned">已退回</option>
               <option value="approved">已核准</option>
               <option value="void">核准已失效／作廢</option>
+              <option value="invalid">失效（商機已作廢）</option>
             </select>
             <button class="btn btn-secondary" id="quoteInboxBtn" type="button" title="只看需要我簽核或填成本的報價單">&#128276; 待我處理 <span id="quoteInboxBadge" class="q-inbox-badge" style="display:none">0</span></button>
             <button class="btn btn-secondary" id="quoteSettingsBtn" type="button" style="display:none" onclick="openQuoteApprovalSettingsSafe()" title="簽核名冊、商品歸類、核決門檻、報價專用章">&#9881; 簽核設定</button>
             <button class="btn btn-secondary" id="myContactBtn" onclick="openMyContactModal()" title="維護印在報價單上的我方業務姓名／電話／手機">&#128100; 我的聯絡資訊</button>
-            <button class="btn btn-primary" id="addQuoteBtn">&#43; 新增報價單</button>
+            <button class="btn btn-primary" id="addQuoteBtn" style="display:none">&#43; 新增報價單</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="quoteTable">
@@ -2482,6 +2483,7 @@
         <div class="alert-soft-error" style="padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
           刪除後案件將移至「流失商機」留存分析，不會永久消失。
         </div>
+        <div id="oppDeleteQuoteWarn" class="q-warnbar" style="display:none;margin:-6px 0 16px"></div>
         <div class="form-group">
           <label>客戶名稱</label>
           <input type="text" id="oppDeleteCompany" class="input-readonly" readonly>
@@ -2636,6 +2638,8 @@
       </div>
       <!-- 顧問調整報價品項的橫幅（cost-sync）：由 renderCostSyncBanner 填；沒有異動時隱藏 -->
       <div id="qCostSyncBanner" class="q-cs-banner" style="display:none" role="status"></div>
+      <!-- 失效報價單（連結的商機已作廢）：唯讀橫幅，由 quote.js 的 qInvalidApply 填 -->
+      <div id="qInvalidBanner" class="q-errbar" style="display:none;margin:8px 20px" role="status"></div>
 
       <!-- ── 報價單 TAB 導覽 ── -->
       <div class="q-modal-tabs">

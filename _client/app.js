@@ -4829,6 +4829,9 @@ $('oppEditDelete').addEventListener('click', () => {
   $('oppDeleteReasonSel').value = '';
   $('oppDeleteReasonNote').value = '';
   $('oppDeleteReasonNote').placeholder = '補充說明（選填）';
+  // 連結的報價單會同時失效：確認前先警告（linkedQuoteCount＝尚未失效的張數）
+  { const _o = allOpportunities.find(x => x.id === $('oppEditId').value), _n = (_o && _o.linkedQuoteCount) || 0, _w = $('oppDeleteQuoteWarn');
+    if (_w) { _w.textContent = _n ? `⚠️ 將同時使 ${_n} 張報價單失效（失效的報價單只能檢視，簽核中的會被關閉；商機若還原，報價單會恢復）。` : ''; _w.style.display = _n ? '' : 'none'; } }
   $('oppDeleteModal').classList.add('open');
 });
 
@@ -6445,7 +6448,7 @@ function renderOppTable() {
       const id = this.dataset.id;
       const opp = allLostOppsForTargets.find(o => o.id === id);
       const name = opp ? (opp.company || opp.product || id) : id;
-      if (!confirm(`確定要還原商機「${name}」嗎？\n還原後將回到 C｜Pipeline 階段。`)) return;
+      if (!confirm(`確定要還原商機「${name}」嗎？\n還原後將回到 C｜Pipeline 階段；因這筆商機作廢而失效的報價單會一併恢復。`)) return;
       try {
         const r = await fetch(`${API}/opportunities/restore/${id}`, { method: 'POST' });
         if (!r.ok) { const e = await r.json(); showToast('還原失敗：' + (e.error||'未知錯誤')); return; }

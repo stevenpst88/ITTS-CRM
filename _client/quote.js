@@ -192,6 +192,10 @@ body.dark .qn-row input { background:#0d1117; border-color:#30363d; color:#c9d1d
 body.dark .qn-row input.qn-note { background:#2a2000; border-left-color:#d4a84e; }
 body.dark .qn-err { color:#ff8080; }
 
+/* 失效報價單列：淡化（商機已作廢） */
+.q-row-invalid td { color:#8a94a3; background:#fafbfc; }
+.q-row-invalid .quote-no { opacity:.7; }
+body.dark .q-row-invalid td { color:#8b949e; background:#12171e; }
 /* 報價單 ↔ 商機連結（q-opp-*） */
 .q-opp-picker input[type="search"] { width:100%; box-sizing:border-box; border:1px solid #ddd; border-radius:6px; padding:7px 10px; font-size:13px; margin-bottom:8px; }
 .q-opp-list { max-height:260px; overflow:auto; border:1px solid #e0e4ee; border-radius:8px; background:#fff; }
@@ -492,6 +496,7 @@ function quoteTextEditText(q) {
 
 /** 簽核階段：{ key, cls, label, title } */
 function quoteStageInfo(q) {
+  if (q.invalid) return { key: 'invalid', cls: 'quote-st-void', label: '失效（商機已作廢）', title: '連結的商機已作廢，這張報價單失效、只能檢視；商機若還原，報價單會恢復' };
   const a = q.approval;
   const cf = q.costFlow || {};
   if (a && a.state === 'approved') {
@@ -610,6 +615,9 @@ function applyQuoteToolbar() {
   }
   const ib = document.getElementById('quoteInboxBtn');
   if (ib) ib.classList.toggle('q-on', _qInboxOnly);
+  // 「新增報價單」只給能建單的角色（伺服器 me.canCreate；admin、主管、秘書、會計等不顯示）。預設隱藏，設定載入後才顯示，避免閃現
+  const ab = document.getElementById('addQuoteBtn');
+  if (ab) ab.style.display = me.canCreate === true ? '' : 'none';
 }
 
 function _qActionButtons(q) {
@@ -621,6 +629,14 @@ function _qActionButtons(q) {
     `<button type="button" class="btn btn-sm ${cls || ''}" data-qact="${act}" data-id="${id}"${title ? ` title="${escapeHtml(title)}"` : ''}>${label}</button>`;
   const out = [];
   const a = q.approval;
+  // 失效（連結的商機已作廢）：只能檢視、看歷程、預覽；沒有編輯／送簽／簽核／填成本，也不能下載正式檔（Excel／PDF／毛利分析）。沒送過簽的草稿仍可刪除
+  if (q.invalid) {
+    out.push(b('edit', '🔍 檢視', '', '唯讀檢視（這張報價單已失效）'));
+    if ((a && (a.state !== 'none' || (a.history || []).length)) || (p.canSeePrice !== false && q.timelineCount > 0)) out.push(b('approve', '📜 簽核進度', '', '檢視簽核進度與歷程'));
+    if (p.canSeePrice !== false) out.push(b('preview', '👁 預覽', '', '預覽報價單（失效單不能下載正式檔）'));
+    if ((p.isOwner || me.isAdmin) && !_qEverSubmitted(q) && p.isCostProvider !== true) out.push(b('delete', '🗑️', 'btn-soft-danger', '刪除（送過簽的單不可刪除）'));
+    return `<div class="q-actions">${out.join('')}</div>`;
+  }
   if (p.canEdit)     out.push(b('edit', '✏️ 編輯'));
   if (p.canSubmit)   out.push(b('submit', '📤 送簽', 'btn-primary', '送交主管簽核；送簽後整張單鎖定'));
   if (p.canWithdraw) out.push(b('withdraw', '↩ 撤回', '', '撤回後可修改，已簽的關卡作廢'));
@@ -683,7 +699,7 @@ function renderQuoteList() {
       : fmtMoney(quoteTotal(q.items, q.discountType, q.discountValue).total);
     const legacy = QUOTE_LEGACY_LABEL[q.status]
       ? `<span class="q-legacy">舊狀態：${escapeHtml(QUOTE_LEGACY_LABEL[q.status])}</span>` : '';
-    return `<tr>
+    return `<tr${q.invalid ? ' class="q-row-invalid"' : ''}>
       <td><span class="quote-no">${escapeHtml(q.quoteNo || '')}</span></td>
       <td>${typeof kaCompanyMark === 'function' ? kaCompanyMark(q.company) : ''}${escapeHtml(q.company || '')}</td>
       <td>${escapeHtml(q.contactName || '')}</td>
@@ -1419,6 +1435,7 @@ function updatePnlNumbers() {
 
 // ── 關閉 Modal ───────────────────────────────────────────────
 function closeQuoteModal() {
+  qInvalidReset();
   $('quoteModalOverlay').style.display = 'none';
   _qOppAwaiting = false; { const oo = $('oppEditOverlay'); if (oo) oo.style.zIndex = ''; }
   _qEditing = null;
@@ -1505,6 +1522,27 @@ function bindQuoteValidUntil() {
 }
 
 // ── 開啟新增 / 編輯 Modal ────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// ── 失效報價單（連結的商機已作廢）：整張唯讀 ───────────────────────────────
+let _qInvOff = [];   // 被停用的元素（reset 時還原，不動原本就停用的）
+function qInvalidReset() {
+  _qInvOff.forEach(function (e) { e.disabled = false; });
+  _qInvOff = [];
+  const bn = $('qInvalidBanner'); if (bn) { bn.style.display = 'none'; bn.textContent = ''; }
+  const sv = $('quoteModalSave'); if (sv) sv.style.display = '';
+  const pb = $('quoteTabBtnPnl'); if (pb && pb.getAttribute('data-inv') === '1') { pb.style.display = ''; pb.removeAttribute('data-inv'); }
+}
+function qInvalidApply(q) {
+  const bn = $('qInvalidBanner');
+  if (bn) { bn.textContent = '⚠️ 這張報價單已失效：連結的商機' + (q.invalid && q.invalid.company ? '（' + q.invalid.company + '）' : '') + '已作廢，只能檢視。商機若還原，報價單會自動恢復。'; bn.style.display = ''; }
+  document.querySelectorAll('#quoteModalOverlay .modal input, #quoteModalOverlay .modal select, #quoteModalOverlay .modal textarea, #quoteModalOverlay .modal #quoteTabContentInfo button').forEach(function (e) {
+    if (e.id === 'quoteModalClose' || e.id === 'quoteModalCancel' || e.disabled) return;
+    e.disabled = true; _qInvOff.push(e);
+  });
+  const sv = $('quoteModalSave'); if (sv) sv.style.display = 'none';
+  const pb = $('quoteTabBtnPnl'); if (pb) { pb.style.display = 'none'; pb.setAttribute('data-inv', '1'); }
+}
+
 // ════════════════════════════════════════════════════════════
 // ── 報價單 ↔ 商機連結（q.oppId）──────────────────────────────
 // 規則（伺服器 lib/quoteOppLink.js 為準，這裡只是畫面）：新報價單必須連結「自己的」A／B／C／D 階段商機；舊單沒有商機照常使用（列表顯示「未連結商機」，
@@ -1723,7 +1761,7 @@ async function qOppInit(q, opts) {
   const me = _qMeName();
   if (q) {
     const st = q.approval ? q.approval.state : 'none';
-    _qOppCanChange = !!me && q.owner === me && (st === 'none' || st === 'returned' || !q.approval);
+    _qOppCanChange = !!me && q.owner === me && !q.invalid && (st === 'none' || st === 'returned' || !q.approval);
     if (q.oppId) {
       const sn = q.oppSnapshot || {};
       $('qOppId').value = q.oppId;
@@ -1752,7 +1790,7 @@ function qOppListLine(q) {
   const label = [sn.company, sn.product].filter(Boolean).join(' · ') || '商機';
   const gone = live && !live.exists;
   return '<div class="q-opp-line">🎯 <a href="#" class="q-opp-link" data-qopp-open="' + escapeHtml(q.oppId) + '" title="開啟商機">' + escapeHtml(label) + '</a>' +
-    (gone ? ' <span class="q-opp-warn">商機已刪除</span>' : (live && live.stage === 'Won' ? ' <span class="q-opp-warn q-opp-won">已成交</span>' : '')) + '</div>';
+    (gone ? ' <span class="q-opp-warn">商機已作廢</span>' : (live && live.stage === 'Won' ? ' <span class="q-opp-warn q-opp-won">已成交</span>' : '')) + '</div>';
 }
 async function qOpenOpp(id) {
   if (typeof allOpportunities === 'undefined' || !allOpportunities.some(function (o) { return o.id === id; })) {
@@ -1797,6 +1835,7 @@ async function qOppModalRow(o) {
 
 async function openQuoteModal(idOrNull, opts) {
   try {
+    qInvalidReset();
     _qEnsureStyle();   // 從商機卡直接開啟時，報價單列表還沒載入過（樣式由 loadQuotationsView 注入）
     // 確保聯絡人資料已載入
     if (typeof allContacts === 'undefined' || !allContacts || allContacts.length === 0) {
@@ -1815,7 +1854,7 @@ async function openQuoteModal(idOrNull, opts) {
     if (idOrNull) {
       q = (await _qFetchQuote(idOrNull)) || _qFind(idOrNull);
       if (!q) { showToast('找不到此報價單'); return; }
-      if (q.perm && q.perm.canEdit === false) {
+      if (q.perm && q.perm.canEdit === false && !q.invalid) {
         showToast(q.approval && q.approval.state === 'pending'
           ? '簽核中的報價單已鎖定，請先「撤回」再修改' : '你沒有修改此報價單的權限');
         return;
@@ -1981,6 +2020,7 @@ async function openQuoteModal(idOrNull, opts) {
 
     overlay.style.display = 'flex';
     updateQuoteTotals();
+    if (q && q.invalid) qInvalidApply(q);   // 失效單：整張唯讀＋橫幅
     // 新增報價單的逐步填寫（quote-steps.js）：新單才分步；編輯既有單（q 有值）會把分步狀態完全清掉，表單維持原樣
     if (typeof QSteps === 'object' && QSteps) QSteps.onOpen(q);
 
