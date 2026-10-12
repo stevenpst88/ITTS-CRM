@@ -36,7 +36,7 @@ const CLASSES = { PC: { cls: 'consult', costBySales: false }, PS: { cls: 'softwa
 function mkEnv(quotations) {
   const routes = {}; const app = {};
   ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });
-  const env = { data: { quotations, quoteApproval: { roster: { gm: ['gm1'], chairman: ['ch1'], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: CLASSES } }, logs: [], notes: [], saves: 0, seq: 0 };
+  const env = { data: { opportunities: [{ id: 'O1', owner: 'own1', stage: 'C', company: 'TestCo', product: 'Prod', amount: '100', bu: 'ITS' }], quotations, quoteApproval: { roster: { gm: ['gm1'], chairman: ['ch1'], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: CLASSES } }, logs: [], notes: [], saves: 0, seq: 0 };
   env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
   const deps = {
     db: { load: () => env.data, save: () => { env.saves++; }, flush: async () => {} }, loadAuth: () => env.auth, saveAuth: () => {},
@@ -74,7 +74,7 @@ const PUTQ = '/api/quotations/:id', COSTS = '/api/quotations/:id/costs';
 async function run() {
   // ═════════ 1) 建立／儲存 ═════════
   let env = mkEnv([]);
-  let r = await env.call('own1', 'POST', '/api/quotations', {}, { company: 'TestCo', products: ['PS'], items: [{ desc: '品項A', unit: '式', qty: 1, unitPrice: 1000, cost: 100 }] });
+  let r = await env.call('own1', 'POST', '/api/quotations', {}, { oppId: 'O1', company: 'TestCo', products: ['PS'], items: [{ desc: '品項A', unit: '式', qty: 1, unitPrice: 1000, cost: 100 }] });
   const q = () => env.data.quotations[0];
   t('1.1 建立 → 201；timeline 第一筆 DRAFT_CREATE（人員＝own1、有時間、有摘要）', r.s === 201 && q().timeline.length === 1 && q().timeline[0].action === 'DRAFT_CREATE' && q().timeline[0].by === 'own1' && !isNaN(Date.parse(q().timeline[0].at)) && /建立報價單/.test(q().timeline[0].comment), J(q().timeline));
   t('1.2 回應帶 timeline（kind:edit、byName 顯示名稱）與 timelineCount', r.j.timeline && r.j.timeline[0].kind === 'edit' && r.j.timeline[0].byName === 'Owner1' && r.j.timelineCount === 1);
