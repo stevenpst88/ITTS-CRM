@@ -2506,60 +2506,199 @@ function syncForeignField() {
 }
 if ($('isForeignChk')) $('isForeignChk').addEventListener('change', syncForeignField);
 
-// ── 統編自動帶入公司資料 ─────────────────────────────────
+// ── 統編 ↔ 公司名稱一致性守門 ─────────────────────────────
+// 規則本體在 taxid-guard.js（前後端單一來源）；這裡負責查詢、狀態、UI、擋存檔。
+//   查詢順序：本頁快取 → 內部企業主檔（命中＝已驗證，GCIS 掛了也不影響）→ GCIS basic（8 秒逾時、自動重試 1 次）
+//   擋存檔：統編有填且「新增 或 公司/統編被改動」時，必須「已比對且名稱一致」才能存；
+//           無法驗證（逾時/GCIS 掛）也擋，提供「重新查詢」；查無此統編（GCIS 確定查無）只警告不擋；
+//           公司欄純數字一律擋（含舊資料編輯）；沒填統編 / 境外 / 無關欄位的舊資料編輯維持原行為。
+const TG = window.TaxIdGuard;
+const TG_TIMEOUT_MS = 8000;
+const taxGuard = { taxId: '', status: 'idle', officialName: '', source: '', seq: 0, pending: null,
+                   cache: {}, isNew: true, origCompany: '', origTaxId: '' };
+
+function tgFetchJson(url, ms) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  return fetch(url, { signal: ac.signal }).then(r => (r.ok ? r.json() : null)).catch(() => null).finally(() => clearTimeout(t));
+}
+
+// 只回傳結果物件，不碰 DOM：{status:'matched'|'notfound'|'unavailable', officialName, source, address, industry, gcis}
+async function tgLookup(tid) {
+  if (taxGuard.cache[tid]) return taxGuard.cache[tid];
+  // ① 內部主檔（命中且名稱可用 = 已驗證）
+  const md = await tgFetchJson(`/api/company-master?taxId=${tid}`, 6000);
+  if (md && md.found && md.company && TG.isUsableOfficialName(md.company.name)) {
+    const r = { status: 'matched', source: 'master', officialName: String(md.company.name).trim(),
+                address: md.company.address || '', industry: md.company.industry || '', gcis: null };
+    taxGuard.cache[tid] = r;
+    return r;
+  }
+  // ② GCIS basic（失敗自動重試 1 次；確定查無不重試）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const d = await tgFetchJson(`/api/company-lookup?taxId=${tid}&basic=1`, TG_TIMEOUT_MS);
+    if (d && d.companyName && TG.isUsableOfficialName(d.companyName)) {
+      const r = { status: 'matched', source: 'gcis', officialName: String(d.companyName).trim(),
+                  address: d.address || '', industry: '', gcis: d };
+      taxGuard.cache[tid] = r;
+      return r;
+    }
+    if (d && d.lookupStatus === 'notfound') return { status: 'notfound', source: 'gcis', officialName: '', address: '', industry: '', gcis: d };
+  }
+  return { status: 'unavailable', source: '', officialName: '', address: '', industry: '', gcis: null };
+}
+
+function tgIsForeign() { return !!($('isForeignChk') && $('isForeignChk').checked); }
+function tgReadonly() { const f = $('contactForm'); return !!(f && f.classList.contains('mkt-readonly')); }
+
+// 這次存檔是否需要「統編已驗證」：非境外、統編 8 碼、且是新增或公司/統編被改動
+function tgNeedsVerify() {
+  if (tgReadonly() || tgIsForeign()) return false;
+  const tid = $('taxId').value.trim();
+  if (!/^\d{8}$/.test(tid)) return false;
+  if (taxGuard.isNew) return true;
+  return tid !== taxGuard.origTaxId || $('company').value.trim() !== taxGuard.origCompany;
+}
+
+// 目前表單的守門結果：{ block: '原因'|'' , companyErr:{code,error}|null, status, need }
+function tgState() {
+  const company = $('company').value.trim();
+  const tid = $('taxId').value.trim();
+  const st = (taxGuard.taxId === tid) ? taxGuard.status : 'idle';
+  const need = tgNeedsVerify();
+  const official = (need && st === 'matched') ? taxGuard.officialName : '';
+  // 純數字公司名：永遠擋；不符：只在需要驗證時才比
+  let err = TG.evaluate({ company, taxId: tid, isForeign: tgIsForeign(), officialName: official, strictDigits: true });
+  if (tgReadonly()) err = null;
+  let block = '';
+  if (err) block = err.error;
+  else if (need && (st === 'idle' || st === 'loading')) block = '統編比對中，請稍候';
+  else if (need && st === 'unavailable') block = '目前無法驗證統編，請稍後再試（可按「重新查詢」）';
+  return { block, companyErr: err, status: st, need };
+}
+
+function tgRender() {
+  const box = $('taxGuardStatus'), cbox = $('companyGuardErr');
+  if (!box || !cbox) return { block: '' };
+  tgEnsureLookup();   // 統編被程式填入（OCR/歷史帶入/語音）而沒觸發 input 時也要補查
+  const g = tgState();
+  const tid = $('taxId').value.trim();
+  const parts = [];
+  let bg = '#eff6ff', fg = '#1d4ed8', bd = '#bfdbfe', show = true;
+  if (!/^\d{8}$/.test(tid) || tgIsForeign() || tgReadonly()) show = false;
+  else if (g.status === 'loading' || g.status === 'idle') parts.push('🔍 統編比對中…');
+  else if (g.status === 'matched') {
+    bg = '#f0fdf4'; fg = '#166534'; bd = '#bbf7d0';
+    parts.push('✓ 已比對：' + escapeHtml(taxGuard.officialName) + (taxGuard.source === 'master' ? '（企業主檔）' : '（經濟部商業司）'));
+  } else if (g.status === 'notfound') {
+    bg = '#fffbeb'; fg = '#b45309'; bd = '#fde68a';
+    parts.push('⚠ 查無此統編的公司登記資料（可能是商號、機關或統編有誤），無法比對公司名稱；請確認統編是否正確');
+  } else if (g.status === 'unavailable') {
+    bg = '#fef2f2'; fg = '#b91c1c'; bd = '#fca5a5';
+    parts.push('⚠ 目前無法驗證統編，請稍後再試。 <button type="button" id="taxGuardRetry" style="margin-left:6px;padding:2px 10px;border:1px solid #b91c1c;background:#fff;color:#b91c1c;border-radius:4px;cursor:pointer">重新查詢</button>');
+  }
+  if (show && !TG.isValidTaxIdChecksum(tid) && g.status !== 'matched') {
+    parts.push('<div style="color:#b45309">⚠ 統編檢查碼不符，請確認是否輸入錯誤</div>');
+  }
+  if (show) {
+    box.style.cssText = `display:block;font-size:12.5px;line-height:1.5;margin-top:6px;padding:6px 10px;border-radius:6px;background:${bg};color:${fg};border:1px solid ${bd}`;
+    box.innerHTML = parts.join('');
+    const rb = $('taxGuardRetry');
+    if (rb) rb.addEventListener('click', () => tgStartLookup(true));
+  } else { box.style.display = 'none'; box.innerHTML = ''; }
+
+  if (g.companyErr) {
+    let html = escapeHtml(g.companyErr.error);
+    if (g.companyErr.code === 'TAXID_COMPANY_MISMATCH') {
+      html += ' <button type="button" id="useOfficialNameBtn" style="margin-left:6px;padding:2px 10px;border:1px solid #b91c1c;background:#b91c1c;color:#fff;border-radius:4px;cursor:pointer">使用官方名稱</button>';
+    }
+    cbox.innerHTML = html;
+    cbox.style.display = 'block';
+    const ub = $('useOfficialNameBtn');
+    if (ub) ub.addEventListener('click', () => { $('company').value = taxGuard.officialName; $('company').dispatchEvent(new Event('input')); });
+  } else { cbox.style.display = 'none'; cbox.innerHTML = ''; }
+
+  const sb = $('saveBtn');
+  if (sb && !tgReadonly()) {
+    sb.disabled = !!g.block;
+    sb.title = g.block || '';
+  }
+  return g;
+}
+
+// 把查到的結果套用到表單（公司欄只在「空白 / 純數字」時自動填；不符則留給使用者按「使用官方名稱」）
+function tgApply(r) {
+  if (r.status !== 'matched') return;
+  const cur = $('company').value.trim();
+  if (!cur || TG.isDigitsOnly(cur)) $('company').value = r.officialName;
+  if (r.address && $('address')) $('address').value = r.address;
+  if (r.industry && !$('industry').disabled) {
+    $('industry').value = r.industry;
+    $('industry').dataset.manual = 'true';
+    $('autoDetectBadge').style.display = 'none';
+  }
+  if (r.gcis) renderCompanyInfo(r.gcis);
+  checkCompanySimilar();
+}
+
+function tgStartLookup(force) {
+  const tid = $('taxId').value.trim();
+  if (!/^\d{8}$/.test(tid)) return Promise.resolve();
+  if (force) delete taxGuard.cache[tid];
+  const seq = ++taxGuard.seq;
+  taxGuard.taxId = tid; taxGuard.status = 'loading';
+  $('taxIdLoadingBadge').style.display = 'inline';
+  tgRender();
+  const p = tgLookup(tid).then(r => {
+    if (seq !== taxGuard.seq) return;             // 已被新的輸入取代
+    taxGuard.status = r.status; taxGuard.officialName = r.officialName; taxGuard.source = r.source;
+    $('taxIdLoadingBadge').style.display = 'none';
+    if (r.status === 'matched') {
+      $('taxIdOkBadge').style.display = 'inline';
+      tgApply(r);
+    }
+    tgRender();
+  });
+  taxGuard.pending = p;
+  return p;
+}
+
+// 表單開啟時重設守門狀態；contact=null 代表新增（含 prefill）
+function taxGuardOpen(contact) {
+  taxGuard.seq++;
+  taxGuard.taxId = ''; taxGuard.status = 'idle'; taxGuard.officialName = ''; taxGuard.source = '';
+  taxGuard.isNew = !contact;
+  taxGuard.origCompany = contact ? String(contact.company || '').trim() : '';
+  taxGuard.origTaxId = contact ? String(contact.taxId || '').trim() : '';
+  $('taxIdLoadingBadge').style.display = 'none';
+  tgEnsureLookup();
+  tgRender();
+}
+
+// 需要驗證（或舊資料公司欄是純數字、要幫忙修）且尚未查 → 自動開始查
+function tgEnsureLookup() {
+  const tid = $('taxId').value.trim();
+  if (!/^\d{8}$/.test(tid) || tgIsForeign() || tgReadonly()) return;
+  if (taxGuard.taxId === tid && taxGuard.status !== 'idle') return;
+  if (tgNeedsVerify() || TG.isDigitsOnly($('company').value)) tgStartLookup(false);
+}
+
 let taxIdTimer = null;
 $('taxId').addEventListener('input', function () {
   const tid = this.value.trim();
   $('lookupTaxIdDisplay').textContent = tid || '尚未填入統編';
   $('taxIdOkBadge').style.display = 'none';
   clearTimeout(taxIdTimer);
-  if (tid.length !== 8 || !/^\d{8}$/.test(tid)) return;
-
-  $('taxIdLoadingBadge').style.display = 'inline';
-  taxIdTimer = setTimeout(async () => {
-    try {
-      // ① 先查內部企業主檔：統編命中就直接帶出，省一次外部 GCIS 爬取
-      try {
-        const mres = await fetch(`/api/company-master?taxId=${tid}`);
-        if (mres.ok) {
-          const md = await mres.json();
-          if (md.found && md.company) {
-            const c = md.company;
-            if (c.name)    $('company').value = c.name;
-            if (c.address) $('address').value = c.address;
-            // 產業屬性僅行銷/管理員可寫入；欄位鎖定時不塞值（與產業鎖定一致）
-            if (c.industry && !$('industry').disabled) {
-              $('industry').value = c.industry;
-              $('industry').dataset.manual = 'true';
-              $('autoDetectBadge').style.display = 'none';
-            }
-            checkCompanySimilar();
-            $('taxIdOkBadge').style.display = 'inline';
-            showToast(`✓ 已帶入企業主檔：${c.name || tid}`);
-            return;   // 命中主檔 → 不再爬 GCIS
-          }
-        }
-      } catch { /* 內部查詢失敗 → 往外查 GCIS */ }
-
-      // ② 主檔沒有 → 往外爬 GCIS（basic=1：只取公司名/地址，快，避免冷啟動逾時）
-      const res = await fetch(`/api/company-lookup?taxId=${tid}&basic=1`);
-      if (!res.ok) return;
-      const d = await res.json();
-
-      // 只填入公司相關欄位，不覆蓋聯絡人欄位
-      if (d.companyName) $('company').value = d.companyName;
-      if (d.address)     $('address').value = d.address;
-
-      // 同步公司資訊頁簽的查詢結果
-      renderCompanyInfo(d);
-      checkCompanySimilar();   // GCIS 帶出公司名後，檢查是否已有相近主檔（疑似重複）
-
-      $('taxIdOkBadge').style.display = 'inline';
-      showToast(`✓ 已帶入：${d.companyName || '查無資料'}`);
-    } catch { /* ignore */ }
-    finally { $('taxIdLoadingBadge').style.display = 'none'; }
-  }, 600);
+  taxGuard.seq++;                                  // 作廢進行中的查詢
+  taxGuard.taxId = ''; taxGuard.status = 'idle'; taxGuard.officialName = '';
+  $('taxIdLoadingBadge').style.display = 'none';
+  if (/^\d{8}$/.test(tid)) { taxGuard.status = 'loading'; taxGuard.taxId = tid; }
+  tgRender();
+  if (!/^\d{8}$/.test(tid)) return;
+  taxIdTimer = setTimeout(() => tgStartLookup(false), 600);
 });
+$('company').addEventListener('input', () => { tgEnsureLookup(); tgRender(); });
+if ($('isForeignChk')) $('isForeignChk').addEventListener('change', () => { tgRender(); });
 
 // ── 公司查詢 ─────────────────────────────────────────────
 $('lookupBtn').addEventListener('click', async () => {
@@ -2908,6 +3047,7 @@ function openModal(contact = null) {
 
   const ro = applyContactFormReadonly(contact);
   syncForeignField();   // 依「境外公司」勾選狀態設定統編欄（須排在 applyContactFormReadonly 還原 disabled 之後）
+  taxGuardOpen(contact);   // 統編↔公司名稱守門：重設狀態（須在 applyContactFormReadonly 之後，才不會被還原 disabled）
   $('modalOverlay').classList.add('open');
   (ro ? $('industry') : $('name')).focus();
 }
@@ -3035,6 +3175,7 @@ function openModalAddContact(prefill = {}) {
   $('mobile').value  = '';
   $('email').value   = '';
 
+  taxGuardOpen(null);   // 統編↔公司名稱守門：新增（帶入公司/統編時自動比對）
   $('modalOverlay').classList.add('open');
   $('name').focus();
 }
@@ -3071,6 +3212,7 @@ function triggerCompanyFill() {
     if (match.taxId) $('lookupTaxIdDisplay').textContent = match.taxId;
 
     showToast(`✓ 已帶入「${match.company}」的歷史資料`);
+    tgEnsureLookup(); tgRender();   // 歷史資料帶入統編後也要比對
   }, 300);
 }
 $('company').addEventListener('input',  triggerCompanyFill);
@@ -3238,6 +3380,10 @@ $('saveBtn').addEventListener('click', async () => {
     if (!taxIdVal) { showToast('請輸入統一編號（境外公司請勾選「境外公司（無統一編號）」）'); $('taxId').focus(); return; }
     if (!/^\d{8}$/.test(taxIdVal)) { showToast('統一編號需為 8 碼數字'); $('taxId').focus(); return; }
   }
+
+  // 統編↔公司名稱守門（按鈕被 disabled 時點不到；這裡是程式觸發/競態的最後防線）
+  const tg = tgRender();
+  if (tg.block) { showToast(tg.block); return; }
 
   const payload = {
     name,

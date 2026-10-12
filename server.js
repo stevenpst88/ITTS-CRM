@@ -645,6 +645,8 @@ function overwriteContactsIndustryByCompany(data, companyId, industry) {
 //   一統編一主檔：統編優先當唯一鍵，無統編用「正規化公司名」fallback
 //   主檔為「附加參照層」，不影響既有 company 字串 / contactId 連結邏輯
 // ════════════════════════════════════════════════════════════
+// 統編↔公司名稱一致性規則（前後端單一來源；Vercel includeFiles 已含 _client/**）
+const TaxIdGuard = require('./_client/taxid-guard.js');
 // 正規化公司名（fallback 比對鍵）：去全形/一般空白、去頭尾、轉小寫
 function normalizeCompanyName(s) {
   return String(s || '')
@@ -1054,6 +1056,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
+      .replace(/src="taxid-guard\.js"/g, `src="taxid-guard.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pricebook\.js"/g, `src="quote-pricebook.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-costlines\.js"/g, `src="quote-costlines.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
@@ -2938,6 +2941,9 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
   if (gScopeC.error) return res.status(403).json({ error: gScopeC.error });
   const data = db.load();
+  // 統編↔公司名稱一致性（只比對內部主檔、不打外部）：公司欄純數字 / 與主檔官方名稱不符 → 400
+  const _tg = TaxIdGuard.checkSave({ company: req.body.company, taxId: req.body.taxId, isForeign: _isForeign, companies: data.companies });
+  if (_tg) return res.status(400).json(_tg);
   const contact = {
     id: uuidv4(),
     owner,
@@ -3035,6 +3041,17 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
       return res.status(400).json({ error: t ? '統一編號需為 8 碼數字' : '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
     }
     if (effForeign) safeBody.taxId = '';   // 境外 → 統編清空（企業主檔改以公司名為鍵）
+  }
+  // 統編↔公司名稱一致性：只在「公司或統編有被改動」時才驗（舊資料無關欄位的編輯不受影響，看板拖曳等偏更新亦不受影響）
+  if (safeBody.company !== undefined || req.body.taxId !== undefined) {
+    const _effForeign = safeBody.isForeign !== undefined ? (safeBody.isForeign === true || safeBody.isForeign === 'true') : !!old.isForeign;
+    const _tg = TaxIdGuard.checkSave({
+      company: safeBody.company !== undefined ? safeBody.company : old.company,
+      taxId: safeBody.taxId !== undefined ? safeBody.taxId : old.taxId,
+      isForeign: _effForeign, companies: data.companies,
+      oldCompany: old.company, oldTaxId: old.isForeign ? '' : old.taxId, isUpdate: true
+    });
+    if (_tg) return res.status(400).json(_tg);
   }
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
@@ -5828,6 +5845,7 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     revenue2025: 'N/A', grossMargin2025: 'N/A',
     revenue2024: 'N/A', grossMargin2024: 'N/A',
     eps: 'N/A', epsYear: '',
+    lookupStatus: 'error',   // found / notfound（GCIS 確定查無）/ error（逾時或錯誤，無法驗證）——供統編↔公司名一致性守門區分
   };
 
   // 1. 經濟部商業司（基本資料 + 通訊資料）
@@ -5837,7 +5855,11 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
     );
     if (r.ok) {
-      const data = await r.json();
+      // GCIS 對查無的統編可能回 200 + 空 body；先取 text 安全解析，才能分辨「查無」與「錯誤」
+      const _txt = await r.text();
+      let data = [];
+      if (_txt && _txt.trim()) { try { data = JSON.parse(_txt); } catch { data = []; } }
+      result.lookupStatus = data?.[0] ? 'found' : 'notfound';
       if (data?.[0]) {
         result.companyName   = data[0].Company_Name || '';
         result.representative = data[0].Responsible_Name || '';

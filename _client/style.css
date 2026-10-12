@@ -4640,3 +4640,6 @@ body.dark .qrm-preview { background: #161b22; border-color: #30363d; color: #c9d
 body.dark .qrm-fixed { background: #161b22; border-color: #30363d; }
 body.dark .qrm-fixed summary, body.dark .qrm-fixed .qrm-fx, body.dark .qrm-inst .n, body.dark .qrm-cl .n { color: #9aa4b2; }
 @media (max-width: 600px) { .qrm-inst, .qrm-cl { flex-wrap: wrap; } .qrm-inst .n, .qrm-cl .n { flex-basis: 100%; text-align: left; } }
+
+/* 統編↔公司名稱守門：被擋時存檔鈕反灰 */
+#saveBtn:disabled { opacity: .45; cursor: not-allowed; }
