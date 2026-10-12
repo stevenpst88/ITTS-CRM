@@ -318,11 +318,11 @@ async function runDom(pw) {
   await setTax(TAX6);
   t('DOM 5b：主檔名稱為純數字 → 改用 GCIS 官方名稱帶入', await waitFor(`document.getElementById('company').value==='測試戊股份有限公司'`));
 
-  // 6) 查無此統編 → 警告、不擋
+  // 6) 查無此統編 → 擋存檔（使用者決定：查無也擋）
   await reopen(); await mock({ master: { found: false }, gcis: { companyName: '', lookupStatus: 'notfound' }, gcisFail: false });
   await setCo('某商號'); await setTax(validId('8901234'));
   t('DOM 6：GCIS 確定查無 → 警告', await waitFor(`/查無此統編/.test(document.getElementById('taxGuardStatus').innerText)`));
-  s = await st(); t('DOM 6：查無只警告、不擋存檔', s.save === false && !s.err && s.calls.gcis === 1, JSON.stringify(s));
+  s = await st(); t('DOM 6：查無 → 存檔被擋', s.save === true && s.calls.gcis === 1, JSON.stringify(s));
   await shot('6-notfound-warning');
 
   // 7) 沒填統編 / 境外：行為不變

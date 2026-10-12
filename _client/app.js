@@ -2574,6 +2574,7 @@ function tgState() {
   if (err) block = err.error;
   else if (need && (st === 'idle' || st === 'loading')) block = '統編比對中，請稍候';
   else if (need && st === 'unavailable') block = '目前無法驗證統編，請稍後再試（可按「重新查詢」）';
+  else if (need && st === 'notfound') block = '查無此統編的公司登記資料，請確認統編是否正確';
   return { block, companyErr: err, status: st, need };
 }
 
@@ -2591,8 +2592,8 @@ function tgRender() {
     bg = '#f0fdf4'; fg = '#166534'; bd = '#bbf7d0';
     parts.push('✓ 已比對：' + escapeHtml(taxGuard.officialName) + (taxGuard.source === 'master' ? '（企業主檔）' : '（經濟部商業司）'));
   } else if (g.status === 'notfound') {
-    bg = '#fffbeb'; fg = '#b45309'; bd = '#fde68a';
-    parts.push('⚠ 查無此統編的公司登記資料（可能是商號、機關或統編有誤），無法比對公司名稱；請確認統編是否正確');
+    bg = '#fef2f2'; fg = '#b91c1c'; bd = '#fca5a5';
+    parts.push('⛔ 查無此統編的公司登記資料，無法存檔；請確認統編是否正確');
   } else if (g.status === 'unavailable') {
     bg = '#fef2f2'; fg = '#b91c1c'; bd = '#fca5a5';
     parts.push('⚠ 目前無法驗證統編，請稍後再試。 <button type="button" id="taxGuardRetry" style="margin-left:6px;padding:2px 10px;border:1px solid #b91c1c;background:#fff;color:#b91c1c;border-radius:4px;cursor:pointer">重新查詢</button>');
