@@ -101,7 +101,7 @@ async function run() {
     const app = {};
     ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });
     const quote = { id: 'Q1', quoteNo: 'QU-1', owner: 'own1', company: 'TestCo', projectName: 'Proj', status: 'draft', products: [], items: [{ lid: 'i1', desc: 'PM', unit: '人天', qty: 3, unitPrice: 8000, cost: 0 }], approval: null, discountType: 'none', discountValue: 0 };
-    const env = { data: { quotations: [quote], quoteApproval: { roster: { gm: [], chairman: [], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: {} }, contacts: [{ id: 'c1' }] }, logs: [], saves: 0, seq: 0 };
+    const env = { data: { opportunities: [{ id: 'O1', owner: 'own1', stage: 'C', company: 'PbCo', product: 'P', amount: '100' }], quotations: [quote], quoteApproval: { roster: { gm: [], chairman: [], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: {} }, contacts: [{ id: 'c1' }] }, logs: [], saves: 0, seq: 0 };
     env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
     const requireAuth = function requireAuthStub(req, rs, next) { next(); };
     const requireAdmin = function requireAdminStub(req, rs, next) { next(); };
@@ -239,7 +239,7 @@ async function run() {
   await env.call('admin1', 'PUT', A, {}, putBody([row('PM 顧問經理', 9000, 6500), row('SD 顧問', 7000, 5000)], null));
   const list = QPB.sanitizeList((await env.call('own1', 'GET', U)).j.items);
   const picked = QPB.buildItems(list, [{ id: list[0].id, qty: 3 }, { id: list[1].id, qty: 1.5 }]);
-  const mkBody = (items, co) => ({ company: co || 'PbCo', projectName: 'P', products: [], items, discountType: 'none' });
+  const mkBody = (items, co) => ({ oppId: 'O1', company: co || 'PbCo', projectName: 'P', products: [], items, discountType: 'none' });
   const c1 = await env.call('own1', 'POST', '/api/quotations', {}, mkBody(picked));
   const saved = env.data.quotations.find((x) => x.id === (c1.j && (c1.j.id || (c1.j.quotation && c1.j.quotation.id))));
   t('6.1 選取產生的品項可以直接存成報價單（POST /api/quotations 200）', c1.s === 200 || c1.s === 201, JSON.stringify(c1).slice(0, 200));

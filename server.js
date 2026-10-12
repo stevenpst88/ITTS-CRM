@@ -590,6 +590,7 @@ function pickFields(obj, fields) {
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
+const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
@@ -3825,6 +3826,10 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
       return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: userLabel(ownerU, o.owner) };
     });
   }
+  // 連結的報價單數（報價單 q.oppId）：算一次對照表；沒有連結的商機不多任何鍵（舊資料外形不變）
+  const _qc = quoteOppLink.countByOpp(data);
+  // linkedQuoteCount＝算數的（沒失效的）張數；linkedQuoteInvalid＝失效的張數（只在有時才出現）
+  if (_qc.size) filtered = filtered.map(o => { const c = _qc.get(o.id); if (!c) return o; const r = { ...o }; if (c.live) r.linkedQuoteCount = c.live; if (c.invalid) r.linkedQuoteInvalid = c.invalid; return r; });
   res.json(filtered);
 });
 
@@ -3920,6 +3925,11 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   // 集團範圍角色：連改動的對象也必須落在自己的集團內（PUT 原本完全沒有集團檢查）
   const gScopeU = checkGroupScopeWrite(req, req.body.company !== undefined ? req.body.company : data.opportunities[idx].company);
   if (gScopeU.error) return res.status(403).json({ error: gScopeU.error });
+  // 已有報價單連結到這筆商機時，不可改公司（報價單的客戶以商機為準；要換客戶請另建商機）。階段（含轉 Won）、金額等其他欄位不受影響
+  if (req.body.company !== undefined && String(req.body.company || '').trim() !== String(data.opportunities[idx].company || '').trim()) {
+    const _lq = quoteOppLink.linkedQuotes(data, req.params.id);
+    if (_lq.length) return res.status(409).json({ error: `已有 ${_lq.length} 張報價單連結到這筆商機，不能更改公司；要換客戶請另外建立新的商機`, code: 'OPP_COMPANY_LOCKED', linkedQuoteCount: _lq.length });
+  }
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
@@ -4257,10 +4267,28 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
     deletedByName: req.session.user.displayName || owner
   });
   data.opportunities = data.opportunities.filter(o => !(o.id === req.params.id && o.owner === owner));
+  // 連結到這筆商機的報價單同時失效（草稿／被退回／簽核中／已核准都一樣；簽核中的待簽關卡一併關閉）。與商機搬進流失清單在同一次 db.save。
+  // 中途丟例外就把已動到的報價單還原、連商機一起不刪（不留下一半）。
+  const _linked = quoteOppLink.linkedQuotes(data, opp.id);
+  const _bak = JSON.stringify(_linked);
+  let _inv = [];
+  try {
+    _inv = quoteOppLink.invalidateForOpp(data, opp, owner, new Date().toISOString());
+  } catch (e) {
+    const orig = JSON.parse(_bak);
+    _linked.forEach((q, i) => { Object.keys(q).forEach(k => delete q[k]); Object.assign(q, orig[i]); });
+    data.opportunities.push(opp); data.lostOpportunities.pop();
+    console.error('[opp void cascade]', e);
+    return res.status(500).json({ error: '商機作廢時處理連結的報價單失敗，商機未刪除，請重試', code: 'OPP_VOID_CASCADE_FAILED' });
+  }
   db.save(data);
   writeLog('DELETE_OPP', owner, opp.company || opp.contactName,
-    `${opp.product} 原因:${deleteReason || '未說明'}`, req);
-  res.json({ success: true });
+    `${opp.product} 原因:${deleteReason || '未說明'}${_inv.length ? '｜連結報價單 ' + _inv.length + ' 張同時失效（' + _inv.map(x => x.q.quoteNo || '草稿').slice(0, 10).join('、') + '）' : ''}`, req);
+  // 站內通知報價單擁有者（pushNotification 自帶 load/save，必須在 db.save 之後）
+  _inv.forEach(({ q }) => {
+    try { pushNotification(q.owner, 'quote_voided', '⚠️ 報價單已失效：' + (q.quoteNo || '草稿'), '連結的商機「' + (opp.company || '') + ' ' + (opp.product || '') + '」已作廢，這張報價單同時失效（唯讀；簽核中的已關閉）。商機若還原，報價單會恢復。', q.id); } catch (e) { /* 通知失敗不影響作廢 */ }
+  });
+  res.json({ success: true, invalidatedQuotes: _inv.length });
 });
 
 // ── 取得流失商機（主管 / 管理員）─────────────────────────────
@@ -4427,8 +4455,12 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
   if (!data.opportunities) data.opportunities = [];
   data.opportunities.push(restored);
   data.lostOpportunities.splice(idx, 1);
+  // 因這筆商機作廢而失效的報價單恢復（簽核中被關閉的回到草稿，需重新送簽）
+  const _rev = quoteOppLink.revalidateForOpp(data, restored, username, new Date().toISOString());
   db.save(data);
-  res.json({ success: true, opportunity: restored });
+  if (_rev.length) writeLog('RESTORE_OPP_QUOTES', username, restored.company || restored.contactName, `商機還原，${_rev.length} 張報價單恢復`, req);
+  _rev.forEach(q => { try { pushNotification(q.owner, 'quote_voided', '✅ 報價單已恢復：' + (q.quoteNo || '草稿'), '連結的商機已還原，這張報價單恢復可用。', q.id); } catch (e) { /* 忽略 */ } });
+  res.json({ success: true, opportunity: restored, revalidatedQuotes: _rev.length });
 });
 
 // ── 銷售預測 Excel 匯出 ──────────────────────────────────

@@ -4659,6 +4659,15 @@ function buildKanbanCard(o) {
       <span class="kanban-card-date" style="${isOverdueExpected ? 'color:#e74c3c;font-weight:600' : ''}">${escapeHtml(dateLabel)}</span>
     </div>
     <div class="kanban-card-edit-hint">點擊編輯</div>`;
+  // 已連結的報價單張數（報價單的 oppId；沒有連結的商機沒有這個欄位）
+  if (o.linkedQuoteCount) {
+    const qn = document.createElement('div');
+    qn.className = 'kanban-card-quotes';
+    qn.title = '已連結 ' + o.linkedQuoteCount + ' 張報價單';
+    qn.style.cssText = 'font-size:11px;color:#6b7686;margin-top:4px';
+    qn.textContent = '📄 報價單 ' + o.linkedQuoteCount + ' 張';
+    card.insertBefore(qn, card.querySelector('.kanban-card-edit-hint'));
+  }
 
   if (!isWon) {
     card.addEventListener('dragstart', () => {
@@ -4695,6 +4704,7 @@ function _setOppModalMode(mode) {
   if ($('oppEditDelete')) $('oppEditDelete').style.display = isCreate ? 'none' : '';
   if ($('oppWinRateBtn')) $('oppWinRateBtn').style.display = isCreate ? 'none' : '';
   const panel = $('oppWinRatePanel'); if (panel) panel.style.display = 'none';
+  if (isCreate) { const qr = $('oppEditQuoteRow'); if (qr) qr.style.display = 'none'; }   // 報價單列只在既有商機才有意義
 }
 
 // ⭐ 從「Key Account」頁直接為某客戶新增商機（點客戶 → 新增商機）
@@ -4780,6 +4790,8 @@ async function _createOppFromModal() {
     renderDashboardCharts();
     if (currentSection === 'keyAccount') renderKeyAccountView();
     showToast(saved.kaNotified ? '✅ 商機已建立，已通知跨部門協作夥伴' : '✅ 商機已建立');
+    // 從「新增報價單 → 找不到？先建立商機」進來的：通知報價單視窗自動選取剛建好的商機
+    if (typeof window.onOppCreatedForQuote === 'function') { try { await window.onOppCreatedForQuote(saved); } catch (e) { console.warn('onOppCreatedForQuote', e); } }
   } catch { showToast('建立失敗，請重試'); }
   finally { if (saveBtn) saveBtn.disabled = false; }
 }
@@ -4826,6 +4838,9 @@ function openOppEdit(id) {
 
   // ⭐ 跨部門 KA 商機：唯讀 + 確認接手/商機日報 操作列
   renderOppKaBar(o);
+
+  // 已連結的報價單＋「建立報價單」（只有能建單的角色、自己的 A／B／C／D 商機；邏輯在 quote.js 的 qOppModalRow）
+  if (typeof qOppModalRow === 'function') qOppModalRow(o).catch(() => {});
 
   $('oppEditOverlay').classList.add('open');
 }
@@ -4965,6 +4980,9 @@ $('oppEditDelete').addEventListener('click', () => {
   $('oppDeleteReasonSel').value = '';
   $('oppDeleteReasonNote').value = '';
   $('oppDeleteReasonNote').placeholder = '補充說明（選填）';
+  // 連結的報價單會同時失效：確認前先警告（linkedQuoteCount＝尚未失效的張數）
+  { const _o = allOpportunities.find(x => x.id === $('oppEditId').value), _n = (_o && _o.linkedQuoteCount) || 0, _w = $('oppDeleteQuoteWarn');
+    if (_w) { _w.textContent = _n ? `⚠️ 將同時使 ${_n} 張報價單失效（失效的報價單只能檢視，簽核中的會被關閉；商機若還原，報價單會恢復）。` : ''; _w.style.display = _n ? '' : 'none'; } }
   $('oppDeleteModal').classList.add('open');
 });
 
@@ -6581,7 +6599,7 @@ function renderOppTable() {
       const id = this.dataset.id;
       const opp = allLostOppsForTargets.find(o => o.id === id);
       const name = opp ? (opp.company || opp.product || id) : id;
-      if (!confirm(`確定要還原商機「${name}」嗎？\n還原後將回到 C｜Pipeline 階段。`)) return;
+      if (!confirm(`確定要還原商機「${name}」嗎？\n還原後將回到 C｜Pipeline 階段；因這筆商機作廢而失效的報價單會一併恢復。`)) return;
       try {
         const r = await fetch(`${API}/opportunities/restore/${id}`, { method: 'POST' });
         if (!r.ok) { const e = await r.json(); showToast('還原失敗：' + (e.error||'未知錯誤')); return; }

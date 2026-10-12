@@ -769,11 +769,12 @@
               <option value="returned">已退回</option>
               <option value="approved">已核准</option>
               <option value="void">核准已失效／作廢</option>
+              <option value="invalid">失效（商機已作廢）</option>
             </select>
             <button class="btn btn-secondary" id="quoteInboxBtn" type="button" title="只看需要我簽核或填成本的報價單">&#128276; 待我處理 <span id="quoteInboxBadge" class="q-inbox-badge" style="display:none">0</span></button>
             <button class="btn btn-secondary" id="quoteSettingsBtn" type="button" style="display:none" onclick="openQuoteApprovalSettingsSafe()" title="簽核名冊、商品歸類、核決門檻、報價專用章">&#9881; 簽核設定</button>
             <button class="btn btn-secondary" id="myContactBtn" onclick="openMyContactModal()" title="維護印在報價單上的我方業務姓名／電話／手機">&#128100; 我的聯絡資訊</button>
-            <button class="btn btn-primary" id="addQuoteBtn">&#43; 新增報價單</button>
+            <button class="btn btn-primary" id="addQuoteBtn" style="display:none">&#43; 新增報價單</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="quoteTable">
@@ -2452,6 +2453,12 @@
           </div>
         </div>
       </div>
+      <!-- 報價單：已連結幾張＋建立報價單（只有能建單的角色、自己的 A／B／C／D 商機才顯示；由 quote.js 的 qOppModalRow 控制） -->
+      <div id="oppEditQuoteRow" class="q-opp-modalrow" style="display:none">
+        <div class="q-opp-modalrow-main"><span id="oppEditQuoteCount">📄 已連結報價單：0 張</span>
+          <span id="oppEditQuoteList" class="q-opp-qlist"></span></div>
+        <button type="button" class="btn btn-primary btn-sm" id="oppEditNewQuoteBtn" style="display:none">＋ 建立報價單</button>
+      </div>
       <!-- AI 贏率結果面板 -->
       <div id="oppWinRatePanel" style="display:none;margin:0 20px 12px;padding:12px 16px;background:#f0faf0;border:1px solid #a8d5b0;border-radius:10px;font-size:13px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -2482,6 +2489,7 @@
         <div class="alert-soft-error" style="padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
           刪除後案件將移至「流失商機」留存分析，不會永久消失。
         </div>
+        <div id="oppDeleteQuoteWarn" class="q-warnbar" style="display:none;margin:-6px 0 16px"></div>
         <div class="form-group">
           <label>客戶名稱</label>
           <input type="text" id="oppDeleteCompany" class="input-readonly" readonly>
@@ -2636,6 +2644,8 @@
       </div>
       <!-- 顧問調整報價品項的橫幅（cost-sync）：由 renderCostSyncBanner 填；沒有異動時隱藏 -->
       <div id="qCostSyncBanner" class="q-cs-banner" style="display:none" role="status"></div>
+      <!-- 失效報價單（連結的商機已作廢）：唯讀橫幅，由 quote.js 的 qInvalidApply 填 -->
+      <div id="qInvalidBanner" class="q-errbar" style="display:none;margin:8px 20px" role="status"></div>
 
       <!-- ── 報價單 TAB 導覽 ── -->
       <div class="q-modal-tabs">
@@ -2651,6 +2661,20 @@
         <nav class="qs-rail" id="qsRail" aria-label="填寫進度"></nav>
         <div class="qs-main" id="qsMain">
 
+        <!-- 連結商機（新報價單必填；舊單沒有商機時顯示「未連結商機」，可選擇補連）。選單內容由 quote.js 的 qOpp* 函式填 -->
+        <div class="qs-step" data-qs="opp" id="qOppStep">
+        <div class="quote-section-title">🎯 連結商機 <span class="required">*</span>
+          <span class="q-sec-sub">每張新報價單都要連結一筆自己的商機（A／B／C／D 階段）</span></div>
+        <input type="hidden" id="qOppId">
+        <div id="qOppChosen" class="q-opp-chosen" style="display:none"></div>
+        <div id="qOppPicker" class="q-opp-picker">
+          <input type="search" id="qOppSearch" placeholder="搜尋公司、商品或聯絡人…" autocomplete="off" aria-label="搜尋商機">
+          <div id="qOppList" class="q-opp-list" role="listbox" aria-label="我的商機"></div>
+          <div class="q-opp-foot"><button type="button" class="btn btn-secondary btn-sm" id="qOppCreateBtn">找不到？先建立商機</button></div>
+        </div>
+        <div id="qOppAmountHint" class="q-hint" style="display:none"></div>
+        </div><!-- end step opp -->
+
         <div class="qs-step" data-qs="customer">
         <!-- 基本資訊 -->
         <div class="quote-section-title">📋 基本資訊</div>
@@ -2658,6 +2682,7 @@
           <div class="form-group">
             <label>客戶公司 <span class="required">*</span></label>
             <input type="text" id="qCompany" placeholder="客戶公司名稱" list="quoteCompanyList" autocomplete="off">
+            <div id="qOppLockNote" class="q-hint" style="display:none">來自商機，不可改；要換客戶請先換商機</div>
             <datalist id="quoteCompanyList"></datalist>
           </div>
           <div class="form-group">
