@@ -40,7 +40,7 @@ t('3.4 openQuoteModal 開頭保證樣式已注入（從商機卡進來時列表�
 t('3.5 列表：舊單「未連結商機」、新單連結可點（data-qopp-open）、只負責填成本的顧問不顯示「未連結」', /未連結商機/.test(quote) && /data-qopp-open/.test(quote) && /canSeePrice === false\) \? ''/.test(quote));
 t('3.6 商機可選範圍：自己的（owner===me）且階段 A／B／C／D', /o\.owner === me && QOPP_STAGES\.indexOf\(o\.stage\) >= 0/.test(quote) && /QOPP_STAGES = \['A', 'B', 'C', 'D'\]/.test(quote));
 t('3.7 商機視窗的「建立報價單」鈕：需 me.canCreate、自己的商機、A／B／C／D', /me\.canCreate === true && o\.owner === me\.username && QOPP_STAGES\.indexOf\(o\.stage\) >= 0/.test(quote));
-t('3.8 已核准不能換商機（前端不給更換鈕：只有 none／returned、且擁有者本人）', /_qOppCanChange = !!me && q\.owner === me && \(st === 'none' \|\| st === 'returned' \|\| !q\.approval\)/.test(quote));
+t('3.8 已核准不能換商機（前端不給更換鈕：只有 none／returned、擁有者本人、且沒失效）', quote.includes("_qOppCanChange = !!me && q.owner === me && !q.invalid && (st === 'none' || st === 'returned' || !q.approval)"));
 // qOpp 區塊內所有 innerHTML 拼接的使用者欄位都要 escapeHtml
 const blk = quote.slice(quote.indexOf('const QOPP_STAGES'), quote.indexOf('async function openQuoteModal'));
 const raw = [...blk.matchAll(/'\s*\+\s*([a-zA-Z_.]+)\s*\+\s*'/g)].map((m) => m[1]).filter((v) => !/^(escapeHtml|rows|n|on|badge|\(|String)/.test(v))
@@ -57,6 +57,19 @@ t('4.4 app.js：新增商機模式隱藏報價單列', /if \(isCreate\) \{ const
 // 沒碰到的檔案（git 比對：本檢查只讀工作樹，這裡確認這些檔案不含商機連結字樣）
 ['_client/quote-preview.js', '_client/quote-pdf.js', '_client/quote-approval.js'].forEach((f) => { const s = fs.existsSync(path.join(ROOT, f)) ? rd(f) : ''; t('5.1 ' + f + ' 沒有商機連結字樣（客戶文件／簽核畫面不受影響）', !/qOpp|oppId|oppSnapshot/.test(s)); });
 t('5.2 glass 樣式檔沒有商機連結字樣', ['_client/glass.css', '_client/style-glass.css'].every((f) => !fs.existsSync(path.join(ROOT, f)) || !/q-opp|qOpp/.test(rd(f))));
+
+// 商機作廢→報價單失效、建單入口只給能建單的角色
+t('6.1 index.html：「新增報價單」預設隱藏（設定載入後才顯示，避免閃現）；有 #qInvalidBanner、#oppDeleteQuoteWarn、狀態篩選 invalid', /id="addQuoteBtn" style="display:none"/.test(html) && html.includes('id="qInvalidBanner"') && html.includes('id="oppDeleteQuoteWarn"') && /<option value="invalid">/.test(html));
+t('6.2 applyQuoteToolbar：依 me.canCreate 顯示「新增報價單」', /ab\.style\.display = me\.canCreate === true \? '' : 'none'/.test(quote));
+t('6.3 失效報價單：狀態徽章 invalid、列淡化、動作鈕只有檢視／進度／預覽（沒有 Excel／PDF／簽核／送簽）', quote.includes("if (q.invalid) return { key: 'invalid'") && quote.includes('q-row-invalid') && (() => {
+  const i = quote.indexOf("if (q.invalid) {\n    out.push(b('edit'");
+  if (i < 0) return false;
+  const seg = quote.slice(i, quote.indexOf('return `<div class="q-actions">', i));
+  return !/b\('(export|pdf|submit|cost|pnl|approve', '✍)/.test(seg);
+})());
+t('6.4 失效單開啟為唯讀：qInvalidApply 停用輸入、隱藏儲存；openQuoteModal 不再因 canEdit=false 擋掉失效單', /qInvalidApply\(q\)/.test(quote) && /canEdit === false && !q\.invalid/.test(quote));
+t('6.5 商機刪除確認視窗警告「將同時使 N 張報價單失效」', /將同時使 \$\{_n\} 張報價單失效/.test(app));
+t('6.6 簽核歷程標籤認得 OPP_VOID_INVALIDATE／OPP_RESTORE', /OPP_VOID_INVALIDATE/.test(rd('_client/quote-approval.js')) && /OPP_RESTORE/.test(rd('_client/quote-approval.js')));
 
 let pass = 0, fail = 0;
 res.forEach(([n, ok, ex]) => { if (ok) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (ex ? '  <- ' + ex : '')); } });

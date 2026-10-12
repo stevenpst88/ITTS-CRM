@@ -11,6 +11,7 @@
  *   6) 序列化 oppLive：商機轉 Won／被刪除後的樣子；清單 API 也有
  *   7) 時間軸：DRAFT_CREATE／DRAFT_SAVE 摘要提到連結商機；無變更時不提
  *   8) GET /api/opportunities/:id/quotes：只列看得到的報價單；其他角色不能建單（NO_CREATE_ROLE）
+11) 商機作廢→連結的報價單全部失效（草稿／被退回／簽核中／已核准）：唯讀守衛 QUOTE_INVALID、簽核關閉、收件匣、hash 不變、還原恢復
  * 測試資料只用通用字串（公開 repo：不放客戶名、人名、真實費率）。
  */
 'use strict';
@@ -273,19 +274,87 @@ async function run() {
   t('8.4 不存在的商機：exists=false、空清單', r.s === 200 && r.j.exists === false && r.j.total === 0);
 
   // ═════════ 9) 純函式 ═════════
-  const d = { quotations: [{ oppId: 'A', approval: null }, { oppId: 'A', approval: { state: 'returned' } }, { oppId: 'A', approval: { state: 'approved' } }, { oppId: 'B', approval: { state: 'returned' } }, { id: 'legacy' }] };
+  const d = { quotations: [{ oppId: 'A', approval: null }, { oppId: 'A', approval: { state: 'returned' }, invalid: { reason: 'OPP_VOID' } }, { oppId: 'A', approval: { state: 'approved' } }, { oppId: 'B', approval: { state: 'returned' } }, { id: 'legacy' }] };
   const m = OL.countByOpp(d);
-  t('9.1 countByOpp：total 含全部、live 不含被退回；舊單不計', m.get('A').total === 3 && m.get('A').live === 2 && m.get('B').total === 1 && m.get('B').live === 0 && !m.has(undefined) && m.size === 2);
+  t('9.1 countByOpp：total 含全部、live 不含失效（invalid）；退回的單照算；舊單不計', m.get('A').total === 3 && m.get('A').live === 2 && m.get('A').invalid === 1 && m.get('B').total === 1 && m.get('B').live === 1 && !m.has(undefined) && m.size === 2);
   t('9.2 linkedQuotes／isLiveQuote', OL.linkedQuotes(d, 'A').length === 3 && OL.linkedQuotes(d, '').length === 0 && OL.linkedQuotes(d, 'A').filter(OL.isLiveQuote).length === 2);
+
+
+  // ═════════ 11) 商機作廢 → 連結的報價單全部失效（取代舊的 OPP_HAS_QUOTES 擋刪除）═════════
+  {
+    env = mkEnv([], OPPS());
+    const mk = async (oid, extra) => { const r0 = await env.call('own1', 'POST', POSTQ, {}, body(oid, Object.assign({ items: [{ desc: '導入顧問', unit: '式', qty: 1, unitPrice: 600000, cost: 100000 }, { desc: '教育訓練', unit: '式', qty: 1, unitPrice: 100000, cost: 20000 }] }, extra || {}))); return r0.j.id; };
+    const D = env.data;
+    const byId = (i) => D.quotations.find((x) => x.id === i);
+    // 同一商機 OC 下四種狀態：草稿、被退回、簽核中、已核准；另有別筆商機 OSame 的單與舊單
+    const qDraft = await mk('OC');
+    const qRet = await mk('OC');
+    const qPend = await mk('OC');
+    const qAppr = await mk('OC');
+    const qOther = await mk('OSame');
+    D.quotations.push(mkQuote({ id: 'LEG', quoteNo: 'QU-LEG', owner: 'own1' }));
+    await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qRet }, {});
+    await env.call('mgr1', 'POST', '/api/quotations/:id/return', { id: qRet }, { comment: 'no', hash: QA.contentHash(byId(qRet)) });
+    await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qPend }, {});
+    await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qAppr }, {});
+    for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (byId(qAppr).approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: qAppr }, { hash: QA.contentHash(byId(qAppr)), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-1' }); }
+    t('11.0 前置：草稿／被退回／簽核中／已核准各一張', !byId(qDraft).approval && byId(qRet).approval.state === 'returned' && byId(qPend).approval.state === 'pending' && byId(qAppr).approval.state === 'approved', [qDraft, qRet, qPend, qAppr].map((i) => byId(i).approval && byId(i).approval.state).join(','));
+    const ib0 = (await env.call('mgr1', 'GET', '/api/quotations/inbox', {})).j;
+    t('11.1 作廢前：主管收件匣有簽核中的那張', ib0.approvals.some((x) => x.id === qPend));
+    const hashes = [qDraft, qRet, qPend, qAppr].map((i) => QA.contentHash(byId(i)));
+    const apprHash = byId(qAppr).approval.hash;
+    const opC = D.opportunities.find((o) => o.id === 'OC');
+    const affected = OL.invalidateForOpp(D, opC, 'own1', '2026-10-12T00:00:00.000Z');
+    t('11.2 四張都失效（q.invalid：reason／oppId／at／prevState），別筆商機的單與舊單不受影響', affected.length === 4 && [qDraft, qRet, qPend, qAppr].every((i) => byId(i).invalid && byId(i).invalid.reason === 'OPP_VOID' && byId(i).invalid.oppId === 'OC') && !byId(qOther).invalid && !byId('LEG').invalid, J(affected.map((a) => a.prevState)));
+    t('11.3 簽核中的關閉（state none、steps 清空、hash 清掉）、歷程保留並多一筆 OPP_VOID_INVALIDATE；已核准維持 approved 當紀錄', byId(qPend).approval.state === 'none' && byId(qPend).approval.steps.length === 0 && byId(qPend).approval.hash === null && byId(qPend).approval.history.length >= 1 && byId(qPend).approval.history.slice(-1)[0].action === 'OPP_VOID_INVALIDATE' && byId(qAppr).approval.state === 'approved' && byId(qAppr).approval.hash === apprHash);
+    t('11.4 草稿（沒有 approval）不建立 approval 物件，改寫編輯時間軸 OPP_VOID', !byId(qDraft).approval && byId(qDraft).timeline.slice(-1)[0].action === 'OPP_VOID');
+    t('11.5 contentHash 不變（含已核准那張：核准雜湊仍相符）', [qDraft, qRet, qPend, qAppr].every((i, k) => QA.contentHash(byId(i)) === hashes[k]) && QA.contentHash(byId(qAppr)) === apprHash);
+    // 唯讀
+    const blocked = async (name, user, m, p, params, b) => { const r = await env.call(user, m, p, params, b); t('11.6 失效後 ' + name + ' → 409 QUOTE_INVALID', r.s === 409 && r.j.code === 'QUOTE_INVALID', r.s + J(r.j && r.j.code)); };
+    await blocked('PUT 編輯（草稿）', 'own1', 'PUT', PUTQ, { id: qDraft }, { projectName: 'x' });
+    await blocked('PUT 編輯（已核准）', 'own1', 'PUT', PUTQ, { id: qAppr }, { projectName: 'x' });
+    await blocked('item-notes（已核准）', 'own1', 'PUT', '/api/quotations/:id/item-notes', { id: qAppr }, { items: [] });
+    await blocked('送簽（草稿）', 'own1', 'POST', '/api/quotations/:id/submit', { id: qDraft }, {});
+    await blocked('送簽（被退回）', 'own1', 'POST', '/api/quotations/:id/submit', { id: qRet }, {});
+    await blocked('撤回', 'own1', 'POST', '/api/quotations/:id/withdraw', { id: qPend }, {});
+    await blocked('核准', 'mgr1', 'POST', '/api/quotations/:id/approve', { id: qPend }, { hash: 'x' });
+    await blocked('駁回', 'mgr1', 'POST', '/api/quotations/:id/return', { id: qPend }, { hash: 'x', comment: 'c' });
+    await blocked('改派', 'admin1', 'POST', '/api/quotations/:id/reassign', { id: qPend }, { to: 'mgr1' });
+    await blocked('填成本', 'own1', 'PUT', '/api/quotations/:id/costs', { id: qDraft }, { costLines: [], done: false, costModel: 2 });
+    await blocked('正式匯出（Excel／PDF 底稿）', 'own1', 'GET', '/api/quotations/:id/export', { id: qAppr }, undefined);
+    await blocked('PDF 蓋章紀錄', 'own1', 'POST', '/api/quotations/:id/export-log', { id: qAppr }, { format: 'pdf' });
+    await blocked('issue-info', 'own1', 'GET', '/api/quotations/:id/issue-info', { id: qAppr }, undefined);
+    g = await env.call('own1', 'GET', PUTQ, { id: qAppr });
+    t('11.7 失效單仍可檢視：GET 200、有 invalid 物件、perm 全部 false', g.s === 200 && g.j.invalid && g.j.invalid.reason === 'OPP_VOID' && ['canEdit', 'canEditCost', 'canSubmit', 'canWithdraw', 'canApprove', 'canReturn', 'canReassign'].every((k) => g.j.perm[k] === false), J(g.j.perm));
+    const ib1 = (await env.call('mgr1', 'GET', '/api/quotations/inbox', {})).j;
+    t('11.8 簽核人的待辦不再出現這張（收件匣）', !ib1.approvals.some((x) => x.id === qPend));
+    r = await env.call('own1', 'PUT', PUTQ, { id: qOther }, { projectName: 'ok-still' });
+    t('11.9 別筆商機的單、舊單照常編輯', r.s === 200 && (await env.call('own1', 'PUT', PUTQ, { id: 'LEG' }, { projectName: 'ok' })).s === 200);
+    r = await env.call('own1', 'GET', '/api/opportunities/:id/quotes', { id: 'OC' });
+    t('11.10 商機的報價單清單標示 invalid', r.j.total === 4 && r.j.quotes.every((x) => x.invalid === true));
+    const cnt = OL.countByOpp(D);
+    t('11.11 countByOpp：失效的不算 live（linkedQuoteCount 用 live）、算進 invalid', cnt.get('OC').total === 4 && cnt.get('OC').live === 0 && cnt.get('OC').invalid === 4 && cnt.get('OSame').live >= 1);
+    t('11.12 再作廢一次不重複處理（冪等）', OL.invalidateForOpp(D, opC, 'own1', '2026-10-12T01:00:00.000Z').length === 0);
+    // 刪草稿仍可
+    r = await env.call('own1', 'DELETE', PUTQ, { id: qDraft });
+    t('11.13 失效的草稿（沒送過簽）仍可刪除', r.s === 200);
+    // 還原
+    const rev = OL.revalidateForOpp(D, opC, 'own1', '2026-10-13T00:00:00.000Z');
+    t('11.14 還原：因這筆商機失效的單恢復（剩 3 張），invalid 清掉、歷程多 OPP_RESTORE', rev.length === 3 && !byId(qRet).invalid && !byId(qPend).invalid && !byId(qAppr).invalid && byId(qPend).approval.history.slice(-1)[0].action === 'OPP_RESTORE');
+    t('11.15 還原後：簽核中被關閉的回到草稿（可重新送簽），已核准仍有效；可再編輯', byId(qPend).approval.state === 'none' && QA.contentHash(byId(qAppr)) === apprHash && (await env.call('own1', 'PUT', PUTQ, { id: qPend }, { projectName: 'back' })).s === 200 && (await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qPend }, {})).s === 200);
+    // 另一種失效原因不被誤還原
+    byId(qRet).invalid = { at: 'x', by: 'z', reason: 'OTHER', oppId: 'OC' };
+    t('11.16 非 OPP_VOID 原因的失效不會被商機還原洗掉', OL.revalidateForOpp(D, opC, 'own1', 'n').length === 0 && !!byId(qRet).invalid);
+  }
 
   // ═════════ 9b) config.me.canCreate（商機卡「建立報價單」鈕只給能建單的角色）═════════
   env = mkEnv([], OPPS());
   const cfgOf = async (u) => (await env.call(u, 'GET', '/api/quote-approval/config', {})).j.me.canCreate;
-  t('9b.1 業務、admin 能建單；主管／總經理／董事長／秘書不能（與 POST 的 NO_CREATE_ROLE 同一條件）', (await cfgOf('own1')) === true && (await cfgOf('admin1')) === true && (await cfgOf('mgr1')) === false && (await cfgOf('sec1')) === false && (await cfgOf('gm1')) === false);
+  t('9b.1 只有業務 canCreate；admin（後台管理）、主管／總經理／董事長／秘書都不顯示建單入口（伺服器仍允許 admin POST，1.9 驗證）', (await cfgOf('own1')) === true && (await cfgOf('admin1')) === false && (await cfgOf('mgr1')) === false && (await cfgOf('sec1')) === false && (await cfgOf('gm1')) === false);
 
   // ═════════ 10) 靜態接線 ═════════
   const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  t('10.1 server.js：商機清單帶 linkedQuoteCount、PUT 商機改公司擋 OPP_COMPANY_LOCKED、DELETE 商機擋 OPP_HAS_QUOTES', /linkedQuoteCount: _qc\.get/.test(srv) && /OPP_COMPANY_LOCKED/.test(srv) && /OPP_HAS_QUOTES/.test(srv) && /require\('\.\/lib\/quoteOppLink'\)/.test(srv));
+  t('10.1 server.js：商機清單帶 linkedQuoteCount、PUT 商機改公司擋 OPP_COMPANY_LOCKED、DELETE 商機改為連動失效（不再擋）、還原商機連動恢復', /r\.linkedQuoteCount = c\.live/.test(srv) && /OPP_COMPANY_LOCKED/.test(srv) && !/OPP_HAS_QUOTES/.test(srv) && /invalidateForOpp/.test(srv) && /revalidateForOpp/.test(srv) && /require\('\.\/lib\/quoteOppLink'\)/.test(srv));
 }
 
 run().then(() => {
