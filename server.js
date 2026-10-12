@@ -588,6 +588,7 @@ function pickFields(obj, fields) {
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
+const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
@@ -3802,6 +3803,9 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
       return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: userLabel(ownerU, o.owner) };
     });
   }
+  // 連結的報價單數（報價單 q.oppId）：算一次對照表；沒有連結的商機不多任何鍵（舊資料外形不變）
+  const _qc = quoteOppLink.countByOpp(data);
+  if (_qc.size) filtered = filtered.map(o => (_qc.has(o.id) ? { ...o, linkedQuoteCount: _qc.get(o.id).total } : o));
   res.json(filtered);
 });
 
@@ -3897,6 +3901,11 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   // 集團範圍角色：連改動的對象也必須落在自己的集團內（PUT 原本完全沒有集團檢查）
   const gScopeU = checkGroupScopeWrite(req, req.body.company !== undefined ? req.body.company : data.opportunities[idx].company);
   if (gScopeU.error) return res.status(403).json({ error: gScopeU.error });
+  // 已有報價單連結到這筆商機時，不可改公司（報價單的客戶以商機為準；要換客戶請另建商機）。階段（含轉 Won）、金額等其他欄位不受影響
+  if (req.body.company !== undefined && String(req.body.company || '').trim() !== String(data.opportunities[idx].company || '').trim()) {
+    const _lq = quoteOppLink.linkedQuotes(data, req.params.id);
+    if (_lq.length) return res.status(409).json({ error: `已有 ${_lq.length} 張報價單連結到這筆商機，不能更改公司；要換客戶請另外建立新的商機`, code: 'OPP_COMPANY_LOCKED', linkedQuoteCount: _lq.length });
+  }
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
@@ -4224,6 +4233,14 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
   const canDelete = req.session.user.role === 'groupsales' ? getEditableOwners(req) : [owner];
   const opp = data.opportunities.find(o => o.id === req.params.id && canDelete.includes(o.owner));
   if (!opp) return res.status(404).json({ error: '找不到此商機' });
+  // 還有「算數」的報價單（草稿／簽核中／已核准；被駁回的不算）連結到這筆商機 → 不能刪，避免報價單變成沒有來源的孤兒
+  const _liveQ = quoteOppLink.linkedQuotes(data, opp.id).filter(quoteOppLink.isLiveQuote);
+  if (_liveQ.length) {
+    return res.status(409).json({
+      error: `這筆商機還有 ${_liveQ.length} 張報價單（${_liveQ.slice(0, 5).map(q => q.quoteNo || '草稿').join('、')}${_liveQ.length > 5 ? '…' : ''}），請先刪除草稿或處理報價單後再刪除商機`,
+      code: 'OPP_HAS_QUOTES', linkedQuoteCount: _liveQ.length,
+    });
+  }
   // 保存到 lostOpportunities 供事後分析
   if (!data.lostOpportunities) data.lostOpportunities = [];
   data.lostOpportunities.push({
