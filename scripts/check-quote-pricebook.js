@@ -101,7 +101,7 @@ async function run() {
     const app = {};
     ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });
     const quote = { id: 'Q1', quoteNo: 'QU-1', owner: 'own1', company: 'TestCo', projectName: 'Proj', status: 'draft', products: [], items: [{ lid: 'i1', desc: 'PM', unit: '人天', qty: 3, unitPrice: 8000, cost: 0 }], approval: null, discountType: 'none', discountValue: 0 };
-    const env = { data: { quotations: [quote], quoteApproval: { roster: { gm: [], chairman: [], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: {} }, contacts: [{ id: 'c1' }] }, logs: [], saves: 0, seq: 0 };
+    const env = { data: { opportunities: [{ id: 'O1', owner: 'own1', stage: 'C', company: 'PbCo', product: 'P', amount: '100' }], quotations: [quote], quoteApproval: { roster: { gm: [], chairman: [], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: {} }, contacts: [{ id: 'c1' }] }, logs: [], saves: 0, seq: 0 };
     env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
     const requireAuth = function requireAuthStub(req, rs, next) { next(); };
     const requireAdmin = function requireAdminStub(req, rs, next) { next(); };
@@ -239,7 +239,7 @@ async function run() {
   await env.call('admin1', 'PUT', A, {}, putBody([row('PM 顧問經理', 9000, 6500), row('SD 顧問', 7000, 5000)], null));
   const list = QPB.sanitizeList((await env.call('own1', 'GET', U)).j.items);
   const picked = QPB.buildItems(list, [{ id: list[0].id, qty: 3 }, { id: list[1].id, qty: 1.5 }]);
-  const mkBody = (items, co) => ({ company: co || 'PbCo', projectName: 'P', products: [], items, discountType: 'none' });
+  const mkBody = (items, co) => ({ oppId: 'O1', company: co || 'PbCo', projectName: 'P', products: [], items, discountType: 'none' });
   const c1 = await env.call('own1', 'POST', '/api/quotations', {}, mkBody(picked));
   const saved = env.data.quotations.find((x) => x.id === (c1.j && (c1.j.id || (c1.j.quotation && c1.j.quotation.id))));
   t('6.1 選取產生的品項可以直接存成報價單（POST /api/quotations 200）', c1.s === 200 || c1.s === 201, JSON.stringify(c1).slice(0, 200));
@@ -259,17 +259,17 @@ async function run() {
   const cur = (await env.call('admin1', 'GET', A)).j;
   await env.call('admin1', 'PUT', A, {}, putBody(cur.items.map((x) => Object.assign({}, x, { price: x.price + 1000, cost: x.cost + 1000, name: x.name + '改' })), cur.updatedAt));
   t('6.5 牌價簿之後改價／改名，先前已存的報價單（含品項單價）完全不變', JSON.stringify(env.data.quotations) === snapSaved);
-  // ═════════════════ 7) BU（ERP／ITS／MDM／CRM）：資料模型 ═════════════════
-  // 舊資料／舊用戶端沒有 bu → 一律 ERP；名稱唯一性與 60 筆上限是每個 BU 各自計算（共 240）；同一個 BU 內順序＝陣列順序。
+  // ═════════════════ 7) BU（ERP／ITS／MDM／CRM／資安）：資料模型 ═════════════════
+  // 舊資料／舊用戶端沒有 bu → 一律 ERP；名稱唯一性與 60 筆上限是每個 BU 各自計算（共 300）；同一個 BU 內順序＝陣列順序。
   const Z = (bu, name, extra) => Object.assign({ bu, name, price: 1, cost: 1 }, extra || {});
-  t('7.1 BU 常數＝ERP、ITS、MDM、CRM（與 quoteRoutes 的 ALL_BUS 同序）；LIMITS 帶出 BUS 與 MAX_TOTAL=240', eq(PB.BUS, ['ERP', 'ITS', 'MDM', 'CRM']) && PB.DEFAULT_BU === 'ERP' && PB.LIMITS.MAX_TOTAL === 240 && PB.LIMITS.MAX_ITEMS === 60 && eq(PB.LIMITS.BUS, PB.BUS) && Object.isFrozen(PB.BUS));
-  let rb = norm([row('舊資料形狀', 1, 1), Z('ITS', 'B'), Z('MDM', 'C'), Z('CRM', 'D'), Z(undefined, 'E'), Z(null, 'F'), Z('', 'G')]);
-  t('7.2 normalize：沒有 bu／null／空字串 → ERP；合法 bu 保留；輸出每個項目都有 bu；順序＝輸入順序', rb.ok && eq(rb.items.map((x) => x.bu), ['ERP', 'ITS', 'MDM', 'CRM', 'ERP', 'ERP', 'ERP']) && eq(rb.items.map((x) => x.name), ['舊資料形狀', 'B', 'C', 'D', 'E', 'F', 'G']));
-  const badBus = ['XYZ', 'erp', ' ERP', 'ERP ', 5, true, {}, ['ERP'], 'ERP,ITS', 'itS'];
-  t('7.3 bu 不是四個之一（含大小寫不同、前後空白、數字、布林、物件、陣列）→ BAD_PRICEBOOK field=bu 指向該列', badBus.every((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) === 'BAD_PRICEBOOK:bu@1'), badBus.filter((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) !== 'BAD_PRICEBOOK:bu@1').map(String).join('|'));
-  t('7.4 名稱唯一性是同一個 BU 內：ERP 與 ITS 可以同名（也含大小寫／全形／空白變體）；同 BU 內重複才拒絕（訊息含 [BU]）', norm([Z('ERP', 'SD'), Z('ITS', 'sd'), Z('MDM', ' ＳＤ '), Z('CRM', 'SD')]).ok && code(norm([Z('ITS', 'SD'), Z('MDM', 'SD'), Z('ITS', ' sd ')])) === 'BAD_PRICEBOOK:name@2' && /\[ITS\]/.test(norm([Z('ITS', 'SD'), Z('ITS', 'sd')]).error.message) && code(norm([row('SD', 1, 1), Z('ERP', 'sd')])) === 'BAD_PRICEBOOK:name@1');
+  t('7.1 BU 常數＝ERP、ITS、MDM、CRM、資安（與 quoteRoutes 的 ALL_BUS 同序）；LIMITS 帶出 BUS 與 MAX_TOTAL=300（60×5）', eq(PB.BUS, ['ERP', 'ITS', 'MDM', 'CRM', '資安']) && PB.DEFAULT_BU === 'ERP' && PB.LIMITS.MAX_TOTAL === 300 && PB.LIMITS.MAX_ITEMS === 60 && eq(PB.LIMITS.BUS, PB.BUS) && Object.isFrozen(PB.BUS));
+  let rb = norm([row('舊資料形狀', 1, 1), Z('ITS', 'B'), Z('MDM', 'C'), Z('CRM', 'D'), Z(undefined, 'E'), Z(null, 'F'), Z('', 'G'), Z('資安', 'H')]);
+  t('7.2 normalize：沒有 bu／null／空字串 → ERP；合法 bu 保留；輸出每個項目都有 bu；順序＝輸入順序', rb.ok && eq(rb.items.map((x) => x.bu), ['ERP', 'ITS', 'MDM', 'CRM', 'ERP', 'ERP', 'ERP', '資安']) && eq(rb.items.map((x) => x.name), ['舊資料形狀', 'B', 'C', 'D', 'E', 'F', 'G', 'H']));
+  const badBus = ['XYZ', 'erp', ' ERP', 'ERP ', 5, true, {}, ['ERP'], 'ERP,ITS', 'itS', '資安 ', ' 資安', '資安部', 'SEC', ['資安']];
+  t('7.3 bu 不是五個之一（含大小寫不同、前後空白、數字、布林、物件、陣列）→ BAD_PRICEBOOK field=bu 指向該列', badBus.every((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) === 'BAD_PRICEBOOK:bu@1'), badBus.filter((v) => code(norm([Z('ERP', 'ok'), Z(v, 'x')])) !== 'BAD_PRICEBOOK:bu@1').map(String).join('|'));
+  t('7.4 名稱唯一性是同一個 BU 內：ERP 與 ITS 可以同名（也含大小寫／全形／空白變體）；同 BU 內重複才拒絕（訊息含 [BU]）', norm([Z('ERP', 'SD'), Z('ITS', 'sd'), Z('MDM', ' ＳＤ '), Z('CRM', 'SD'), Z('資安', 'SD')]).ok && code(norm([Z('資安', 'SD'), Z('資安', ' ｓｄ ')])) === 'BAD_PRICEBOOK:name@1' && /[資安]/.test(norm([Z('資安', 'SD'), Z('資安', 'sd')]).error.message) && code(norm([Z('ITS', 'SD'), Z('MDM', 'SD'), Z('ITS', ' sd ')])) === 'BAD_PRICEBOOK:name@2' && /\[ITS\]/.test(norm([Z('ITS', 'SD'), Z('ITS', 'sd')]).error.message) && code(norm([row('SD', 1, 1), Z('ERP', 'sd')])) === 'BAD_PRICEBOOK:name@1');
   const fill = (bu, n) => Array.from({ length: n }, (_, i) => Z(bu, bu + i));
-  t('7.5 上限：每個 BU 60（共 240）通過；任一 BU 61 → 拒絕（訊息含該 BU）；總數 241 → 拒絕；最後一筆在最後的 BU 也算對', norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60))).ok && !norm(fill('ERP', 61)).ok && /\[ERP\]/.test(norm(fill('ERP', 61)).error.message) && !norm(fill('ERP', 1).concat(fill('ITS', 61))).ok && /\[ITS\]/.test(norm(fill('ERP', 1).concat(fill('ITS', 61))).error.message) && !norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60), [Z('CRM', 'extra')])).ok);
+  t('7.5 上限：每個 BU 60（共 300）通過；任一 BU 61（含 資安）→ 拒絕（訊息含該 BU）；總數 301 → 拒絕；最後一筆在最後的 BU 也算對', norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60), fill('資安', 60))).ok && !norm(fill('資安', 61)).ok && /[資安]/.test(norm(fill('資安', 61)).error.message) && !norm(fill('ERP', 61)).ok && /\[ERP\]/.test(norm(fill('ERP', 61)).error.message) && !norm(fill('ERP', 1).concat(fill('ITS', 61))).ok && /\[ITS\]/.test(norm(fill('ERP', 1).concat(fill('ITS', 61))).error.message) && !norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60), fill('資安', 60), [Z('資安', 'extra')])).ok && !norm(fill('ERP', 60).concat(fill('ITS', 60), fill('MDM', 60), fill('CRM', 60), fill('資安', 60), [Z('ERP', 'extra')])).ok);
   t('7.6 既有的逐項驗證在 BU 模型下不變：名稱空白／過長／控制字元、牌價成本範圍、active 型別、重複 id 都仍然拒絕，且訊息帶 [BU]＋BU 內第幾列', code(norm([Z('ITS', 'a'), Z('ITS', '')])) === 'BAD_PRICEBOOK:name@1' && /\[ITS\] 第 2 列/.test(norm([Z('ITS', 'a'), Z('ITS', '')]).error.message) && code(norm([Z('MDM', 'a', { price: -1 })])) === 'BAD_PRICEBOOK:price@0' && code(norm([Z('MDM', 'a', { cost: NaN })])) === 'BAD_PRICEBOOK:cost@0' && code(norm([Z('CRM', 'a', { active: 'x' })])) === 'BAD_PRICEBOOK:active@0' && code(norm([Z('ERP', 'a', { id: 'same' }), Z('CRM', 'b', { id: 'same' })])) === 'BAD_PRICEBOOK:id@1');
   const exist = [{ id: 'k1', bu: 'ITS', name: 'A', price: 1, cost: 1, active: true }, { id: 'k2', name: 'Legacy', price: 1, cost: 1, active: true }, { id: 'k3', bu: 'CRM', name: 'C', price: 1, cost: 1, active: true }];
   rb = PB.normalizePricebook([{ id: 'k1', name: 'A', price: 2, cost: 1 }, { id: 'k2', name: 'Legacy', price: 1, cost: 1 }, { id: 'k3', bu: 'MDM', name: 'C', price: 1, cost: 1 }, { id: 'zz', name: 'New', price: 1, cost: 1 }], { genId, existing: exist });
@@ -279,7 +279,7 @@ async function run() {
   t('7.9 扁平陣列原樣保留輸入順序；各 BU 內的相對順序不變（e1 在 e2 前、c1 在 c2 前）', eq(norm(orderIn).items.map((x) => x.name), ['c1', 'e1', 'i1', 'e2', 'c2']));
   const legacyStored = [{ id: 'a', name: 'PM', unit: '人天', price: 9000, cost: 6000, active: true }, { id: 'b', bu: 'BOGUS', name: 'SD', price: 1, cost: 1, active: false }, null];
   t('7.10 publicItems／adminItems 對舊資料（沒有 bu）或壞 bu 補 ERP；合法 bu 原樣；GET 一定帶 bu', eq(PB.publicItems(legacyStored).map((x) => x.bu), ['ERP']) && eq(PB.adminItems(legacyStored.slice(0, 2)).map((x) => x.bu), ['ERP', 'ERP']) && PB.adminItems([{ id: 'q', bu: 'MDM', name: 'x', price: 1, cost: 1 }])[0].bu === 'MDM' && eq(PB.publicItems([{ id: 'q', bu: 'CRM', name: 'x', price: 1, cost: 1, active: true }]).map((x) => x.bu), ['CRM']));
-  t('7.11 groupByBu：固定四個 key、BU 內保持順序、缺 bu 的算 ERP、壞資料不丟錯', eq(Object.keys(PB.groupByBu([])), PB.BUS) && eq(PB.groupByBu(orderIn).CRM.map((x) => x.name), ['c1', 'c2']) && eq(PB.groupByBu(legacyStored).ERP.map((x) => x.id), ['a', 'b']) && eq(PB.groupByBu('x').ERP, []));
+  t('7.11 groupByBu：固定五個 key（含 資安）、BU 內保持順序、缺 bu 的算 ERP、壞資料不丟錯', eq(Object.keys(PB.groupByBu([])), PB.BUS) && eq(PB.groupByBu(orderIn).CRM.map((x) => x.name), ['c1', 'c2']) && eq(PB.groupByBu([Z('資安', 's1')]).資安.map((x) => x.name), ['s1']) && PB.buOf({ bu: '資安' }) === '資安' && PB.buOf({ bu: '資安 ' }) === 'ERP' && eq(PB.groupByBu(legacyStored).ERP.map((x) => x.id), ['a', 'b']) && eq(PB.groupByBu('x').ERP, []));
   // diff / 稽核摘要
   const pv = [{ id: 'a', bu: 'ERP', name: 'SD 顧問', price: 7000, cost: 5000, active: true }, { id: 'b', bu: 'ITS', name: 'SD 顧問', price: 6000, cost: 4000, active: true }, { id: 'c', bu: 'ITS', name: 'Net', price: 5000, cost: 3000, active: true }];
   const nx = [{ id: 'a', bu: 'ERP', name: 'SD 顧問', price: 7500, cost: 5000, active: true }, { id: 'b', bu: 'ITS', name: 'SD 顧問', price: 6000, cost: 4000, active: false }, { id: 'n', bu: 'MDM', name: 'New', price: 1, cost: 1, active: true }];

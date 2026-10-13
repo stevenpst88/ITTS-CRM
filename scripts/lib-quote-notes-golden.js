@@ -86,7 +86,7 @@ function mkEnv(R, quotations) {
   const routes = {};
   const app = {};
   ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });
-  const env = { data: { quotations, quoteApproval: { roster: { gm: ['gm1'], chairman: ['ch1'], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: CLASSES }, contacts: [] }, logs: [], notes: [], saves: 0, seq: 0, nseq: 0 };
+  const env = { data: { opportunities: [{ id: 'O1', owner: 'own1', stage: 'C', company: '', product: 'P', amount: '100', bu: 'ITS' }], quotations, quoteApproval: { roster: { gm: ['gm1'], chairman: ['ch1'], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: CLASSES }, contacts: [] }, logs: [], notes: [], saves: 0, seq: 0, nseq: 0 };
   env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
   const deps = {
     // 與 db/json.js 相同的語意：load() 每次回傳「重新讀檔」的新物件、save(d) 才寫入。（曾經因為測試用同一個物件，沒測到通知合併會被過期的 ctx.data 蓋掉的問題）
@@ -143,7 +143,7 @@ async function goldenDigests(R) {
   const out = {};
   out.hash = sha(fx.map((q) => [QA.contentHash(q), QA.itemsSig(q), QA.costLinesSig(q), QA.lineStructureSig(q.items), QA.structureSig(q)].join('|')).join('\n'));
   // store：用 POST 建立（走 normalizeItems）再用 PUT 原樣送回（舊畫面形狀：沒有 spec／note 欄位）
-  const bodies = fx.map((q) => ({ company: q.company, projectName: q.projectName, products: ['PS'], validUntil: '2026-10-30', discountType: q.discountType, discountValue: q.discountValue, items: q.items.map((it) => Object.assign({}, it, { lid: undefined })) }));
+  const bodies = fx.map((q) => ({ company: q.company, projectName: q.projectName, oppId: 'O1', products: ['PS'], validUntil: '2026-10-30', discountType: q.discountType, discountValue: q.discountValue, items: q.items.map((it) => Object.assign({}, it, { lid: undefined })) }));
   const envS = mkEnv(R, []);
   const stored = [];
   for (const b of bodies) {

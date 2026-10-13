@@ -158,6 +158,22 @@
     .btn-danger  { background: #fce8e6; color: #d32f2f; }
     .btn-warning { background: #fff3e0; color: #e65100; }
     .btn-sm { padding: 5px 12px; font-size: 12px; }
+    /* ── 公告管理 ── */
+    .an-st { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:700; white-space:nowrap; }
+    .an-st-live { background:#e6f4ea; color:#1e7e34; } .an-st-scheduled { background:#e8f0fe; color:#1a73e8; }
+    .an-st-expired { background:#f0f2f5; color:#777; } .an-st-disabled { background:#fce8e6; color:#c62828; }
+    .an-imp { background:#fdecea; color:#d93025; padding:1px 7px; border-radius:6px; font-size:11px; font-weight:700; margin-left:6px; }
+    .an-sub { font-size:11.5px; color:#8a8f98; margin-top:2px; white-space:pre-line; }
+    .an-roles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:4px 10px; margin-top:6px; }
+    .form-group .an-roles label { text-transform:none; letter-spacing:0; font-weight:500; font-size:13px; display:flex; align-items:center; gap:6px; margin:0; color:#333; }
+    .form-group .an-roles input, .form-group .an-chk input { width:auto; padding:0; margin:0; }
+    .form-group label.an-chk { display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-weight:600; font-size:13px; color:#333; }
+    #annTable th, #annTable td { padding-left:10px; padding-right:10px; }
+    #annTable td.an-act { white-space:nowrap; } #annTable td.an-act .btn { padding:4px 9px; }
+    #annTable td.an-nw { white-space:nowrap; }
+    #annForm textarea, #annForm input[type=text], #annForm input[type=number], #annForm input[type=datetime-local], #annForm select { width:100%; padding:10px 12px; border:1.5px solid #e0e2e5; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box; }
+    #annForm textarea { min-height:150px; resize:vertical; line-height:1.6; }
+    .an-row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     /* ── Modal ── */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
@@ -823,7 +839,7 @@
       </div>
       <div class="nav-domain" data-domain="integration" data-name="整合與通知" data-color="#854F0B" data-icon="🔌" style="--dc:#854F0B">
         <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
-          <span class="nav-dot"></span><span class="nav-domain-name">整合與通知</span><span class="nav-domain-count">3</span>
+          <span class="nav-dot"></span><span class="nav-domain-name">整合與通知</span><span class="nav-domain-count">4</span>
           <span class="nav-group-arrow">▼</span>
         </div>
         <div class="nav-domain-items"><div class="nav-domain-inner">
@@ -835,6 +851,9 @@
           </div>
           <div class="admin-nav-item nav-sub" data-sec="push-test">
             <span class="admin-nav-icon">🔔</span> 推播測試
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="announcements">
+            <span class="admin-nav-icon">📣</span> 公告管理
           </div>
         </div></div>
       </div>
@@ -2093,6 +2112,24 @@
         </div>
       </div>
 
+      <!-- ── 公告管理 ── -->
+      <div class="admin-section" id="sec-announcements">
+        <div class="section-title">📣 公告管理</div>
+        <div class="section-sub">新功能或調整上線時，設定使用者登入後彈出的公告。「一次性」每人按「我知道了」後不再出現；「每次登入」每次真正登入都會彈出，直到停用、過期或刪除。內容為純文字（保留換行）。每則公告彈出後，「我知道了」需等 5 秒倒數結束才能按（預覽也一樣），伺服器端同步檢查。</div>
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">公告列表 <span id="annCount" style="font-weight:500;color:#888;font-size:12px"></span></span>
+            <button class="btn btn-primary btn-sm" id="annNewBtn" type="button">＋ 新增公告</button>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="admin-table" id="annTable">
+              <thead><tr><th>狀態</th><th>標題</th><th>模式</th><th>對象</th><th>期間（台北時間）</th><th>已讀 / 目標</th><th>啟用</th><th>操作</th></tr></thead>
+              <tbody id="annTbody"><tr><td colspan="8" style="text-align:center;color:#999;padding:24px">載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- ── 系統整合：連線設定 ── -->
       <div class="admin-section" id="sec-integration">
         <div class="section-title">🔌 系統整合</div>
@@ -2363,7 +2400,7 @@
 
       <div class="admin-section" id="sec-quote-pricebook">
         <div class="section-title">💼 報價牌價簿</div>
-        <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM 四個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
+        <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM／資安 五個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
         <div class="admin-card" style="padding:18px;max-width:980px">
           <div style="font-size:12.5px;color:#6b7280;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:8px 12px;margin-bottom:14px">委外費用依供應商報價，於填成本時輸入，不在此維護。業務端看得到這裡的牌價與成本（標準費率表）。</div>
           <div id="pbIoBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -2532,6 +2569,49 @@
     </main>
   </div>
 
+  <!-- ── 公告編輯 Modal（邏輯在檔尾 initAnnouncements IIFE）── -->
+  <div class="modal-overlay" id="annModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="annModalTitle" style="width:min(680px,95vw)">
+      <div class="modal-header">
+        <h3 id="annModalTitle">新增公告</h3>
+        <button class="modal-close" id="annClose" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="annForm" onsubmit="return false">
+          <div class="form-group"><label for="annTitle">標題（最多 100 字）</label><input type="text" id="annTitle" maxlength="100" autocomplete="off"></div>
+          <div class="form-group"><label for="annBody">內容（純文字，最多 4000 字，換行會保留）</label><textarea id="annBody" maxlength="4000"></textarea>
+            <div class="an-sub" id="annBodyCnt" style="text-align:right">0 / 4000</div></div>
+          <div class="an-row2">
+            <div class="form-group"><label for="annMode">公告模式</label>
+              <select id="annMode"><option value="once">一次性（每人按「我知道了」後不再出現）</option><option value="everyLogin">每次登入都彈出</option></select></div>
+            <div class="form-group"><label for="annSeverity">重要程度</label>
+              <select id="annSeverity"><option value="normal">一般</option><option value="important">重要（紅色強調）</option></select></div>
+          </div>
+          <div class="an-row2">
+            <div class="form-group"><label for="annStart">開始時間（空白＝立即）</label><input type="datetime-local" id="annStart"></div>
+            <div class="form-group"><label for="annEnd">結束時間（空白＝不結束）</label><input type="datetime-local" id="annEnd"></div>
+          </div>
+          <div class="an-row2">
+            <div class="form-group"><label for="annPriority">顯示順序（數字小的先彈出）</label><input type="number" id="annPriority" min="0" max="9999" value="100"></div>
+            <div class="form-group"><label class="an-chk" style="margin-top:26px"><input type="checkbox" id="annEnabled" checked> 啟用</label></div>
+          </div>
+          <div class="form-group"><label>目標角色</label>
+            <label class="an-chk" style="margin-top:4px"><input type="checkbox" id="annRoleAll" checked> 全部角色（含日後新增的角色）</label>
+            <div class="an-roles" id="annRoles"></div></div>
+          <div class="form-group" id="annRenotifyWrap" style="display:none;background:#fff8e1;border-radius:8px;padding:10px 12px">
+            <label class="an-chk"><input type="checkbox" id="annRenotify"> 重新公告給所有人</label>
+            <div class="an-sub">勾選後版本 +1：已按過「我知道了」的人也會再看到一次（適合內容有重大更新時）。</div></div>
+          <div class="an-sub" id="annFormErr" style="color:#d93025;font-weight:600"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" type="button" id="annPreviewBtn" style="background:#f0f2f5;color:#333">👁 預覽</button>
+        <button class="btn" type="button" id="annCancel" style="background:#f0f2f5;color:#333">取消</button>
+        <button class="btn btn-primary" type="button" id="annSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── 牌價簿 Excel 匯入預覽 Modal（上傳 → 預覽 → 確認匯入；邏輯在 pbImp* 函式）── -->
   <div class="modal-overlay" id="pbImpModal">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pbImpTitle" style="width:min(940px,95vw)">
@@ -2675,6 +2755,7 @@
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="ITS" style="width:16px;height:16px"> ITS</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="MDM" style="width:16px;height:16px"> MDM</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="CRM" style="width:16px;height:16px"> CRM</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="bu-cb" value="資安" style="width:16px;height:16px"> 資安</label>
           </div>
           <div id="buCrossHint" style="display:none;font-size:12px;color:#9ca3af;margin-top:6px">系統管理員 / 董事長/總經理 / 會計主管 / 財務主管 不歸屬於特定 BU，可跨所有 BU 查看資料</div>
           <div style="font-size:11px;color:#9ca3af;margin-top:4px">業務（user）可跨 BU；其他角色建議只勾一個 BU</div>
@@ -2862,6 +2943,7 @@
   <div class="toast" id="toast"></div>
 
   <script src="admin-users-view.js"></script>
+  <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
     const API = '/api';
     let allUsers = [];
@@ -2931,6 +3013,7 @@
         if (this.dataset.sec === 'version') loadVersionInfo();
         if (this.dataset.sec === 'subscription') loadSubStatus();
         if (this.dataset.sec === 'push-test') initPushTest();
+        if (this.dataset.sec === 'announcements' && typeof initAnnouncements === 'function') initAnnouncements();
         if (this.dataset.sec === 'integration') initIntegration();
         if (this.dataset.sec === 'product-catalog') initProductCatalog();
         if (this.dataset.sec === 'quote-pricebook') initPricebook();
@@ -3141,7 +3224,7 @@
     }
 
     // ── 簽核流程設定（Admin）───────────────────────────────────
-    const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+    const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const AF_ACTIONS = [{ value: 'skip_mgr1', label: '跳過一級主管' }];
     let _afInited = false, _afCfg = null, _afUsers = null;
 
@@ -3185,7 +3268,7 @@
       const exs = (_afCfg.exceptions || []).filter(e => e.action === 'skip_mgr1');
       for (const bu of AF_BUS) {
         const on = !!(_afCfg.buSettings && _afCfg.buSettings[bu] && _afCfg.buSettings[bu].hasMgr2Step);
-        const skipNames = exs.map(e => _afUsers.find(u => u.username === e.username)).filter(u => u && u.bu === bu).map(u => u.displayName || u.username);
+        const skipNames = exs.map(e => _afUsers.find(u => u.username === e.username)).filter(u => u && (Array.isArray(u.bu) ? u.bu[0] : u.bu) === bu).map(u => u.displayName || u.username);
         const skip = on && skipNames.length > 0;
         const nodes = [_afNode('起點', '業務送簽')];
         if (on) nodes.push(_afNode('二級主管', '複核'));
@@ -3280,8 +3363,8 @@
     }
 
     // ── 銷售商品維護（Admin）───────────────────────────────────
-    const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
-    const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed' };
+    const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
+    const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed', '資安': '#e11d48' };
     let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null;
     const pcEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -3292,7 +3375,7 @@
       try {
         const r = await adminFetch(`${API}/product-catalog`);
         _pcData = pcBuildModel(await r.json());
-      } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [] }; }
+      } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [], '資安': [] }; }
       $('pcStatus').textContent = '';
       pcAttachOnce();
       pcRender();
@@ -3474,12 +3557,12 @@
     }
 
     // ── 報價牌價簿（Admin）─────────────────────────────────────
-    // data.pricebook：顧問角色 × 人天牌價／人天成本，依 BU（ERP／ITS／MDM／CRM）分四個分頁維護。整份取代儲存（四個 BU 一次送出）＋樂觀並行
+    // data.pricebook：顧問角色 × 人天牌價／人天成本，依 BU（ERP／ITS／MDM／CRM／資安）分五個分頁維護。整份取代儲存（五個 BU 一次送出）＋樂觀並行
     // （送出載入時的 updatedAt，不符→409 STALE_PRICEBOOK）。所有使用者可控字串（項目名稱、伺服器訊息、updatedBy）一律 pcEsc 後才進 innerHTML。
-    // _pbItems 是扁平陣列（每列有 bu）；同一個 BU 內的順序＝陣列順序；送出時依 ERP、ITS、MDM、CRM 分組（pbOrdered）。
+    // _pbItems 是扁平陣列（每列有 bu）；同一個 BU 內的順序＝陣列順序；送出時依 ERP、ITS、MDM、CRM、資安 分組（pbOrdered）。
     let _pbInited = false, _pbAttached = false, _pbItems = [], _pbUpdatedAt = null, _pbUpdatedBy = null, _pbSnap = '[]', _pbSnapBy = {};
     let _pbSeq = 0, _pbShowErr = false, _pbSrvErr = null, _pbLive = null, _pbSaving = false, _pbTab = 'ERP';
-    const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];   // 與 lib/quotePricebook.js BUS 同值同序
+    const PB_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];   // 與 lib/quotePricebook.js BUS 同值同序
     const PB_MAX_ITEMS = 60, PB_MAX_NAME = 40, PB_MAX_SPEC = 200, PB_MAX_MONEY = 1e9;   // 與 lib/quotePricebook.js 相同（PB_MAX_ITEMS 是「每個 BU」）
     const PB_MONEY_RE = /^\s*\d+(\.\d+)?\s*$/;
     const PB_TAB_KEY = 'pbActiveBu';
@@ -4478,7 +4561,7 @@
         const u = await r.json();
         if (u.role !== 'admin') { showLoginScreen(); return false; }
         const buArr = Array.isArray(u.bu) ? u.bu : (u.bu ? [u.bu] : []);
-        const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','全公司':'#d97706'};
+        const BU_COLOR = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48','全公司':'#d97706'};
         const badges = buArr.length === 0
           ? `<span style="background:${BU_COLOR['全公司']}20;color:${BU_COLOR['全公司']};font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px">全公司</span>`
           : buArr.map(b => {
@@ -4598,7 +4681,7 @@
     // 畫面狀態放在模組層級的 uvState：loadUsers() 重抓資料、新增／編輯／刪除後重畫、quickToggle 失敗後重抓，分頁／篩選／收合都不會掉。
     // 只有「分頁、檢視方式、收合的群組」存 sessionStorage（讀回來一律先驗證）；搜尋與篩選重新整理後歸零。
     const UV = window.AdminUsersView;
-    const UV_BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed'};
+    const UV_BU_BADGE = {ERP:'#1a73e8',ITS:'#0a8a4a',MDM:'#e37400',CRM:'#7c3aed','資安':'#e11d48'};
     const UV_KEY = { tab: 'admin.users.tab', view: 'admin.users.view', collapsed: 'admin.users.collapsed' };
     function uvStoreGet(k) { try { return sessionStorage.getItem(k); } catch (_) { return null; } }
     function uvStoreSet(k, v) { try { sessionStorage.setItem(k, v); } catch (_) { /* 沒有 sessionStorage 也能用 */ } }
@@ -4632,7 +4715,7 @@
       if (buArr.length === 0) return `<span style="background:#fef3c722;color:#d97706;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">— 全公司 —</span>`;
       return buArr.map(b => {
         const c = UV_BU_BADGE[b] || '#6b7280';
-        return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px">${escH(b)}</span>`;
+        return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;margin-right:3px;white-space:nowrap">${escH(b)}</span>`;
       }).join('');
     }
     function uvAccessHtml(u) {
@@ -9028,6 +9111,149 @@
     if (impText) impText.addEventListener('input', () => {
       if (imp.previewed && impText.value !== imp.text) { imp.previewed = false; $('emailImportApply').disabled = true; impStatus('內容已修改，請重新按「預覽」。', 'warn'); }
     });
+  })();
+
+  // ── 公告管理 ── （/api/admin/announcements；所有使用者輸入一律 escH／textContent，不信任伺服器回傳的字串）
+  function initAnnouncements() { return window.__annAdmin.init(); }
+  window.__annAdmin = (() => {
+    const A = API + '/admin/announcements';
+    const ROLE_ZH = { admin:'系統管理員', executive:'董事長/總經理', manager1:'一級主管', manager2:'二級主管', secretary:'秘書', tecopm:'集團PM', groupsales:'集團業務', marketing:'行銷人員', user:'一般業務', accounting_manager:'會計主管', finance_manager:'財務主管', consult_manager_south:'南區顧問主管', consult_manager_north:'北區顧問主管' };
+    const ST_ZH = { live:'進行中', scheduled:'未開始', expired:'已結束', disabled:'已停用' };
+    let items = [], allRoles = [], editingId = null, bound = false;
+
+    function fmt(local) { return local ? local.replace('T', ' ') : ''; }
+    function period(a) {
+      if (!a.startLocal && !a.endLocal) return '不限';
+      return (a.startLocal ? fmt(a.startLocal) : '立即') + ' ～ ' + (a.endLocal ? fmt(a.endLocal) : '不結束');
+    }
+    function target(a) {
+      if (!a.roles || !a.roles.length) return '全部角色';
+      return a.roles.map(r => ROLE_ZH[r] || r).join('、');
+    }
+    function render() {
+      $('annCount').textContent = '（共 ' + items.length + ' 則）';
+      const tb = $('annTbody');
+      if (!items.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:24px">尚無公告，按右上角「＋ 新增公告」建立</td></tr>'; return; }
+      tb.innerHTML = items.map(a => {
+        const id = escapeAttr(a.id);
+        const pct = a.targetCount ? Math.round(a.readCount / a.targetCount * 100) : 0;
+        return '<tr data-id="' + id + '">'
+          + '<td><span class="an-st an-st-' + escH(a.status) + '">' + escH(ST_ZH[a.status] || a.status) + '</span></td>'
+          + '<td style="max-width:260px"><b>' + escH(a.title) + '</b>' + (a.severity === 'important' ? '<span class="an-imp">重要</span>' : '')
+          + '<div class="an-sub">v' + escH(a.version) + '・順序 ' + escH(a.priority) + '・建立者 ' + escH(a.createdBy) + '</div></td>'
+          + '<td class="an-nw">' + (a.mode === 'once' ? '一次性' : '每次登入') + '</td>'
+          + '<td style="max-width:170px;font-size:12px">' + escH(target(a)) + '</td>'
+          + '<td style="font-size:12px;white-space:nowrap">' + escH(period(a)) + '</td>'
+          + '<td title="' + (a.mode === 'everyLogin' ? '至少確認過一次的人數（目前版本）' : '已按「我知道了」的人數（目前版本）') + '"><b>' + escH(a.readCount) + '</b> / ' + escH(a.targetCount) + '<div class="an-sub">' + pct + '%</div></td>'
+          + '<td><label class="toggle"><input type="checkbox" data-act="toggle" ' + (a.enabled !== false ? 'checked' : '') + '><span class="toggle-slider"></span></label></td>'
+          + '<td class="an-act"><button class="btn btn-sm" data-act="preview" style="background:#f0f2f5;color:#333" type="button">預覽</button> '
+          + '<button class="btn btn-sm btn-primary" data-act="edit" type="button">編輯</button> '
+          + '<button class="btn btn-sm btn-danger" data-act="del" type="button">刪除</button></td></tr>';
+      }).join('');
+    }
+    async function load() {
+      try {
+        const r = await adminFetch(A);
+        if (!r.ok) { showToast('載入公告失敗'); return; }
+        const d = await r.json();
+        items = d.items || []; allRoles = d.roles || [];
+        render();
+      } catch (e) { if (e.message !== 'Session expired') showToast('載入公告失敗'); }
+    }
+    function roleBoxes() { return Array.from($('annRoles').querySelectorAll('input[type=checkbox]')); }
+    function syncRoleUi() {
+      const all = $('annRoleAll').checked;
+      $('annRoles').style.opacity = all ? '.45' : '1';
+      roleBoxes().forEach(c => { c.disabled = all; });
+    }
+    function buildRoleBoxes(selected) {
+      $('annRoles').innerHTML = allRoles.map(r =>
+        '<label><input type="checkbox" value="' + escapeAttr(r) + '"' + (selected.includes(r) ? ' checked' : '') + '> ' + escH(ROLE_ZH[r] || r) + '</label>').join('');
+      $('annRoleAll').checked = selected.length === 0;
+      syncRoleUi();
+    }
+    function readForm() {
+      const roles = $('annRoleAll').checked ? [] : roleBoxes().filter(c => c.checked).map(c => c.value);
+      return {
+        title: $('annTitle').value, body: $('annBody').value, mode: $('annMode').value, severity: $('annSeverity').value,
+        startAt: $('annStart').value || null, endAt: $('annEnd').value || null,
+        priority: $('annPriority').value === '' ? 100 : Number($('annPriority').value),
+        enabled: $('annEnabled').checked, roles,
+      };
+    }
+    function openModal(a) {
+      editingId = a ? a.id : null;
+      $('annModalTitle').textContent = a ? '編輯公告' : '新增公告';
+      $('annTitle').value = a ? a.title : '';
+      $('annBody').value = a ? a.body : '';
+      $('annMode').value = a ? a.mode : 'once';
+      $('annSeverity').value = a ? a.severity : 'normal';
+      $('annStart').value = a ? (a.startLocal || '') : '';
+      $('annEnd').value = a ? (a.endLocal || '') : '';
+      $('annPriority').value = a ? a.priority : 100;
+      $('annEnabled').checked = a ? a.enabled !== false : true;
+      $('annRenotify').checked = false;
+      $('annRenotifyWrap').style.display = a ? '' : 'none';
+      $('annFormErr').textContent = '';
+      buildRoleBoxes(a ? (a.roles || []) : []);
+      $('annBodyCnt').textContent = $('annBody').value.length + ' / 4000';
+      $('annModal').classList.add('open');
+      $('annTitle').focus();
+    }
+    function closeModal() { $('annModal').classList.remove('open'); }
+    async function save() {
+      const f = readForm();
+      if (editingId && $('annRenotify').checked) f.renotify = true;
+      $('annFormErr').textContent = '';
+      $('annSave').disabled = true;
+      try {
+        const r = await adminFetch(editingId ? A + '/' + encodeURIComponent(editingId) : A, {
+          method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { $('annFormErr').textContent = d.error || '儲存失敗'; return; }
+        closeModal(); showToast(editingId ? '公告已更新' : '公告已建立'); await load();
+      } catch (e) { if (e.message !== 'Session expired') $('annFormErr').textContent = '儲存失敗，請稍後再試'; }
+      finally { $('annSave').disabled = false; }
+    }
+    async function patch(id, body, okMsg) {
+      try {
+        const r = await adminFetch(A + '/' + encodeURIComponent(id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) showToast(d.error || '操作失敗'); else if (okMsg) showToast(okMsg);
+      } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗'); }
+      await load();
+    }
+    function bind() {
+      if (bound) return; bound = true;
+      $('annNewBtn').addEventListener('click', () => openModal(null));
+      $('annClose').addEventListener('click', closeModal);
+      $('annCancel').addEventListener('click', closeModal);
+      $('annSave').addEventListener('click', save);
+      $('annRoleAll').addEventListener('change', syncRoleUi);
+      $('annBody').addEventListener('input', () => { $('annBodyCnt').textContent = $('annBody').value.length + ' / 4000'; });
+      $('annPreviewBtn').addEventListener('click', () => {
+        const f = readForm();
+        if (window.ITTSAnnounce) window.ITTSAnnounce.preview({ title: f.title || '（尚未輸入標題）', body: f.body, severity: f.severity, mode: f.mode });
+      });
+      $('annTbody').addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-act]'); if (!btn) return;
+        const tr = btn.closest('tr'); const a = items.find(x => x.id === tr.dataset.id); if (!a) return;
+        const act = btn.dataset.act;
+        if (act === 'edit') openModal(a);
+        else if (act === 'preview') { if (window.ITTSAnnounce) window.ITTSAnnounce.preview(a); }
+        else if (act === 'toggle') await patch(a.id, { enabled: btn.checked }, btn.checked ? '已啟用' : '已停用');
+        else if (act === 'del') {
+          if (!confirm('確定刪除公告「' + a.title + '」？\n刪除後無法復原（已讀紀錄一併刪除）。若只是暫時不顯示，請改用「停用」。')) return;
+          try {
+            const r = await adminFetch(A + '/' + encodeURIComponent(a.id), { method: 'DELETE' });
+            if (!r.ok) showToast('刪除失敗'); else showToast('已刪除');
+          } catch (er) { if (er.message !== 'Session expired') showToast('刪除失敗'); }
+          await load();
+        }
+      });
+    }
+    return { init() { bind(); return load(); } };
   })();
   </script>
 </body>
