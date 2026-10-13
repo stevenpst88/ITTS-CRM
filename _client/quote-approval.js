@@ -590,7 +590,40 @@ function buildJudgeSection(q) {
   if (warns.length) {
     html += '<div class="qap-alert warn" style="margin-top:8px">' + warns.map((w) => e(w)).join('<br>') + '</div>';
   }
+  html += buildRulesDetails(pk);
   return sec('類別與簽核關卡', html);
+}
+
+/** 「適用規則」可收合區（唯讀）：送簽當時凍結的門檻／路徑／規則版本／名冊／流程設定。舊單沒有快照 → 只顯示一行說明，不影響其他內容 */
+function buildRulesDetails(pk) {
+  if (!pk || !pk.frozen) return '';
+  const d = pk.d;
+  const th = d && d.thresholds;
+  if (!th || typeof th !== 'object') {
+    return '<div class="qap-muted" style="margin-top:8px" data-rules="none">送簽當時未留存規則快照（此單在規則快照功能上線前送簽）。</div>';
+  }
+  const names = (d.rosterNames && typeof d.rosterNames === 'object') ? d.rosterNames : {};
+  const who = (arr) => (Array.isArray(arr) && arr.length ? arr.map((u) => e(names[u] || u)).join('、') : '（無）');
+  const pct = (v) => (v === null || v === undefined ? '—' : e(String(v)) + '%');
+  const rs = th.rosterSnapshot || {};
+  const fl = th.flowSnapshot || {};
+  const am = th.amountThresholds || {};
+  const nm = (arr) => (Array.isArray(arr) && arr.length ? arr.map((k) => e(tierLabel(k))).join(' ➜ ') : '—');
+  let h = '<details class="qap-rules" style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">適用規則（送簽當時，唯讀）</summary>';
+  h += '<div class="qap-grid" style="margin-top:6px">';
+  h += '<div><span class="k">規則版本</span><b>' + e(th.rulesVersion || '') + '</b></div>';
+  h += '<div><span class="k">規則雜湊</span><b>' + e(String(th.rulesHash || '').slice(0, 12)) + '</b></div>';
+  h += '<div><span class="k">類別</span><b>' + e(d.rowLabel || th.rowKey || '') + '</b></div>';
+  if (th.fixedLevel) h += '<div><span class="k">層級</span><b>固定第 ' + e(String(th.fixedLevel)) + ' 級（不看毛利）</b></div>';
+  else h += '<div><span class="k">毛利門檻</span><b>一級主管 ≥ ' + pct(th.l1) + '；總經理 ≥ ' + pct(th.l2) + '</b></div>';
+  h += '<div><span class="k">金額門檻（未稅，大於）</span><b>董事長 ' + e(fmtNum(am.chairman)) + ' 元；董事會 ' + e(fmtNum(am.board)) + ' 元</b></div>';
+  h += '<div><span class="k">財務核決路徑</span><b>' + nm(th.path) + '</b></div>';
+  h += '<div><span class="k">實際簽核流程</span><b>' + nm(th.actualPath) + '</b></div>';
+  h += '<div><span class="k">流程設定</span><b>BU ' + e(fl.buKey || '—') + '：二級主管關' + (fl.hasMgr2Step ? '啟用' : '未啟用') + (fl.mgr2Assignee ? '（' + e(names[fl.mgr2Assignee] || fl.mgr2Assignee) + '）' : '') + (fl.skipMgr1Applied ? '；已套用「略過一級主管」例外' : '') + '</b></div>';
+  h += '</div>';
+  h += '<div class="qap-muted" style="margin-top:6px">名冊快照' + (rs.at ? '（' + e(fmtTime(rs.at)) + '）' : '') + '：總經理 ' + who(rs.gm) + '；董事長 ' + who(rs.chairman) + '；董事會代核人 ' + who(rs.boardProxy) + '</div>';
+  h += '</details>';
+  return h;
 }
 
 function buildBlockersAlert(q) {

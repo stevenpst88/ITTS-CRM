@@ -177,11 +177,146 @@ async function runB(h, routesPath) {
   ok(QL.snapshotHash({ a: 1 }) !== QL.snapshotHash({ a: 2 }), '[B] 內容不同雜湊不同');
 }
 
+// ═════════════ C：規則快照＋版本釘選 ═════════════
+const mkSubmitQuote = (over) => Object.assign({
+  id: 'Q1', quoteNo: 'QU-202610-901', owner: 'own1', company: 'TestCo', projectName: 'Proj', quoteDate: '2026-10-08', status: 'draft', createdAt: '2026-10-08T00:00:00Z', updatedAt: '2026-10-08T00:00:00Z',
+  validUntil: '2026-10-30', products: ['PS'], costBy: null, approval: null, discountType: 'none', discountValue: 0,
+  items: [{ lid: 'i1', desc: '導入顧問', unit: '式', qty: 1, unitPrice: 600000, cost: 100000 }, { lid: 'i2', desc: '教育訓練', unit: '式', qty: 1, unitPrice: 100000, cost: 20000 }],
+  costFlow: { state: 'na' },
+}, over || {});
+
+/** 從 client/quote-approval.js 取出 buildRulesDetails，用最小替身執行（不需要瀏覽器） */
+function loadRulesDetails() {
+  const src = fs.readFileSync(path.join(ROOT, '_client/quote-approval.js'), 'utf8');
+  const i = src.indexOf('function buildRulesDetails');
+  if (i < 0) return null;
+  const j = src.indexOf('\n}\n', i);
+  const body = src.slice(i, j + 3);
+  const e = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const TL = { mgr1: '一級主管', mgr2: '二級主管複核', gm: '總經理', chairman: '董事長', board: '董事會決議（秘書代核）' };
+  return new Function('e', 'tierLabel', 'fmtNum', 'fmtTime', body + '\nreturn buildRulesDetails;')(e, (k) => TL[k] || String(k || ''), (n) => Number(n).toLocaleString('en-US'), (v) => String(v));
+}
+
+async function runC(h, routesPath) {
+  const { ok, eq } = h;
+  const QA = require(path.join(ROOT, 'lib/quoteApproval.js'));
+  const { spawnSync } = require('child_process');
+  let env = mkEnv(routesPath, [mkSubmitQuote()]);
+  const Q = () => env.data.quotations[0];
+  const hashBefore = QA.contentHash(Q());
+  let r = await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  eq(r.s, 200, '[C] 送簽 200（' + (r.j && r.j.message) + '）');
+  const ap = Q().approval, d = ap.derived;
+  const th = d.thresholds;
+  ok(th && typeof th === 'object', '[C] ap.derived.thresholds 存在');
+  eq([th.rowKey, th.l1, th.l2], ['software', 10, 5], '[C] 類別門檻：software 10／5');
+  eq(th.amountThresholds, { chairman: 10000000, board: 50000000 }, '[C] 金額門檻');
+  eq(th.path, ['mgr1'], '[C] 財務核決路徑');
+  eq(th.actualPath, ['mgr1'], '[C] 實際簽核路徑');
+  eq([th.rulesVersion, th.rulesHash], [QA.RULES_VERSION, QA.RULES_HASH], '[C] 規則版本與雜湊');
+  eq(th.rosterSnapshot.gm, ['gm1'], '[C] 名冊快照 gm');
+  eq(th.rosterSnapshot.chairman, ['ch1'], '[C] 名冊快照 chairman');
+  eq(th.rosterSnapshot.boardProxy, ['sec1'], '[C] 名冊快照 boardProxy');
+  eq(th.rosterSnapshot.at, ap.submittedAt, '[C] 名冊快照時間＝送簽時間');
+  eq(th.flowSnapshot, { buKey: 'ITS', hasMgr2Step: false, mgr2Assignee: null, skipMgr1Applied: false }, '[C] 流程快照（無二級關）');
+  // 既有 derived 欄位完全不變
+  const base = QA.buildDerived(Q(), CLASSES);
+  const { thresholds, ...rest } = d;
+  eq(rest, base, '[C] derived 除 thresholds 外與 QA.buildDerived 位元級相同（核決運算沒動）');
+  eq(QA.contentHash(Q()), hashBefore, '[C] contentHash 不受影響（快照不進簽章）');
+  eq(ap.steps.map((x) => x.tier), ['mgr1'], '[C] 簽核關卡與以往相同');
+  // 名冊之後怎麼改，快照不動；SUBMIT 歷程 meta 也留一份
+  env.data.quoteApproval.roster.gm = ['gm2'];
+  r = await env.call('own1', 'GET', '/api/quotations/:id', { id: 'Q1' });
+  eq(r.j.approval.derived.thresholds.rosterSnapshot.gm, ['gm1'], '[C] 名冊事後變更 → 快照仍是送簽當時的 gm1');
+  ok(r.j.approval.derived.rosterNames && r.j.approval.derived.rosterNames.gm1 === 'Gm', '[C] 序列化帶 rosterNames（帳號→顯示名稱）');
+  ok(!('thresholds' in r.j.approval.history[0]) && !('meta' in r.j.approval.history[0]), '[C] 歷程輸出不外洩 meta');
+  const sub = Q().approval.history.find((x) => x.action === 'SUBMIT');
+  eq(sub.meta.thresholds.rosterSnapshot.gm, ['gm1'], '[C] SUBMIT 歷程 meta 也留有快照');
+  env.data.quoteApproval.roster.gm = ['gm1'];
+  // 撤回後 derived 被清掉，但歷程快照還在
+  r = await env.call('own1', 'POST', '/api/quotations/:id/withdraw', { id: 'Q1' });
+  ok(r.s === 200 && Q().approval.derived === null && Q().approval.history.find((x) => x.action === 'SUBMIT').meta.thresholds.rulesHash === QA.RULES_HASH, '[C] 撤回後 derived=null，SUBMIT meta 快照仍在');
+
+  // 長路徑＋董事會（低毛利 → chairman 路徑）
+  env = mkEnv(routesPath, [mkSubmitQuote({ items: [{ lid: 'i1', desc: 'x', unit: '式', qty: 1, unitPrice: 1000000, cost: 960000 }] })]);
+  r = await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  const th2 = env.data.quotations[0].approval && env.data.quotations[0].approval.derived.thresholds;
+  eq(r.s, 200, '[C] 低毛利送簽 200');
+  eq(th2 && th2.path, ['mgr1', 'gm', 'chairman'], '[C] 低毛利 → 董事長路徑');
+  // 二級主管流程與略過一級主管例外
+  const mk2 = (skip) => {
+    const e2 = mkEnv(routesPath, [mkSubmitQuote({ owner: 'own2' })]);
+    e2.auth.users.push({ username: 'mgr2x', role: 'manager2', active: true, displayName: 'Mgr2X', bu: ['ITS'], supervisor: 'mgr1' });
+    e2.auth.users.find((u) => u.username === 'own2').supervisor = 'mgr2x';
+    e2.data.approvalFlowConfig = { buSettings: { ITS: { hasMgr2Step: true } }, exceptions: skip ? [{ username: 'mgr2x', action: 'skip_mgr1' }] : [] };
+    return e2;
+  };
+  let e2 = mk2(false);
+  r = await e2.call('own2', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  let t3 = e2.data.quotations[0].approval.derived.thresholds;
+  eq([r.s, t3.path, t3.actualPath], [200, ['mgr1'], ['mgr2', 'mgr1']], '[C] 二級主管流程：財務路徑 mgr1、實際 mgr2→mgr1');
+  eq(t3.flowSnapshot, { buKey: 'ITS', hasMgr2Step: true, mgr2Assignee: 'mgr2x', skipMgr1Applied: false }, '[C] 流程快照：二級關啟用、指派 mgr2x');
+  e2 = mk2(true);
+  r = await e2.call('own2', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  t3 = e2.data.quotations[0].approval.derived.thresholds;
+  eq([r.s, t3.actualPath, t3.flowSnapshot.skipMgr1Applied], [200, ['mgr2'], true], '[C] 套用 skip_mgr1 例外 → 實際只剩 mgr2，flowSnapshot.skipMgr1Applied=true');
+  // 舊單（沒有快照）照常顯示
+  env = mkEnv(routesPath, [mkSubmitQuote()]);
+  await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  delete env.data.quotations[0].approval.derived.thresholds;
+  r = await env.call('own1', 'GET', '/api/quotations/:id', { id: 'Q1' });
+  ok(r.s === 200 && r.j.approval.derived && !('thresholds' in r.j.approval.derived) && !('rosterNames' in r.j.approval.derived) && r.j.approval.derived.rowKey === 'software', '[C] 舊單（無快照）序列化正常且不多鍵');
+  r = await env.call('mgr1', 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(env.data.quotations[0]) });
+  ok(r.s === 200, '[C] 舊單（無快照）仍可核准 (' + r.s + ' ' + J(r.j) + ')');
+  // 前端
+  const fn = loadRulesDetails();
+  ok(typeof fn === 'function', '[C] 前端有 buildRulesDetails');
+  if (fn) {
+    const dd = { rowLabel: '軟體規劃服務', rosterNames: { gm1: '王總' }, thresholds: th };
+    const html = fn({ frozen: true, d: dd });
+    ok(/<details/.test(html) && /適用規則/.test(html) && html.includes(QA.RULES_VERSION) && /≥ 10%/.test(html) && /≥ 5%/.test(html) && /10,000,000/.test(html) && /50,000,000/.test(html) && /王總/.test(html), '[C] 前端：可收合「適用規則」含版本／門檻／金額／名冊（顯示名稱）');
+    ok(/一級主管/.test(html) && /BU ITS/.test(html), '[C] 前端：路徑與流程設定');
+    const xss = fn({ frozen: true, d: { rowLabel: '<img onerror=1>', thresholds: Object.assign({}, th, { rosterSnapshot: { gm: ['<script>x</script>'], chairman: [], boardProxy: [], at: null } }) } });
+    ok(!/<script>|<img onerror/.test(xss), '[C] 前端：名冊與類別文字跳脫');
+    ok(/data-rules="none"/.test(fn({ frozen: true, d: { rowLabel: 'x' } })), '[C] 前端：舊單沒有快照 → 一行說明');
+    eq(fn({ frozen: false, d: dd }), '', '[C] 前端：即時試算（未送簽）不顯示');
+    eq(fn(null), '', '[C] 前端：沒有判定資料不顯示');
+    const full = fs.readFileSync(path.join(ROOT, '_client/quote-approval.js'), 'utf8');
+    ok(/html \+= buildRulesDetails\(pk\);/.test(full), '[C] 前端：已掛進判定區塊');
+  }
+  // 釘選腳本
+  const pin = path.join(ROOT, 'scripts/check-quote-rules-pin.js');
+  const run = (lib) => spawnSync(process.execPath, [pin], { env: Object.assign({}, process.env, lib ? { QRP_LIB: lib } : {}), encoding: 'utf8' });
+  let pr = run();
+  ok(pr.status === 0 && /規則內容與釘選一致/.test(pr.stdout), '[C] 釘選腳本：目前規則通過');
+  ok(typeof QA.RULES_HASH === 'string' && QA.RULES_HASH.length === 64, '[C] lib 匯出 64 碼 RULES_HASH');
+  const muts = [
+    ['l1', "{ key: 'consult', label: '顧問服務', l1: 25, l2: 15 }", "{ key: 'consult', label: '顧問服務', l1: 24, l2: 15 }"],
+    ['amt', 'const AMOUNT = Object.freeze({ chairman: 10000000, board: 50000000 });', 'const AMOUNT = Object.freeze({ chairman: 10000000, board: 60000000 });'],
+    ['path', "2: Object.freeze(['mgr1', 'gm']),", "2: Object.freeze(['gm']),"],
+    ['hash', "const RULES_HASH = '", "const RULES_HASH = '0"],
+  ];
+  const libFile = path.join(ROOT, 'lib/quoteApproval.js');
+  for (const [tag, from, to] of muts) {
+    const src = fs.readFileSync(libFile, 'utf8');
+    if (!src.includes(from)) throw new Error('釘選變異樣式找不到：' + tag);
+    const mf = path.join(ROOT, 'lib', 'quoteApproval.__mut_pin_' + tag + '.js');
+    fs.writeFileSync(mf, src.replace(from, () => to));
+    try {
+      const m = run(mf);
+      ok(m.status === 1 && m.stdout.includes('規則內容已變動，請更新 RULES_VERSION 與 RULES_HASH'), `[C] 釘選腳本變異 ${tag}（規則被改）→ 失敗並印出指定訊息`);
+    } finally { try { fs.unlinkSync(mf); } catch { /* 已刪 */ } }
+  }
+}
+
+
 module.exports = {
   mkEnv, create, mkItems, USERS,
   sections(c) {
     return {
       B: async () => { console.log('[B] 刪除快照＋單號流水帳'); await runB(c); },
+      C: async () => { console.log('[C] 規則快照＋版本釘選'); await runC(c); },
     };
   },
   seed: {},
