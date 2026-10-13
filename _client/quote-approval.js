@@ -33,7 +33,7 @@ const ACTION_LABEL = {
   ITEM_TEXT_EDIT: '修改品項說明／備註（不影響核准）',
   // 編輯事件時間軸（q.timeline，伺服器 pushEdit 寫入）
   OPP_VOID_INVALIDATE: '商機作廢→報價單失效', OPP_VOID: '商機作廢→報價單失效', OPP_RESTORE: '商機還原→報價單恢復',
-  DRAFT_CREATE: '建立報價單', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
+  DRAFT_CREATE: '建立報價單', TIMELINE_TRIMMED: '較早事件已省略', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
 };
 const COST_STATE_LABEL = { na: '無需顧問填寫', needed: '需顧問填寫（尚未通知）', requested: '等待顧問填寫', filled: '顧問已填寫完成' };
 const CLASS_ORDER = ['consult', 'software', 'hardware', 'crm', 'mdm', 'ot', 'other'];

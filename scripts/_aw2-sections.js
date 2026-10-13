@@ -21,7 +21,7 @@ const USERS = [
 const CLASSES = { PC: { cls: 'consult', costBySales: false }, PS: { cls: 'software', costBySales: true } };
 
 /** 假環境：routesPath 可換成變異版 quoteRoutes；events 收 db.insertAuditEvent 的事件 */
-function mkEnv(routesPath, quotations, extraData, roster) {
+function mkEnv(routesPath, quotations, extraData, roster, opts) {
   const registerQuoteRoutes = require(routesPath || path.join(ROOT, 'lib/quoteRoutes.js'));
   const PNL = require(path.join(ROOT, 'lib/quotePnlExcel.js'));
   const routes = {}; const app = {};
@@ -33,7 +33,7 @@ function mkEnv(routesPath, quotations, extraData, roster) {
   };
   env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
   const deps = {
-    db: { load: () => env.data, save: () => { env.saves++; }, flush: async () => {}, insertAuditEvent: (ev) => { env.events.push(ev); return Promise.resolve(true); } },
+    db: Object.assign({ load: () => env.data, save: () => { env.saves++; }, flush: async () => {} }, (opts && opts.noAudit) ? {} : { insertAuditEvent: (ev) => { if (env.auditThrow) throw new Error('audit boom'); env.events.push(ev); return Promise.resolve(true); } }),
     loadAuth: () => env.auth, saveAuth: () => {},
     requireAuth: (req, rs, next) => next(), requireAdmin: (req, rs, next) => next(),
     writeLog: (...a) => env.logs.push(a), pushNotification: (...a) => env.notes.push(a),
@@ -311,11 +311,90 @@ async function runC(h, routesPath) {
 }
 
 
+// ═════════════ D：編輯事件完整性 ═════════════
+async function runD(h, routesPath) {
+  const { ok, eq } = h;
+  const PUTQ = '/api/quotations/:id';
+  const env = mkEnv(routesPath, []);
+  const evs = () => env.events.filter((x) => x.kind === 'quote-edit');
+  let r = await create(env, 'O1');
+  eq(r.s, 201, '[D] 建立 201');
+  const q = () => env.data.quotations[0];
+  const id = q().id;
+  let e0 = evs();
+  eq(e0.length, 1, '[D] 建立 → 1 筆原始編輯事件');
+  eq([e0[0].action, e0[0].operator, e0[0].target, e0[0].extra.count, e0[0].extra.quoteNo], ['DRAFT_CREATE', 'own1', q().quoteNo, 1, q().quoteNo], '[D] 事件欄位：動作／操作者／單號／count=1');
+  ok(/建立報價單/.test(e0[0].detail) && !isNaN(Date.parse(e0[0].ts)), '[D] 事件含摘要與時間');
+  // 連續 6 次儲存（60 秒內）：時間軸合併成 1 筆，原始事件仍是 6 筆
+  for (let i = 0; i < 6; i++) {
+    const rr = await env.call('own1', 'PUT', PUTQ, { id }, { note: 'n' + i, items: q().items.map((x) => ({ lid: x.lid, desc: x.desc, unit: x.unit, qty: x.qty, unitPrice: x.unitPrice, cost: x.cost })) });
+    ok(rr.s === 200, '[D] 儲存 ' + i + ' 200（' + rr.s + '）');
+  }
+  eq(q().timeline.length, 2, '[D] timeline：DRAFT_CREATE＋合併後的 1 筆 DRAFT_SAVE');
+  eq(q().timeline[1].count, 6, '[D] timeline 合併 count=6');
+  const saves = evs().filter((x) => x.action === 'DRAFT_SAVE');
+  eq(saves.length, 6, '[D] 原始事件不合併：6 筆 DRAFT_SAVE');
+  ok(saves.every((x) => x.extra.count === 1 && x.operator === 'own1' && x.target === q().quoteNo), '[D] 每筆 count=1、帶操作者與單號');
+  ok(saves.every((x) => /備註/.test(x.detail)), '[D] 每筆都有各自的完整摘要');
+  ok(saves.every((x, i, a) => i === 0 || Date.parse(x.ts) >= Date.parse(a[i - 1].ts)), '[D] 事件時間遞增');
+
+  // 上限：200 筆；DRAFT_CREATE 釘住；標記累計省略筆數
+  const base = Date.parse('2026-01-01T00:00:00Z');
+  q().timeline = [q().timeline[0]].concat(Array.from({ length: 250 }, (_, i) => ({ at: new Date(base + (i + 1) * 120000).toISOString(), by: 'own1', action: 'DRAFT_SAVE', comment: 'e' + i })));
+  const nEv = evs().length;
+  await env.call('own1', 'PUT', PUTQ, { id }, { note: 'cap1', items: q().items.map((x) => ({ lid: x.lid, desc: x.desc, unit: x.unit, qty: x.qty, unitPrice: x.unitPrice, cost: x.cost })) });
+  let tl = q().timeline;
+  eq(tl.length, 200, '[D] 超過上限 → 剛好 200 筆（含標記）');
+  eq(tl[0].action, 'DRAFT_CREATE', '[D] DRAFT_CREATE 釘在最前面');
+  eq(tl[1].action, 'TIMELINE_TRIMMED', '[D] 第二筆是省略標記');
+  eq(tl[1].comment, '（已省略 53 筆較早事件，完整紀錄見稽核日誌）', '[D] 標記文字與筆數（251 筆一般事件保留 198 筆 → 省略 53）');
+  eq(tl[1].omitted, 53, '[D] 標記 omitted=53');
+  eq(tl[2].comment, 'e53', '[D] 保留的是最新的事件');
+  eq(tl.filter((x) => x.action === 'TIMELINE_TRIMMED').length, 1, '[D] 只有一個標記');
+  eq(evs().length, nEv + 1, '[D] 修剪不影響稽核事件表（照常多 1 筆）');
+  // 再來一筆（避開合併）：標記累計
+  q().timeline[q().timeline.length - 1].at = new Date(Date.now() - 120000).toISOString();
+  await env.call('own1', 'PUT', PUTQ, { id }, { note: 'cap2', items: q().items.map((x) => ({ lid: x.lid, desc: x.desc, unit: x.unit, qty: x.qty, unitPrice: x.unitPrice, cost: x.cost })) });
+  tl = q().timeline;
+  eq([tl.length, tl[0].action, tl.filter((x) => x.action === 'TIMELINE_TRIMMED').length, tl[1].omitted], [200, 'DRAFT_CREATE', 1, 54], '[D] 再超過一筆 → 標記累計 54、仍只有一個、仍 200 筆');
+  eq(tl[1].comment, '（已省略 54 筆較早事件，完整紀錄見稽核日誌）', '[D] 標記文字更新');
+  // 長時間大量事件：DRAFT_CREATE 永遠在
+  for (let i = 0; i < 300; i++) {
+    q().timeline[q().timeline.length - 1].at = new Date(Date.now() - 120000).toISOString();
+    await env.call('own1', 'PUT', PUTQ, { id }, { note: 'bulk' + i, items: q().items.map((x) => ({ lid: x.lid, desc: x.desc, unit: x.unit, qty: x.qty, unitPrice: x.unitPrice, cost: x.cost })) });
+  }
+  tl = q().timeline;
+  ok(tl.length === 200 && tl[0].action === 'DRAFT_CREATE' && tl.filter((x) => x.action === 'DRAFT_CREATE').length === 1 && tl.filter((x) => x.action === 'TIMELINE_TRIMMED').length === 1, '[D] 再 300 次儲存後：DRAFT_CREATE 仍在、標記仍 1 個、共 200 筆');
+  eq(tl[1].omitted, 54 + 300, '[D] 標記累計 354');
+  ok(evs().filter((x) => x.action === 'DRAFT_SAVE').length === 6 + 1 + 1 + 300, '[D] 稽核事件表：全部 DRAFT_SAVE 一筆不缺（308）');
+  // 序列化
+  r = await env.call('own1', 'GET', PUTQ, { id });
+  const mk = r.j.timeline.find((x) => x.action === 'TIMELINE_TRIMMED');
+  ok(mk && mk.byName === '系統' && /已省略/.test(mk.comment) && mk.kind === 'edit', '[D] 序列化：標記事件 byName=系統');
+  ok(r.j.timeline[0].action === 'DRAFT_CREATE', '[D] 序列化：第一筆仍是建立');
+  // 不影響簽核歷程
+  eq(q().approval, null, '[D] 沒有送簽；approval 不受影響');
+  // 顧問成本事件也進原始事件
+  const env2 = mkEnv(routesPath, [mkSubmitQuote({ products: ['PC'], costBy: 'cons1', costFlow: { state: 'requested', requestedAt: '2026-10-08T00:00:00Z' } })]);
+  r = await env2.call('cons1', 'PUT', '/api/quotations/:id/costs', { id: 'Q1' }, { costLines: [{ cat: 'consult', desc: 'PM', qty: 2, unitCost: 7000, unit: '人天', rel: 'link', forLid: 'i1' }], done: false, costModel: 2 });
+  ok(r.s === 200 && env2.events.some((x) => x.kind === 'quote-edit' && x.action === 'COST_SAVE' && x.operator === 'cons1'), '[D] 顧問儲存成本 → 原始事件 COST_SAVE（' + r.s + '）');
+  // 事件寫入丟例外、或根本沒有 insertAuditEvent，都不影響請求
+  const env3 = mkEnv(routesPath, []);
+  env3.auditThrow = true;
+  r = await create(env3, 'O1');
+  ok(r.s === 201 && env3.data.quotations[0].timeline.length === 1, '[D] insertAuditEvent 丟例外 → 建單照樣 201、時間軸照常');
+  const env4 = mkEnv(routesPath, [], null, null, { noAudit: true });
+  r = await create(env4, 'O1');
+  ok(r.s === 201 && env4.data.quotations[0].timeline.length === 1, '[D] db 沒有 insertAuditEvent（舊環境）→ 照常');
+}
+
+
 module.exports = {
   mkEnv, create, mkItems, USERS,
   sections(c) {
     return {
       B: async () => { console.log('[B] 刪除快照＋單號流水帳'); await runB(c); },
+      D: async () => { console.log('[D] 編輯事件完整性'); await runD(c); },
       C: async () => { console.log('[C] 規則快照＋版本釘選'); await runC(c); },
     };
   },

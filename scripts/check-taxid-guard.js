@@ -386,7 +386,7 @@ function runMutation() {
     pids.forEach(killPid);
     await sleep(500);
     created.forEach(f => { try { fs.unlinkSync(f); } catch (e) { /* 已不存在 */ } });
-    for (const extra of ['audit.log.json']) { const p = path.join(ROOT, extra); if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch (e) { /* ignore */ } } }
+    for (const extra of ['audit.log.json', 'audit.log.jsonl', 'audit.failed.jsonl']) { const p = path.join(ROOT, extra); if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch (e) { /* ignore */ } } }
     let bad = 0;
     for (const [n, ok, e] of res) { console.log((ok ? 'PASS ' : 'FAIL ') + n + (e && !ok ? '  → ' + e : (e ? '  (' + e + ')' : ''))); if (!ok) bad++; }
     console.log(`\n${res.length - bad}/${res.length} 通過` + (bad ? `，${bad} 失敗` : ''));

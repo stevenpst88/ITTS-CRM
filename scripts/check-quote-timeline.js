@@ -3,7 +3,7 @@
  * 報價單「編輯事件時間軸」(q.timeline) 檢查。用法：node scripts/check-quote-timeline.js（不需要伺服器；假 app＋記憶體資料庫直接呼叫路由 handler；不碰 data.json／auth.json／audit.log.json）
  * 動 lib/quoteRoutes.js 的 pushEdit／editSummary／visibleTimeline／serialize、POST／PUT 報價單、PUT /costs、item-notes，或 _client/quote-approval.js 的歷程表之後必跑。
  *   1) 建立／儲存／指派顧問／顧問儲存／完成／退回／業務改品項退回 都留一筆（時間＋人員＋動作＋摘要）
- *   2) 60 秒內同人同動作合併（count＋時間更新）；超過 60 秒不合併；編輯事件上限 200 且不影響 approval.history
+ *   2) 60 秒內同人同動作合併（count＋時間更新）；超過 60 秒不合併；編輯事件上限 200（超過時放「已省略 N 筆」標記、DRAFT_CREATE 釘住，見 check-audit-wave2 的 D 項）且不影響 approval.history
  *   3) 不影響簽核：timeline 不進 contentHash／itemsSig／costLinesSig；存檔留事件後核准仍有效；送簽→核准照常；刪除草稿不被擋；approval.history 完全沒有新動作
  *   4) 舊單（沒有 timeline）序列化輸出不多任何鍵；清單 API 只給 timelineCount
  *   5) 前端靜態檢查：標籤、合併排序、舊單不變
@@ -153,7 +153,8 @@ async function run() {
   T().approval = { state: 'none', history: [{ at: '2026-10-01T00:00:00.000Z', by: 'own1', action: 'SUBMIT', comment: '', tier: '' }, { at: '2026-10-01T00:00:01.000Z', by: 'mgr1', action: 'RETURN', comment: 'r', tier: 'mgr1' }] };
   T().timeline = Array.from({ length: 205 }, (_, i) => ({ at: new Date(Date.UTC(2026, 9, 1, 0, 0, 0) + i * 120000).toISOString(), by: 'own1', action: 'DRAFT_SAVE', comment: 'e' + i }));
   await env.call('own1', 'PUT', PUTQ, { id: 'Q1' }, { note: 'trim' });
-  t('4.1 超過 200 筆只保留最新 200（含剛寫的），approval.history 兩筆簽核事件完全不動', T().timeline.length === 200 && T().timeline[0].comment === 'e6' && /備註/.test(T().timeline[199].comment) && T().approval.history.length === 2, T().timeline.length + ' ' + T().timeline[0].comment);
+  // 稽核第二波（D）刻意更新：超過上限時不再無聲截斷——最前面放一筆「已省略 N 筆」標記（占上限一格），其餘保留最新 199 筆；完整紀錄在稽核事件表。
+  t('4.1 超過 200 筆：標記＋最新 199 筆共 200（含剛寫的），標記寫明省略 7 筆，approval.history 兩筆簽核事件完全不動', T().timeline.length === 200 && T().timeline[0].action === 'TIMELINE_TRIMMED' && /已省略 7 筆較早事件，完整紀錄見稽核日誌/.test(T().timeline[0].comment) && T().timeline[1].comment === 'e7' && /備註/.test(T().timeline[199].comment) && T().approval.history.length === 2, T().timeline.length + ' ' + T().timeline[0].comment);
   const plain = JSON.parse(JSON.stringify(mkQuote()));
   env = mkEnv([plain]);
   const g = (await env.call('own1', 'GET', PUTQ, { id: 'Q1' })).j;
