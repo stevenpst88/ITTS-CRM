@@ -2131,6 +2131,14 @@ function userAuditSnap(u) {
   };
 }
 
+/** 啟用中的管理員人數（_pool 等系統帳號不算；role==='admin' 且 active!==false） */
+function countActiveAdmins(users) { return (users || []).filter(x => x.role === 'admin' && x.active !== false).length; }
+/** 管理員安全護欄被觸發：回應 + 稽核（ADMIN_RAIL_BLOCKED，記下誰、對誰、想做什麼、為什麼被擋） */
+function adminRailBlock(req, res, status, code, message, target, attempted) {
+  try { writeLog('ADMIN_RAIL_BLOCKED', req.session.user.username, target, `被攔截（${code}）：${attempted}`, req); } catch (e) { console.error('[adminRail log]', e && e.message); }
+  return res.status(status).json({ error: message, code });
+}
+
 // ── Admin: update user ───────────────────────────────────
 app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
@@ -2153,6 +2161,27 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
   }
   const userBefore = userAuditSnap(auth.users[idx]);   // 異動前快照（只含可編輯的非機敏欄位；不含密碼雜湊／Email 位址）
+  // ── 管理員安全護欄（內控）：避免自我提權／自我鎖死，且系統永遠至少留一位啟用中的管理員 ──
+  {
+    const opName0 = req.session.user.username;
+    const effRole = role !== undefined ? role : userBefore.role;
+    const effActive = active !== undefined ? !!active : userBefore.active;
+    const effAccess = effRole === 'admin' ? 'edit' : (accessMode !== undefined ? (accessMode === 'view' ? 'view' : 'edit') : userBefore.accessMode);
+    const changes = [];
+    if (effRole !== userBefore.role) changes.push(`角色 ${userBefore.role}→${effRole}`);
+    if (effActive !== userBefore.active) changes.push(`啟用 ${userBefore.active ? '是' : '否'}→${effActive ? '是' : '否'}`);
+    if (effAccess !== userBefore.accessMode) changes.push(`存取模式 ${userBefore.accessMode}→${effAccess}`);
+    if (userBefore.role === 'admin' && userBefore.active && (effRole !== 'admin' || !effActive) && countActiveAdmins(auth.users) <= 1) {
+      return adminRailBlock(req, res, 400, 'LAST_ADMIN_PROTECTED',
+        '無法停用或降級最後一位啟用中的管理員，請先建立或啟用另一位管理員',
+        req.params.username, `嘗試${changes.join('、') || '停用／降級'}，但這是最後一位啟用中的管理員`);
+    }
+    if (req.params.username === opName0 && changes.length) {
+      return adminRailBlock(req, res, 403, 'ADMIN_SELF_CHANGE_FORBIDDEN',
+        '管理員不能變更自己的角色、啟用狀態或存取模式（避免自我提權或把自己鎖在系統外），請由另一位管理員操作',
+        req.params.username, `管理員嘗試變更自己的${changes.join('、')}`);
+    }
+  }
   const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
@@ -2254,8 +2283,8 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
-  if (auth.users[idx].role === 'admin' && auth.users.filter(u => u.role === 'admin').length <= 1)
-    return res.status(400).json({ error: '無法刪除最後一位管理者' });
+  if (auth.users[idx].role === 'admin' && (auth.users.filter(u => u.role === 'admin').length <= 1 || (auth.users[idx].active !== false && countActiveAdmins(auth.users) <= 1)))
+    return adminRailBlock(req, res, 400, 'LAST_ADMIN_PROTECTED', '無法刪除最後一位管理者', req.params.username, '嘗試刪除最後一位啟用中的管理員');
   const deleted = auth.users[idx];
   auth.users.splice(idx, 1);
   saveAuth(auth);

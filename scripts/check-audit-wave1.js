@@ -582,16 +582,72 @@ async function sec5() {
   ok(byAction(await getLogs(), 'LOGIN_RATE_LIMITED').length >= 1, '限流觸發有 LOGIN_RATE_LIMITED 稽核');
 }
 
+// ═════════════ 第 6 項：管理員安全護欄 ═════════════
+async function sec6() {
+  console.log('[6] 管理員安全護欄');
+  await loginAll(['_s_admin', '_s_admin2']);
+  const blocked = async (who) => { const r = await http(who || '_s_admin', 'GET', '/api/admin/logs'); return (Array.isArray(r.json) ? r.json : []).filter(l => l.action === 'ADMIN_RAIL_BLOCKED'); };
+  const me = async (who) => (await http(who, 'GET', '/api/me')).json;
+  let r;
+  // a. 自己改自己的角色／啟用 → 403
+  const b0 = (await blocked()).length;
+  r = await adminPutUser('_s_admin', { role: 'user' });
+  eq([r.status, r.json && r.json.code], [403, 'ADMIN_SELF_CHANGE_FORBIDDEN'], '管理員降自己的角色 → 403 ADMIN_SELF_CHANGE_FORBIDDEN');
+  ok(/管理員不能變更自己/.test(r.json && r.json.error), '訊息是清楚的中文');
+  eq((await me('_s_admin')).role, 'admin', '角色確實沒變');
+  r = await adminPutUser('_s_admin', { active: false });
+  eq([r.status, r.json && r.json.code], [403, 'ADMIN_SELF_CHANGE_FORBIDDEN'], '管理員停用自己 → 403');
+  r = await adminPutUser('_s_admin', { role: 'manager1', bu: ['ERP'] });
+  eq(r.status, 403, '管理員把自己改成別的角色 → 403');
+  let rows = await blocked();
+  eq(rows.length - b0, 3, '三次被擋都有 ADMIN_RAIL_BLOCKED 稽核');
+  ok(/ADMIN_SELF_CHANGE_FORBIDDEN/.test(rows[0].detail) && rows[0].operator === '_s_admin' && rows[0].target === '_s_admin', '稽核含規則代碼、操作者、目標：' + rows[0].detail);
+  // c. 不改敏感欄位的自我編輯仍可（包含帶著「沒變」的完整 payload、admin 的 accessMode 恆為 edit）
+  r = await adminPutUser('_s_admin', { displayName: '沙盒管理員', role: 'admin', active: true, accessMode: 'view' });
+  eq(r.status, 200, '自己改顯示名稱（role/active 沒變、admin accessMode 恆 edit）仍可：' + (r.json && r.json.error));
+  eq(rows.length, (await blocked()).length, '沒變的欄位不觸發護欄');
+  // d. 另一位管理員可以做（需另一位管理員操作）
+  r = await adminPutUser('_s_admin', { accessMode: 'edit' }, '_s_admin2');
+  eq(r.status, 200, '其他管理員改 admin 帳號仍可');
+  r = await adminPutUser('_s_admin', { role: 'user', bu: ['ERP'] }, '_s_admin2');
+  eq(r.status, 200, '另一位管理員可降級管理員（不是最後一位）');
+  r = await http('_s_admin', 'GET', '/api/admin/logs');
+  eq(r.status, 403, '被降級者立即失去後台權限');
+  r = await adminPutUser('_s_admin', { role: 'admin' }, '_s_admin2');
+  eq(r.status, 200, '另一位管理員可復原');
+  r = await adminPutUser('_s_admin', { active: false }, '_s_admin2');
+  eq(r.status, 200, '另一位管理員可停用管理員（不是最後一位）');
+  r = await adminPutUser('_s_admin', { active: true }, '_s_admin2');
+  eq(r.status, 200, '復原啟用');
+  // e. 刪除：非最後一位可刪、最後一位不可（含自刪）
+  r = await http('_s_admin2', 'DELETE', '/api/admin/users/_s_admin');
+  eq(r.status, 200, '刪除另一位管理員（還剩自己）');
+  // f. 現在 _s_admin2 是唯一啟用中的管理員
+  r = await adminPutUser('_s_admin2', { role: 'user', bu: ['ERP'] }, '_s_admin2');
+  eq([r.status, r.json && r.json.code], [400, 'LAST_ADMIN_PROTECTED'], '最後一位管理員自我降級 → 400 LAST_ADMIN_PROTECTED');
+  r = await adminPutUser('_s_admin2', { active: false }, '_s_admin2');
+  eq([r.status, r.json && r.json.code], [400, 'LAST_ADMIN_PROTECTED'], '最後一位管理員自我停用 → 400 LAST_ADMIN_PROTECTED');
+  r = await http('_s_admin2', 'DELETE', '/api/admin/users/_s_admin2');
+  eq([r.status, r.json && r.json.code], [400, 'LAST_ADMIN_PROTECTED'], '刪除最後一位管理員 → 400（原本就擋，現在多了 code 與稽核）');
+  eq((await me('_s_admin2')).role, 'admin', '最後一位管理員安然無恙');
+  rows = await blocked('_s_admin2');
+  ok(rows.filter(l => /LAST_ADMIN_PROTECTED/.test(l.detail)).length >= 3, 'LAST_ADMIN_PROTECTED 被擋三次都有稽核');
+  // g. 一般使用者的編輯不受影響
+  r = await adminPutUser('_s_dl', { displayName: '一般帳號可正常編輯', role: 'user' }, '_s_admin2');
+  eq(r.status, 200, '編輯一般使用者不受護欄影響');
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4, 5: sec5 };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4, 5: sec5, 6: sec6 };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();
   try {
     await startServer();
-    for (const k of Object.keys(SECTIONS)) {
+    for (const k of ['1', '1b', '2', '3', '4', '5', '6', 'M']) {
+      if (!SECTIONS[k]) continue;
       if (only.length && !only.includes(k)) continue;
-      await restart();   // 每項一台新伺服器：登入速率限制（15 分鐘 20 次）是行程內記憶體，重啟歸零
+      await stopServer(); cleanupFiles(); seedFiles(); await restart();   // 每項一台新伺服器：登入速率限制（15 分鐘 20 次）是行程內記憶體，重啟歸零
       try { await SECTIONS[k](); } catch (e) { fail++; failures.push(`第 ${k} 項例外：${e && e.stack || e}`); console.log('  ✗ 例外', e && e.stack || e); }
     }
   } finally {
