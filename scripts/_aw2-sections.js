@@ -205,7 +205,7 @@ async function runC(h, routesPath) {
   const Q = () => env.data.quotations[0];
   const hashBefore = QA.contentHash(Q());
   let r = await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
-  eq(r.s, 200, '[C] 送簽 200（' + (r.j && r.j.message) + '）');
+  eq(r.s, 200, '[C] 送簽 200（' + (r.j && r.j.error) + '）');
   const ap = Q().approval, d = ap.derived;
   const th = d.thresholds;
   ok(th && typeof th === 'object', '[C] ap.derived.thresholds 存在');
@@ -389,12 +389,127 @@ async function runD(h, routesPath) {
 }
 
 
+// ═════════════ E：董事會代核證據 ═════════════
+/** 把一張單推進到「輪到董事會」的關卡（金額 > 5,000 萬 → mgr1→gm→board） */
+async function toBoardStep(env, QA) {
+  const r = await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  if (r.s !== 200) throw new Error('送簽失敗 ' + r.s + ' ' + J(r.j));
+  const q = () => env.data.quotations[0];
+  for (const u of ['mgr1', 'gm1']) {
+    const a = await env.call(u, 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(q()) });
+    if (a.s !== 200) throw new Error('前置核准失敗 ' + u + ' ' + a.s + ' ' + J(a.j));
+  }
+  return q;
+}
+async function runE(h, routesPath) {
+  const { ok, eq } = h;
+  const QA = require(path.join(ROOT, 'lib/quoteApproval.js'));
+  const reg = require(routesPath || path.join(ROOT, 'lib/quoteRoutes.js'));
+  const big = () => mkSubmitQuote({ items: [{ lid: 'i1', desc: '大案', unit: '式', qty: 1, unitPrice: 60000000, cost: 1000000 }] });
+  const approve = (env, q, body, user) => env.call(user || 'sec1', 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, Object.assign({ hash: QA.contentHash(q()), resolutionDate: '2026-10-01' }, body));
+  let env = mkEnv(routesPath, [big()]);
+  let q = await toBoardStep(env, QA);
+  eq(q().approval.steps.map((x) => x.tier), ['mgr1', 'gm', 'board'], '[E] 大額單路徑 mgr1→gm→board');
+
+  // 格式驗證（每個失敗都不得推進狀態）
+  const bad = [
+    ['', 'BAD_RESOLUTION', '空白'],
+    ['T-1', 'BAD_RESOLUTION_NO_LENGTH', '太短(3)'],
+    ['A'.repeat(41) + '1', 'BAD_RESOLUTION_NO_LENGTH', '太長(42)'],
+    ['ABCD', 'BAD_RESOLUTION_NO_DIGIT', '沒有數字'],
+    ['113 董 045', 'BAD_RESOLUTION_NO_CHARS', '含空白'],
+    ['113-董-045!', 'BAD_RESOLUTION_NO_CHARS', '含驚嘆號'],
+    ['<b>113</b>', 'BAD_RESOLUTION_NO_CHARS', '含 HTML'],
+    ['113😀號', 'BAD_RESOLUTION_NO_CHARS', '含表情符號'],
+    ['113#045', 'BAD_RESOLUTION_NO_CHARS', '含 #'],
+    ['113.045', 'BAD_RESOLUTION_NO_CHARS', '含句點'],
+  ];
+  for (const [no, code, label] of bad) {
+    const r = await approve(env, q, { resolutionNo: no });
+    ok(r.s === 400 && r.j.code === code && /董事會決議文號/.test(r.j.error), `[E] 文號 ${label} → 400 ${code}（得到 ${r.s} ${r.j && r.j.code}）`);
+    ok(q().approval.cur === 2 && q().approval.board === null && q().approval.state === 'pending', `[E] 文號 ${label}：狀態沒有被推進`);
+  }
+  // 日期錯誤優先於文號（原有行為不變）
+  let r = await approve(env, q, { resolutionNo: '113-董-045', resolutionDate: '2099-01-01' });
+  ok(r.s === 400 && r.j.code === 'BAD_RESOLUTION', '[E] 未來日期仍擋（原有行為）');
+  r = await approve(env, q, { resolutionNo: '113-董-045', resolutionDate: '2026-02-31' });
+  ok(r.s === 400 && r.j.code === 'BAD_RESOLUTION', '[E] 不存在的日期仍擋（原有行為）');
+  // 議事錄欄位
+  r = await approve(env, q, { resolutionNo: '113-董-045', minutesRef: 'x'.repeat(101) });
+  ok(r.s === 400 && r.j.code === 'BAD_MINUTES_REF', '[E] 議事錄 101 字 → 400 BAD_MINUTES_REF');
+  ok(q().approval.cur === 2, '[E] 議事錄錯誤：狀態沒推進');
+  // 非有權者
+  r = await approve(env, q, { resolutionNo: '113-董-045' }, 'own1');
+  ok(r.s !== 200 && q().approval.cur === 2, '[E] 非代核人（業務本人）不能代核（原有權限不變）(' + r.s + ')');
+  r = await approve(env, q, { resolutionNo: '113-董-045' }, 'gm1');
+  ok(r.s !== 200 && q().approval.cur === 2, '[E] 總經理也不能代董事會登錄（原有權限不變）(' + r.s + ')');
+  // 合格：含 minutesRef（含控制字元會被清掉）
+  const logsBefore = env.logs.length;
+  r = await approve(env, q, { resolutionNo: ' 113-董-045 ', minutesRef: ' 第12次董事會議事錄 第3案\t附件A ' });
+  eq(r.s, 200, '[E] 合格文號＋議事錄 → 200（' + (r.j && r.j.error) + '）');
+  const bd = q().approval.board;
+  eq([bd.resolutionNo, bd.minutesRef, bd.resolutionDate, bd.by], ['113-董-045', '第12次董事會議事錄 第3案 附件A', '2026-10-01', 'sec1'], '[E] ap.board 內容（文號 trim、議事錄清掉控制字元）');
+  const hist = q().approval.history.filter((x) => x.action === 'APPROVE').pop();
+  eq([hist.meta.resolutionNo, hist.meta.minutesRef, hist.meta.resolutionDate], ['113-董-045', '第12次董事會議事錄 第3案 附件A', '2026-10-01'], '[E] 歷程 meta 含文號／議事錄／日期');
+  const lg = env.logs.slice(logsBefore).find((l) => l[0] === 'APPROVE_QUOTATION');
+  ok(lg && /決議 113-董-045/.test(lg[3]) && /議事錄 第12次董事會議事錄 第3案 附件A/.test(lg[3]), '[E] 稽核紀錄含議事錄：' + (lg && lg[3]));
+  eq(q().approval.state, 'approved', '[E] 全部簽完 → approved');
+  const g = await env.call('own1', 'GET', '/api/quotations/:id', { id: 'Q1' });
+  eq(g.j.approval.board.minutesRef, '第12次董事會議事錄 第3案 附件A', '[E] 序列化 board.minutesRef');
+  eq(g.j.approval.board.resolutionNo, '113-董-045', '[E] 序列化 board.resolutionNo');
+  // 不填 minutesRef：形狀與舊資料相同（沒有這個鍵）
+  env = mkEnv(routesPath, [big()]);
+  q = await toBoardStep(env, QA);
+  r = await approve(env, q, { resolutionNo: '(113)董/045_A' });
+  ok(r.s === 200 && !('minutesRef' in q().approval.board), '[E] 沒填議事錄 → ap.board 沒有 minutesRef 鍵；允許字元 ( ) / _ 與文字 (' + r.s + ')');
+  const h2 = q().approval.history.filter((x) => x.action === 'APPROVE').pop();
+  ok(!('minutesRef' in h2.meta), '[E] 沒填議事錄 → 歷程 meta 也沒有該鍵');
+  const lg2 = env.logs.filter((l) => l[0] === 'APPROVE_QUOTATION').pop();
+  ok(!/議事錄/.test(lg2[3]), '[E] 沒填議事錄 → 稽核紀錄不多字');
+  const g2 = await env.call('own1', 'GET', '/api/quotations/:id', { id: 'Q1' });
+  ok(!('minutesRef' in g2.j.approval.board), '[E] 沒填議事錄 → 序列化沒有該鍵');
+  // 非董事會關：多帶的欄位被忽略、不驗證
+  env = mkEnv(routesPath, [big()]);
+  await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' });
+  r = await env.call('mgr1', 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(env.data.quotations[0]), resolutionNo: '!!', minutesRef: 'y'.repeat(300) });
+  ok(r.s === 200 && env.data.quotations[0].approval.board === null, '[E] 一般關卡核准不驗證也不存董事會欄位');
+  // 舊資料（board 沒有 minutesRef）顯示不變
+  const old = mkEnv(routesPath, [big()]);
+  const oq = old.data.quotations[0];
+  oq.approval = { state: 'approved', rulesVersion: QA.RULES_VERSION, hash: QA.contentHash(oq), submittedAt: '2026-10-01T00:00:00Z', submittedBy: 'own1', derived: null, steps: [], cur: 0, board: { resolutionDate: '2026-09-30', resolutionNo: 'T-1', by: 'sec1', at: '2026-10-01T00:00:00Z' }, history: [] };
+  const og = await old.call('own1', 'GET', '/api/quotations/:id', { id: 'Q1' });
+  eq(og.j.approval.board, { resolutionDate: '2026-09-30', resolutionNo: 'T-1', byName: 'Sec', at: '2026-10-01T00:00:00Z' }, '[E] 舊單（短文號、無議事錄）序列化不變');
+  // 純函式與前端一致
+  const cases = ['', 'T-1', 'ABCD', 'A1B2', '113-董-045', '113 董 045', '１１３號', '(1)/2_3', 'A'.repeat(40), 'A'.repeat(39) + '1', 'A'.repeat(41), '董事會決議', '決議123', '<script>1', '1234!', ' 1234 '];
+  const src = fs.readFileSync(path.join(ROOT, '_client/quote-approval.js'), 'utf8');
+  const i0 = src.indexOf('function resolutionNoProblem');
+  const fnClient = i0 < 0 ? null : new Function(src.slice(i0, src.indexOf('\n}\n', i0) + 3) + '\nreturn resolutionNoProblem;')();
+  ok(typeof fnClient === 'function', '[E] 前端有 resolutionNoProblem');
+  if (fnClient) {
+    const diff = cases.filter((c) => (reg.checkResolutionNo(c).ok) !== (fnClient(c) === ''));
+    eq(diff, [], '[E] 前端驗證與伺服器對 ' + cases.length + ' 個樣本的結論一致');
+  }
+  eq(reg.checkResolutionNo('１１３號').ok, true, '[E] 全形數字視為數字（合格）');
+  eq(reg.checkResolutionNo('A'.repeat(40)).ok, false, '[E] 40 個字母沒有數字 → 不合格');
+  eq(reg.checkResolutionNo('A'.repeat(39) + '1').ok, true, '[E] 剛好 40 字且含數字 → 合格');
+  eq(reg.checkResolutionNo('A12').code, 'BAD_RESOLUTION_NO_LENGTH', '[E] 3 字 → 長度錯誤');
+  eq(reg.checkMinutesRef('x'.repeat(100)).ok, true, '[E] 議事錄 100 字合格');
+  eq(reg.checkMinutesRef('😀'.repeat(100)).ok, true, '[E] 議事錄以字元計（100 個表情符號合格）');
+  // 前端靜態：對話框欄位、確認文字、簽核進度顯示、列印
+  ok(/data-draft="minutesRef"/.test(src) && /maxlength="100"/.test(src), '[E] 前端：董事會代核對話框有議事錄欄位（maxlength 100）');
+  ok(/body\.minutesRef = mref/.test(src) && /議事錄／附件：' \+ mref/.test(src), '[E] 前端：送出與確認文字帶議事錄');
+  ok(/ap\.board\.minutesRef \? '　議事錄／附件：'/.test(src), '[E] 前端：簽核進度顯示議事錄（經 e() 跳脫）');
+  ok(/b\.minutesRef \?/.test(src), '[E] 前端：董事會簽呈列印含議事錄');
+}
+
+
 module.exports = {
   mkEnv, create, mkItems, USERS,
   sections(c) {
     return {
       B: async () => { console.log('[B] 刪除快照＋單號流水帳'); await runB(c); },
       D: async () => { console.log('[D] 編輯事件完整性'); await runD(c); },
+      E: async () => { console.log('[E] 董事會代核證據'); await runE(c); },
       C: async () => { console.log('[C] 規則快照＋版本釘選'); await runC(c); },
     };
   },

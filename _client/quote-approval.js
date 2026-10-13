@@ -660,7 +660,7 @@ function buildStepsSection(q) {
   }).join('');
   let board = '';
   if (ap.board && (ap.board.resolutionDate || ap.board.resolutionNo)) {
-    board = `<div class="qap-alert info" style="margin-top:8px">董事會決議：日期 ${e(ap.board.resolutionDate || '')}　文號 ${e(ap.board.resolutionNo || '')}${ap.board.at ? '　（登錄時間 ' + e(fmtTime(ap.board.at)) + '）' : ''}</div>`;
+    board = `<div class="qap-alert info" style="margin-top:8px">董事會決議：日期 ${e(ap.board.resolutionDate || '')}　文號 ${e(ap.board.resolutionNo || '')}${ap.board.minutesRef ? '　議事錄／附件：' + e(ap.board.minutesRef) : ''}${ap.board.at ? '　（登錄時間 ' + e(fmtTime(ap.board.at)) + '）' : ''}</div>`;
   }
   return sec('簽核進度', `<ul class="qap-steps">${li}</ul>${board}`);
 }
@@ -717,6 +717,17 @@ function reassignInfo(s) {
   return { label: isM2 ? '二級主管' : '一級主管', role, cands: (s.mgrs || []).filter((u) => u.role === role && (!s.q || u.username !== s.q.owner)) };
 }
 
+/** 決議文號格式（與伺服器 checkResolutionNo 相同規則，讓使用者在送出前就看到原因）；回傳錯誤訊息，合格回空字串 */
+function resolutionNoProblem(n) {
+  n = String(n == null ? '' : n).trim();
+  if (!n) return '請填寫董事會決議文號';
+  const len = Array.from(n).length;
+  if (len < 4 || len > 40) return '董事會決議文號需為 4–40 個字元（目前 ' + len + ' 個）';
+  if (!/^[\p{L}\p{Nd}\-_\/()]+$/u.test(n)) return '董事會決議文號只能包含文字、數字與 - _ / ( ) 符號（不可有空白或其他符號）';
+  if (!/\p{Nd}/u.test(n)) return '董事會決議文號至少要包含一個數字';
+  return '';
+}
+
 function currentIsBoard(q) {
   const ap = q.approval;
   if (!ap || ap.state !== 'pending' || !Array.isArray(ap.steps)) return false;
@@ -746,7 +757,8 @@ function buildActionSection(s) {
     let f = '';
     if (perm.canApprove && boardNow) {
       f += `<div><label>董事會決議日期（必填）</label><input type="date" data-draft="resDate" value="${e(dr.resDate)}"></div>
-            <div><label>董事會決議文號（必填）</label><input type="text" maxlength="60" data-draft="resNo" value="${e(dr.resNo)}" placeholder="例：113-董-045"></div>`;
+            <div><label>董事會決議文號（必填）</label><input type="text" maxlength="40" data-draft="resNo" value="${e(dr.resNo)}" placeholder="例：113-董-045（4–40 字；文字、數字與 - _ / ( )；至少一個數字）"></div>
+            <div><label>議事錄編號／附件說明（選填，≤100 字，會記入稽核）</label><input type="text" maxlength="100" data-draft="minutesRef" value="${e(dr.minutesRef)}" placeholder="例：第 12 次董事會議事錄 第 3 案／附件：決議影本"></div>`;
     }
     f += `<div class="full"><label>簽核建議${perm.canReturn ? '（核准時選填；駁回時必填）' : '（選填）'}</label>
           <textarea data-draft="comment" maxlength="1000" placeholder="請輸入簽核建議（核准時可不填；駁回時必填原因）">${e(dr.comment)}</textarea></div>`;
@@ -844,7 +856,7 @@ async function openQuoteApproval(id) {
   const m = mountModal('quoteApprovalOverlay', '報價單簽核', '', true);
   const s = {
     id, q: null, busy: true, closed: false, ov: m.ov, body: m.body, foot: m.foot,
-    draft: { comment: '', resDate: '', resNo: '', reassign: '', reassignReason: '' }, mgrs: null,
+    draft: { comment: '', resDate: '', resNo: '', minutesRef: '', reassign: '', reassignReason: '' }, mgrs: null,
   };
   _ap = s;
   s.onKey = (ev) => {
@@ -897,7 +909,7 @@ async function runApprovalAction(s, method, path, body, okMsg) {
   await fetchApprovalQuote(s);
   if (s.closed) { if (success) afterMutation(); return; }
   if (success) {
-    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.reassign = ''; s.draft.reassignReason = '';
+    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.minutesRef = ''; s.draft.reassign = ''; s.draft.reassignReason = '';
   }
   s.busy = false;
   renderApproval(s);
@@ -983,10 +995,14 @@ async function handleApprovalAction(s, act) {
       const d = String(dr.resDate || '').trim();
       const n = String(dr.resNo || '').trim();
       if (!validDate(d)) { toast('請填寫正確的董事會決議日期'); const i = s.ov.querySelector('[data-draft="resDate"]'); if (i) i.focus(); return; }
-      if (!n) { toast('請填寫董事會決議文號'); const i = s.ov.querySelector('[data-draft="resNo"]'); if (i) i.focus(); return; }
+      const nErr = resolutionNoProblem(n);
+      if (nErr) { toast(nErr, 4500); const i = s.ov.querySelector('[data-draft="resNo"]'); if (i) i.focus(); return; }
+      const mref = String(dr.minutesRef || '').trim();
+      if (Array.from(mref).length > 100) { toast('議事錄編號／附件說明不可超過 100 個字元'); const i = s.ov.querySelector('[data-draft="minutesRef"]'); if (i) i.focus(); return; }
       body.resolutionDate = d;
       body.resolutionNo = n;
-      msg = '確認代為登錄董事會決議並核准？\n決議日期：' + d + '\n決議文號：' + n + '\n\n請確認與實際董事會紀錄一致。';
+      if (mref) body.minutesRef = mref;
+      msg = '確認代為登錄董事會決議並核准？\n決議日期：' + d + '\n決議文號：' + n + (mref ? '\n議事錄／附件：' + mref : '') + '\n\n請確認與實際董事會紀錄一致。';
     }
     const ok = await qapConfirm({ title: '確認核准', message: msg, okText: '核准' });
     if (!ok || s.closed) return;
@@ -1067,7 +1083,7 @@ ${itemRows ? `<h2>報價品項</h2><table><thead><tr><th class="c" style="width:
 <table><thead><tr><th>關卡</th><th>簽核人</th><th>狀態</th><th>時間</th><th>簽核建議／駁回原因</th></tr></thead><tbody>${stepRows}</tbody></table>
 <h2>董事會決議</h2>
 <table class="kv">
-<tr><td>決議日期</td><td>${resDate}</td><td style="width:16%;background:#f7f7f7;font-weight:700">決議文號</td><td>${resNo}</td></tr>
+<tr><td>決議日期</td><td>${resDate}</td><td style="width:16%;background:#f7f7f7;font-weight:700">決議文號</td><td>${resNo}</td></tr>${b.minutesRef ? `<tr><td>議事錄／附件</td><td colspan="3">${e(b.minutesRef)}</td></tr>` : ''}
 <tr><td>決議結果</td><td colspan="3">&#9744; 同意核准　　&#9744; 不同意　　&#9744; 附條件同意：______________________</td></tr>
 </table>
 <table class="sign" style="margin-top:10px"><tr><th style="width:25%">董事長</th><th style="width:25%">董事會秘書／管理部</th><th>備註</th></tr><tr><td></td><td></td><td></td></tr></table>

@@ -129,7 +129,7 @@ async function run() {
   t('3.2 送簽後 timeline 仍在（簽核重建 q.approval 不影響頂層陣列）；hash 與內容相符', S().timeline.length >= 1 && S().approval.hash === QA.contentHash(S()));
   r = await env.call('mgr1', 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { comment: 'ok', hash: QA.contentHash(S()) });
   t('3.3 主管核准路徑正常', r.s === 200, r.s + " " + J(r.j));
-  for (const u of ['gm1', 'ch1', 'sec1']) { if (S().approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(S()), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-1' }); }
+  for (const u of ['gm1', 'ch1', 'sec1']) { if (S().approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(S()), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-2026-001' }); }
   const histActions = S().approval.history.map((x) => x.action);
   t('3.4 approval.history 完全沒有新動作（只有簽核類）', histActions.every((a) => !EDIT.includes(a)), J(histActions));
   if (S().approval.state === 'approved') {
