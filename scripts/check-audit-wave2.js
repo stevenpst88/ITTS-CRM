@@ -62,15 +62,22 @@ function likeToRe(p) {
 function makeFakePg(shared) {
   const db = shared || { rows: [], seq: 0, legacy: null, ddl: [] };
   const log = [];
-  let failNext = 0, failAlways = false, delayMs = 0;
+  let failNext = 0, failAlways = false, delayMs = 0, tableDown = false, pingDown = false;
   const api = {
     db, log,
-    failNext(n) { failNext = n; }, failAlways(b) { failAlways = b; }, delay(ms) { delayMs = ms; },
+    failNext(n) { failNext = n; }, failAlways(b) { failAlways = b; }, delay(ms) { delayMs = ms; }, failTable(b) { tableDown = b; }, failPing(b) { pingDown = b; },
     async query(sql, params) {
       params = params || [];
       log.push(sql.replace(/\s+/g, ' ').trim());
       if (delayMs) await sleep(delayMs);
       const s = sql.replace(/\s+/g, ' ').trim();
+      if (tableDown && /audit_events/i.test(s)) throw new Error('permission denied for table audit_events');
+      if (pingDown && /^SELECT 1 FROM audit_events/i.test(s)) throw new Error('permission denied for table audit_events');
+      if (/^SELECT 1 FROM audit_events LIMIT 1$/i.test(s)) return { rows: [] };
+      if (/^CREATE TABLE IF NOT EXISTS app_data/i.test(s)) return { rows: [] };
+      if (/^SELECT content, updated_at FROM app_data WHERE id = 'main'$/i.test(s)) return { rows: [{ content: db.main || { contacts: [], groups: [], monthlyBudgets: [] }, updated_at: new Date() }] };
+      if (/^INSERT INTO app_data \(id, content(, updated_at)?\) VALUES \('main'/i.test(s)) { db.main = JSON.parse(params[0]); return { rows: [{ updated_at: new Date() }] }; }
+      if (/^INSERT INTO app_data \(id, content, updated_at\) VALUES \('audit_log'/i.test(s)) { db.legacy = JSON.parse(params[0]); return { rows: [] }; }
       if (/^CREATE TABLE IF NOT EXISTS audit_events/i.test(s) || /^CREATE INDEX IF NOT EXISTS audit_events_/i.test(s)) { db.ddl.push(s); return { rows: [] }; }
       if (/^INSERT INTO audit_events \(/i.test(s)) {
         if (failAlways || failNext > 0) { if (failNext > 0) failNext--; throw new Error('simulated connection reset'); }
@@ -338,7 +345,8 @@ function cleanupFiles() { FILES.forEach(f => { try { fs.unlinkSync(f); } catch {
 
 let child = null, childPid = null, extraEnv = {};
 async function startServer(serverFile) {
-  const env = Object.assign({}, process.env, extraEnv, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
+  const base = Object.assign({}, process.env); delete base.AUDIT_EVENTS_TABLE;   // 旗標只由各項目明確指定（預設＝關）
+  const env = Object.assign(base, extraEnv, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE;
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
@@ -385,7 +393,7 @@ const arr = (j) => (Array.isArray(j) ? j : []);
 const byAction = (logs, a) => arr(logs).filter(l => l.action === a);
 
 async function secA() {
-  console.log('[A] 稽核事件只增不改');
+  console.log('[A] 稽核事件只增不改（AUDIT_EVENTS_TABLE=1：新表／JSONL）');
   // —— 單元（正式模組）——
   const Store = require(path.join(ROOT, 'lib', 'auditStore.js'));
   await unitStore(Store, 'real');
@@ -476,6 +484,7 @@ async function secA() {
   eq((await http('_s_u1', 'GET', '/api/admin/contact-audit')).status, 403, '[A] 非管理員讀名片稽核 403');
   // 失敗計數曝光
   const inf = await http('_s_admin', 'GET', '/api/admin/infra-stats');
+  eq(inf.json && inf.json.auditStore, 'table', '[A] infra-stats.auditStore＝table（AUDIT_EVENTS_TABLE=1）');
   ok(inf.json && inf.json.auditWrites && inf.json.auditWrites.failed === 0 && inf.json.auditWrites.inserted > 0, '[A] infra-stats 曝光 auditWrites（failed=0）');
   const ver = await http('_s_admin', 'GET', '/api/admin/version');
   ok(ver.json && ver.json.auditWrites && typeof ver.json.auditWrites.failed === 'number', '[A] version 曝光 auditWrites');
@@ -483,6 +492,73 @@ async function secA() {
   const html = fs.readFileSync(path.join(ROOT, '_client', 'admin.html'), 'utf8');
   ok(/id="logPager"/.test(html) && /exportLogs\('csv'\)/.test(html) && /logFilterQ/.test(html), '[A] admin.html：分頁列／篩選／匯出按鈕');
   ok(!/const logs = await adminFetch\(`\$\{API\}\/admin\/contact-audit/.test(html) && !/const list = await adminFetch\(`\$\{API\}\/admin\/deleted-contacts/.test(html), '[A] admin.html：不再把 Response 當陣列用');
+}
+
+// ═════════════ A0：旗標關（預設）＝第二波之前的舊路徑，端對端 ═════════════
+async function secA0() {
+  console.log('[A0] 旗標關（預設）：舊路徑 audit.log.json／contact_audit.json');
+  const logFile = path.join(ROOT, 'audit.log.json'), contactFile = path.join(ROOT, 'contact_audit.json'), jsonl = path.join(ROOT, 'audit.log.jsonl');
+  const readLog = () => JSON.parse(fs.readFileSync(logFile, 'utf8'));
+  eq(readLog().length, 499, '[A0] 起始：舊檔 499 筆');
+  await loginAll(['_s_admin', '_s_u1']);
+  for (const nm of ['=HYPERLINK("http://x","y")', '+cmd', '-cmd', '@sum', 'plain_user']) await http(null, 'POST', '/api/login', { username: nm, password: 'x' });
+  let r = await http('_s_u1', 'POST', '/api/contacts', { name: '稽核乙', company: '沙盒公司甲', taxId: '12345675', bu: 'ERP', email: 'z@sandbox.test' });
+  ok([200, 201].includes(r.status), '[A0] 新增聯絡人 (' + r.status + ')');
+  const cid = r.json && (r.json.id || (r.json.contact && r.json.contact.id));
+  r = await http('_s_u1', 'PUT', '/api/contacts/' + cid, { name: '稽核乙改', company: '沙盒公司甲', taxId: '12345675', bu: 'ERP', email: 'z@sandbox.test', title: '經理' });
+  r = await http('_s_u1', 'DELETE', '/api/contacts/' + cid);
+  // 檔案層：與舊程式相同的寫法
+  ok(!fs.existsSync(jsonl), '[A0] 不產生 audit.log.jsonl（新表路徑完全沒啟動）');
+  const file = readLog();
+  eq(file.length, 500, '[A0] audit.log.json 維持舊上限 500 筆（超過就丟最舊的）');
+  ok(!file.some(l => l.id === 'LEG-OLD-1'), '[A0] 最舊的一筆被擠掉（與舊程式相同）');
+  ok(file[0].action === 'LOGIN_FAIL' || /LOGIN|CONTACT/.test(file[0].action) || !!file[0].action, '[A0] 最新的在最前面');
+  eq(Object.keys(file[0]), ['id', 'timestamp', 'action', 'operator', 'target', 'detail', 'ip', 'userAgent'], '[A0] 項目欄位順序與舊程式相同');
+  const cf = JSON.parse(fs.readFileSync(contactFile, 'utf8'));
+  eq(cf.map(x => x.action).slice(0, 3), ['DELETE', 'UPDATE', 'CREATE'], '[A0] contact_audit.json 照舊寫入（新→舊）');
+  eq(cf.length, 4, '[A0] 加上原有 1 筆共 4 筆');
+  eq(Object.keys(cf[0]), ['id', 'timestamp', 'userId', 'userName', 'action', 'targetId', 'targetName', 'targetCompany', 'changes'], '[A0] 名片稽核欄位順序與舊程式相同');
+  const upd = cf.find(x => x.action === 'UPDATE');
+  ok(upd && upd.changes.some(c => c.field === 'name' && c.newValue === '稽核乙改'), '[A0] 欄位級 before→after 照舊');
+  // API：相容
+  let logs = await getLogs();
+  ok(Array.isArray(logs) && logs.length === 500, '[A0] 不帶參數 → 純陣列（500 筆）');
+  ok(logs.every((l, i, a) => i === 0 || Date.parse(a[i - 1].timestamp) >= Date.parse(l.timestamp)), '[A0] 新→舊排序');
+  const p1 = await getLogs('?paged=1&limit=5&offset=0'), p2 = await getLogs('?paged=1&limit=5&offset=5');
+  eq([p1.total, p1.rows.length, p1.offset], [500, 5, 0], '[A0] 分頁在記憶體上運作（舊資料）');
+  ok(p2.rows.length === 5 && !p2.rows.some(x => p1.rows.some(y => y.id === x.id)), '[A0] 第二頁不重複');
+  ok((await getLogs('?paged=1&action=LOGIN_FAIL')).total >= 5, '[A0] 動作篩選（舊資料上）');
+  const newCount = file.filter(l => Date.parse(l.timestamp) > Date.parse('2026-01-01')).length;
+  eq((await getLogs('?paged=1&from=2020-03-01&to=2020-03-31')).total, 500 - newCount - 1, '[A0] 日期篩選（舊資料 2020-03）');
+  eq((await getLogs('?paged=1&q=' + encodeURIComponent('舊紀錄二'))).total, 1, '[A0] 文字搜尋');
+  const ca = await http('_s_admin', 'GET', '/api/admin/contact-audit?paged=1');
+  eq(ca.json.total, 4, '[A0] contact-audit 只讀舊檔（4 筆）');
+  eq((await http('_s_admin', 'GET', '/api/admin/contact-audit?paged=1&userId=_s_u1&action=UPDATE')).json.total, 2, '[A0] contact-audit 篩選（含舊檔那筆 UPDATE）');
+  ok(Array.isArray((await http('_s_admin', 'GET', '/api/admin/contact-audit')).json), '[A0] contact-audit 不帶參數＝純陣列');
+  // 匯出（來源是舊資料）
+  const exCsv = await http('_s_admin', 'GET', '/api/admin/logs/export?format=csv&kind=all');
+  eq(exCsv.status, 200, '[A0] 匯出 CSV 200');
+  ok(exCsv.text.startsWith('\uFEFF時間,類型,動作') && exCsv.text.includes("'=HYPERLINK") && exCsv.text.includes("'+cmd") && exCsv.text.includes("'-cmd") && exCsv.text.includes("'@sum"), '[A0] CSV：BOM、公式注入防護');
+  const exJson = await http('_s_admin', 'GET', '/api/admin/logs/export?format=json&kind=all');
+  ok(Array.isArray(exJson.json) && exJson.json.length >= 500, '[A0] 匯出 JSON 合法陣列 (' + (exJson.json && exJson.json.length) + ')');
+  const exLog = byAction(await getLogs(), 'EXPORT_AUDIT_LOG');
+  ok(exLog.length === 2 && /格式：json/.test(exLog[0].detail), '[A0] 兩次匯出各寫一筆 EXPORT_AUDIT_LOG（寫進舊檔）');
+  ok(readLog().some(l => l.action === 'EXPORT_AUDIT_LOG'), '[A0] EXPORT_AUDIT_LOG 在 audit.log.json 內');
+  eq((await http('_s_u1', 'GET', '/api/admin/logs/export')).status, 403, '[A0] 非管理員匯出 403');
+  eq((await http('_s_u1', 'GET', '/api/admin/logs?paged=1')).status, 403, '[A0] 非管理員讀日誌 403');
+  // 版本／基礎設施頁的指示
+  const inf = await http('_s_admin', 'GET', '/api/admin/infra-stats');
+  eq(inf.json && inf.json.auditStore, 'legacy', '[A0] infra-stats.auditStore＝legacy');
+  const ver = await http('_s_admin', 'GET', '/api/admin/version');
+  eq([ver.json && ver.json.auditStore, ver.json && ver.json.auditWrites && ver.json.auditWrites.auditStore], ['legacy', 'legacy'], '[A0] version.auditStore＝legacy');
+  ok(!fs.existsSync(jsonl), '[A0] 全程沒有 audit.log.jsonl');
+}
+
+// 旗標開但資料庫表不可用：自動退回舊路徑（以 JSONL 模式無法模擬；由 F 項的假 pg 與真 db/postgres.js 測）
+const FACADE = require('./_aw2-facade.js');
+async function secF() {
+  console.log('[F] 安全開關 AUDIT_EVENTS_TABLE（預設關／開／表不可用自動退回）');
+  await FACADE.runF({ ok, eq, makeFakePg });
 }
 
 // ═════════════ 其他項目（後續 commit 補上）═════════════
@@ -520,6 +596,35 @@ async function secM() {
     } finally { muting = false; try { fs.unlinkSync(file); } catch { /* 已刪 */ } }
   }
   await EXTRA.mutations({ ok, eq, ROOT, fs, path, os, loadMutated, setMuting: (v) => { muting = v; mutFail = 0; return () => mutFail; } });
+
+  // 安全開關（F 項）變異
+  const fm = [
+    ['sw-fallback', storeFile, "mode = 'legacy'; fellBack = true;", 'fellBack = true;', '表不可用卻不退回舊路徑', { skipPg: true }, 'store'],
+    ['sw-off', storeFile, "let mode = o.enabled ? 'table' : 'legacy';", "let mode = 'table';", '旗標關卻仍走新表', { skipPg: true }, 'store'],
+    ['sw-copy', storeFile, 'if (!ok) await legacyInsert(ev);', '', '新表寫入失敗時不留舊路徑副本', { skipPg: true }, 'store'],
+    ['sw-ping', storeFile, 'if (o.tableStore.adapter.ping) await o.tableStore.adapter.ping(); else await o.tableStore.ensure();', 'await o.tableStore.ensure();', '沒有做 SELECT 自我檢查', { skipPg: true }, 'store'],
+    ['sw-cap', path.join(ROOT, 'lib', 'auditLegacy.js'), 'if (logs.length > 500) logs = logs.slice(0, 500);', 'if (logs.length > 5000) logs = logs.slice(0, 5000);', '舊路徑上限被改', { skipPg: true }, 'legacy'],
+    ['sw-pg', path.join(ROOT, 'db', 'postgres.js'), 'enabled: AUDIT_TABLE_ON,', 'enabled: true,', 'db/postgres.js 忽略旗標', {}, 'db'],
+  ];
+  for (const [tag, file, from, to, desc, opt, kind] of fm) {
+    let mf;
+    if (kind === 'store') mf = loadMutated(file, from, to, 'f' + tag);
+    else {
+      const src = fs.readFileSync(file, 'utf8');
+      if (!src.includes(from)) throw new Error('變異樣式找不到：' + tag);
+      mf = path.join(path.dirname(file), path.basename(file, '.js') + '.__mut_' + tag + '.js');
+      fs.writeFileSync(mf, src.replace(from, () => to));
+    }
+    try {
+      muting = true; mutFail = 0;
+      const o = Object.assign({}, opt);
+      if (kind === 'store') o.store = require(mf); else if (kind === 'legacy') o.legacy = require(mf); else o.dbFile = mf;
+      const origErr = console.error; console.error = () => {};
+      try { await FACADE.runF({ ok, eq, makeFakePg }, o); } catch (e) { mutFail++; } finally { console.error = origErr; }
+      muting = false;
+      ok(mutFail > 0, `變異 ${tag}（${desc}）→ F 項測試必須失敗，實際失敗 ${mutFail} 項`);
+    } finally { muting = false; try { fs.unlinkSync(mf); } catch { /* 已刪 */ } try { delete require.cache[mf]; } catch { /* */ } }
+  }
 
   // 伺服器層變異：複製 server.js 改壞一條規則，起一台變異伺服器，用 A 項的同一組斷言檢查（必須出現「不對勁」）
   const tmpFiles = [];
@@ -566,11 +671,18 @@ async function secM() {
 
 // ═════════════ 主程式 ═════════════
 const ctx = () => ({ ok, eq, sleep, http, login, loginAll, getLogs, byAction, arr, jar: () => jar, setSeed: (fn) => { seedExtra = fn; }, mkUser, nowIso, PW, ROOT, fs, path, os, crypto, sha, restartServer: restart, FILES, BASE });
-const ORDER = ['A', 'B', 'C', 'D', 'E', 'M'];
+const ORDER = ['A', 'A0', 'F', 'B', 'C', 'D', 'E', 'M'];
+const SECTION_ENV = { A: { AUDIT_EVENTS_TABLE: '1' } };   // 其餘伺服器項目一律預設（旗標關）
 (async () => {
   const only = (process.env.AW2_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
-  const SECTIONS = Object.assign({ A: secA, M: secM }, EXTRA.sections(ctx()));
-  const seedFor = { A: (f) => {
+  const SECTIONS = Object.assign({ A: secA, A0: secA0, F: secF, M: secM }, EXTRA.sections(ctx()));
+  const seedFor = { A0: (f) => {
+    const fill = [];
+    for (let i = 3; i <= 499; i++) fill.push({ id: 'LEG-OLD-' + i, timestamp: new Date(Date.UTC(2020, 2, 1, 0, 0, 0) + (500 - i) * 60000).toISOString(), action: 'LEGACY_FILL', operator: 'legacy_op', target: 'x', detail: '舊填充 ' + i });
+    // 舊檔格式：新→舊；最舊的是 LEG-OLD-1（上限 500 筆時第一個被擠掉）
+    f.legacyLog = [{ id: 'LEG-OLD-2', timestamp: '2020-01-20T03:04:05.000Z', action: 'LEGACY_ACT', operator: 'other_op', target: 'y', detail: '舊紀錄二' }].concat(fill.reverse()).concat([{ id: 'LEG-OLD-1', timestamp: '2020-01-02T03:04:05.000Z', action: 'LEGACY_ACT', operator: 'legacy_op', target: 'x', detail: '舊紀錄一', ip: '9.9.9.9', userAgent: 'old-ua' }]);
+    f.legacyContact = [{ id: 'LEG-C-1', timestamp: '2020-02-01T00:00:00.000Z', userId: '_s_u1', userName: '舊使用者', action: 'UPDATE', targetId: 'oc', targetName: '舊名片', targetCompany: '舊公司', changes: [{ field: 'name', fieldLabel: '姓名', oldValue: 'a', newValue: 'b' }] }];
+  }, A: (f) => {
     f.legacyLog = [
       { id: 'LEG-OLD-1', timestamp: '2020-01-02T03:04:05.000Z', action: 'LEGACY_ACT', operator: 'legacy_op', target: 'x', detail: '舊紀錄一', ip: '9.9.9.9', userAgent: 'old-ua' },
       { id: 'LEG-OLD-2', timestamp: '2020-01-20T03:04:05.000Z', action: 'LEGACY_ACT', operator: 'other_op', target: 'y', detail: '舊紀錄二' },
@@ -581,13 +693,13 @@ const ORDER = ['A', 'B', 'C', 'D', 'E', 'M'];
     for (const k of ORDER) {
       if (!SECTIONS[k] || (k === 'M' && process.env.AW2_SKIP_MUT)) continue;
       if (only.length && !only.includes(k)) continue;
-      if (k === 'M' || (EXTRA.noServer || []).includes(k)) {   // 不需要伺服器的項目（假 app＋記憶體資料庫）
+      if (k === 'M' || k === 'F' || (EXTRA.noServer || []).includes(k)) {   // 不需要伺服器的項目（假 app＋記憶體資料庫）
         try { await SECTIONS[k](); } catch (e) { fail++; failures.push(`第 ${k} 項例外：${e && e.stack || e}`); console.log('  ✗ 例外', e && e.stack || e); }
         continue;
       }
       await stopServer(); cleanupFiles();
       seedExtra = (EXTRA.seed && EXTRA.seed[k]) || seedFor[k] || null;
-      seedFiles(); await restart();
+      seedFiles(); await restart(undefined, SECTION_ENV[k]);
       try { await SECTIONS[k](); } catch (e) { fail++; failures.push(`第 ${k} 項例外：${e && e.stack || e}`); console.log('  ✗ 例外', e && e.stack || e); }
     }
   } finally {

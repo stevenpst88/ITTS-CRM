@@ -9552,6 +9552,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const uptimeStr = `${d > 0 ? d + ' 天 ' : ''}${h > 0 ? h + ' 時 ' : ''}${m} 分 ${s} 秒`;
 
   res.json({
+    auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {
       name:        pkg.name        || 'business-card-crm',
@@ -9672,6 +9673,7 @@ app.get('/api/admin/infra-stats', requireAdmin, async (req, res) => {
     storage: null,
     runtime: null,
     vercel:  null,
+    auditStore: db.auditStore.mode(),   // 'legacy'｜'table'
     auditWrites: db.auditStore.stats(),   // failed>0 ＝ 有稽核事件寫入失敗（console 有 AUDIT_WRITE_FAILED、備援檔有內容）
   };
 
