@@ -363,7 +363,7 @@
         <span class="chapter-badge badge-all">全員必讀</span>
       </div>
       <div class="section-intro">
-        本系統採用 <strong>BU（Business Unit / 事業部）</strong> 為單位做資料隔離。公司有 4 個 BU，各 BU 主管只能看到自己 BU 的業務資料，互不交叉；唯獨 admin 與董事長/總經理可跨 BU 查看全公司業績。
+        本系統採用 <strong>BU（Business Unit / 事業部）</strong> 為單位做資料隔離。公司有 5 個 BU（ERP／ITS／MDM／CRM／資安），各 BU 主管只能看到自己 BU 的業務資料，互不交叉；唯獨 admin 與董事長/總經理可跨 BU 查看全公司業績。
       </div>
       <table class="feat-table">
         <tr><th>BU</th><th>顏色標識</th><th>說明</th></tr>
@@ -371,6 +371,7 @@
         <tr><td><strong>ITS</strong></td><td><span style="display:inline-block;width:14px;height:14px;background:#0a8a4a;border-radius:3px;vertical-align:middle"></span> 綠</td><td>ITS 事業部</td></tr>
         <tr><td><strong>MDM</strong></td><td><span style="display:inline-block;width:14px;height:14px;background:#e37400;border-radius:3px;vertical-align:middle"></span> 橘</td><td>MDM 事業部</td></tr>
         <tr><td><strong>CRM</strong></td><td><span style="display:inline-block;width:14px;height:14px;background:#7c3aed;border-radius:3px;vertical-align:middle"></span> 紫</td><td>CRM 事業部</td></tr>
+        <tr><td><strong>資安</strong></td><td><span style="display:inline-block;width:14px;height:14px;background:#e11d48;border-radius:3px;vertical-align:middle"></span> 玫紅</td><td>資安事業部</td></tr>
       </table>
       <h3 style="margin-top:24px;font-size:15px;color:#1a3c7a;font-weight:700">角色與 BU 關係</h3>
       <table class="feat-table">
@@ -379,7 +380,7 @@
         <tr><td>二級主管（manager2）</td><td>1 個 BU</td><td>同 BU 的業務資料</td></tr>
         <tr><td>一級主管（manager1）</td><td>1 個 BU（即該 BU 主管）</td><td>同 BU 的業務 + 二級主管 + 秘書</td></tr>
         <tr><td>秘書（secretary）</td><td>1 個 BU</td><td>同 BU 的商機 / 應收（無聯絡人）</td></tr>
-        <tr><td>董/總（executive）</td><td>不限 BU（null）</td><td><strong>跨 4 個 BU 全部資料</strong></td></tr>
+        <tr><td>董/總（executive）</td><td>不限 BU（null）</td><td><strong>跨 5 個 BU 全部資料</strong></td></tr>
         <tr><td>系統管理員（admin）</td><td>不限 BU（null）</td><td>全公司資料 + 後台管理</td></tr>
       </table>
       <h3 style="margin-top:24px;font-size:15px;color:#1a3c7a;font-weight:700">資料層級的 BU 標籤</h3>
@@ -704,7 +705,7 @@
         <span class="chapter-badge badge-admin">董/總・admin</span>
       </div>
       <div class="section-intro">
-        executive（董事長 / 總經理）和 admin 登入首頁時，會看到一張「📊 各 BU 業績總覽」卡片，並列顯示 ERP / ITS / MDM / CRM 4 個 BU 的目標、已達、達成率，方便快速掌握全公司各部門業績狀態。
+        executive（董事長 / 總經理）和 admin 登入首頁時，會看到一張「📊 各 BU 業績總覽」卡片，並列顯示 ERP / ITS / MDM / CRM / 資安 5 個 BU 的目標、已達、達成率，方便快速掌握全公司各部門業績狀態。
       </div>
       <table class="feat-table">
         <tr><th>欄位</th><th>計算規則</th></tr>
@@ -874,7 +875,7 @@
         <li><div class="step-num">1</div><div>點選「＋ 新增帳號」或編輯現有用戶</div></li>
         <li><div class="step-num">2</div><div>填入帳號名稱、顯示名稱</div></li>
         <li><div class="step-num">3</div><div>選擇<strong>角色</strong>（admin / executive 自動禁用 BU 選擇）</div></li>
-        <li><div class="step-num">4</div><div>勾選<strong>所屬 BU</strong>（ERP / ITS / MDM / CRM 多選）—— 業務角色可勾多個（跨 BU 業務）</div></li>
+        <li><div class="step-num">4</div><div>勾選<strong>所屬 BU</strong>（ERP / ITS / MDM / CRM / 資安 多選）—— 業務角色可勾多個（跨 BU 業務）</div></li>
         <li><div class="step-num">5</div><div>設定權限切換：可下載名單、可設定業績目標</div></li>
         <li><div class="step-num">6</div><div>儲存後，帳號表會顯示用戶的所有 BU 顏色徽章</div></li>
       </ol>

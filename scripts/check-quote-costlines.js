@@ -311,7 +311,7 @@ function run() {
   const internal = registerQuoteRoutes({ get: noop, put: noop, post: noop, delete: noop, use: noop }, {
     db: {}, loadAuth: noop, saveAuth: noop, requireAuth: noop, requireAdmin: noop, writeLog: noop, pushNotification: noop, getViewableOwners: noop,
     sanitizeStr: (x, n) => String(x == null ? '' : x).trim().slice(0, n), genQuoteNo: noop, taipeiToday: () => '2026-10-07', resolveIssuer: noop,
-    buildQuoteWorkbook: noop, buildQuotePnlExcel: noop, QUOTE_TEMPLATE: '', uuidv4: () => 'x', normalizeBu: noop, getUserFeatures: noop,
+    buildQuoteWorkbook: noop, buildQuotePnlExcel: noop, QUOTE_TEMPLATE: '', uuidv4: () => 'x', normalizeBu: (b) => (Array.isArray(b) ? b.filter(Boolean) : (typeof b === 'string' && b.trim() ? [b.trim()] : [])), getUserFeatures: noop,
   })._internal;
   const cfg = { productClasses: {}, roster: {} };
   const rr = lcg(99); const pk = (a) => a[Math.floor(rr() * a.length)];

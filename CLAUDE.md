@@ -14,7 +14,7 @@
 ## 主資料 blob 的命名空間（`app_data.content` / `data.json`）
 
 CRM 核心：`contacts / companies / opportunities / visits / contracts / receivables / callins / keyAccounts`
-獨立命名空間（勿與核心混寫）：`yoyRevenue`（YoY 報表）、`integrations / integrationMappings / integrationLinks / integrationLogs`（SAP 整合）、`productCatalog`（商品目錄）、`pricebook`（報價牌價簿：顧問人天牌價／成本）、`_auth`（雲端帳號）
+獨立命名空間（勿與核心混寫）：`yoyRevenue`（YoY 報表）、`integrations / integrationMappings / integrationLinks / integrationLogs`（SAP 整合）、`productCatalog`（商品目錄）、`announcements`（公告：含 readBy 已讀回條、shown 送達時間；邏輯在 lib/announcements.js）、`pricebook`（報價牌價簿：顧問人天牌價／成本）、`_auth`（雲端帳號）
 
 ## 高風險紅線
 
@@ -39,7 +39,7 @@ CRM 核心：`contacts / companies / opportunities / visits / contracts / receiv
 - **Vercel/Supabase 快取**（2026-07 驗證）：`db/postgres.js` 的 `REFRESH_TTL = 0`——每次 API 請求先做輕量 stale check（只抓 `updated_at`），DB 被其他實例改過就自動完整重抓。直接用 SQL 改 DB 只要 `updated_at` 有更新就會被抓到；僅當繞過寫入路徑、`updated_at` 未變時，才需要空 commit 強制重部署。
 - **雲端/地端帳號分離**：地端 `auth.json` 的 admin 是 `Admin`（大寫）；雲端 `_auth` 的是 `admin`（小寫）。兩邊獨立不同步。
 - **SAP Sales Cloud V2 API**：欄位格式、端點名、PATCH header、地址規則全部有雷。動 `push/batch` 相關程式前**必讀** `docs/SAP_V2_API_gotchas.md`；若無此檔（docs/ 不入 repo），讀 `C:/Users/steven.lee/.claude/projects/C--Users-steven-lee/memory/sap_v2_api_gotchas.md`；連這都沒有（別台電腦）→ 第一步先打 `GET /api/admin/integrations/sap-inspect` 讀 SAP 真實資料樣本，**禁止猜欄位格式**。速記三鐵則：customerRole 是字串非陣列；Contact 端點是 `contact-person-service/contactPersons`；PATCH 要 `If-Match: *` + `Content-Type: application/merge-patch+json`。
-- **本機測試訣竅**：密碼雜湊用 bcryptjs；臨時帳號必須含 `passwordChangedAt` 否則被強制改密迴圈擋住；聯絡人 `bu` 傳字串（`ERP/ITS/MDM/CRM`）；CORS 白名單預設只有 localhost:3000，preview 用 3001 要加。測完還原 `auth.json`/`data.json`。
+- **本機測試訣竅**：密碼雜湊用 bcryptjs；臨時帳號必須含 `passwordChangedAt` 否則被強制改密迴圈擋住；聯絡人 `bu` 傳字串（`ERP/ITS/MDM/CRM/資安`）；CORS 白名單預設只有 localhost:3000，preview 用 3001 要加。測完還原 `auth.json`/`data.json`。
 - **統編查詢**：`/api/company-lookup?taxId=` 加 `&basic=1` 只查 GCIS（~4s）；不加會跑上市櫃+財務（冷啟動 ~62s，超過 Vercel maxDuration 30s 會逾時）。
 - **商品目錄**：商機/合約的 `product` 是**純文字非外鍵**。改名不自動連動歷史——要連動就走 `POST /api/admin/product-catalog` 的 renames 機制（有 preview 與確認）。
 

@@ -206,6 +206,8 @@ app.use((req, res, next) => {
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
   if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  // 公告「我知道了」：只寫入自己的已讀回條，唯讀帳號也必須能確認，否則一次性公告會永遠彈出
+  if (/^\/api\/announcements\/[^/]+\/ack$/.test(req.path)) return next();
   // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響
   if (/^\/api\/quotations\/[^/]+\/cost-draft\/(?:summary|pnl-preview)$/.test(req.path)) return next();
   if (!req.session || !req.session.user) return next(); // 未登入交由後續 requireAuth 處理
@@ -591,6 +593,7 @@ function pickFields(obj, fields) {
 }
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
+const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
@@ -648,6 +651,8 @@ function overwriteContactsIndustryByCompany(data, companyId, industry) {
 //   一統編一主檔：統編優先當唯一鍵，無統編用「正規化公司名」fallback
 //   主檔為「附加參照層」，不影響既有 company 字串 / contactId 連結邏輯
 // ════════════════════════════════════════════════════════════
+// 統編↔公司名稱一致性規則（前後端單一來源；Vercel includeFiles 已含 _client/**）
+const TaxIdGuard = require('./_client/taxid-guard.js');
 // 正規化公司名（fallback 比對鍵）：去全形/一般空白、去頭尾、轉小寫
 function normalizeCompanyName(s) {
   return String(s || '')
@@ -933,7 +938,8 @@ const TECOPM_ALLOWED_PATHS = new Set([
   '/api/visits',            // 拜訪記錄
   '/api/groups',            // 載入 group → 取 memberCompanies
   '/api/usermap',           // 預測表業務員名稱對應
-  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
+  '/api/announcements/active', // 公告彈窗（GET）
 ]);
 // 帳號安全端點：即使唯讀角色（集團PM）也必須能改自己密碼 / 登出
 // （否則被 admin 強制改密碼時，PUT /api/user/password 會被下方「非 GET 一律擋」攔死，永遠卡在改密碼畫面）
@@ -946,7 +952,8 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/me', '/api/logout', '/api/user/password',
   '/api/opportunities', '/api/contacts', '/api/visits',
   '/api/groups', '/api/usermap', '/api/company-lookup',
-  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM 四類產品；GET 唯讀）
+  '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
+  '/api/announcements',     // 公告彈窗：GET active、POST :id/ack（只寫自己的已讀）
 ];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
@@ -954,6 +961,7 @@ app.use((req, res, next) => {
   const rp = req.path.toLowerCase();   // 路由不分大小寫，白名單比對也必須不分大小寫（雙保險；最上方已擋非小寫 /api/ 前綴）
   if (!rp.startsWith('/api/')) return next();
   if (TECOPM_WRITE_EXEMPT_PATHS.has(rp)) return next(); // 改密碼/登出放行（含強制改密碼流程）
+  if (req.method === 'POST' && /^\/api\/announcements\/[^/]+\/ack$/.test(rp)) return next(); // 公告已讀回條：集團PM 雖唯讀，仍須能按「我知道了」
 
   if (role === 'tecopm') {
     if (req.method !== 'GET') return res.status(403).json({ error: '集團PM 為唯讀角色' });
@@ -1007,6 +1015,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       bu: userBus,
       mustChangePassword: !!pwReason,
       passwordChangeReason: pwReason,
+      loginAt: Date.now(),   // 公告「每次登入」判斷用：每次真正登入都換新值，F5/還原 session 不變
       ...tecopmExtra
     };
     writeLog('LOGIN', username, username, `登入成功${pwReason ? `（需更換密碼:${pwReason}）` : ''}`, req);
@@ -1057,6 +1066,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
+      .replace(/src="taxid-guard\.js"/g, `src="taxid-guard.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pricebook\.js"/g, `src="quote-pricebook.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-costlines\.js"/g, `src="quote-costlines.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote\.js"/g,      `src="quote.js?v=${BUILD_VERSION}"`)
@@ -1796,7 +1806,7 @@ app.post('/api/admin/bulk-fill-website', requireAdmin, async (req, res) => {
 });
 
 // 合法 BU 值
-const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+const VALID_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
 // 集團PM（tecopm）= 唯讀角色，不走 BU 過濾、改用 viewOwnerScope + viewGroupId 二維過濾
 const READONLY_ROLES = ['tecopm'];
 // 以「集團」而非 BU 界定範圍的角色：一律 bu=null，改用 viewOwnerScope + viewGroupId 過濾。
@@ -1876,7 +1886,7 @@ function validateBuInput(role, buInput) {
   const arr = Array.isArray(buInput) ? buInput : (buInput ? [buInput] : []);
   const cleaned = [...new Set(arr.filter(b => VALID_BUS.includes(b)))];
   if (cleaned.length === 0) {
-    return { error: '此角色必須至少指定一個 BU（ERP / ITS / MDM / CRM）' };
+    return { error: '此角色必須至少指定一個 BU（ERP / ITS / MDM / CRM / 資安）' };
   }
   return { bu: cleaned };
 }
@@ -2941,6 +2951,9 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
   if (gScopeC.error) return res.status(403).json({ error: gScopeC.error });
   const data = db.load();
+  // 統編↔公司名稱一致性（只比對內部主檔、不打外部）：公司欄純數字 / 與主檔官方名稱不符 → 400
+  const _tg = TaxIdGuard.checkSave({ company: req.body.company, taxId: req.body.taxId, isForeign: _isForeign, companies: data.companies });
+  if (_tg) return res.status(400).json(_tg);
   const contact = {
     id: uuidv4(),
     owner,
@@ -3038,6 +3051,17 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
       return res.status(400).json({ error: t ? '統一編號需為 8 碼數字' : '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
     }
     if (effForeign) safeBody.taxId = '';   // 境外 → 統編清空（企業主檔改以公司名為鍵）
+  }
+  // 統編↔公司名稱一致性：只在「公司或統編有被改動」時才驗（舊資料無關欄位的編輯不受影響，看板拖曳等偏更新亦不受影響）
+  if (safeBody.company !== undefined || req.body.taxId !== undefined) {
+    const _effForeign = safeBody.isForeign !== undefined ? (safeBody.isForeign === true || safeBody.isForeign === 'true') : !!old.isForeign;
+    const _tg = TaxIdGuard.checkSave({
+      company: safeBody.company !== undefined ? safeBody.company : old.company,
+      taxId: safeBody.taxId !== undefined ? safeBody.taxId : old.taxId,
+      isForeign: _effForeign, companies: data.companies,
+      oldCompany: old.company, oldTaxId: old.isForeign ? '' : old.taxId, isUpdate: true
+    });
+    if (_tg) return res.status(400).json(_tg);
   }
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
@@ -3805,6 +3829,10 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
       return { ...o, _kaShared: true, _kaConfirmed: isKaConfirmed(o, _me), ownerDisplayName: userLabel(ownerU, o.owner) };
     });
   }
+  // 連結的報價單數（報價單 q.oppId）：算一次對照表；沒有連結的商機不多任何鍵（舊資料外形不變）
+  const _qc = quoteOppLink.countByOpp(data);
+  // linkedQuoteCount＝算數的（沒失效的）張數；linkedQuoteInvalid＝失效的張數（只在有時才出現）
+  if (_qc.size) filtered = filtered.map(o => { const c = _qc.get(o.id); if (!c) return o; const r = { ...o }; if (c.live) r.linkedQuoteCount = c.live; if (c.invalid) r.linkedQuoteInvalid = c.invalid; return r; });
   res.json(filtered);
 });
 
@@ -3900,6 +3928,11 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   // 集團範圍角色：連改動的對象也必須落在自己的集團內（PUT 原本完全沒有集團檢查）
   const gScopeU = checkGroupScopeWrite(req, req.body.company !== undefined ? req.body.company : data.opportunities[idx].company);
   if (gScopeU.error) return res.status(403).json({ error: gScopeU.error });
+  // 已有報價單連結到這筆商機時，不可改公司（報價單的客戶以商機為準；要換客戶請另建商機）。階段（含轉 Won）、金額等其他欄位不受影響
+  if (req.body.company !== undefined && String(req.body.company || '').trim() !== String(data.opportunities[idx].company || '').trim()) {
+    const _lq = quoteOppLink.linkedQuotes(data, req.params.id);
+    if (_lq.length) return res.status(409).json({ error: `已有 ${_lq.length} 張報價單連結到這筆商機，不能更改公司；要換客戶請另外建立新的商機`, code: 'OPP_COMPANY_LOCKED', linkedQuoteCount: _lq.length });
+  }
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
   const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
@@ -4237,10 +4270,28 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
     deletedByName: req.session.user.displayName || owner
   });
   data.opportunities = data.opportunities.filter(o => !(o.id === req.params.id && o.owner === owner));
+  // 連結到這筆商機的報價單同時失效（草稿／被退回／簽核中／已核准都一樣；簽核中的待簽關卡一併關閉）。與商機搬進流失清單在同一次 db.save。
+  // 中途丟例外就把已動到的報價單還原、連商機一起不刪（不留下一半）。
+  const _linked = quoteOppLink.linkedQuotes(data, opp.id);
+  const _bak = JSON.stringify(_linked);
+  let _inv = [];
+  try {
+    _inv = quoteOppLink.invalidateForOpp(data, opp, owner, new Date().toISOString());
+  } catch (e) {
+    const orig = JSON.parse(_bak);
+    _linked.forEach((q, i) => { Object.keys(q).forEach(k => delete q[k]); Object.assign(q, orig[i]); });
+    data.opportunities.push(opp); data.lostOpportunities.pop();
+    console.error('[opp void cascade]', e);
+    return res.status(500).json({ error: '商機作廢時處理連結的報價單失敗，商機未刪除，請重試', code: 'OPP_VOID_CASCADE_FAILED' });
+  }
   db.save(data);
   writeLog('DELETE_OPP', owner, opp.company || opp.contactName,
-    `${opp.product} 原因:${deleteReason || '未說明'}`, req);
-  res.json({ success: true });
+    `${opp.product} 原因:${deleteReason || '未說明'}${_inv.length ? '｜連結報價單 ' + _inv.length + ' 張同時失效（' + _inv.map(x => x.q.quoteNo || '草稿').slice(0, 10).join('、') + '）' : ''}`, req);
+  // 站內通知報價單擁有者（pushNotification 自帶 load/save，必須在 db.save 之後）
+  _inv.forEach(({ q }) => {
+    try { pushNotification(q.owner, 'quote_voided', '⚠️ 報價單已失效：' + (q.quoteNo || '草稿'), '連結的商機「' + (opp.company || '') + ' ' + (opp.product || '') + '」已作廢，這張報價單同時失效（唯讀；簽核中的已關閉）。商機若還原，報價單會恢復。', q.id); } catch (e) { /* 通知失敗不影響作廢 */ }
+  });
+  res.json({ success: true, invalidatedQuotes: _inv.length });
 });
 
 // ── 取得流失商機（主管 / 管理員）─────────────────────────────
@@ -4407,8 +4458,12 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
   if (!data.opportunities) data.opportunities = [];
   data.opportunities.push(restored);
   data.lostOpportunities.splice(idx, 1);
+  // 因這筆商機作廢而失效的報價單恢復（簽核中被關閉的回到草稿，需重新送簽）
+  const _rev = quoteOppLink.revalidateForOpp(data, restored, username, new Date().toISOString());
   db.save(data);
-  res.json({ success: true, opportunity: restored });
+  if (_rev.length) writeLog('RESTORE_OPP_QUOTES', username, restored.company || restored.contactName, `商機還原，${_rev.length} 張報價單恢復`, req);
+  _rev.forEach(q => { try { pushNotification(q.owner, 'quote_voided', '✅ 報價單已恢復：' + (q.quoteNo || '草稿'), '連結的商機已還原，這張報價單恢復可用。', q.id); } catch (e) { /* 忽略 */ } });
+  res.json({ success: true, opportunity: restored, revalidatedQuotes: _rev.length });
 });
 
 // ── 銷售預測 Excel 匯出 ──────────────────────────────────
@@ -5831,6 +5886,7 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
     revenue2025: 'N/A', grossMargin2025: 'N/A',
     revenue2024: 'N/A', grossMargin2024: 'N/A',
     eps: 'N/A', epsYear: '',
+    lookupStatus: 'error',   // found / notfound（GCIS 確定查無）/ error（逾時或錯誤，無法驗證）——供統編↔公司名一致性守門區分
   };
 
   // 1. 經濟部商業司（基本資料 + 通訊資料）
@@ -5840,7 +5896,11 @@ app.get('/api/company-lookup', requireAuth, async (req, res) => {
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
     );
     if (r.ok) {
-      const data = await r.json();
+      // GCIS 對查無的統編可能回 200 + 空 body；先取 text 安全解析，才能分辨「查無」與「錯誤」
+      const _txt = await r.text();
+      let data = [];
+      if (_txt && _txt.trim()) { try { data = JSON.parse(_txt); } catch { data = []; } }
+      result.lookupStatus = data?.[0] ? 'found' : 'notfound';
       if (data?.[0]) {
         result.companyName   = data[0].Company_Name || '';
         result.representative = data[0].Responsible_Name || '';
@@ -6962,6 +7022,129 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
     `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆`, req);
   res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
+});
+
+// ── 公告（announcements）────────────────────────────────────
+// 儲存於主資料 blob 的 data.announcements（獨立命名空間）。邏輯在 lib/announcements.js。
+// 使用者端：GET /api/announcements/active、POST /api/announcements/:id/ack（只寫自己的已讀回條）
+// 管理端：/api/admin/announcements（CRUD，全部 requireAdmin + writeLog）
+// 使用者「我知道了」不寫 writeLog：這是已讀回條不是業務異動，全員每次確認都寫會把 audit.log（地端僅留 500 筆）洗掉；已讀資訊本身存在 readBy。
+const announcementsLib = require('./lib/announcements');
+
+app.get('/api/announcements/active', requireAuth, (req, res) => {
+  try {
+    const data = db.load();
+    const u = req.session.user;
+    const now = Date.now();
+    const items = announcementsLib.activeFor(data.announcements, { username: u.username, role: u.role }, now);
+    // 強制閱讀防繞過：記下「送達時間」shownAt（ack 須晚於它至少 READ_MIN_MS）。同批一次存檔。
+    let dirty = false;
+    for (const it of items) {
+      const a = data.announcements.find(x => x.id === it.id);
+      if (a && announcementsLib.markShown(a, u.username, now)) dirty = true;
+    }
+    if (dirty) db.save(data);
+    res.set('Cache-Control', 'no-store');
+    res.json({ loginAt: u.loginAt || 0, items });
+  } catch (e) {
+    console.error('[ANNOUNCEMENTS ACTIVE ERROR]', e);
+    res.status(500).json({ error: '公告載入失敗' });
+  }
+});
+
+app.post('/api/announcements/:id/ack', requireAuth, (req, res) => {
+  try {
+    const u = req.session.user;
+    const data = db.load();
+    const a = (data.announcements || []).find(x => x.id === req.params.id);
+    // 不存在或不是給這個角色的：一律當作不存在（不洩漏他人公告是否存在）
+    if (!a || !announcementsLib.targetsRole(a, u.role)) return res.status(404).json({ error: '公告不存在' });
+    // 強制閱讀：送達後不足 READ_MIN_MS（或根本沒被送達過）就 ack → 拒絕，不記已讀
+    if (announcementsLib.ackTooEarly(a, u.username, Date.now())) {
+      return res.status(409).json({ error: '請先閱讀公告內容', code: 'TOO_EARLY' });
+    }
+    // 以使用者看到的版本為準（上限為目前版本）：管理員在彈窗期間「重新公告」時，舊版確認不會吃掉新版
+    let v = parseInt(req.body && req.body.version, 10);
+    if (!Number.isFinite(v) || v < 1 || v > a.version) v = a.version;
+    if (!a.readBy || typeof a.readBy !== 'object') a.readBy = {};
+    const prev = a.readBy[u.username];
+    if (!prev || prev.version < v) {
+      a.readBy[u.username] = { version: v, at: new Date().toISOString() };
+      db.save(data);
+    } // 已確認過同版本就不重寫（everyLogin 每次登入都會 ack，避免每次登入都改寫整顆資料）
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[ANNOUNCEMENTS ACK ERROR]', e);
+    res.status(500).json({ error: '確認失敗，請稍後再試' });
+  }
+});
+
+app.get('/api/admin/announcements', requireAdmin, (req, res) => {
+  const data = db.load();
+  const users = loadAuth().users || [];
+  const now = Date.now();
+  const list = (data.announcements || []).map(a => announcementsLib.adminView(a, users, now))
+    .sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)));
+  res.set('Cache-Control', 'no-store');
+  res.json({ items: list, roles: KNOWN_ROLES, limits: { title: announcementsLib.MAX_TITLE, body: announcementsLib.MAX_BODY, max: announcementsLib.MAX_ANNOUNCEMENTS } });
+});
+
+app.post('/api/admin/announcements', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const v = announcementsLib.validateInput(req.body, KNOWN_ROLES, false);
+  if (v.error) return res.status(400).json({ error: v.error });
+  const werr = announcementsLib.checkWindow(v.fields);
+  if (werr) return res.status(400).json({ error: werr });
+  const data = db.load();
+  if (!Array.isArray(data.announcements)) data.announcements = [];
+  if (data.announcements.length >= announcementsLib.MAX_ANNOUNCEMENTS) {
+    return res.status(400).json({ error: `公告數量已達上限 ${announcementsLib.MAX_ANNOUNCEMENTS} 則，請先刪除舊公告` });
+  }
+  const nowIso = new Date().toISOString();
+  const a = {
+    id: uuidv4(), version: 1, ...v.fields, readBy: {},
+    createdAt: nowIso, createdBy: operator, updatedAt: nowIso, updatedBy: operator,
+  };
+  data.announcements.push(a);
+  db.save(data);
+  writeLog('CREATE_ANNOUNCEMENT', operator, a.id, `新增公告「${a.title}」（${a.mode === 'once' ? '一次性' : '每次登入'}，${a.enabled ? '啟用' : '停用'}）`, req);
+  res.json({ ok: true, id: a.id });
+});
+
+app.put('/api/admin/announcements/:id', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  const a = (data.announcements || []).find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '公告不存在' });
+  const v = announcementsLib.validateInput(req.body, KNOWN_ROLES, true);
+  if (v.error) return res.status(400).json({ error: v.error });
+  const merged = { ...a, ...v.fields };
+  const werr = announcementsLib.checkWindow(merged);
+  if (werr) return res.status(400).json({ error: werr });
+  const changed = Object.keys(v.fields).filter(k => JSON.stringify(a[k]) !== JSON.stringify(v.fields[k]));
+  Object.assign(a, v.fields);
+  // 「重新公告給所有人」：版本 +1，所有人（含已確認者）會再看到一次
+  const renotify = !!(req.body && req.body.renotify);
+  if (renotify) a.version = (a.version || 1) + 1;
+  if (!changed.length && !renotify) return res.json({ ok: true, version: a.version, unchanged: true });
+  a.updatedAt = new Date().toISOString();
+  a.updatedBy = operator;
+  db.save(data);
+  writeLog('UPDATE_ANNOUNCEMENT', operator, a.id,
+    `更新公告「${a.title}」：${changed.join('、') || '（無欄位變更）'}${renotify ? `；重新公告給所有人（v${a.version}）` : ''}`, req);
+  res.json({ ok: true, version: a.version });
+});
+
+app.delete('/api/admin/announcements/:id', requireAdmin, (req, res) => {
+  const operator = req.session.user.username;
+  const data = db.load();
+  const list = data.announcements || [];
+  const idx = list.findIndex(x => x.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: '公告不存在' });
+  const [a] = list.splice(idx, 1);
+  db.save(data);
+  writeLog('DELETE_ANNOUNCEMENT', operator, a.id, `刪除公告「${a.title}」`, req);
+  res.json({ ok: true });
 });
 
 // ── Call-in Pass CRUD ─────────────────────────────────────
@@ -9912,7 +10095,7 @@ app.get('/api/exec/bu-comparison', requireAuth, (req, res) => {
   const yearNum = parseInt(req.query.year) || new Date().getFullYear();
   const data = db.load();
   const auth = loadAuth();
-  const BUS = ['ERP', 'ITS', 'MDM', 'CRM'];
+  const BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
 
   const result = BUS.map(bu => {
     // 屬於此 BU 的業務人員

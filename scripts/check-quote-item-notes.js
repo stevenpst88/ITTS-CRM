@@ -79,7 +79,7 @@ async function run() {
   t('1.7 既有匯出沒被改動：isNonItemRow／isItemRow／itemRows／lineAmount／subtotalValues／subtotalLabel 仍在且語意不變', ['isNonItemRow', 'isItemRow', 'itemRows', 'lineAmount', 'subtotalValues', 'subtotalLabel', 'normalizeRowKind', 'NON_ITEM_KINDS', 'DEFAULT_SUBTOTAL_LABEL'].every((k) => k in QI) && QI.subtotalValues([{ qty: 2, unitPrice: 5 }, { kind: 'subtotal' }])[1] === 10);
 
   // ═════════════════ 2) normalizeItems（經 POST／PUT）與序列化 ═════════════════
-  const postBody = (items, extra) => Object.assign({ company: 'C', projectName: 'P', products: ['PS'], validUntil: '2026-10-30', discountType: 'none', discountValue: 0, items }, extra || {});
+  const postBody = (items, extra) => Object.assign({ oppId: 'O1', company: 'C', projectName: 'P', products: ['PS'], validUntil: '2026-10-30', discountType: 'none', discountValue: 0, items }, extra || {});
   let env = G.mkEnv(ROOT, []);
   let c = await env.call('own1', 'POST', '/api/quotations', {}, postBody([
     { desc: 'A', unit: '式', qty: 1, unitPrice: 10, spec: '  第一行\n第二行  ', note: ' 備註\t文字 ' },

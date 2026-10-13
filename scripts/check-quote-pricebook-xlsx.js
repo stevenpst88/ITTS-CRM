@@ -84,14 +84,14 @@ async function run() {
   const ITEMS = [cur('PM 顧問經理', 9000, 6500), cur('SD 顧問', 7000.5, 5000, false), cur('ABAP 顧問', 6500, 4500.25)];
   const bufE = await X.buildWorkbook({ mode: 'export', items: ITEMS, date: '2026-10-08' });
   const wbE = XLSX.read(bufE, { type: 'buffer' });
-  t('1.1 匯出檔可被 xlsx 開啟；五個工作表依序為 ERP、ITS、MDM、CRM、說明', eq(wbE.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '說明']), JSON.stringify(wbE.SheetNames));
+  t('1.1 匯出檔可被 xlsx 開啟；六個工作表依序為 ERP、ITS、MDM、CRM、資安、說明', eq(wbE.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '資安', '說明']), JSON.stringify(wbE.SheetNames));
   const wsE = wbE.Sheets['ERP'];
   t('1.2 標題列＝五個欄位名稱（繁中，含選填的「說明」）', eq(['A1', 'B1', 'C1', 'D1', 'E1'].map((k) => wsE[k] && wsE[k].v), HDR));
   t('1.3 資料列：項目依目前順序（含停用的）；金額是數字型（t=n）；啟用欄是／否', eq([2, 3, 4].map((r) => wsE['A' + r].v), ['PM 顧問經理', 'SD 顧問', 'ABAP 顧問'])
     && [2, 3, 4].every((r) => wsE['B' + r].t === 'n' && wsE['C' + r].t === 'n') && wsE['B3'].v === 7000.5 && wsE['C4'].v === 4500.25 && eq([2, 3, 4].map((r) => wsE['D' + r].v), ['是', '否', '是']));
   t('1.4 沒有多出來的列（!ref＝A1:E4）', wsE['!ref'] === 'A1:E4', wsE['!ref']);
   const partsE = await unzipText(bufE);
-  t('1.5 zip 內只有預期的部件（沒有巨集、外部連結、媒體）', eq(Object.keys(partsE).sort(), ['[Content_Types].xml', '_rels/.rels', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml', 'xl/worksheets/sheet4.xml', 'xl/worksheets/sheet5.xml'].sort()), Object.keys(partsE).join(','));
+  t('1.5 zip 內只有預期的部件（沒有巨集、外部連結、媒體）', eq(Object.keys(partsE).sort(), ['[Content_Types].xml', '_rels/.rels', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml', 'xl/worksheets/sheet4.xml', 'xl/worksheets/sheet5.xml', 'xl/worksheets/sheet6.xml'].sort()), Object.keys(partsE).join(','));
   t('1.6 每個 XML 部件良構', Object.entries(partsE).every(([, x]) => wellFormed(x)), Object.entries(partsE).filter(([, x]) => !wellFormed(x)).map(([k]) => k).join(','));
   const s1 = partsE['xl/worksheets/sheet1.xml'];
   t('1.7 首列凍結（pane ySplit=1 frozen）、欄寬有設定', /<pane ySplit="1"[^>]*state="frozen"/.test(s1) && /<cols>.*<col min="1" max="1" width="[\d.]+" customWidth="1"\/>/.test(s1));
@@ -100,7 +100,7 @@ async function run() {
   t('1.10 所有文字儲存格都是明確字串型（inlineStr）；整份資料表沒有 <f> 公式、沒有 t="s" 以外的怪型別', !/<f[ >]/.test(s1) && (s1.match(/<c [^>]*\bt="[^"]*"/g) || []).every((c) => /t="inlineStr"/.test(c)));
   const help = wbE.Sheets['說明'];
   const helpTxt = Object.keys(help).filter((k) => k[0] !== '!').map((k) => String(help[k].v)).join('\n');
-  t('1.11 說明頁：合併不刪除、單位固定人天、機密提醒、匯出日期與項目數', ['不會被刪除', '人天', '機密', '2026-10-08', '共 3 項（啟用 2 項；ERP 3、ITS 0、MDM 0、CRM 0）', '依「BU＋項目名稱」合併', '完全等於'].every((s) => helpTxt.includes(s)), helpTxt.slice(0, 200));
+  t('1.11 說明頁：合併不刪除、單位固定人天、機密提醒、匯出日期與項目數', ['不會被刪除', '人天', '機密', '2026-10-08', '共 3 項（啟用 2 項；ERP 3、ITS 0、MDM 0、CRM 0、資安 0）', '依「BU＋項目名稱」合併', '完全等於'].every((s) => helpTxt.includes(s)), helpTxt.slice(0, 200));
   const bufT = await X.buildWorkbook({ mode: 'template', date: '2026-10-08' });
   const wbT = XLSX.read(bufT, { type: 'buffer' });
   t('1.12 範本：資料工作表只有標題列（!ref＝A1:E1，沒有任何範例資料可能被誤匯入）', wbT.Sheets['ERP']['!ref'] === 'A1:E1' && eq(['A1', 'B1', 'C1', 'D1', 'E1'].map((k) => wbT.Sheets['ERP'][k].v), HDR) && !wbT.Sheets['ERP']['A2']);
@@ -283,7 +283,7 @@ async function run() {
   t('3.34 matchHeader 直接測：別名／括號／全形', X.matchHeader('牌價（元/人天）') === 'price' && X.matchHeader(' ＮＡＭＥ ') === 'name' && X.matchHeader('成本 (NTD)') === 'cost' && X.matchHeader('啟用') === 'active' && X.matchHeader('備註') === null && X.matchHeader('') === null);
 
   // ═════════════════ 3b) 多 BU：每個 BU 一個工作表，依「BU＋名稱」合併 ═════════════════
-  const BUS4 = ['ERP', 'ITS', 'MDM', 'CRM'];
+  const BUS5 = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
   const MI = [
     cur('PM', 9000, 6500, true, 'e1', 'ERP'), cur('SD', 7000, 5000, false, 'e2', 'ERP'),
     cur('SD', 6000, 4000, true, 'i1', 'ITS'), cur('Net', 5000, 3500, true, 'i2', 'ITS'),
@@ -298,14 +298,14 @@ async function run() {
   const buRows = (bu) => rb.rows.filter((x) => x.bu === bu);
   t('3b.1 每列預覽都帶 bu；ERP：「sd」更新（保留 id e2／位置／停用狀態）、NewE 新增', rb.ok && eq(buRows('ERP').map((x) => x.action + ':' + x.name), ['update:SD', 'add:NewE']) && buRows('ERP')[0].old.price === 7000 && buRows('ERP')[0].new.price === 7500 && buRows('ERP')[0].new.active === false, JSON.stringify(buRows('ERP')));
   t('3b.2 ITS：同名「SD」在 ERP 被更新，但 ITS 的 SD 完全獨立（不變）；同一工作表第二個 SD → 錯誤；Newi 新增為停用', eq(buRows('ITS').map((x) => x.action), ['unchanged', 'error', 'add']) && /與本工作表第 2 列/.test(buRows('ITS')[1].error) && buRows('ITS')[2].new.active === false);
-  t('3b.3 CRM：「SD」在 CRM 是全新項目 → 新增（同名跨 BU 允許）；MDM 沒有工作表 → 完全不動（missingBus）；Other 工作表 → skippedSheets', eq(buRows('CRM').map((x) => x.action), ['add']) && buRows('MDM').length === 0 && eq(rb.missingBus, ['MDM']) && eq(rb.skippedSheets, ['Other']));
+  t('3b.3 CRM：「SD」在 CRM 是全新項目 → 新增（同名跨 BU 允許）；MDM 沒有工作表 → 完全不動（missingBus）；Other 工作表 → skippedSheets', eq(buRows('CRM').map((x) => x.action), ['add']) && buRows('MDM').length === 0 && eq(rb.missingBus, ['MDM', '資安']) && eq(rb.skippedSheets, ['Other']));
   t('3b.4 摘要：總計與每個 BU 的新增／更新／不變／略過／錯誤都正確且總計＝各 BU 加總（略過＝1 個被略過的工作表）', rb.summary.added === 3 && rb.summary.updated === 1 && rb.summary.unchanged === 1 && rb.summary.errors === 1 && rb.summary.skipped === 1
     && eq(rb.summary.byBu.ERP, { added: 1, updated: 1, unchanged: 0, skipped: 0, errors: 0 }) && eq(rb.summary.byBu.ITS, { added: 1, updated: 0, unchanged: 1, skipped: 0, errors: 1 }) && eq(rb.summary.byBu.MDM, { added: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0 }) && eq(rb.summary.byBu.CRM, { added: 1, updated: 0, unchanged: 0, skipped: 0, errors: 0 }), JSON.stringify(rb.summary));
   t('3b.5 merged 依 ERP、ITS、MDM、CRM 排列；各 BU 內既有項目保留 id 與順序，新項目接在「該 BU」最後（不是整份最後）；缺 BU 工作表的項目逐欄不變', eq(rb.merged.map((x) => x.bu + ':' + (x.id || '(new)') + ':' + x.name), ['ERP:e1:PM', 'ERP:e2:SD', 'ERP:(new):NewE', 'ITS:i1:SD', 'ITS:i2:Net', 'ITS:(new):Newi', 'MDM:m1:MDM Lead', 'CRM:(new):SD']), JSON.stringify(rb.merged.map((x) => x.bu + x.name)));
   t('3b.6 只動被提到的：ERP 的 PM（沒出現在檔案）、ITS 的 Net、MDM 的 Lead 都逐欄不變', eq(rb.merged.find((x) => x.id === 'e1'), asPlain(MI[0])) && eq(rb.merged.find((x) => x.id === 'i2'), asPlain(MI[3])) && eq(rb.merged.find((x) => x.id === 'm1'), asPlain(MI[4])));
   let nb = 0;
   const chkB = PB.normalizePricebook(rb.merged, { genId: () => 'n' + (++nb) });
-  t('3b.7 merged 通過 PUT 的同一套驗證（同名跨 BU 的 SD 都在）', chkB.ok && chkB.items.filter((x) => x.name === 'SD').length === 3 && chkB.items.every((x) => BUS4.includes(x.bu)), chkB.ok ? '' : JSON.stringify(chkB.error));
+  t('3b.7 merged 通過 PUT 的同一套驗證（同名跨 BU 的 SD 都在）', chkB.ok && chkB.items.filter((x) => x.name === 'SD').length === 3 && chkB.items.every((x) => BUS5.includes(x.bu)), chkB.ok ? '' : JSON.stringify(chkB.error));
   // 每個 BU 60 上限（互不影響）
   const full = (bu, n) => Array.from({ length: n }, (_, i) => cur('R' + i, 1, 1, true, bu.toLowerCase() + i, bu));
   rb = await prev(multi({ ERP: [['X1', 1, 1, '']], ITS: [['Y1', 1, 1, ''], ['Y2', 1, 1, '']] }), full('ERP', 60).concat(full('ITS', 59)));
@@ -315,35 +315,38 @@ async function run() {
   // 舊資料：沒有 bu 欄位 → 視為 ERP
   const legacyEx = [{ id: 'L1', name: 'Old PM', price: 9000, cost: 6500, active: true }, { id: 'L2', name: 'Old SD', unit: '人天', price: 7000, cost: 5000, active: false }];
   rb = await prev(multi({ ERP: [['old pm', 9100, 6500, '']], ITS: [['Old PM', 1, 1, '']] }), legacyEx);
-  t('3b.10 相容舊資料：既有項目沒有 bu → 當作 ERP（ERP 工作表的同名列是更新、ITS 工作表的同名列是新增）；merged 一律補上 bu', rb.ok && eq(rb.rows.map((x) => x.bu + ':' + x.action), ['ERP:update', 'ITS:add']) && rb.merged.every((x) => BUS4.includes(x.bu)) && rb.merged[0].id === 'L1' && rb.merged[0].bu === 'ERP', JSON.stringify(rb.merged));
+  t('3b.10 相容舊資料：既有項目沒有 bu → 當作 ERP（ERP 工作表的同名列是更新、ITS 工作表的同名列是新增）；merged 一律補上 bu', rb.ok && eq(rb.rows.map((x) => x.bu + ':' + x.action), ['ERP:update', 'ITS:add']) && rb.merged.every((x) => BUS5.includes(x.bu)) && rb.merged[0].id === 'L1' && rb.merged[0].bu === 'ERP', JSON.stringify(rb.merged));
   // 各工作表獨立的標題與數字規則
   rb = await prev(multi({ ERP: [['A', 1, 1, '']] }, [['ITS', [['name', 'price', 'cost', 'active'], ['B', '1,000', '５００', 'N']]], ['MDM', [['項目名稱', '牌價', '成本']]]]), []);
-  t('3b.11 每個工作表的標題變體各自辨識（ITS 用英文標題、數字用千分位／全形）；只有標題列的 MDM 不報錯也不算「缺工作表」', rb.ok && rb.merged.length === 2 && rb.merged[1].bu === 'ITS' && rb.merged[1].price === 1000 && rb.merged[1].cost === 500 && rb.merged[1].active === false && eq(rb.missingBus, ['CRM']), JSON.stringify(rb.rows || rb));
+  t('3b.11 每個工作表的標題變體各自辨識（ITS 用英文標題、數字用千分位／全形）；只有標題列的 MDM 不報錯也不算「缺工作表」', rb.ok && rb.merged.length === 2 && rb.merged[1].bu === 'ITS' && rb.merged[1].price === 1000 && rb.merged[1].cost === 500 && rb.merged[1].active === false && eq(rb.missingBus, ['CRM', '資安']), JSON.stringify(rb.rows || rb));
   rb = await prev(multi({ ERP: [['A', 1, 1, '']] }, [['ITS', [['foo', 'bar'], ['B', 1]]]]), []);
   t('3b.12 任一 BU 工作表標題錯誤 → 整個檔案 400 BAD_HEADER，訊息指出是 ITS（不默默略過）', rb.ok === false && rb.code === 'BAD_HEADER' && /工作表「ITS」/.test(rb.message), JSON.stringify(rb));
   rb = await prev(multi({ ERP: [['A', 1, 1, '']], ITS: Array.from({ length: 501 }, (_, i) => ['N' + i, 1, 1, '']) }), []);
   t('3b.13 每個工作表資料列上限 500（ITS 501 列 → 400 TOO_MANY_ROWS，訊息指出 ITS）', rb.ok === false && rb.code === 'TOO_MANY_ROWS' && /ITS/.test(rb.message));
-  rb = await prev(multi({ ERP: [], ITS: [], MDM: [], CRM: [] }), MI);
-  t('3b.14 四個 BU 工作表都只有標題列 → 400 NO_DATA（直接上傳範本不會被當成成功）', rb.ok === false && rb.code === 'NO_DATA');
+  rb = await prev(multi({ ERP: [], ITS: [], MDM: [], CRM: [], '資安': [] }), MI);
+  t('3b.14 五個 BU 工作表都只有標題列 → 400 NO_DATA（直接上傳範本不會被當成成功）', rb.ok === false && rb.code === 'NO_DATA');
   // 往返（多 BU、同名跨 BU、公式字樣、停用）
   const RTB = [
     cur('SD 顧問', 7000, 5000, true, 'a1', 'ERP'), cur('=1+1', 1, 1, true, 'a2', 'ERP'), cur('SD 顧問', 6000.5, 4000, false, 'b1', 'ITS'), cur('+SUM(A1)', 2, 2, true, 'b2', 'ITS'),
     cur('-2+3', 3, 3, true, 'c1', 'MDM'), cur('@cmd', 4, 4, false, 'c2', 'MDM'), cur('=HYPERLINK("http://example.test","x")', 5, 5, true, 'd1', 'CRM'), cur('SD 顧問', 8000, 6000, true, 'd2', 'CRM'),
     cur('全形ＡＢＣ　顧問', 1234.56, 999.99, true, 'd3', 'CRM'),
+    cur('資安 顧問', 9000, 6500, true, 'e1', '資安'), cur('=2+2', 7, 7, false, 'e2', '資安'),
   ];
   const bufRB = await X.buildWorkbook({ mode: 'export', items: RTB, date: '2026-10-09' });
   const wbRB = XLSX.read(bufRB, { type: 'buffer' });
-  t('3b.15 匯出的每個 BU 工作表只含自己的項目（ERP 2、ITS 2、MDM 2、CRM 3），順序照清單，停用＝否，標題列都在', eq(['ERP', 'ITS', 'MDM', 'CRM'].map((b) => wbRB.Sheets[b]['!ref']), ['A1:E3', 'A1:E3', 'A1:E3', 'A1:E4']) && wbRB.Sheets.ITS.A2.v === 'SD 顧問' && wbRB.Sheets.ITS.D2.v === '否' && wbRB.Sheets.MDM.D3.v === '否' && wbRB.Sheets.CRM.A3.v === 'SD 顧問' && BUS4.every((b) => HDR.every((h, i) => wbRB.Sheets[b][String.fromCharCode(65 + i) + '1'].v === h)));
+  t('3b.15 匯出的每個 BU 工作表只含自己的項目（ERP 2、ITS 2、MDM 2、CRM 3、資安 2），順序照清單，停用＝否，標題列都在', eq(['ERP', 'ITS', 'MDM', 'CRM', '資安'].map((b) => wbRB.Sheets[b]['!ref']), ['A1:E3', 'A1:E3', 'A1:E3', 'A1:E4', 'A1:E3']) && wbRB.Sheets['資安'].A2.v === '資安 顧問' && wbRB.Sheets['資安'].D3.v === '否' && wbRB.Sheets.ITS.A2.v === 'SD 顧問' && wbRB.Sheets.ITS.D2.v === '否' && wbRB.Sheets.MDM.D3.v === '否' && wbRB.Sheets.CRM.A3.v === 'SD 顧問' && BUS5.every((b) => HDR.every((h, i) => wbRB.Sheets[b][String.fromCharCode(65 + i) + '1'].v === h)));
   const rtb = await prev(bufRB, RTB);
-  t('3b.16 往返（多 BU、同名跨 BU、= + - @ 開頭、全形、小數、停用）：匯出 → 匯入預覽 ＝ 0 新增 0 更新 0 錯誤 ' + RTB.length + ' 不變，merged 逐欄相同', rtb.ok && rtb.summary.unchanged === RTB.length && rtb.summary.added === 0 && rtb.summary.updated === 0 && rtb.summary.errors === 0 && eq(rtb.merged, RTB.map(asPlain)) && BUS4.every((b) => rtb.summary.byBu[b].unchanged === RTB.filter((x) => x.bu === b).length), JSON.stringify(rtb.summary || rtb));
+  t('3b.16 往返（多 BU、同名跨 BU、= + - @ 開頭、全形、小數、停用）：匯出 → 匯入預覽 ＝ 0 新增 0 更新 0 錯誤 ' + RTB.length + ' 不變，merged 逐欄相同', rtb.ok && rtb.summary.unchanged === RTB.length && rtb.summary.added === 0 && rtb.summary.updated === 0 && rtb.summary.errors === 0 && eq(rtb.merged, RTB.map(asPlain)) && BUS5.every((b) => rtb.summary.byBu[b].unchanged === RTB.filter((x) => x.bu === b).length), JSON.stringify(rtb.summary || rtb));
   const partsRB = await unzipText(bufRB);
-  const injRB = [['sheet1', 'A3', '=1+1'], ['sheet2', 'A3', '+SUM(A1)'], ['sheet3', 'A2', '-2+3'], ['sheet3', 'A3', '@cmd'], ['sheet4', 'A2', '=HYPERLINK("http://example.test","x")']];
+  const injRB = [['sheet1', 'A3', '=1+1'], ['sheet2', 'A3', '+SUM(A1)'], ['sheet3', 'A2', '-2+3'], ['sheet3', 'A3', '@cmd'], ['sheet4', 'A2', '=HYPERLINK("http://example.test","x")'], ['sheet5', 'A3', '=2+2']];
   t('3b.17 各 BU 工作表的公式字樣名稱都是字串型＋quotePrefix（s="3"），整個活頁簿沒有 <f> 公式；SheetJS 讀回逐字相同', Object.keys(partsRB).filter((k) => /worksheets\/sheet\d\.xml$/.test(k)).every((k) => !/<f[ >]/.test(partsRB[k]))
-    && injRB.every(([sh, ref, nm]) => new RegExp('<c r="' + ref + '" s="3" t="inlineStr">').test(partsRB['xl/worksheets/' + sh + '.xml']) && XLSX.read(bufRB, { type: 'buffer' }).Sheets[{ sheet1: 'ERP', sheet2: 'ITS', sheet3: 'MDM', sheet4: 'CRM' }[sh]][ref].v === nm));
-  t('3b.18 匯出檔每個 XML 部件良構；說明頁列出各 BU 項目數、工作表名稱規則、合併不刪除', Object.values(partsRB).every(wellFormed) && await (async () => { const h = XLSX.read(bufRB, { type: 'buffer' }).Sheets['說明']; const tx = Object.keys(h).filter((k) => k[0] !== '!').map((k) => String(h[k].v)).join('\n'); return ['ERP 2、ITS 2、MDM 2、CRM 3', '完全等於', '不同 BU 可以有相同名稱', '缺少某個 BU 的工作表：該 BU 完全不動', '不會被刪除', '機密', '單位固定是「人天」'].every((s) => tx.includes(s)); })());
+    && injRB.every(([sh, ref, nm]) => new RegExp('<c r="' + ref + '" s="3" t="inlineStr">').test(partsRB['xl/worksheets/' + sh + '.xml']) && XLSX.read(bufRB, { type: 'buffer' }).Sheets[{ sheet1: 'ERP', sheet2: 'ITS', sheet3: 'MDM', sheet4: 'CRM', sheet5: '資安' }[sh]][ref].v === nm));
+  t('3b.18 匯出檔每個 XML 部件良構；說明頁列出各 BU 項目數、工作表名稱規則、合併不刪除', Object.values(partsRB).every(wellFormed) && await (async () => { const h = XLSX.read(bufRB, { type: 'buffer' }).Sheets['說明']; const tx = Object.keys(h).filter((k) => k[0] !== '!').map((k) => String(h[k].v)).join('\n'); return ['ERP 2、ITS 2、MDM 2、CRM 3、資安 2', '完全等於', '不同 BU 可以有相同名稱', '缺少某個 BU 的工作表：該 BU 完全不動', '不會被刪除', '機密', '單位固定是「人天」'].every((s) => tx.includes(s)); })());
   const bufTB = await X.buildWorkbook({ mode: 'template', date: '2026-10-09' });
   const wbTB = XLSX.read(bufTB, { type: 'buffer' });
-  t('3b.19 範本：ERP／ITS／MDM／CRM 四個工作表都只有標題列（!ref＝A1:E1、沒有任何資料列）＋「說明」；範例只在說明頁的文字表（虛構，標示不會被匯入）', eq(wbTB.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '說明']) && BUS4.every((b) => wbTB.Sheets[b]['!ref'] === 'A1:E1' && !wbTB.Sheets[b].A2) && Object.keys(wbTB.Sheets['說明']).some((k) => k[0] !== '!' && String(wbTB.Sheets['說明'][k].v).includes('（範例）專案經理')));
+  t('3b.19 範本：ERP／ITS／MDM／CRM／資安 五個工作表都只有標題列（!ref＝A1:E1、沒有任何資料列）＋「說明」；範例只在說明頁的文字表（虛構，標示不會被匯入）', eq(wbTB.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '資安', '說明']) && BUS5.every((b) => wbTB.Sheets[b]['!ref'] === 'A1:E1' && !wbTB.Sheets[b].A2) && Object.keys(wbTB.Sheets['說明']).some((k) => k[0] !== '!' && String(wbTB.Sheets['說明'][k].v).includes('（範例）專案經理')));
+  rb = await prev(multi({ '資安': [['資安 PM', 9000, 6000, ''], ['SD', 1, 1, '']], ERP: [['E', 1, 1, '']] }, [['資安 ', [HDR, ['空白尾巴不算', 1, 1, '']]], ['sec', [HDR, ['小寫不算', 1, 1, '']]]]), [cur('SD', 5, 5, true, 'x1', 'ERP')]);
+  t('3b.19b 資安 工作表（名稱完全等於「資安」）被辨識：兩筆新增（同名 SD 跨 BU 允許）、merged 順序 ERP 在前 資安 在後、缺工作表＝ITS／MDM／CRM；「資安 」（尾空白）與「sec」只列入 skippedSheets', rb.ok && rb.summary.byBu['資安'].added === 2 && eq(rb.merged.map((x) => x.bu + ':' + x.name), ['ERP:SD', 'ERP:E', '資安:資安 PM', '資安:SD']) && eq(rb.missingBus, ['ITS', 'MDM', 'CRM']) && eq(rb.skippedSheets, ['資安 ', 'sec']), JSON.stringify(rb.summary || rb));
   // 往返後再套用、再匯入 → 冪等
   let gi2 = 0;
   const appliedB = PB.normalizePricebook((await prev(fileB, MI)).merged, { genId: () => 'g' + (++gi2) });
@@ -558,7 +561,7 @@ async function run() {
   const cd = ex.h['content-disposition'] || '';
   t('5.2 Content-Disposition：attachment、ASCII 後備檔名 pricebook_20261008.xlsx、RFC5987 filename*=UTF-8\'\'%E5%A0%B1…_20261008.xlsx（解碼＝報價牌價簿_20261008.xlsx）', /^attachment; filename="pricebook_20261008\.xlsx"; filename\*=UTF-8''%E5%A0%B1/.test(cd) && decodeURIComponent(cd.split("filename*=UTF-8''")[1]) === '報價牌價簿_20261008.xlsx', cd);
   const exWb = XLSX.read(ex.buf, { type: 'buffer' });
-  t('5.3 匯出內容＝目前牌價簿（含停用、順序）', eq(exWb.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '說明']) && eq([2, 3, 4].map((r) => exWb.Sheets['ERP']['A' + r].v), ['PM 顧問經理', 'SD 顧問', 'ABAP 顧問']) && exWb.Sheets['ERP']['D3'].v === '否');
+  t('5.3 匯出內容＝目前牌價簿（含停用、順序）', eq(exWb.SheetNames, ['ERP', 'ITS', 'MDM', 'CRM', '資安', '說明']) && eq([2, 3, 4].map((r) => exWb.Sheets['ERP']['A' + r].v), ['PM 顧問經理', 'SD 顧問', 'ABAP 顧問']) && exWb.Sheets['ERP']['D3'].v === '否');
   const lgx = env.logs[env.logs.length - 1] || [];
   t('5.4 匯出稽核：EXPORT_QUOTE_PRICEBOOK、操作者、含項目數、註明含成本；沒有寫入資料', lgx[0] === 'EXPORT_QUOTE_PRICEBOOK' && lgx[1] === 'admin1' && /共3項/.test(lgx[3]) && /含成本/.test(lgx[3]) && env.logs.length === nl + 1 && env.saves === sv, JSON.stringify(lgx.slice(0, 4)));
   let tp = await env.call('admin1', 'GET', A + '/template');
@@ -577,7 +580,7 @@ async function run() {
   nl = env.logs.length; sv = env.saves;
   const snapPre = JSON.stringify(env.data); const updPre = env.data.pricebook.updatedAt;
   let pv = await env.call('admin1', 'POST', A + '/import-preview', {}, {}, { file: fileOf(fileA, '我的牌價_2026.xlsx') });
-  t('5.7 預覽 200：回 base.updatedAt、summary（含 byBu）、rows、skippedSheets、missingBus、merged、fileName', pv.s === 200 && pv.j.success === true && pv.j.base.updatedAt === updPre && pv.j.summary.added === 1 && pv.j.summary.updated === 2 && pv.j.summary.unchanged === 1 && pv.j.summary.errors === 1 && pv.j.fileName === '我的牌價_2026.xlsx' && Array.isArray(pv.j.skippedSheets) && eq(pv.j.missingBus, ['ITS', 'MDM', 'CRM']) && pv.j.summary.byBu.ERP.updated === 2 && pv.j.summary.byBu.ITS.updated === 0 && Array.isArray(pv.j.rows) && pv.j.merged.length === 4, JSON.stringify(pv.j).slice(0, 300));
+  t('5.7 預覽 200：回 base.updatedAt、summary（含 byBu）、rows、skippedSheets、missingBus、merged、fileName', pv.s === 200 && pv.j.success === true && pv.j.base.updatedAt === updPre && pv.j.summary.added === 1 && pv.j.summary.updated === 2 && pv.j.summary.unchanged === 1 && pv.j.summary.errors === 1 && pv.j.fileName === '我的牌價_2026.xlsx' && Array.isArray(pv.j.skippedSheets) && eq(pv.j.missingBus, ['ITS', 'MDM', 'CRM', '資安']) && pv.j.summary.byBu.ERP.updated === 2 && pv.j.summary.byBu.ITS.updated === 0 && Array.isArray(pv.j.rows) && pv.j.merged.length === 4, JSON.stringify(pv.j).slice(0, 300));
   t('5.8 預覽完全不寫入：整份 data（含 pricebook.updatedAt）逐位元不變、db.save 沒被呼叫', JSON.stringify(env.data) === snapPre && env.saves === sv && env.data.pricebook.updatedAt === updPre);
   t('5.9 預覽完全不寫入：連稽核都不記（沒有新的 writeLog），也沒有 db.save', env.logs.length === nl && env.saves === sv, env.logs.length - nl);
   // 錯誤
@@ -657,15 +660,15 @@ async function run() {
     const cur3 = (await e2.call('admin1', 'GET', A2)).j;
     const badBu = [];
     for (const v of ['XYZ', 'erp', 'ERP ', 5, true, {}, ['ERP']]) badBu.push(await e2.call('admin1', 'PUT', A2, {}, { items: [{ bu: v, name: 'Q', price: 1, cost: 1 }], updatedAt: cur3.updatedAt }));
-    t('5b.7 bu 不是 ERP／ITS／MDM／CRM 其中之一（含小寫、多空白、數字、物件）→ 400 field=bu；不寫入', badBu.every((x) => x.s === 400 && x.j.field === 'bu') && (await e2.call('admin1', 'GET', A2)).j.updatedAt === cur3.updatedAt);
+    t('5b.7 bu 不是 ERP／ITS／MDM／CRM／資安 其中之一（含小寫、多空白、數字、物件）→ 400 field=bu；不寫入', badBu.every((x) => x.s === 400 && x.j.field === 'bu') && (await e2.call('admin1', 'GET', A2)).j.updatedAt === cur3.updatedAt);
     const nullBu = await e2.call('admin1', 'PUT', A2, {}, { items: [{ bu: null, name: 'Q', price: 1, cost: 1 }, { bu: '', name: 'R', price: 1, cost: 1 }], updatedAt: cur3.updatedAt });
     t('5b.8 bu 為 null／空字串視同沒帶（→ ERP），不是 500', nullBu.s === 200 && nullBu.j.items.every((x) => x.bu === 'ERP'));
     const mk = (bu, n) => Array.from({ length: n }, (_, i) => ({ bu, name: bu + i, price: 1, cost: 1 }));
     const u0 = (await e2.call('admin1', 'GET', A2)).j.updatedAt;
-    const capOk = await e2.call('admin1', 'PUT', A2, {}, { items: mk('ERP', 60).concat(mk('ITS', 60), mk('MDM', 60), mk('CRM', 60)), updatedAt: u0 });
+    const capOk = await e2.call('admin1', 'PUT', A2, {}, { items: mk('ERP', 60).concat(mk('ITS', 60), mk('MDM', 60), mk('CRM', 60), mk('資安', 60)), updatedAt: u0 });
     const cap61 = await e2.call('admin1', 'PUT', A2, {}, { items: mk('ERP', 60).concat(mk('ITS', 61)), updatedAt: capOk.j.updatedAt });
-    const cap241 = await e2.call('admin1', 'PUT', A2, {}, { items: mk('ERP', 60).concat(mk('ITS', 60), mk('MDM', 60), mk('CRM', 60), mk('CRM', 1).map((x) => Object.assign(x, { name: 'extra' }))), updatedAt: capOk.j.updatedAt });
-    t('5b.9 上限：每個 BU 60（共 240）通過；任一 BU 61 筆 → 400；總數 241 → 400', capOk.s === 200 && capOk.j.items.length === 240 && cap61.s === 400 && /\[ITS\]/.test(cap61.j.error) && cap241.s === 400, JSON.stringify([capOk.s, cap61.j, cap241.j]).slice(0, 300));
+    const cap301 = await e2.call('admin1', 'PUT', A2, {}, { items: mk('ERP', 60).concat(mk('ITS', 60), mk('MDM', 60), mk('CRM', 60), mk('資安', 60), mk('資安', 1).map((x) => Object.assign(x, { name: 'extra' }))), updatedAt: capOk.j.updatedAt });
+    t('5b.9 上限：每個 BU 60（共 300）通過；任一 BU 61 筆 → 400；總數 301 → 400', capOk.s === 200 && capOk.j.items.length === 300 && cap61.s === 400 && /\[ITS\]/.test(cap61.j.error) && cap301.s === 400, JSON.stringify([capOk.s, cap61.j, cap301.j]).slice(0, 300));
     // 稽核含 BU
     const logs0 = e2.logs.length;
     const mdmDrop = capOk.j.items[120].id;
@@ -678,7 +681,7 @@ async function run() {
     const file3b = multi({ ERP: [['PM', 9500, 6500, ''], ['NewE', 1, 1, '']], ITS: [['PM', 8000, 5500, ''], ['Bad', 'x', 1, '']], CRM: [['PM', 3, 3, '']] });
     const snap3 = JSON.stringify(e3.data); const sv3 = e3.saves, nl3 = e3.logs.length;
     const pv3 = await e3.call('admin1', 'POST', A2 + '/import-preview', {}, {}, { file: fileOf(file3b, '多BU.xlsx') });
-    t('5b.11 多 BU 預覽 200：summary.byBu 正確、rows 帶 bu、missingBus=[MDM]；預覽沒有寫入也沒有稽核', pv3.s === 200 && pv3.j.summary.byBu.ERP.added === 1 && pv3.j.summary.byBu.ERP.updated === 1 && pv3.j.summary.byBu.ITS.unchanged === 1 && pv3.j.summary.byBu.ITS.errors === 1 && pv3.j.summary.byBu.CRM.added === 1 && eq(pv3.j.missingBus, ['MDM']) && pv3.j.rows.every((x) => BUS4.includes(x.bu)) && JSON.stringify(e3.data) === snap3 && e3.saves === sv3 && e3.logs.length === nl3, JSON.stringify(pv3.j.summary));
+    t('5b.11 多 BU 預覽 200：summary.byBu 正確、rows 帶 bu、missingBus=[MDM、資安]；預覽沒有寫入也沒有稽核', pv3.s === 200 && pv3.j.summary.byBu.ERP.added === 1 && pv3.j.summary.byBu.ERP.updated === 1 && pv3.j.summary.byBu.ITS.unchanged === 1 && pv3.j.summary.byBu.ITS.errors === 1 && pv3.j.summary.byBu.CRM.added === 1 && eq(pv3.j.missingBus, ['MDM', '資安']) && pv3.j.rows.every((x) => BUS5.includes(x.bu)) && JSON.stringify(e3.data) === snap3 && e3.saves === sv3 && e3.logs.length === nl3, JSON.stringify(pv3.j.summary));
     const ap3 = await e3.call('admin1', 'PUT', A2, {}, { items: pv3.j.merged, updatedAt: pv3.j.base.updatedAt, via: 'import', fileName: pv3.j.fileName });
     const lg3 = String(e3.logs[e3.logs.length - 1][3]);
     t('5b.12 套用 merged：各 BU 內順序與 id 保留，新項目接在該 BU 最後；稽核含 [ERP]／[CRM] 標記與「來源：Excel 匯入（多BU.xlsx）」', ap3.s === 200 && eq(ap3.j.items.map((x) => x.bu + ':' + x.name), ['ERP:PM', 'ERP:NewE', 'ITS:PM', 'MDM:Keep', 'CRM:PM']) && lg3.includes('[ERP]「PM」牌價 9000→9500') && lg3.includes('新增 [ERP]「NewE」') && lg3.includes('[CRM]「PM」') && lg3.includes('｜來源：Excel 匯入（多BU.xlsx）'), lg3);

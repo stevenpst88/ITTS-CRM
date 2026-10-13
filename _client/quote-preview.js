@@ -32,6 +32,13 @@ const QPV_CSS = `
 .qpv-body { background: #e9ecf1; padding: 16px; }
 .qpv-hint { font-size: 12px; color: #5f6b7a; margin-bottom: 10px; line-height: 1.6; }
 .qpv-stage { overflow: auto; }
+.qpv-modal .modal-header { padding-bottom: 14px; border-bottom: 1px solid #e5e8ee; position: relative; z-index: 1; }
+.qpv-modal .qpv-body { min-height: 0; }
+.qpv-pnl-tools { display: flex; justify-content: flex-end; margin: -4px 0 8px; font-size: 12.5px; }
+.qpv-pnl-tools a { color: #3b6ea8; cursor: pointer; text-decoration: none; }
+.qpv-pnl-tools a:hover { text-decoration: underline; }
+body.dark .qpv-pnl-tools a { color: #79b0f0; }
+.qpv-pnl-sheet { padding: 0; }
 .qpv-warn { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: #fff4e5; color: #8a4b00;
   border: 1px solid #f5c98b; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; }
 .qpv-paper { width: ${QPV_PAPER_WIDTH}px; margin: 0 auto; box-sizing: border-box; background: #fff; color: #111;
@@ -346,7 +353,8 @@ function showPnlPreviewModal(j, opts) {
       <div class="modal-body qpv-body">
         <div class="qpv-warn qpv-unsigned"><span>內部文件：含成本與毛利率，請勿提供客戶。</span></div>
         ${opts.draft ? '<div class="qpv-warn"><span>這是依你畫面上<b>目前的調整（含尚未儲存的內容）</b>產生的草稿預覽：報價品項的數量／單位已套用「連動」的結果，新增的報價項目單價尚未填寫（由業務補填）。草稿預覽沒有下載鈕。</span></div>' : ''}
-        <div class="qpv-hint">這是「毛利分析(內部)」Excel 內容的網頁預覽（和下載檔同一份資料；範本上的簽名線、選項按鈕等圖形不會顯示），實際成品以下載的 Excel 為準。</div>
+        <div class="qpv-hint">這是「毛利分析(內部)」Excel 內容的簡潔網頁預覽（金額和下載檔同一份資料；已隱藏範本中沒有資料的空白列，簽名線、選項按鈕等圖形不會顯示），實際成品以下載的 Excel 為準。</div>
+        <div class="qpv-pnl-tools"><a id="qpvPnlToggle" role="button" tabindex="0">顯示完整版（含空白列）</a></div>
         <div class="qpv-stage" id="qpvStage" data-paper-width="${Number(j.widthPx) || 950}"><div class="qpv-pnl-sheet" style="width:${Number(j.widthPx) || 950}px;margin:0 auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18)">${j.html}</div></div>
       </div>
       <div class="modal-footer">
@@ -357,6 +365,17 @@ function showPnlPreviewModal(j, opts) {
   document.body.appendChild(ov);
   const dl = ov.querySelector('#qpvPnlDlBtn');
   if (dl) dl.addEventListener('click', function () { exportQuote(opts.id, j.quoteNo || '', 'pnl'); });
+  const tg = ov.querySelector('#qpvPnlToggle');
+  if (tg) {
+    const flip = function () {
+      const tb = ov.querySelector('.xsh-table'); if (!tb) return;
+      const on = tb.classList.toggle('xsh-show-all');
+      tg.textContent = on ? '顯示簡潔版（隱藏空白列）' : '顯示完整版（含空白列）';
+    };
+    tg.addEventListener('click', flip);
+    tg.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  }
+  const bd = ov.querySelector('.qpv-body'); if (bd) bd.scrollTop = 0;
   fitQuotePreview();
   window.addEventListener('resize', fitQuotePreview);
 }

@@ -7,7 +7,7 @@
  *   2) QPB 載入：成功／HTTP 403／網路錯誤／壞 JSON 都不丟錯；60 秒快取、force 重抓、同時多次呼叫只送一個請求、失敗後仍保留上一份成功的資料
  *   3) QCL 牌價簿規則：pbClean、pbDescSuggest（不重複）、pbDefault（完全相符不分大小寫／去空白、成本空白或 0 才帶入、不覆蓋已填、委外廠商列不帶、非顧問區不帶、
  *      單位規則）、種子帶入（只在 pricebookSeed:true 且只帶顧問品項列的成本；沒開旗標時輸出與沒有牌價簿時逐位元相同）、載入已存的成本列（normalize）完全不動
- *   3b) BU 分頁（業主決定：ERP／ITS／MDM／CRM 四個分頁，名稱只在同一個 BU 內唯一）：sanitizeList／groupByBu／pickDefaultBu／buildItems 跨分頁；QCL 同名跨 BU 的帶入規則
+ *   3b) BU 分頁（業主決定：ERP／ITS／MDM／CRM／資安 五個分頁，名稱只在同一個 BU 內唯一）：sanitizeList／groupByBu／pickDefaultBu／buildItems 跨分頁；QCL 同名跨 BU 的帶入規則
  *       （BU 已知先找該 BU；否則只有全部 BU 剛好一筆才帶入；歧義不帶入）；種子同規則
  *   5) 說明（spec）：sanitizeList／buildItems 複製說明、isBlankDefaultRow、對話框灰色說明行（跳脫）、後台說明欄（序列化、驗證、匯入預覽、跳脫）、QPB.cleanSpec 與伺服器 cleanItemText 逐例相同
  *   4) 靜態紀律：使用者文字進 innerHTML 前一律跳脫（QPB 對話框、後台表格）、無 eval／new Function／document.write、接線（按鈕、script 順序、?v= 版本）、
@@ -151,12 +151,12 @@ async function run() {
   const sl = P.sanitizeList(rawBu);
   t('3b.1 sanitizeList：保留合法 bu；沒有 bu（舊資料／舊伺服器回應）、不合法（XYZ）、小寫（crm）→ ERP', J(sl.map((x) => x.id + ':' + x.bu)) === J(['a:ERP', 'b:ITS', 'c:ERP', 'd:ERP', 'e:MDM']), J(sl.map((x) => x.id + ':' + x.bu)));
   const g4 = P.groupByBu(sl);
-  t('3b.2 groupByBu：固定四個 key（ERP、ITS、MDM、CRM），各 BU 內保持原順序，空的 BU 是空陣列', J(Object.keys(g4)) === J(['ERP', 'ITS', 'MDM', 'CRM']) && J(g4.ERP.map((x) => x.id)) === J(['a', 'c', 'd']) && J(g4.ITS.map((x) => x.id)) === J(['b']) && g4.CRM.length === 0 && J(P.BUS) === J(['ERP', 'ITS', 'MDM', 'CRM']));
+  t('3b.2 groupByBu：固定五個 key（ERP、ITS、MDM、CRM、資安），各 BU 內保持原順序，空的 BU 是空陣列', J(Object.keys(g4)) === J(['ERP', 'ITS', 'MDM', 'CRM', '資安']) && g4['資安'].length === 0 && J(g4.ERP.map((x) => x.id)) === J(['a', 'c', 'd']) && J(g4.ITS.map((x) => x.id)) === J(['b']) && g4.CRM.length === 0 && J(P.BUS) === J(['ERP', 'ITS', 'MDM', 'CRM', '資安']));
   const onlyIts = P.sanitizeList([{ id: 'x', bu: 'ITS', name: 'X', price: 1, cost: 1 }, { id: 'y', bu: 'CRM', name: 'Y', price: 1, cost: 1 }]);
   t('3b.3 pickDefaultBu：hint（報價單的 BU）有項目 → 用 hint；hint 沒項目、hint 不合法或沒給 → 第一個有項目的 BU（ERP 沒有就 ITS）；全空 → ERP', P.pickDefaultBu(onlyIts, 'CRM') === 'CRM' && P.pickDefaultBu(onlyIts, 'MDM') === 'ITS' && P.pickDefaultBu(onlyIts) === 'ITS' && P.pickDefaultBu(onlyIts, 'XYZ') === 'ITS' && P.pickDefaultBu(sl) === 'ERP' && P.pickDefaultBu([]) === 'ERP' && P.pickDefaultBu(undefined, 'ITS') === 'ERP');
   const lst = P.sanitizeList([{ id: 'c1', bu: 'CRM', name: 'Same', price: 300, cost: 100 }, { id: 'e1', bu: 'ERP', name: 'Same', price: 100, cost: 50 }, { id: 'i1', bu: 'ITS', name: 'Same', price: 200, cost: 80 }, { id: 'e2', bu: 'ERP', name: 'Other', price: 110, cost: 60 }]);
   const bi = P.buildItems(lst, [{ id: 'c1', qty: 1 }, { id: 'i1', qty: 2 }, { id: 'e2', qty: 3 }, { id: 'e1', qty: 4 }]);
-  t('3b.4 buildItems 跨分頁勾選：順序＝分頁順序（ERP、ITS、MDM、CRM）再依各 BU 內清單順序，不是點選順序；同名跨 BU 各取各的單價', J(bi.map((x) => x.unitPrice + 'x' + x.qty)) === J(['100x4', '110x3', '200x2', '300x1']), J(bi));
+  t('3b.4 buildItems 跨分頁勾選：順序＝分頁順序（ERP、ITS、MDM、CRM、資安）再依各 BU 內清單順序，不是點選順序；同名跨 BU 各取各的單價', J(bi.map((x) => x.unitPrice + 'x' + x.qty)) === J(['100x4', '110x3', '200x2', '300x1']), J(bi));
   t('3b.5 複製語意不變：品項只有 desc／unit／qty／unitPrice／cat；desc 只有名稱（不含 BU）；沒有 bu／出處欄位', bi.every((x) => J(Object.keys(x).sort()) === J(['cat', 'desc', 'qty', 'unit', 'unitPrice']) && !/ERP|ITS|MDM|CRM|\[|\]/.test(x.desc)) && bi[0].desc === 'Same');
   // QCL：同名跨 BU
   const pbm = Q.pbClean([{ name: 'SD', cost: 5000, bu: 'ERP' }, { name: 'SD', cost: 4000, bu: 'ITS' }, { name: 'sd ', cost: 1, bu: 'ITS' }, { name: 'Uniq', cost: 3000, bu: 'MDM' }, { name: 'PM', cost: 9, bu: 'ERP' }, { name: 'pm', cost: 8, bu: 'CRM' }, { name: 'Legacy', cost: 7 }]);
@@ -248,7 +248,7 @@ async function run() {
   t('4.24 匯入解析讀公式（cellFormula:true）並對含公式的儲存格整列報錯；xmlEsc 不含原始的 U+FFFE／U+FFFF 字元', (() => { const x = read(path.join(ROOT, 'lib/quotePricebookXlsx.js')); return /cellFormula: true/.test(x) && /FORMULA_MSG = '儲存格含公式，請改貼為值'/.test(x) && /hasFormula\(cn\) \|\| hasFormula\(cp\) \|\| hasFormula\(cc\) \|\| hasFormula\(ca\)/.test(x) && !/[\uFFFE\uFFFF]/.test(x) && /\\uFFFE\\uFFFF/.test(x); })());
   t('4.20 QPB 對話框：四個分頁（role=tablist／tab／tabpanel、aria-selected）、非目前分頁用 hidden 保留 DOM（跨分頁勾選不遺失）、預設分頁用 pickDefaultBu(list, hooks.bu)、跳脫', /role="tablist"/.test(qpbSrc) && /role="tab"/.test(qpbSrc) && /role="tabpanel"/.test(qpbSrc) && /aria-selected/.test(qpbSrc) && /\(b === active \? '' : ' hidden'\)/.test(qpbSrc) && /pickDefaultBu\(list, hooks\.bu\)/.test(qpbSrc) && /esc\(bu\)/.test(qpbSrc));
   t('4.21 QCL：mount 的 pricebookBu 與 setPricebook(list, bu) 有接；quote.js／quote-approval.js 沒有傳 pricebookBu（報價單沒有可靠 BU）', /pricebookBu: cleanBu\(opts\.pricebookBu\)/.test(qclSrc) && /inst\.setPricebook = function \(list, bu\)/.test(qclSrc) && !/pricebookBu/.test(quoteSrc) && !/pricebookBu/.test(qaSrc));
-  t('4.22 後台 JS 的 PB_BUS 與 QPB／QCL／伺服器的 BU 清單同值同序', (() => { const m = /const PB_BUS = (\[[^\]]*\])/.exec(adminSrc); const srvPb = require(path.join(ROOT, 'lib/quotePricebook.js')); return !!m && J(JSON.parse(m[1].replace(/'/g, '"'))) === J(srvPb.BUS) && J(P.BUS) === J(srvPb.BUS) && /const PB_BUS = \['ERP', 'ITS', 'MDM', 'CRM'\]/.test(qclSrc) && J(srvPb.BUS) === J(['ERP', 'ITS', 'MDM', 'CRM']); })());
+  t('4.22 後台 JS 的 PB_BUS 與 QPB／QCL／伺服器的 BU 清單同值同序', (() => { const m = /const PB_BUS = (\[[^\]]*\])/.exec(adminSrc); const srvPb = require(path.join(ROOT, 'lib/quotePricebook.js')); return !!m && J(JSON.parse(m[1].replace(/'/g, '"'))) === J(srvPb.BUS) && J(P.BUS) === J(srvPb.BUS) && /const PB_BUS = \['ERP', 'ITS', 'MDM', 'CRM', '資安'\]/.test(qclSrc) && J(srvPb.BUS) === J(['ERP', 'ITS', 'MDM', 'CRM', '資安']); })());
 }
 
 run().then(() => {

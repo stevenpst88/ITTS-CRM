@@ -3,7 +3,7 @@
 // 只有「新增」報價單（openQuoteModal(null)）才會分步；編輯既有單（有 id）完全不碰：不分步、不收合、不隱藏分頁。
 // 這一層只管「呈現」：未到的步驟區塊先隱藏、已完成的收成一行摘要，所有欄位仍在 DOM 裡，
 // quote.js 的 saveQuote／readQuoteItems 等照常運作（資料收集與送出邏輯沒有改）。
-// 步驟：客戶 → 專案 → 商品 → 指派顧問（只有勾選的商品需要顧問填成本時才出現）→ 報價項目 → 優惠 → 付款方式（含追加條款）→ 確認並儲存。
+// 步驟：商機（必選，連結自己的 A／B／C／D 商機）→ 客戶 → 專案 → 商品 → 指派顧問（只有勾選的商品需要顧問填成本時才出現）→ 報價項目 → 優惠 → 付款方式（含追加條款）→ 確認並儲存。
 // 規則：
 //   · 步驟「完成」＝使用者按過「下一步」（或開啟時預填的資料已滿足必填）且目前仍有效；第一個沒完成的步驟＝目前步驟，後面的不顯示。
 //   · 已完成的步驟收成一行摘要＋「修改」；修改到變成不完整，後面的步驟自動收回；補好之後回到先前確認過的進度。
@@ -171,6 +171,10 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
   var snap = null;           // 最近一次 render 的結果（測試與按鈕處理用）
 
   // ── 各步驟的檢查（回傳「還需要」的字串陣列；空陣列＝有效）──────────
+  /** 商機：新報價單必須連結一筆商機（hidden #qOppId 由 quote.js 的 qOppSelect 設定） */
+  function vOpp() { return val('qOppId') ? [] : ['選擇一筆商機']; }
+  function sOpp() { return typeof qOppSummary === 'function' ? qOppSummary() : val('qOppId'); }
+
   function vCustomer() { return val('qCompany') ? [] : ['客戶公司']; }
 
   function vProject() {
@@ -280,6 +284,7 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
 
   // ── 步驟定義 ──────────────────────────────────────────────
   var DEFS = [
+    { id: 'opp', name: '商機', ask: '這張報價單要連結哪一筆商機？', sub: '只列出你自己的 A／B／C／D 階段商機；選定後客戶資料會從商機帶入。找不到可以先建立商機。', pre: true, focus: '#qOppSearch', validate: vOpp, summary: sOpp, okHint: '' },
     { id: 'customer', name: '客戶', ask: '要報價給哪一位客戶？', pre: true, focus: '#qCompany', validate: vCustomer, summary: sCustomer, okHint: '聯絡人、電話、手機、地址都可以不填。' },
     { id: 'project', name: '專案', ask: '這是什麼專案？', pre: true, focus: '#qProjectName', validate: vProject, summary: sProject, okHint: '建立日期與報價期限已帶入預設值，需要時可以修改。' },
     { id: 'products', name: '商品', ask: '這次報價包含哪些商品？', sub: '勾選本次報價包含的商品（至少 1 項），系統依商品歸類決定簽核層級。', pre: true, focus: '#qProdSearch', validate: vProducts, summary: sProducts, okHint: '' },
@@ -649,7 +654,7 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
     if (!active || ev.key !== 'Enter' || ev.isComposing || ev.keyCode === 229 || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
     var t = ev.target;
     if (!t || t.tagName !== 'INPUT' || !TEXTY[(t.type || 'text').toLowerCase()]) return;   // textarea、下拉選單、按鈕、勾選框維持原本的 Enter 行為
-    if (t.id === 'qProdSearch') { ev.preventDefault(); return; }                            // 搜尋框：Enter 不跳步（避免搜尋到一半就離開商品步驟）
+    if (t.id === 'qProdSearch' || t.id === 'qOppSearch') { ev.preventDefault(); return; }                            // 搜尋框：Enter 不跳步（避免搜尋到一半就離開商品步驟）
     var stepEl = t.closest('.qs-step');
     if (!stepEl || !snap) return;
     var id = stepEl.getAttribute('data-qs'), cur = snap.steps[snap.cur];

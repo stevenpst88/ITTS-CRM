@@ -342,7 +342,7 @@ function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0
 
   // ── 7) 路由層（不啟動伺服器：用假的 app 收 handler，直接呼叫）─────────────
   try {
-    const store = { quotations: [], quoteApproval: {} };
+    const store = { opportunities: [{ id: 'O1', owner: 'sales1', stage: 'C', company: '路由測試公司', product: 'P', amount: '100' }], quotations: [], quoteApproval: {} };
     const users = [{ username: 'sales1', role: 'user', active: true, displayName: 'S1' }];
     const routes = []; const app = {};
     ['get', 'post', 'put', 'delete', 'patch', 'use'].forEach((m) => { app[m] = (...a) => { routes.push({ method: m, path: a[0], handlers: a.slice(1).flat() }); }; });
@@ -366,7 +366,7 @@ function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0
       await next();
       return { s: status, j: payload };
     };
-    const base = { company: '路由測試公司', projectName: 'P', products: [], items: [{ desc: 'x', unit: '式', qty: 1, unitPrice: 1000, cost: 0 }], discountType: 'none', discountValue: 0 };
+    const base = { oppId: 'O1', company: '路由測試公司', projectName: 'P', products: [], items: [{ desc: 'x', unit: '式', qty: 1, unitPrice: 1000, cost: 0 }], discountType: 'none', discountValue: 0 };
     const POST = (extra) => call('post', '/api/quotations', Object.assign({}, base, extra));
     const cases = [
       [{ quoteDate: '2026-10-21' }, '2026-11-30', '空白（未提供）：10/21 剩餘 6 → 順延'], [{ quoteDate: '2026-10-20', validUntil: '' }, '2026-10-30', '空字串：剩餘 7 → 當月'],
