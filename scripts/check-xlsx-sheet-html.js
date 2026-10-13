@@ -110,6 +110,78 @@ const F = I.formatNumber;
     t('4b. 有說明／備註的列比沒有的列高（列高 pt 轉成 px 後有帶進預覽）', px('導入顧問') > px('無備註項目') && px('無備註項目') > 0, px('導入顧問') + ' vs ' + px('無備註項目'));
   }
 
+  // 5) 乾淨預覽（opts.clean）：去紅框／鮮豔填色／底線／範本提示文字，隱藏「證明是空的」列；預設（不帶 clean）輸出不變
+  {
+    const QF = require(path.join(__dirname, '..', 'lib', 'quotePnlExcel.js'));
+    const rich = { quoteNo: 'QU-CL-1', company: '乾淨公司', discountType: 'percent', discountValue: 95, products: ['P'],
+      items: [{ desc: '導入顧問', unit: '人天', qty: 30, unitPrice: 30000, cat: 'consult' }, { desc: '授權', unit: '套', qty: 1, unitPrice: 800000, cat: 'software' }, { desc: '主機', unit: '台', qty: 2, unitPrice: 90000, cat: 'hardware' }],
+      costLines: [
+        { lid: 'a', cat: 'consult', desc: 'PM', vendor: 'Vendor-A', note: '每人天', unit: '人天', qty: 10, unitCost: 8000 },
+        { lid: 'a2', cat: 'consult', desc: '顧問 B', vendor: '', note: '', unit: '人天', qty: 12, unitCost: 9000 },
+        { lid: 'b', cat: 'software', desc: 'ERP 授權', vendor: 'Supplier-S', note: '含維護', unit: '套', qty: 1, unitCost: 500000 },
+        { lid: 'c', cat: 'hw', desc: '主機', vendor: 'HW-V', note: '', unit: '台', qty: 2, unitCost: 60000 },
+        { lid: 'd', cat: 'travel', desc: '差旅交通', vendor: '', note: '往返', unit: '次', qty: 4, unitCost: 2500 },
+        { lid: 'e', cat: 'other', desc: '交際費', vendor: '', note: '', unit: '式', qty: 1, unitCost: 10000 },
+        { lid: 'f', cat: 'other', desc: '印花稅', auto: 'stamp', vendor: '', note: '', unit: '式', qty: 1, unitCost: 0 }] };
+    const emptyQ = { quoteNo: 'QU-CL-2', company: '空白公司', discountType: 'none', products: ['P'], items: [{ desc: '顧問服務', unit: '式', qty: 1, unitPrice: 100000, cat: 'consult' }], costLines: [] };
+    const popts = { classCodes: ['consult', 'software', 'hardware'], requestedBy: 'Steven', issueDate: '2026-10-13', contingencyPct: 5 };
+    const bufR = await QF.buildQuotePnlExcel(JSON.parse(JSON.stringify(rich)), popts), bufE = await QF.buildQuotePnlExcel(JSON.parse(JSON.stringify(emptyQ)), popts);
+    const full = await sheetToHtml(bufR), cl = await sheetToHtml(bufR, { clean: true }), clE = await sheetToHtml(bufE, { clean: true });
+    const trsOf = (h) => h.match(/<tr [\s\S]*?<\/tr>/g) || [];
+    const textsOf = (tr) => [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(m => m[1].replace(/&amp;/g, '&').trim()).filter(Boolean);
+    const visibleTrs = (h) => trsOf(h).filter(tr => !/^<tr class="xsh-empty"/.test(tr));
+    const hiddenTrs = (h) => trsOf(h).filter(tr => /^<tr class="xsh-empty"/.test(tr));
+    t('5a. 預設輸出不變：沒有 xsh-clean／xsh-empty／<style>，仍 126 列', !/xsh-clean|xsh-empty|xsh-gap|<style/.test(full.html) && trsOf(full.html).length === 126);
+    t('5b. 乾淨預覽：列總數不變（只標記不刪列）、隱藏的列 ≥ 30、可見列明顯變少', trsOf(cl.html).length === 126 && hiddenTrs(cl.html).length >= 30 && visibleTrs(cl.html).length < 80, `hidden=${hiddenTrs(cl.html).length} visible=${visibleTrs(cl.html).length}`);
+    // 反向：被隱藏的列只能有「0／1／NT$0」或空白、空群組的 Subtotal／Total 0、欄標題；沒有任何資料標籤或非零金額
+    const okHidden = /^(NT\$0|0|1|0%|Subtotal Cost--\(\d+\)|Total Cost--\(\d+\)|Planned Billing Dates|收款%|Amount|Consultant Role|Consultant|Free Lancer\(委外\)|Rates|Base Days|Months\/Year|項\s*目|供\s*應\s*商|說\s*明|數量\/次數|單\s*價|風險係數|顧問服務)$/;
+    const badHidden = hiddenTrs(cl.html).filter(tr => !textsOf(tr).every(x => okHidden.test(x)));
+    t('5c. 被隱藏的列沒有任何資料標籤或非零金額（只有 0／1／空洞的小計與欄標題）', badHidden.length === 0, badHidden.length ? textsOf(badHidden[0]).join('|') : '');
+    // 保留：資料列與合計列
+    const vis = visibleTrs(cl.html).join('');
+    t('5d. 有資料的列全部保留（PM／Vendor-A／ERP 授權／Supplier-S／主機／差旅交通／交際費／印花稅／Contingency）', ['PM', 'Vendor-A', '顧問 B', 'ERP 授權', 'Supplier-S', 'HW-V', '主機', '差旅交通', '交際費', '印花稅', 'Contingency'].every(s => vis.includes(s)));
+    const moneyOf = (h) => (h.match(/NT\$[\d,]+|\d{1,3}(?:,\d{3})+|\d+\.\d\d%/g) || []).filter(x => !/^NT\$0$/.test(x)).sort().join('|');
+    t('5e. 數字不變：乾淨預覽可見列的所有非零金額／百分比 ＝ 完整版全部非零金額／百分比', moneyOf(vis) === moneyOf(visibleTrs(full.html).join('')) && moneyOf(vis).length > 50, moneyOf(vis).slice(0, 120));
+    t('5f. 區段標題與合計行保留（空資料的區也留標題＋Total Revenues--(1)／(4)）', ['1.Consultant Revenues', '4.Other Revenues', 'Total Revenues--(1)', 'Total Revenues--(4)', 'Total Cost--(1)', 'Total Cost--(6)', 'Planned Revenues'].every(s => vis.includes(s)));
+    t('5g. 範本提示文字 yyyy.mm.dd 在乾淨預覽被移除、完整版原樣', !/yyyy\.mm\.dd/i.test(cl.html) && /yyyy\.mm\.dd/i.test(full.html));
+    t('5h. 沒有底線（text-decoration:underline）、沒有鮮豔填色（00FFFF／FFFF00／CC99FF／800080／000080／008000）、沒有紅色文字（#FF0000）', !/underline/.test(cl.html) && !/#(00FFFF|FFFF00|CC99FF|800080|000080|008000|FF0000)/i.test(cl.html) && /underline/.test(full.html));
+    t('5i. 框線全是中性灰（不含紅／黑），數字靠右', !/border-\w+:[^;]*#(000000|FF0000)/i.test(cl.html) && /text-align:right/.test(cl.html));
+    t('5j. 切換：CSS 內有 xsh-show-all 還原規則；table 預設沒有 xsh-show-all', /xsh-clean:not\(\.xsh-show-all\) tr\.xsh-empty\{display:none\}/.test(cl.html) && !/class="xsh-table xsh-clean xsh-show-all/.test(cl.html));
+    const visE = visibleTrs(clE.html).join('');
+    t('5k. 幾乎沒填的單：仍有各區標題與合計、可見列 < 70；沒有 yyyy.mm.dd', ['1.Consultant Revenues', 'Total Revenues--(1)', '1.Consultant Cost', 'Total Cost--(1)', 'Total Profitability Margin'].every(s => visE.includes(s)) && visibleTrs(clE.html).length < 70 && !/yyyy\.mm\.dd/i.test(clE.html), `visible=${visibleTrs(clE.html).length}`);
+
+    // 迷你工作表：紅框、保守規則的反例
+    const miniStyled = async (rowsXml, merges, sst) => {
+      const z = new JSZip();
+      z.file('xl/styles.xml', '<styleSheet><fonts count="2"><font><sz val="11"/></font><font><u/><sz val="11"/><color rgb="FFFF0000"/></font></fonts>'
+        + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill></fills>'
+        + '<borders count="2"><border/><border><left style="thin"><color rgb="FFFF0000"/></left><right style="medium"><color rgb="FFC00000"/></right><top style="dashed"><color rgb="FFFF0000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom></border></borders>'
+        + '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0"/></cellXfs></styleSheet>');
+      z.file('xl/sharedStrings.xml', sst || '<sst><si><t>標籤</t></si><si><t>yyyy.mm.dd</t></si></sst>');
+      z.file('xl/worksheets/sheet1.xml', '<worksheet><dimension ref="A1:D12"/><sheetData>' + rowsXml + '</sheetData>' + (merges ? '<mergeCells>' + merges + '</mergeCells>' : '') + '</worksheet>');
+      return sheetToHtml(await z.generateAsync({ type: 'nodebuffer' }), { clean: true });
+    };
+    const c = (ref, v, extra) => `<c r="${ref}"${extra || ''}><v>${v}</v></c>`;
+    const row = (r, cells) => `<row r="${r}">${cells}</row>`;
+    const m1 = await miniStyled(row(1, '<c r="A1" s="1" t="s"><v>0</v></c>' + '<c r="B1" s="2" t="s"><v>1</v></c>'));
+    t('5l. 紅色框線（FF0000／C00000，含虛線／粗線）與紅字／黃底／底線在乾淨預覽被清掉，框線改中性灰', !/FF0000|C00000|underline|FFFF00/i.test(m1.html) && /border-left:1px solid #d9dee6/.test(m1.html), m1.html.slice(0, 300));
+    t('5m. 提示文字格（yyyy.mm.dd）清成空白，一般文字保留', !/yyyy/.test(m1.html) && m1.html.includes('標籤'));
+    // 反例：每一列都不能被隱藏
+    const neg = await miniStyled([
+      row(1, c('A1', 0)),                                    // 只有 0 → 隱藏（正例，基準）
+      row(2, c('A2', 1)),                                    // 單獨的 1（沒有 0）→ 保留
+      row(3, c('A3', 1) + c('B3', 5)),                       // 有非零金額 → 保留
+      row(4, '<c r="A4" t="s"><v>0</v></c>' + c('B4', 0)),   // 有文字標籤＋0 → 保留
+      row(5, c('A5', 0) + c('B5', 1)),                       // 預設列樣式 0＋1 → 隱藏
+      row(6, c('C6', 0.5)),                                  // 非零小數 → 保留
+      row(7, c('D7', '#DIV/0!', ' t="e"')),                  // 錯誤值 → 保留
+      row(8, c('A8', 0)),                                    // 被跨列合併蓋住 → 保留
+      row(9, c('A9', 0)),
+    ].join(''), '<mergeCell ref="A8:A9"/>');
+    const nt = trsOf(neg.html).map(tr => /^<tr class="xsh-empty"/.test(tr));
+    t('5n. 保守規則反例：單獨 1／非零金額／有文字標籤／非零小數／錯誤值／跨列合併的列都保留；純 0 與「1＋0」預設列才隱藏', nt[0] === true && nt[1] === false && nt[2] === false && nt[3] === false && nt[4] === true && nt[5] === false && nt[6] === false && nt[7] === false && nt[8] === false, JSON.stringify(nt));
+  }
+
   let pass = 0, fail = 0;
   res.forEach(([n, ok, x]) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (!ok && x ? '  <- ' + x : '')); ok ? pass++ : fail++; });
   console.log(`\nxlsx 轉 HTML 檢查：PASS ${pass} / FAIL ${fail}`);
