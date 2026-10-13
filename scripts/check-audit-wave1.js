@@ -376,8 +376,133 @@ async function sec3() {
   eq(dataQ('q-QA').approval.history.slice(-1)[0].meta.reason.length, 200, '理由最長 200 字');
 }
 
+// ═════════════ 第 4 項：管理操作的 before→after ═════════════
+async function sec4() {
+  console.log('[4] 管理操作 before→after');
+  const AD = require(path.join(ROOT, 'lib', 'auditDiff.js'));
+  // 單元：組字工具
+  const many = Array.from({ length: 400 }, (_, i) => '項目' + i + '：' + 'x'.repeat(20));
+  const capped = AD.joinCapped(many, { prefix: '前綴｜' });
+  ok(capped.length <= AD.MAX_DETAIL + 40, 'joinCapped 長度受限（' + capped.length + '）');
+  ok(/…\(截斷，另有 [0-9]+ 項未顯示\)/.test(capped), 'joinCapped 有截斷標記與未顯示數量');
+  eq(AD.joinCapped(['a', 'b']), 'a；b', 'joinCapped 未超長不截斷');
+  ok(!AD.scrub('x $2a$12$abcdefghijklmnopqrstuv y').includes('$2a$'), 'scrub 遮蔽 bcrypt 雜湊');
+  eq(AD.fieldDiff({ a: 1, b: [1, 2] }, { a: 2, b: [1, 2] }, [{ key: 'a', label: 'A' }, { key: 'b', label: 'B' }]), ['A 1→2'], 'fieldDiff 只列有變的欄位');
+
+  await loginAll(['_s_admin']);
+  const lastLog = async (a) => (byAction(await getLogs(), a)[0] || {});
+  // ── UPDATE_USER 欄位層級 ──
+  let r = await adminPutUser('_s_dl', { role: 'manager2', bu: ['ERP', 'ITS'], accessMode: 'view', canDownloadContacts: false, canSetTargets: true, supervisor: '_s_m1', nickname: '沙盒暱稱', displayName: '沙盒顯示名', active: false });
+  eq(r.status, 200, 'UPDATE_USER 多欄位成功：' + (r.json && r.json.error));
+  let l = await lastLog('UPDATE_USER');
+  const d = l.detail || '';
+  ok(/角色 user→manager2/.test(d), '角色 before→after：' + d);
+  ok(/BU ERP→ERP\+ITS/.test(d), 'BU before→after');
+  ok(/存取模式 edit→view/.test(d), '存取模式 before→after');
+  ok(/可下載客戶名單 是→否/.test(d), '下載權限 before→after');
+  ok(/可設定目標 否→是/.test(d), '設定目標 before→after');
+  ok(/直屬主管 ∅→_s_m1/.test(d), '直屬主管 before→after');
+  ok(/暱稱 ∅→沙盒暱稱/.test(d), '暱稱 before→after');
+  ok(/啟用 是→否/.test(d), '啟用 before→after');
+  ok(/顯示名稱 _s_dl→沙盒顯示名/.test(d), '顯示名稱 before→after');
+  eq(l.target, '_s_dl', 'UPDATE_USER target');
+  // 獨立動作
+  eq((await lastLog('DISABLE_USER')).target, '_s_dl', 'DISABLE_USER 獨立動作');
+  eq((await lastLog('REVOKE_DOWNLOAD_PERMISSION')).target, '_s_dl', 'REVOKE_DOWNLOAD_PERMISSION 獨立動作');
+  eq((await lastLog('SET_READONLY')).target, '_s_dl', 'SET_READONLY 獨立動作');
+  ok(/user→manager2/.test((await lastLog('CHANGE_USER_ROLE')).detail || ''), 'CHANGE_USER_ROLE 獨立動作');
+  r = await adminPutUser('_s_dl', { role: 'user', active: true, accessMode: 'edit', canDownloadContacts: true, bu: ['ERP'] });
+  eq(r.status, 200, '還原');
+  eq((await lastLog('ENABLE_USER')).target, '_s_dl', 'ENABLE_USER 獨立動作');
+  eq((await lastLog('GRANT_DOWNLOAD_PERMISSION')).target, '_s_dl', 'GRANT_DOWNLOAD_PERMISSION 獨立動作');
+  eq((await lastLog('SET_EDITABLE')).target, '_s_dl', 'SET_EDITABLE 獨立動作');
+  // 沒有實際變動
+  r = await adminPutUser('_s_dl', { canSetTargets: true });
+  l = await lastLog('UPDATE_USER');
+  ok(!/啟用|角色/.test(l.detail || '') || /可設定目標/.test(l.detail || '') === false, '無變動時不亂列欄位：' + l.detail);
+  // Email 只記遮蔽訊息
+  const em = 'secret.person@itts.com.tw';
+  r = await adminPutUser('_s_dl', { email: em });
+  if (r.status === 200) {
+    l = await lastLog('UPDATE_USER');
+    ok(/email 未設定→已設定/.test(l.detail) && !l.detail.includes('secret.person'), 'Email 只記遮蔽訊息，不含位址');
+  } else console.log('  (測試網域被 Email 白名單擋下 ' + r.status + '，略過 Email 正向案例)');
+
+  // ── 角色功能權限矩陣 ──
+  const rp = (await http('_s_admin', 'GET', '/api/admin/role-permissions')).json;
+  const matrix = JSON.parse(JSON.stringify(rp.matrix));
+  const victim = matrix.user.find(k => k !== 'home') || matrix.user[0];
+  const removed = matrix.user.filter(k => k === victim);
+  matrix.user = matrix.user.filter(k => k !== victim);
+  const adding = rp.features.map(f => f.key).find(k => !(rp.matrix.manager1 || []).includes(k));
+  if (adding) matrix.manager1 = (rp.matrix.manager1 || []).concat([adding]);
+  r = await http('_s_admin', 'PUT', '/api/admin/role-permissions', { matrix });
+  eq(r.status, 200, '更新權限矩陣');
+  l = await lastLog('UPDATE_ROLE_PERMISSIONS');
+  const lbl = (k) => ((rp.features.find(f => f.key === k) || {}).label) || k;
+  ok(l.detail.includes('user 移除[' + lbl(victim) + ']'), '權限矩陣：user 移除功能（中文）：' + l.detail);
+  if (adding) ok(l.detail.includes('manager1 新增[' + lbl(adding) + ']'), '權限矩陣：manager1 新增功能');
+  r = await http('_s_admin', 'PUT', '/api/admin/role-permissions', { matrix });
+  ok(/無實際異動/.test((await lastLog('UPDATE_ROLE_PERMISSIONS')).detail), '權限矩陣：沒變動時註明無實際異動');
+  r = await http('_s_admin', 'DELETE', '/api/admin/role-permissions');
+  eq(r.status, 200, '重置權限矩陣');
+  ok(/異動：|無實際異動/.test((await lastLog('RESET_ROLE_PERMISSIONS')).detail), '重置也記錄影響角色');
+
+  // ── 簽核設定：商品歸類 before→after ──
+  const qc = (await http('_s_admin', 'GET', '/api/quote-approval/config')).json;
+  const cls = Object.keys(qc.classLabels)[0], cls2 = Object.keys(qc.classLabels)[1] || cls;
+  const putCfg = (pc) => http('_s_admin', 'PUT', '/api/admin/quote-approval/config', { roster: qc.roster, productClasses: pc });
+  r = await putCfg({ '沙盒商品X': { cls, costBySales: false } });
+  eq(r.status, 200, '簽核設定新增商品歸類：' + (r.json && r.json.error));
+  ok(/新增「沙盒商品X」/.test((await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG')).detail), '商品歸類：新增');
+  r = await putCfg({ '沙盒商品X': { cls, costBySales: true } });
+  ok(/「沙盒商品X」業務填成本 否→是/.test((await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG')).detail), '商品歸類：costBySales before→after：' + (await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG')).detail);
+  if (cls2 !== cls) { r = await putCfg({ '沙盒商品X': { cls: cls2, costBySales: true } }); ok(/類別 .+→.+/.test((await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG')).detail), '商品歸類：類別 before→after'); }
+  r = await putCfg({});
+  ok(/移除「沙盒商品X」/.test((await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG')).detail), '商品歸類：移除');
+  const big = {}; for (let i = 0; i < 300; i++) big['沙盒大量商品' + i + '_' + 'y'.repeat(30)] = { cls, costBySales: i % 2 === 0 };
+  r = await putCfg(big);
+  eq(r.status, 200, '大量商品歸類可儲存');
+  l = await lastLog('UPDATE_QUOTE_APPROVAL_CONFIG');
+  ok(l.detail.length <= AD.MAX_DETAIL + 60 && /截斷，另有 [0-9]+ 項未顯示/.test(l.detail), '大量異動：長度受限並標示截斷（' + l.detail.length + '）');
+  await putCfg({});
+
+  // ── 流程設定 ──
+  const fc = (await http('_s_admin', 'GET', '/api/admin/quote-approval/flow-config')).json;
+  const fcBody = JSON.parse(JSON.stringify(fc));
+  fcBody.buSettings.ERP.hasMgr2Step = !fcBody.buSettings.ERP.hasMgr2Step;
+  fcBody.exceptions = (fcBody.exceptions || []).concat([{ username: '_q_m2', bu: 'ERP', role: 'manager2', action: 'skip_mgr1', label: '沙盒例外' }]);
+  r = await http('_s_admin', 'PUT', '/api/admin/quote-approval/flow-config', fcBody);
+  eq(r.status, 200, '流程設定儲存');
+  l = await lastLog('SAVE_APPROVAL_FLOW_CONFIG');
+  ok(/ERP 二級主管關 (啟用→停用|停用→啟用)/.test(l.detail), '流程設定：BU 開關 before→after：' + l.detail);
+  ok(/新增例外 skip_mgr1：_q_m2/.test(l.detail), '流程設定：例外新增（帳號）');
+  fcBody.exceptions = [];
+  fcBody.buSettings.ERP.hasMgr2Step = fc.buSettings.ERP.hasMgr2Step;
+  await http('_s_admin', 'PUT', '/api/admin/quote-approval/flow-config', fcBody);
+  ok(/移除例外 skip_mgr1：_q_m2/.test((await lastLog('SAVE_APPROVAL_FLOW_CONFIG')).detail), '流程設定：例外移除');
+
+  // ── 整合設定（不含機敏）──
+  const SECRET = 'Sentinel' + crypto.randomBytes(6).toString('hex') + '!9';
+  r = await http('_s_admin', 'POST', '/api/admin/integrations', { type: 'sap-sales-cloud-v2', name: '沙盒整合', baseUrl: 'https://sandbox-a.invalid', username: 'sb_user_a', password: SECRET, clientSecret: SECRET + 'c' });
+  eq(r.status, 200, '建立整合：' + (r.json && r.json.error));
+  r = await http('_s_admin', 'POST', '/api/admin/integrations', { type: 'sap-sales-cloud-v2', baseUrl: 'https://sandbox-b.invalid', username: 'sb_user_b', password: SECRET + '2' });
+  eq(r.status, 200, '修改整合');
+  l = await lastLog('SAVE_INTEGRATION');
+  ok(/baseUrl https:\/\/sandbox-a\.invalid→https:\/\/sandbox-b\.invalid/.test(l.detail), '整合：baseUrl before→after：' + l.detail);
+  ok(/使用者名稱 sb_user_a→sb_user_b/.test(l.detail), '整合：username before→after');
+  ok(/password 已更新（值不記錄）/.test(l.detail), '整合：密碼只標示已更新');
+  // ── 全域：任何稽核資料都不含密碼／雜湊／測試密碼／哨兵 ──
+  await adminPutUser('_s_dl', { displayName: '沙盒顯示名2' });
+  await http('_s_admin', 'PUT', '/api/admin/users/_s_dl/password', { password: 'Zz9' + crypto.randomBytes(8).toString('hex') + '!A' });
+  const all = JSON.stringify(await getLogs());
+  ok(!all.includes('$2a$') && !all.includes('$2b$'), '稽核全文不含 bcrypt 雜湊');
+  ok(!all.includes(PW) && !all.includes(SECRET), '稽核全文不含測試密碼／整合密碼');
+  ok(!/"detail":"[^"]*password[^"]*"/i.test(all.replace(/password 已更新（值不記錄）/g, '').replace(/重設密碼/g, '')), '稽核 detail 不含 password 字樣（除遮蔽說明外）');
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3 };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4 };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();

@@ -617,6 +617,7 @@ const { createQuoteMail } = require('./lib/mail/quoteMail');
 const { registerMailRoutes } = require('./lib/mail/routes');
 const { renderJumpPage } = require('./lib/mail/link');
 const { validateUserEmail, maskedAuditDetail } = require('./lib/mail/userEmail');
+const AD = require('./lib/auditDiff');
 const mailConfig = getMailConfig();
 let _mailPool = null;
 /** outbox 專用的 pg 連線（沿用 db/postgres.js、lib/apiMonitor.js 的慣例：max 2、ssl、connectionTimeoutMillis 5000）；第一次查詢才建立 */
@@ -2055,6 +2056,24 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// 帳號異動稽核用的欄位快照／欄位清單（不含 password、passwordChangedAt、email 位址等機敏資料）
+const USER_AUDIT_FIELDS = [
+  { key: 'displayName', label: '顯示名稱' }, { key: 'nickname', label: '暱稱' }, { key: 'role', label: '角色' }, { key: 'bu', label: 'BU' },
+  { key: 'active', label: '啟用' }, { key: 'accessMode', label: '存取模式' }, { key: 'canDownloadContacts', label: '可下載客戶名單' },
+  { key: 'canSetTargets', label: '可設定目標' }, { key: 'pureSupervisor', label: '純主管(唯讀掛名)' }, { key: 'supervisor', label: '直屬主管' },
+  { key: 'viewOwnerScope', label: '查看業務範圍' }, { key: 'viewGroupId', label: '查看集團' },
+];
+function userAuditSnap(u) {
+  const x = u || {};
+  const role = x.role || 'user';
+  return {
+    displayName: x.displayName || '', nickname: x.nickname || '', role, bu: normalizeBu(x.bu),
+    active: x.active !== false, accessMode: role === 'admin' ? 'edit' : (x.accessMode === 'view' ? 'view' : 'edit'),
+    canDownloadContacts: !!x.canDownloadContacts, canSetTargets: !!x.canSetTargets, pureSupervisor: !!x.pureSupervisor,
+    supervisor: x.supervisor || '', viewOwnerScope: x.viewOwnerScope || '', viewGroupId: x.viewGroupId || '',
+  };
+}
+
 // ── Admin: update user ───────────────────────────────────
 app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
@@ -2076,6 +2095,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     emailCheck = validateUserEmail(req.body.email, { config: mailConfig, users: auth.users, selfUsername: req.params.username });
     if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
   }
+  const userBefore = userAuditSnap(auth.users[idx]);   // 異動前快照（只含可編輯的非機敏欄位；不含密碼雜湊／Email 位址）
   const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
@@ -2137,7 +2157,18 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   Object.assign(target, u);
   saveAuth(auth);
   const buLabel = u.bu ? u.bu.join('+') : '全公司';
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (u.role !== roleBefore ? `；角色 ${roleBefore}→${u.role}` : '') + (emailCheck && maskedAuditDetail(emailBefore, emailCheck.value) !== maskedAuditDetail('', '') ? '；' + maskedAuditDetail(emailBefore, emailCheck.value) : ''), req);
+  // 異動前→後（欄位層級）。Email 只記「未設定→已設定／已變更／已清除」，絕不寫位址
+  const userAfter = userAuditSnap(u);
+  const diffs = AD.fieldDiff(userBefore, userAfter, USER_AUDIT_FIELDS);
+  if (emailCheck && maskedAuditDetail(emailBefore, emailCheck.value) !== maskedAuditDetail('', '')) diffs.push(maskedAuditDetail(emailBefore, emailCheck.value));
+  const opName = req.session.user.username;
+  writeLog('UPDATE_USER', opName, req.params.username, AD.joinCapped(diffs, { prefix: `更新帳號設定（BU=${buLabel}）｜變更：`, max: AD.MAX_DETAIL }) + (diffs.length ? '' : '無欄位變更'), req);
+  // 重要權限異動另寫「獨立動作」，稽核人員可直接用動作名稱篩選
+  const who = `${req.params.username}（${u.displayName || ''}）`;
+  if (userBefore.active !== userAfter.active) writeLog(userAfter.active ? 'ENABLE_USER' : 'DISABLE_USER', opName, req.params.username, `${userAfter.active ? '啟用' : '停用'}帳號 ${who}；角色=${userAfter.role}；停用後既有連線下一個請求即失效`, req);
+  if (userBefore.canDownloadContacts !== userAfter.canDownloadContacts) writeLog(userAfter.canDownloadContacts ? 'GRANT_DOWNLOAD_PERMISSION' : 'REVOKE_DOWNLOAD_PERMISSION', opName, req.params.username, `${userAfter.canDownloadContacts ? '開通' : '收回'}客戶名單下載權限：${who}`, req);
+  if (userBefore.accessMode !== userAfter.accessMode) writeLog(userAfter.accessMode === 'view' ? 'SET_READONLY' : 'SET_EDITABLE', opName, req.params.username, `存取模式 ${userBefore.accessMode}→${userAfter.accessMode}（${userAfter.accessMode === 'view' ? '改為唯讀' : '改為可編輯'}）：${who}`, req);
+  if (userBefore.role !== userAfter.role) writeLog('CHANGE_USER_ROLE', opName, req.params.username, `角色 ${userBefore.role}→${userAfter.role}：${who}`, req);
   res.json({ success: true });
 });
 
@@ -2339,20 +2370,39 @@ app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
   if (!matrix || typeof matrix !== 'object') {
     return res.status(400).json({ error: '格式錯誤：須提供 matrix 物件' });
   }
+  const permBefore = JSON.parse(JSON.stringify(getRolePermissions()));
   saveRolePermissions(matrix);
-  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', '更新角色功能權限矩陣', req);
+  const permAfter = getRolePermissions();
+  // 逐角色列出新增／移除的功能（用中文功能名稱）；沒有變動就明說
+  const fLabel = (k) => ((FEATURE_REGISTRY.find(f => f.key === k) || {}).label) || k;
+  const permDiffs = [];
+  KNOWN_ROLES.forEach(role => {
+    if (role === 'admin') return;
+    const d = AD.setDiff(permBefore[role] || [], permAfter[role] || []);
+    if (d.add.length || d.del.length) permDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(fLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(fLabel).join('、') + ']' : ''}`);
+  });
+  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動', req);
   res.json({ success: true });
 });
 
 // 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
 app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
   const data = db.load();
+  const resetBefore = JSON.parse(JSON.stringify(getRolePermissions()));
   if (data.rolePermissions || data.rolePermissionsKnownFeatures) {
     delete data.rolePermissions;
     delete data.rolePermissionsKnownFeatures;
     db.save(data);
   }
-  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', '重置角色功能權限為系統預設', req);
+  const resetAfter = getRolePermissions();
+  const resetFLabel = (k) => ((FEATURE_REGISTRY.find(f => f.key === k) || {}).label) || k;
+  const resetDiffs = [];
+  KNOWN_ROLES.forEach(role => {
+    if (role === 'admin') return;
+    const d = AD.setDiff(resetBefore[role] || [], resetAfter[role] || []);
+    if (d.add.length || d.del.length) resetDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(resetFLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(resetFLabel).join('、') + ']' : ''}`);
+  });
+  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動', req);
   res.json({ success: true });
 });
 
@@ -6625,8 +6675,14 @@ app.post('/api/admin/integrations', requireAdmin, (req, res) => {
   if (idx >= 0) data.integrations[idx] = item;
   else data.integrations.push(item);
   db.save(data);
+  // 異動前→後（只列非機敏欄位；密碼／clientSecret 只標示「已更新」，絕不寫值或密文）
+  const intDiffs = prev ? AD.fieldDiff(prev, item, [
+    { key: 'name', label: '名稱' }, { key: 'enabled', label: '啟用' }, { key: 'baseUrl', label: 'baseUrl' }, { key: 'authType', label: '認證方式' },
+    { key: 'username', label: '使用者名稱' }, { key: 'clientId', label: 'clientId' }, { key: 'tokenEndpoint', label: 'tokenEndpoint' },
+  ]) : [`新增整合：baseUrl=${AD.show(item.baseUrl, 80)}、使用者=${AD.show(item.username)}`];
+  INTEGRATION_SECRET_FIELDS.forEach(f => { if (typeof b[f] === 'string' && b[f] !== '' && (!prev || prev[f] !== item[f])) intDiffs.push(`${f} 已更新（值不記錄）`); });
   writeLog('SAVE_INTEGRATION', operator, item.name,
-    `type:${item.type} enabled:${item.enabled} auth:${item.authType}`, req);
+    AD.joinCapped(intDiffs, { prefix: `type:${item.type} enabled:${item.enabled} auth:${item.authType}｜異動：` }) + (intDiffs.length ? '' : '無欄位變更'), req);
   res.json(maskIntegration(item));
 });
 
