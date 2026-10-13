@@ -576,6 +576,24 @@ function writeLog(action, operator, target, detail, req) {
   fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), 'utf8');
 }
 
+/**
+ * 資料匯出稽核：每個「把資料帶出系統」的匯出端點在送出檔案前呼叫。
+ * 只記筆數、範圍條件、格式，不記個資內容；detail 附「該使用者今日第 N 次匯出」供異常量查核
+ * （計數存在行程記憶體，Vercel 多實例各自計數，只作輔助指標；權威紀錄是每次匯出各一筆稽核）。
+ */
+const _exportDaily = new Map(); // 'user|YYYY-MM-DD' -> n
+function auditExport(req, action, count, scope, format) {
+  try {
+    const user = (req.session && req.session.user && req.session.user.username) || '?';
+    const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);   // 台北日期
+    const key = user + '|' + day;
+    const n = (_exportDaily.get(key) || 0) + 1;
+    _exportDaily.set(key, n);
+    if (_exportDaily.size > 2000) { for (const k of _exportDaily.keys()) if (!k.endsWith('|' + day)) _exportDaily.delete(k); }
+    writeLog(action, user, '資料匯出', `匯出 ${count} 筆；範圍：${scope}；格式：${format || 'xlsx'}；該帳號今日第 ${n} 次匯出`, req);
+  } catch (e) { console.error('[auditExport]', e && e.message); }
+}
+
 // ── 簽核信件派送（E1–E6）單例 ─────────────────────────────
 // 規格與模組分工見 lib/mail/README.md。MAIL_MODE 未設＝off（安全預設）：完全不寄、不渲染、不碰儲存體。
 // 本階段真傳輸（Microsoft Graph）還沒實作，live 模式是 stub（回 NOT_CONFIGURED）→ 任何模式都不會真的寄出。
@@ -3332,6 +3350,7 @@ app.get('/api/export', requireAuth, (req, res, next) => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '聯絡人');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_CONTACTS', rows.length, `聯絡人名單；依角色(${req.session.user.role})可視範圍：${exportOwners.length} 位業務、BU=${normalizeBu(req.session.user.bu).join('+') || '不限'}`, 'xlsx');
   res.setHeader('Content-Disposition', 'attachment; filename="contacts.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -4623,6 +4642,7 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_FORECAST', opps.length, `${yr} 年度商機預測；依角色(${user.role})可視範圍：${forecastOwners.length} 位業務`, 'xlsx');
   const fname = `${yr}%E5%B9%B4SalesPipeline_${encodeURIComponent(salesPerson || 'export')}_${dateStr}.xlsx`;
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -4678,6 +4698,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_OPPORTUNITIES', rows.length, '商機資料（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%95%86%E6%A9%9F%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -4733,6 +4754,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_CONTACTS_ADMIN', rows.length, '客戶/聯絡人資料（管理員全量，不分業務，未刪除者）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%AE%A2%E6%88%B6%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -5143,6 +5165,7 @@ app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_VISITS', rows.length, '拜訪/日報記錄（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E6%97%A5%E5%A0%B1%E8%A8%98%E9%8C%84_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -5268,6 +5291,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_CONTRACTS', rows.length, '合約資料（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%90%88%E7%B4%84%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -8248,6 +8272,7 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '企業主檔');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_COMPANY_MASTER', rows.length, `企業主檔（角色=${req.session.user.role}，全量）`, 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('企業主檔.xlsx')}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);

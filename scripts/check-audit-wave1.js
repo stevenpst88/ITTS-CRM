@@ -231,8 +231,60 @@ async function sec1b() {
   eq(r.json && r.json.role, 'user', 'memory 模式：降權即時生效');
 }
 
+// ═════════════ 第 2 項：資料匯出稽核 ═════════════
+async function sec2() {
+  console.log('[2] 資料匯出稽核');
+  await loginAll(['_s_admin', '_s_u1', '_s_off', '_s_tpm']);
+  const yr = new Date().getFullYear();
+  // 端點清單（新增匯出端點時要同步加進來；範本類無資料不在內）
+  const EXPORTS = [
+    { url: '/api/export', who: '_s_u1', action: 'EXPORT_CONTACTS' },
+    { url: '/api/forecast/export?year=' + yr, who: '_s_u1', action: 'EXPORT_FORECAST' },
+    { url: '/api/admin/opportunities/export', who: '_s_admin', action: 'EXPORT_OPPORTUNITIES' },
+    { url: '/api/admin/contacts/export', who: '_s_admin', action: 'EXPORT_CONTACTS_ADMIN' },
+    { url: '/api/admin/visits/export', who: '_s_admin', action: 'EXPORT_VISITS' },
+    { url: '/api/admin/contracts/export', who: '_s_admin', action: 'EXPORT_CONTRACTS' },
+    { url: '/api/companies/export', who: '_s_admin', action: 'EXPORT_COMPANY_MASTER' },
+  ];
+  for (const e of EXPORTS) {
+    const before = byAction(await getLogs(), e.action).length;
+    const r = await http(e.who, 'GET', e.url);
+    eq(r.status, 200, e.url + ' 匯出成功');
+    const rows = byAction(await getLogs(), e.action);
+    eq(rows.length, before + 1, e.url + ' 寫入一筆 ' + e.action);
+    const l = rows[0] || {};
+    eq(l.operator, e.who, e.action + ' operator');
+    ok(/匯出 [0-9]+ 筆/.test(l.detail || ''), e.action + ' detail 含筆數：' + l.detail);
+    ok(/範圍：/.test(l.detail || '') && /格式：xlsx/.test(l.detail || ''), e.action + ' detail 含範圍與格式');
+    ok(!/沙盒公司|sandbox[.]test|0200000001|測試甲/.test(l.detail || ''), e.action + ' detail 不含個資內容');
+    ok(l.ip !== undefined && l.timestamp, e.action + ' 帶 ip／時間');
+  }
+  // 計數器：同一人同一天（跨端點累計；此人已匯出聯絡人名單與預測表各一次）
+  await http('_s_u1', 'GET', '/api/export');
+  const again = byAction(await getLogs(), 'EXPORT_CONTACTS')[0];
+  ok(/今日第 3 次匯出/.test(again.detail), '每人每日（跨端點）匯出計數遞增：' + again.detail);
+  // 被拒絕的匯出不應記成功匯出
+  const n0 = byAction(await getLogs(), 'EXPORT_CONTACTS').length;
+  let r = await http('_s_off', 'GET', '/api/export');
+  ok(r.status === 403, '無下載權限者 403');
+  eq(byAction(await getLogs(), 'EXPORT_CONTACTS').length, n0, '403 不寫匯出稽核');
+  r = await http('_s_u1', 'GET', '/api/admin/opportunities/export');
+  eq(r.status, 403, '非管理員打 admin 匯出 403');
+  // 已有的牌價簿匯出仍有稽核（回歸）
+  const pb0 = byAction(await getLogs(), 'EXPORT_QUOTE_PRICEBOOK').length;
+  r = await http('_s_admin', 'GET', '/api/admin/quote-pricebook/export');
+  if (r.status === 200) eq(byAction(await getLogs(), 'EXPORT_QUOTE_PRICEBOOK').length, pb0 + 1, '牌價簿匯出稽核維持');
+  else console.log('  (牌價簿匯出 ' + r.status + '，略過回歸)');
+  // 靜態防線：server.js 中每個 XLSX.write + 資料 Content-Disposition 的路由都必須呼叫 auditExport（範本除外）
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const routes = src.split(new RegExp(String.fromCharCode(10) + 'app[.](?=get|post)')).filter(b => b.includes('XLSX.write(wb') && b.includes('Content-Disposition'));
+  const missing = routes.filter(b => !b.includes('auditExport(') && !/import-template|範本/.test(b.slice(0, 300) + b.slice(-300))).map(b => b.slice(0, 60));
+  ok(routes.length >= 7, '靜態掃描有找到匯出路由（' + routes.length + '）');
+  eq(missing, [], '每個產生 xlsx 下載的路由都有 auditExport（範本除外）');
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2 };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();
