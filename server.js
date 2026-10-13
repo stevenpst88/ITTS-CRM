@@ -80,6 +80,73 @@ if (SESSION_BACKEND === 'memory') {
   app.use(jwtSession);
 }
 
+// ── 每次請求即時比對帳號現況（內控：停用／降權／離職立即生效）──────────────
+// JWT 是 stateless（8 小時），本地 express-session 也是登入當下的快照。這裡在所有受保護邏輯之前，
+// 以 auth 帳號紀錄為準：帳號不存在或 active===false → 清 cookie、回 401；其餘用 DB 現值覆寫
+// session 內的 role / displayName / bu / viewOwnerScope / viewGroupId（就地修改，不重簽 cookie，不信任 cookie 副本）。
+// 成本：Postgres 模式 db.load() 為記憶體快照（stale check 已在上方 ready 中介層）；JSON 模式以 auth.json 的
+// mtime+size 判斷變動、並有 5 秒 TTL 後備，saveAuth() 也會主動作廢，所以不會每次請求都讀檔。
+const SESSION_ACCT_TTL_MS = 5000;
+let _sessAcctCache = null; // { t, key, map }
+function invalidateSessionAcctCache() { _sessAcctCache = null; }
+function _authFileKey() {
+  try { const st = fs.statSync(path.join(__dirname, 'auth.json')); return st.mtimeMs + ':' + st.size; } catch { return ''; }
+}
+function lookupAccountForSession(username) {
+  if (_USE_DB_FOR_META) return loadAuth().users.find(u => u.username === username) || null;
+  const key = _authFileKey();
+  const now = Date.now();
+  if (!_sessAcctCache || _sessAcctCache.key !== key || now - _sessAcctCache.t > SESSION_ACCT_TTL_MS) {
+    const map = new Map();
+    loadAuth().users.forEach(u => map.set(u.username, u));
+    _sessAcctCache = { t: now, key, map };
+  }
+  return _sessAcctCache.map.get(username) || null;
+}
+const _sessRejectLogAt = new Map(); // username -> 上次寫稽核的時間（每人每分鐘最多一筆）
+function _logSessionRejected(req, username, reason) {
+  const now = Date.now();
+  const last = _sessRejectLogAt.get(username) || 0;
+  if (now - last < 60000) return;
+  _sessRejectLogAt.set(username, now);
+  if (_sessRejectLogAt.size > 500) { for (const [k, t] of _sessRejectLogAt) if (now - t > 60000) _sessRejectLogAt.delete(k); }
+  try {
+    writeLog('SESSION_REJECTED_INACTIVE', username, username,
+      `已登入的連線被拒絕：${reason}（請求 ${req.method} ${String(req.path).slice(0, 80)}）；連線已強制登出`, req);
+  } catch (e) { console.error('[session-reject log]', e); }
+}
+app.use((req, res, next) => {
+  const su = req.session && req.session.user;
+  if (!su || !su.username) return next();
+  let acct;
+  try { acct = lookupAccountForSession(su.username); } catch (e) { console.error('[session-refresh]', e); return next(); }
+  const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : null);
+  if (bad) {
+    _logSessionRejected(req, su.username, bad);
+    const finish = () => {
+      if (req.path.startsWith('/api/') && req.path !== '/api/login' && req.path !== '/api/logout') {
+        return res.status(401).json({ error: '帳號已停用或不存在，請重新登入', code: 'SESSION_INVALID' });
+      }
+      next();
+    };
+    try { req.session.destroy(() => { try { res.clearCookie('connect.sid'); } catch {} finish(); }); }
+    catch (e) { finish(); }
+    return;
+  }
+  // 以 DB 現值為準（就地更新，不重簽 cookie）
+  su.role = acct.role || 'user';
+  if (acct.displayName) su.displayName = acct.displayName;
+  su.bu = normalizeBu(acct.bu);
+  if (su.role === 'tecopm' || su.role === 'groupsales') {
+    su.viewOwnerScope = acct.viewOwnerScope || null;
+    su.viewGroupId = acct.viewGroupId || null;
+    try { const g = (db.load().groups || []).find(x => x.id === su.viewGroupId); su.viewGroupName = (g && g.name) || ''; } catch {}
+  } else {
+    delete su.viewOwnerScope; delete su.viewGroupId; delete su.viewGroupName;
+  }
+  next();
+});
+
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
   // Content Security Policy：useDefaults:false 完全自訂，避免 Helmet v8 預設
@@ -470,6 +537,7 @@ function loadAuth() {
 }
 
 function saveAuth(data) {
+  invalidateSessionAcctCache();
   if (_USE_DB_FOR_META) {
     const d = db.load();
     d._auth = data;
