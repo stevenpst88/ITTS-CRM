@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const crypto = require('crypto');
 const db = require('./db');
+const { deriveRuntimeInfo } = require('./lib/runtimeInfo');   // 版本資訊頁：由真實環境推導部署／資料庫型態
 const AuditStore = require('./lib/auditStore');   // 稽核事件（只增不改）的篩選／輸出共用函式
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
@@ -9551,6 +9552,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const s = uptimeSec % 60;
   const uptimeStr = `${d > 0 ? d + ' 天 ' : ''}${h > 0 ? h + ' 時 ' : ''}${m} 分 ${s} 秒`;
 
+  const rt = deriveRuntimeInfo(process.env);
   res.json({
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
@@ -9589,13 +9591,9 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
       { name: 'Chart.js',             ver: '4.4.0',    desc: '圖表視覺化',       icon: '📈' },
       { name: 'HTML5 / CSS3',         ver: '—',        desc: '頁面結構與樣式',   icon: '🎨' },
     ],
-    database: {
-      type:     'JSON File Database',
-      engine:   '自製輕量 JSON 資料庫（db.js）',
-      file:     'data.json',
-      authFile: 'auth.json',
-      note:     '無需額外資料庫伺服器，資料以 JSON 格式儲存於本機磁碟',
-    },
+    database: rt.database,   // 由真實 DB_BACKEND 推導（postgres／json），不含連線字串
+    deploy:   rt.deploy,     // { kind:'vercel'|'local', vercelEnv, label }
+    backends: { db: rt.dbBackend, storage: rt.storageBackend, session: rt.sessionBackend },
     generatedAt: new Date().toISOString(),
   });
 });
