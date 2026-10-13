@@ -21,6 +21,11 @@
  * ── 安全防護（任一不通過就在「任何寫入之前」中止）──
  *   1. 必須有 AUDIT_VERIFY_DATABASE_URL；不可與 DATABASE_URL 相同；不可含 AUDIT_VERIFY_FORBIDDEN_SUBSTR。
  *   2. 唯讀檢查 app_data：id='main' 若有超過 5 位聯絡人、5 筆商機或 3 個帳號 → 中止（「這看起來不是空的測試資料庫」）。
+ *      （例外：測試庫合法地留有少量測試資料時，可明確放寬——兩個旗標必須一起給：
+ *        node scripts/verify-audit-pg.js --allow-nonempty-test-db --expect-ref=<專案代號>
+ *        且連線字串的「帳號」（Supabase pooler 為 postgres.<ref>）或「主機」必須含該代號，否則中止；
+ *        放寬後仍有硬上限：聯絡人 >500、商機 >500 或帳號 >50 一律中止。DATABASE_URL 相等與禁止字串兩道防護照樣先跑。
+ *        此模式下腳本只寫 audit_events 表，加上（僅在不存在時）app_data 一筆暫時的 id='audit_log' 舊整包列並於結束時刪除；絕不修改 app_data 的 id='main'。）
  *   3. 需輸入主機名稱前 8 字元，或帶 --yes-this-is-test-db。
  *   所有輸出都會遮蔽連線字串／密碼／主機；錯誤訊息也一樣。本腳本不使用專案根目錄的 data.json／auth.json／audit.log.json。
  *
@@ -104,6 +109,19 @@ async function run(opts) {
   const forbidden = (env.AUDIT_VERIFY_FORBIDDEN_SUBSTR || '').trim();
   if (forbidden && url.toLowerCase().includes(forbidden.toLowerCase())) return abort(2, '連線字串含有 AUDIT_VERIFY_FORBIDDEN_SUBSTR 標記的正式站特徵，拒絕執行');
 
+  // ── 防護 1b：放寬「必須是空庫」的明確覆寫（兩個旗標缺一不可，且連線字串的帳號或主機要含指定的專案代號）──
+  const allowArg = argv.includes('--allow-nonempty-test-db');
+  const refArg = argv.find((a) => a.startsWith('--expect-ref='));
+  const expectRef = refArg ? refArg.slice('--expect-ref='.length).trim() : '';
+  if (allowArg !== !!refArg) return abort(2, '--allow-nonempty-test-db 與 --expect-ref=<專案代號> 必須同時給，缺一不可');
+  let relaxed = false;
+  if (allowArg) {
+    if (expectRef.length < 6) return abort(2, '--expect-ref 的專案代號太短（至少 6 個字元）');
+    const userPart = safeDecode(parsed.username || '');
+    if (!(userPart.includes(expectRef) || parsed.hostname.includes(expectRef))) return abort(2, '連線字串的帳號或主機不含 --expect-ref 指定的專案代號，拒絕放寬空庫檢查');
+    relaxed = true;
+  }
+
   // ── 載入 pg、連線（唯讀檢查）──
   let pgMod = opts.pg;
   if (!pgMod) {
@@ -125,12 +143,14 @@ async function run(opts) {
             CASE WHEN jsonb_typeof(content->'opportunities') = 'array' THEN jsonb_array_length(content->'opportunities') ELSE 0 END AS opps,
             CASE WHEN jsonb_typeof(content->'_auth'->'users') = 'array' THEN jsonb_array_length(content->'_auth'->'users') ELSE 0 END AS users
           FROM app_data WHERE id = 'main'`)).rows[0];
-        if (r && (Number(r.contacts) > 5 || Number(r.opps) > 5 || Number(r.users) > 3)) {
+        const lim = relaxed ? { c: 500, o: 500, u: 50 } : { c: 5, o: 5, u: 3 };   // 放寬模式仍有硬上限（正式站資料量遠大於此）
+        if (r && (Number(r.contacts) > lim.c || Number(r.opps) > lim.o || Number(r.users) > lim.u)) {
           await c.query('ROLLBACK').catch(() => {});
           c.release();
           await pool.end().catch(() => {});
-          return abort(2, `${NOT_EMPTY_MSG}（main 內有 ${r.contacts} 位聯絡人、${r.opps} 筆商機、${r.users} 個帳號；上限 5／5／3）`);
+          return abort(2, `${NOT_EMPTY_MSG}（main 內有 ${r.contacts} 位聯絡人、${r.opps} 筆商機、${r.users} 個帳號；${relaxed ? '放寬模式的硬上限' : '上限'} ${lim.c}／${lim.o}／${lim.u}）`);
         }
+        if (relaxed && r && (Number(r.contacts) > 5 || Number(r.opps) > 5 || Number(r.users) > 3)) say(`注意：資料庫含少量測試資料（${r.contacts} 位聯絡人、${r.opps} 筆商機、${r.users} 個帳號），在 --allow-nonempty-test-db 放寬模式下繼續。`);
       }
       await c.query('ROLLBACK');
     } finally { try { c.release(); } catch { /* 已釋放 */ } }
@@ -144,6 +164,7 @@ async function run(opts) {
     if (got !== want) { await pool.end().catch(() => {}); return abort(2, '輸入的主機前綴不符，已取消'); }
   }
   say('— 防護通過，開始驗證（只寫入並清除本次標記的資料）—');
+  if (relaxed) say('放寬模式：本腳本只會寫入資料表 audit_events，以及（僅在不存在時）app_data 內一筆暫時的舊整包列 id=\'audit_log\'（結束時刪除）；絕不修改 app_data 的 id=\'main\'。');
   if (opts.stopAfterGuards) { await pool.end().catch(() => {}); return { code: 0, passed, failed, guardsPassed: true }; }   // 測試用：只驗證防護，不進入寫入流程
 
   // ── 準備 ──

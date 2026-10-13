@@ -109,6 +109,53 @@ const note = (x) => { allText.push(x.text); return x; };
   ok(red('plain text 沒有祕密') === 'plain text 沒有祕密', 'makeRedactor：一般文字不動');
   const red2 = V.makeRedactor(`postgresql://u:${encodeURIComponent('p@ss:w/rd')}@h.invalid/db`);
   ok(!red2('bad p@ss:w/rd here').includes('p@ss:w/rd'), 'makeRedactor：URL 編碼過的密碼解碼後也遮蔽');
+  // 9 放寬模式（--allow-nonempty-test-db ＋ --expect-ref）
+  {
+    const REF = 'fakeref1234567890ab';
+    const URL_USER = `postgresql://postgres.${REF}:${PW}@aws-0-fake.pooler.supabase.invalid:6543/postgres`;   // pooler：帳號含 ref
+    const URL_HOST = `postgresql://postgres:${PW}@db.${REF}.supabase.invalid:5432/postgres`;                  // 直連：主機含 ref
+    const small = { main: { contacts: 20, opps: 16, users: 5 } };   // 舊 Demo 測試庫的量
+    const A = '--allow-nonempty-test-db', E = '--expect-ref=' + REF, Y = '--yes-this-is-test-db';
+    // 沒給旗標：20／16／5 仍中止
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [Y], small));
+    ok(x.r.code === 2 && x.text.includes('這看起來不是空的測試資料庫') && !x.r.guardsPassed, '沒有放寬旗標：20／16／5 仍中止');
+    // 只給其中一個
+    for (const [label, args] of [['只有 --allow', [A, Y]], ['只有 --expect-ref', [E, Y]]]) {
+      x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, args, small));
+      ok(x.r.code === 2 && /必須同時給/.test(x.text) && x.st.pools === 0, `${label} → 中止、沒連線`, x.text);
+    }
+    // 兩個都給：帳號含 ref／主機含 ref 都可通過，且印出寫入範圍聲明（不含祕密）
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, E, Y], small));
+    ok(x.r.guardsPassed === true && /放寬模式/.test(x.text) && /audit_events/.test(x.text) && /id='main'/.test(x.text), '兩旗標＋帳號含 ref → 通過，並印出只寫 audit_events／暫時 audit_log、不改 main 的聲明', x.text);
+    ok(/注意：資料庫含少量測試資料/.test(x.text), '放寬模式提示資料庫含少量測試資料');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_HOST }, [A, E, Y], small));
+    ok(x.r.guardsPassed === true, '兩旗標＋主機含 ref → 通過');
+    // ref 不符
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, '--expect-ref=otherref9999999', Y], small));
+    ok(x.r.code === 2 && /不含 --expect-ref/.test(x.text) && x.st.pools === 0, 'ref 不符 → 中止、沒連線', x.text);
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, '--expect-ref=abc', Y], small));
+    ok(x.r.code === 2 && x.st.pools === 0, 'ref 太短 → 中止');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, '--expect-ref=', Y], small));
+    ok(x.r.code === 2 && x.st.pools === 0, 'ref 為空 → 中止');
+    // 只有「路徑」或「密碼」含 ref 不算
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: `postgresql://postgres:${REF}@other.supabase.invalid:5432/${REF}` }, [A, E, Y], small));
+    ok(x.r.code === 2 && x.st.pools === 0, '只有密碼／資料庫名含 ref（帳號與主機不含）→ 中止');
+    // 硬上限
+    for (const [label, main] of [['聯絡人 501', { contacts: 501 }], ['商機 501', { opps: 501 }], ['帳號 51', { users: 51 }], ['正式站規模', { contacts: 12000, opps: 3000, users: 300 }]]) {
+      x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, E, Y], { main }));
+      ok(x.r.code === 2 && x.text.includes('這看起來不是空的測試資料庫') && /硬上限/.test(x.text) && !x.r.guardsPassed, `放寬模式硬上限：${label} → 中止`, x.text);
+      ok(x.st.queries.every((q) => !WRITE.test(q)), `硬上限 ${label}：只送出唯讀語句`);
+    }
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER }, [A, E, Y], { main: { contacts: 500, opps: 500, users: 50 } }));
+    ok(x.r.guardsPassed === true, '剛好 500／500／50 仍可通過（硬上限邊界）');
+    // 放寬模式下前面兩道防護仍先跑
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER, DATABASE_URL: URL_USER }, [A, E, Y], small));
+    ok(x.r.code === 2 && /DATABASE_URL/.test(x.text) && x.st.pools === 0, '放寬模式下 DATABASE_URL 相同仍中止');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URL_USER, AUDIT_VERIFY_FORBIDDEN_SUBSTR: REF.slice(0, 8) }, [A, E, Y], small));
+    ok(x.r.code === 2 && /FORBIDDEN/.test(x.text) && x.st.pools === 0, '放寬模式下禁止字串仍中止（先於 ref 檢查）');
+    // 放寬模式輸出同樣不洩漏
+    ok(![URL_USER, URL_HOST, PW].some((s) => allText.join('\n').includes(s)), '放寬模式的輸出不含連線字串／密碼');
+  }
   // 所有輸出總掃描
   const blob = allText.join('\n');
   ok(![URLX, PW, HOST].some((s) => blob.includes(s)), '所有測試情境的輸出都不含連線字串／密碼／主機');
