@@ -2623,6 +2623,7 @@ function tgRender() {
   }
   if (show) {
     box.style.cssText = `display:block;font-size:12.5px;line-height:1.5;margin-top:6px;padding:6px 10px;border-radius:6px;background:${bg};color:${fg};border:1px solid ${bd}`;
+    box.dataset.tg = g.status === 'matched' ? 'ok' : (g.status === 'notfound' || g.status === 'unavailable') ? 'bad' : 'info';   // glass.css 用來換色（無玻璃時無作用）
     box.innerHTML = parts.join('');
     const rb = $('taxGuardRetry');
     if (rb) rb.addEventListener('click', () => tgStartLookup(true));

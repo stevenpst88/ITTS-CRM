@@ -2391,6 +2391,128 @@ body.glass.dark :is(#lostOppTableWrap th, .stage-conv-thead th) { color: var(--g
 body.glass.dark .main .pr-stage-tag[style*="color:#f57c00"] { color: #ffb74d !important; }
 /* ═══ 階段 6 結束 ═══ */
 
+/* ═════════════════════════════════════════════════════════════
+ * 階段 7 併入 main（2026-10-13，PR #12）的新 UI 玻璃化
+ *   報價單↔商機（步驟 0、列表副行／徽章、失效橫幅／列、商機視窗報價列）、看板報價數、公告彈窗＋後台公告管理、
+ *   統編守門（狀態框／錯誤框／存檔鈕反灰）、BU 業績總覽 5 張卡、名片卡公司名、毛利分析預覽的視窗外框。
+ * 原則同階段 4：語意色（A/B/C 階段色、警示橘、成功綠、錯誤紅）不隨主題變，只把平面白／#161b22 實底換成半透明玻璃並在對比不足處調色；
+ *       .qpv-*（含毛利分析預覽的白色紙面 .qpv-pnl-sheet／.xsh-table）完全不碰；全部包在 @media screen。
+ * 新模組多半在執行期注入 <style>（比本檔晚載入）→ 用 `body.glass.glass` 或 `html body.glass` 提高權重。
+ * ═════════════════════════════════════════════════════════════ */
+@media screen {
+/* 7-1 報價單 ↔ 商機（q-opp-*；步驟 0 的商機清單、已選卡片、列表副行、商機視窗報價列） */
+body.glass.glass .q-opp-picker input[type="search"] { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .q-opp-list { background: var(--g-surface-strong); border-color: var(--g-edge); }
+body.glass.glass .q-opp-row { border-bottom-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass .q-opp-row:hover { background: var(--g-row-hover); }
+body.glass.glass .q-opp-row.on { background: color-mix(in srgb, var(--g-accent) 17%, transparent); box-shadow: inset 3px 0 0 var(--g-accent); }
+body.glass.glass .q-opp-row:focus-visible { outline-color: var(--g-accent); }
+body.glass.glass .q-opp-co { color: var(--g-text); }
+body.glass.glass .q-opp-l2, body.glass.glass .q-opp-sub, body.glass.glass .q-opp-l3, body.glass.glass .q-opp-n,
+body.glass.glass .q-opp-line, body.glass.glass .q-opp-empty, body.glass.glass .q-opp-none { color: var(--g-text-2); }
+body.glass.glass .q-opp-st { background: var(--g-input); color: var(--g-text-2); border: 1px solid var(--g-edge); }
+body.glass.glass .q-opp-st-A { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
+body.glass.glass .q-opp-st-B { background: var(--q4-info-bg); color: var(--q4-info); border-color: var(--q4-info-bd); }
+body.glass.glass .q-opp-st-C { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+body.glass.glass .q-opp-card, body.glass.glass .q-opp-modalrow { background: color-mix(in srgb, var(--g-accent) 9%, var(--g-surface)); border-color: color-mix(in srgb, var(--g-accent) 38%, transparent); color: var(--g-text); }
+body.glass.glass .q-opp-card b, body.glass.glass .q-opp-modalrow b { color: var(--g-text); }
+body.glass.glass .q-opp-warn { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+body.glass.glass .q-opp-won { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
+body.glass.glass .q-opp-qchip { background: var(--g-input); border-color: var(--g-edge); color: var(--g-text); }
+body.glass.glass input.q-opp-locked, body.glass.glass select.q-opp-locked { background: color-mix(in srgb, var(--g-input) 55%, transparent); color: var(--g-text-2); }
+body.glass:not(.dark).glass .q-opp-link { color: #1243a8; }
+body.glass.dark.glass .q-opp-link { color: #8ec5ff; }
+/* 失效報價單列：淡化但字仍要讀得到 */
+body.glass.glass .q-row-invalid td { color: var(--g-text-2); background: color-mix(in srgb, var(--g-text) 5%, transparent); }
+body.glass.glass .q-row-invalid .quote-no { opacity: 1; }
+/* 看板卡「📄 報價單 N 張」：行內 #6b7686 在玻璃深色下太淡 */
+body.glass .kanban-card-quotes { color: var(--g-text-2) !important; }
+
+/* 7-2 公告彈窗（announcements.js 的 .ann-*）：做成與 .modal 同款玻璃 */
+html body.glass .ann-overlay { background: var(--g-scrim); --ann-bg: transparent; --ann-fg: var(--g-text); --ann-sub: var(--g-text-2); --ann-line: var(--g-edge); --ann-accent: var(--g-accent); --ann-warn: #c62828; --ann-warn-bg: var(--q4-bad-bg); }
+html body.glass .ann-card { background: var(--g-surface-strong); color: var(--g-text); border: 1px solid var(--g-border); border-top: 4px solid var(--ann-accent); border-radius: 20px; box-shadow: var(--g-ring), var(--g-shadow-lg); -webkit-backdrop-filter: blur(26px) saturate(var(--g-sat)); backdrop-filter: blur(26px) saturate(var(--g-sat)); }
+html body.glass .ann-card.ann-important { border-top-color: var(--ann-warn); }
+html body.glass .ann-badge { background: var(--g-input); color: var(--g-text-2); border: 1px solid var(--g-edge); }
+html body.glass .ann-important .ann-badge { background: var(--q4-bad-bg); color: var(--q4-bad); border-color: var(--q4-bad-bd); }
+html body.glass .ann-title { color: var(--g-text); }
+html body.glass .ann-count { color: var(--g-text-2); }
+html body.glass .ann-btn { background: linear-gradient(180deg, #3b8af2 0%, #1a73e8 100%); color: #fff; border-radius: var(--g-radius-sm); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 12px rgba(26, 115, 232, .30); }
+html body.glass .ann-important .ann-btn { background: linear-gradient(180deg, #e0463b 0%, #c62828 100%); color: #fff; }
+html body.glass .ann-btn:disabled { opacity: .62; }
+@media (max-width: 600px) { html body.glass .ann-card { border-radius: 20px 20px 0 0; } }
+
+/* 7-3 統編↔公司名稱守門（#taxGuardStatus 以 data-tg 分三態；#companyGuardErr 永遠是紅色錯誤框；行內樣式一律 !important 蓋掉） */
+body.glass #taxGuardStatus[data-tg="info"] { background: var(--q4-info-bg) !important; color: var(--q4-info) !important; border-color: var(--q4-info-bd) !important; }
+body.glass #taxGuardStatus[data-tg="ok"] { background: var(--q4-ok-bg) !important; color: var(--q4-ok) !important; border-color: var(--q4-ok-bd) !important; }
+body.glass #taxGuardStatus[data-tg="bad"], body.glass #companyGuardErr { background: var(--q4-bad-bg) !important; color: var(--q4-bad) !important; border-color: var(--q4-bad-bd) !important; }
+body.glass #companySimDup { background: var(--q4-warn-bg) !important; color: var(--q4-warn) !important; border-color: var(--q4-warn-bd) !important; }
+body.glass #taxGuardStatus div[style*="#b45309"] { color: var(--q4-warn) !important; }
+body.glass #taxGuardRetry { background: var(--g-input) !important; color: var(--q4-bad) !important; border-color: var(--q4-bad-bd) !important; }
+body.glass #useOfficialNameBtn { background: #c62828 !important; border-color: #c62828 !important; color: #fff !important; }
+body.glass #saveBtn:disabled { opacity: .45; cursor: not-allowed; filter: saturate(.55); box-shadow: none; }
+
+/* 7-4 BU 業績總覽（5 張卡；首頁卡 A 詳情內）：面板／卡片換玻璃，BU 名稱色在兩種模式各調到 ≥4.5:1（語意色同色系） */
+body.glass .bu-breakdown-card { background: var(--g-fill); border: 1px solid var(--g-border); box-shadow: var(--g-ring), var(--g-shadow); }
+body.glass .bu-breakdown-title { color: var(--g-text); }
+body.glass .bu-breakdown-header > span:last-child { color: var(--g-text-2) !important; }
+body.glass .bu-card { background: var(--g-surface); border-color: var(--g-edge); }
+body.glass .bu-card-lbl { color: var(--g-text-2); }
+body.glass .bu-card-val { color: var(--g-text); }
+body.glass .bu-card-bar { background: color-mix(in srgb, var(--g-text) 14%, transparent); }
+body.glass .bu-card-name > span { color: var(--g-text-2) !important; }
+body.glass:not(.dark) .bu-card[style*="#1a73e8"] .bu-card-name { color: #1243a8 !important; }
+body.glass:not(.dark) .bu-card[style*="#0a8a4a"] .bu-card-name { color: #0a6b3a !important; }
+body.glass:not(.dark) .bu-card[style*="#e37400"] .bu-card-name { color: #8f4a00 !important; }
+body.glass:not(.dark) .bu-card[style*="#7c3aed"] .bu-card-name { color: #5b21b6 !important; }
+body.glass:not(.dark) .bu-card[style*="#e11d48"] .bu-card-name { color: #be123c !important; }
+body.glass.dark .bu-card[style*="#1a73e8"] .bu-card-name { color: #8ec5ff !important; }
+body.glass.dark .bu-card[style*="#0a8a4a"] .bu-card-name { color: #6ee7b7 !important; }
+body.glass.dark .bu-card[style*="#e37400"] .bu-card-name { color: #fdba74 !important; }
+body.glass.dark .bu-card[style*="#7c3aed"] .bu-card-name { color: #c4b5fd !important; }
+body.glass.dark .bu-card[style*="#e11d48"] .bu-card-name { color: #fda4af !important; }
+body.glass:not(.dark) .bu-card-rate[style*="#10b981"] { color: #047857 !important; }
+body.glass:not(.dark) .bu-card-rate[style*="#f59e0b"] { color: #9a5b00 !important; }
+body.glass:not(.dark) .bu-card-rate[style*="#ef4444"] { color: #c62828 !important; }
+
+/* 7-5 名片卡左下角公司名 */
+body.glass .card-company { color: var(--g-text-2); }
+
+/* 7-6 後台：公告管理（列表狀態／重要標籤／預覽鈕）；彈窗沿用 .modal 與 #annForm 既有玻璃 */
+body.glass.admin-page .an-st { box-shadow: inset 0 0 0 1px var(--g-edge); }
+body.glass.admin-page .an-st-live { background: var(--q4-ok-bg); color: var(--q4-ok); }
+body.glass.admin-page .an-st-scheduled { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.admin-page .an-st-expired { background: var(--g-input); color: var(--g-text-2); }
+body.glass.admin-page .an-st-disabled { background: var(--q4-bad-bg); color: var(--q4-bad); }
+body.glass.admin-page .an-imp { background: var(--q4-bad-bg); color: var(--q4-bad); }
+body.glass.admin-page .an-sub { color: var(--g-text-2); }
+body.glass.admin-page #annTable td b { color: var(--g-text); }
+body.glass.admin-page #annTable .btn[data-act="preview"] { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge); }
+body.glass.admin-page .form-group .an-roles label, body.glass.admin-page .form-group label.an-chk { color: var(--g-text); }
+
+/* 7-7 對比修補（第一輪掃描：ocean 淺／深、noir 深；不足處同色系加深／提亮，語意不變） */
+body.glass:not(.dark) .quote-st-void { color: #8f4a00; }
+body.glass.dark .quote-st-void { background: var(--q4-warn-bg); color: var(--q4-warn); border-color: var(--q4-warn-bd); }
+html body.glass .ann-btn { background: linear-gradient(180deg, #2b6fd9 0%, #1a5fc4 100%); }
+html body.glass .ann-important .ann-btn { background: linear-gradient(180deg, #cf2f24 0%, #b71c1c 100%); }
+body.glass:not(.dark) #taxGuardStatus[data-tg="ok"] { color: #14532d !important; }
+body.glass:not(.dark) #taxGuardStatus[data-tg="info"] { color: #0f3f94 !important; }
+body.glass:not(.dark) .jf-btn:not(.active):not(:hover) .jf-btn-sub { color: #5b6677; }
+body.glass .contact-card .avatar { box-shadow: inset 0 0 0 100px rgba(0, 0, 0, .34); }
+body.glass .rel-prospect { color: #8f4a00; }
+body.glass .bu-card[style*="opacity:.45"] { opacity: .95 !important; }
+body.glass .bu-card > div[style*="9ca3af"] { color: var(--g-text-2) !important; }
+body.glass:not(.dark) :is(.main, .admin-main) [style*="color:#e11d48"] { color: #be123c !important; }
+body.glass.dark :is(.main, .admin-main) [style*="color:#e11d48"] { color: #fda4af !important; }
+body.glass.admin-page:not(.dark) #userStatRow .stat-value[style*="e65100"] { color: #a33a00 !important; }
+body.glass.admin-page:not(.dark) #sec-quote-pricebook #pbTabs [role="tab"][aria-selected="true"] { color: color-mix(in srgb, var(--g-accent) 80%, #000) !important; }
+body.glass.admin-page.dark #pbTabs [data-pbcount] { color: var(--g-text) !important; }
+body.glass.dark .kanban-col-badge.kanban-badge-won { background: rgba(22, 101, 52, .55) !important; color: #dcfce7 !important; }
+body.glass.admin-page #annRoles { opacity: .72 !important; }   /* 全部角色勾選時清單行內 opacity:.45（停用示意）仍讀得到 */
+body.glass.dark #sec-quote-pricebook #pbTabs [role="tab"]:not([aria-selected="true"]) { color: var(--g-text-2) !important; }
+body.glass.dark .bu-card { background: color-mix(in srgb, rgba(0, 0, 0, .34) 100%, transparent); }
+}   /* /@media screen（階段 7） */
+/* ═══ 階段 7 結束 ═══ */
+
 /* ───────────── 99. 自動縮放（glass-theme.js 依視窗寬高算 --gz；僅 body.glass；≤1024 寬恆為 1）─────────────
  * 列印一律還原；報價 PDF 離屏畫布帶 data-gz-off 且放在 body 外（見 quote-pdf.js／glass-theme.js hold）。 */
 body.glass { zoom: var(--gz, 1); }
