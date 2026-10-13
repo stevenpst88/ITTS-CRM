@@ -545,6 +545,11 @@ body.glass .badge-admin { color: #1243a8; }
 body.glass.dark .admin-main :is([style*="color:#d32f2f"]) { color: #ffb4ab !important; }
 body.glass:not(.dark) .admin-main :is([style*="color:#d32f2f"]) { color: #a31515 !important; }
 
+/* 看板欄寬度自適應：桌面寬度下欄位均分整個看板，不必橫向捲動才看得到「成交」欄 */
+@media screen and (min-width: 1025px) {
+  body.glass .kanban-board { gap: 12px; }
+  body.glass .kanban-col { flex: 1 1 0; min-width: 170px; }
+}
 /* 看板欄：半透明玻璃欄（欄內卡片維持較實的白） */
 body.glass .kanban-col {
   background: var(--g-fill);
