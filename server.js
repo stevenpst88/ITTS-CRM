@@ -111,6 +111,7 @@ function _logSessionRejected(req, username, reason) {
   _sessRejectLogAt.set(username, now);
   if (_sessRejectLogAt.size > 500) { for (const [k, t] of _sessRejectLogAt) if (now - t > 60000) _sessRejectLogAt.delete(k); }
   try {
+    flushAuditBeforeEnd(req);
     writeLog('SESSION_REJECTED_INACTIVE', username, username,
       `已登入的連線被拒絕：${reason}（請求 ${req.method} ${String(req.path).slice(0, 80)}）；連線已強制登出`, req);
   } catch (e) { console.error('[session-reject log]', e); }
@@ -581,6 +582,17 @@ function writeLog(action, operator, target, detail, req) {
  * 只記筆數、範圍條件、格式，不記個資內容；detail 附「該使用者今日第 N 次匯出」供異常量查核
  * （計數存在行程記憶體，Vercel 多實例各自計數，只作輔助指標；權威紀錄是每次匯出各一筆稽核）。
  */
+/** GET 請求不會經過上面「寫入型請求 flush」中介層；稽核事件（匯出、停用連線被拒）在 Vercel 上要在回應送出前確保寫入完成，否則實例凍結會漏記 */
+function flushAuditBeforeEnd(req) {
+  const res = req && req.res;
+  if (!res || res._auditFlushWrapped || typeof db.flush !== 'function') return;
+  res._auditFlushWrapped = true;
+  const origEnd = res.end.bind(res);
+  res.end = function (...args) {
+    Promise.resolve().then(() => db.flush()).catch((e) => console.error('[audit flush]', e)).finally(() => origEnd(...args));
+    return res;
+  };
+}
 const _exportDaily = new Map(); // 'user|YYYY-MM-DD' -> n
 function auditExport(req, action, count, scope, format) {
   try {
@@ -590,6 +602,7 @@ function auditExport(req, action, count, scope, format) {
     const n = (_exportDaily.get(key) || 0) + 1;
     _exportDaily.set(key, n);
     if (_exportDaily.size > 2000) { for (const k of _exportDaily.keys()) if (!k.endsWith('|' + day)) _exportDaily.delete(k); }
+    flushAuditBeforeEnd(req);
     writeLog(action, user, '資料匯出', `匯出 ${count} 筆；範圍：${scope}；格式：${format || 'xlsx'}；該帳號今日第 ${n} 次匯出`, req);
   } catch (e) { console.error('[auditExport]', e && e.message); }
 }
