@@ -637,15 +637,79 @@ async function sec6() {
   eq(r.status, 200, '編輯一般使用者不受護欄影響');
 }
 
+// ═════════════ 變異檢查：故意弄壞規則，測試必須抓得到 ═════════════
+// 做法：把 server.js／lib/quoteRoutes.js 複製成臨時檔並改壞一條規則，用同一套 HTTP 斷言打變異伺服器；
+// 「抓到」＝斷言失敗（與正常版相反）。臨時檔結束後一律刪除。
+async function secM() {
+  console.log('[M] 變異檢查');
+  const tmpFiles = [];
+  const mkMut = (name, serverEdit, libEdit) => {
+    let srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    if (serverEdit) { if (!srv.includes(serverEdit[0])) throw new Error('變異樣式找不到：' + name); srv = srv.replace(serverEdit[0], () => serverEdit[1]); }
+    if (libEdit) {
+      let lib = fs.readFileSync(path.join(ROOT, 'lib', 'quoteRoutes.js'), 'utf8');
+      if (!lib.includes(libEdit[0])) throw new Error('變異樣式找不到：' + name);
+      lib = lib.replace(libEdit[0], () => libEdit[1]);
+      const libFile = path.join(ROOT, 'lib', 'quoteRoutes.__mut_' + name + '.js');
+      fs.writeFileSync(libFile, lib); tmpFiles.push(libFile);
+      srv = srv.replace("require('./lib/quoteRoutes')", () => "require('./lib/quoteRoutes.__mut_" + name + ".js')");
+    }
+    const f = path.join(ROOT, 'server.__mut_' + name + '.js');
+    fs.writeFileSync(f, srv); tmpFiles.push(f);
+    return f;
+  };
+  const fresh = async (file) => { await stopServer(); cleanupFiles(); seedFiles(); extraEnv = {}; await startServer(file); jar = {}; };
+  try {
+    // 變異 1：拿掉「停用帳號即時拒絕」
+    {
+      const f = mkMut('m1', ["const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : null);", 'const bad = null;']);
+      await fresh(f);
+      await loginAll(['_s_admin', '_s_off']);
+      await adminPutUser('_s_off', { active: false });
+      const r = await http('_s_off', 'GET', '/api/me');
+      ok(r.status !== 401, '變異1（拿掉停用即時拒絕）→ 停用後仍 ' + r.status + '：測試 sec1 的 401 斷言會失敗（抓得到）');
+    }
+    // 變異 2：改派又改回「永遠改 steps[0]」
+    {
+      const f = mkMut('m2', null, ['const from = curStep.assignee;\n    curStep.assignee = un;', 'const from = ap.steps[0].assignee;\n    ap.steps[0].assignee = un;']);
+      await fresh(f);
+      await loginAll(['_s_admin']);
+      const r = await http('_s_admin', 'POST', '/api/quotations/q-QB/reassign', { username: '_q_m1b', reason: '變異測試' });
+      const q = JSON.parse(fs.readFileSync(path.join(ROOT, 'data.json'), 'utf8')).quotations.find(x => x.id === 'q-QB');
+      ok(r.status === 200 && q.approval.steps[0].assignee === '_q_m1b' && q.approval.steps[1].assignee === '_q_m1', '變異2（改派永遠改 steps[0]）→ 已核准的二級關被改掉：sec3 的 steps[0] 不變斷言會失敗（抓得到）');
+    }
+    // 變異 3：拿掉「管理員不能改自己的角色」
+    {
+      const f = mkMut('m3', ["if (req.params.username === opName0 && changes.length) {", 'if (false) {']);
+      await fresh(f);
+      await loginAll(['_s_admin']);
+      const r = await adminPutUser('_s_admin', { role: 'user', bu: ['ERP'] });
+      ok(r.status === 200, '變異3（拿掉自我變更護欄）→ 自己降自己成功(' + r.status + ')：sec6 的 403 斷言會失敗（抓得到）');
+    }
+    // 變異 4：匯出不寫稽核
+    {
+      const f = mkMut('m4', ["auditExport(req, 'EXPORT_VISITS', rows.length,", "void (req, 'EXPORT_VISITS', rows.length,"]);
+      await fresh(f);
+      await loginAll(['_s_admin']);
+      await http('_s_admin', 'GET', '/api/admin/visits/export');
+      const n = byAction(await getLogs(), 'EXPORT_VISITS').length;
+      eq(n, 0, '變異4（拿掉拜訪匯出稽核）→ 沒有 EXPORT_VISITS 紀錄：sec2 的「寫入一筆」斷言會失敗（抓得到）');
+    }
+  } finally {
+    await stopServer();
+    tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch { /* 已刪 */ } });
+  }
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4, 5: sec5, 6: sec6 };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4, 5: sec5, 6: sec6, M: secM };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();
   try {
     await startServer();
     for (const k of ['1', '1b', '2', '3', '4', '5', '6', 'M']) {
-      if (!SECTIONS[k]) continue;
+      if (!SECTIONS[k] || (k === 'M' && process.env.AW1_SKIP_MUT)) continue;
       if (only.length && !only.includes(k)) continue;
       await stopServer(); cleanupFiles(); seedFiles(); await restart();   // 每項一台新伺服器：登入速率限制（15 分鐘 20 次）是行程內記憶體，重啟歸零
       try { await SECTIONS[k](); } catch (e) { fail++; failures.push(`第 ${k} 項例外：${e && e.stack || e}`); console.log('  ✗ 例外', e && e.stack || e); }
