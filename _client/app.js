@@ -1835,8 +1835,11 @@ function buildContactCard(c, extraClass = '') {
     </div>
     ${oppBadge ? `<div class="card-opp-row">${oppBadge}</div>` : ''}
     <div class="card-rel-row">
-      <span class="contact-rel-badge ${relClass}" data-cid="${escapeHtml(c.id)}">${escapeHtml(relLabel)}</span>
-      ${kaChip}
+      <span class="card-company" title="${escapeHtml(c.company || '')}">${escapeHtml(c.company || '')}</span>
+      <span class="card-rel-tags">
+        <span class="contact-rel-badge ${relClass}" data-cid="${escapeHtml(c.id)}">${escapeHtml(relLabel)}</span>
+        ${kaChip}
+      </span>
     </div>`;
   card.addEventListener('click', () => openView(c.id));
   const relBadge = card.querySelector('.contact-rel-badge');
