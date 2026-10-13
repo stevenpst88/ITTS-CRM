@@ -33,7 +33,7 @@ const ACTION_LABEL = {
   ITEM_TEXT_EDIT: '修改品項說明／備註（不影響核准）',
   // 編輯事件時間軸（q.timeline，伺服器 pushEdit 寫入）
   OPP_VOID_INVALIDATE: '商機作廢→報價單失效', OPP_VOID: '商機作廢→報價單失效', OPP_RESTORE: '商機還原→報價單恢復',
-  DRAFT_CREATE: '建立報價單', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
+  DRAFT_CREATE: '建立報價單', TIMELINE_TRIMMED: '較早事件已省略', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
 };
 const COST_STATE_LABEL = { na: '無需顧問填寫', needed: '需顧問填寫（尚未通知）', requested: '等待顧問填寫', filled: '顧問已填寫完成' };
 const CLASS_ORDER = ['consult', 'software', 'hardware', 'crm', 'mdm', 'ot', 'other'];
@@ -590,7 +590,40 @@ function buildJudgeSection(q) {
   if (warns.length) {
     html += '<div class="qap-alert warn" style="margin-top:8px">' + warns.map((w) => e(w)).join('<br>') + '</div>';
   }
+  html += buildRulesDetails(pk);
   return sec('類別與簽核關卡', html);
+}
+
+/** 「適用規則」可收合區（唯讀）：送簽當時凍結的門檻／路徑／規則版本／名冊／流程設定。舊單沒有快照 → 只顯示一行說明，不影響其他內容 */
+function buildRulesDetails(pk) {
+  if (!pk || !pk.frozen) return '';
+  const d = pk.d;
+  const th = d && d.thresholds;
+  if (!th || typeof th !== 'object') {
+    return '<div class="qap-muted" style="margin-top:8px" data-rules="none">送簽當時未留存規則快照（此單在規則快照功能上線前送簽）。</div>';
+  }
+  const names = (d.rosterNames && typeof d.rosterNames === 'object') ? d.rosterNames : {};
+  const who = (arr) => (Array.isArray(arr) && arr.length ? arr.map((u) => e(names[u] || u)).join('、') : '（無）');
+  const pct = (v) => (v === null || v === undefined ? '—' : e(String(v)) + '%');
+  const rs = th.rosterSnapshot || {};
+  const fl = th.flowSnapshot || {};
+  const am = th.amountThresholds || {};
+  const nm = (arr) => (Array.isArray(arr) && arr.length ? arr.map((k) => e(tierLabel(k))).join(' ➜ ') : '—');
+  let h = '<details class="qap-rules" style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">適用規則（送簽當時，唯讀）</summary>';
+  h += '<div class="qap-grid" style="margin-top:6px">';
+  h += '<div><span class="k">規則版本</span><b>' + e(th.rulesVersion || '') + '</b></div>';
+  h += '<div><span class="k">規則雜湊</span><b>' + e(String(th.rulesHash || '').slice(0, 12)) + '</b></div>';
+  h += '<div><span class="k">類別</span><b>' + e(d.rowLabel || th.rowKey || '') + '</b></div>';
+  if (th.fixedLevel) h += '<div><span class="k">層級</span><b>固定第 ' + e(String(th.fixedLevel)) + ' 級（不看毛利）</b></div>';
+  else h += '<div><span class="k">毛利門檻</span><b>一級主管 ≥ ' + pct(th.l1) + '；總經理 ≥ ' + pct(th.l2) + '</b></div>';
+  h += '<div><span class="k">金額門檻（未稅，大於）</span><b>董事長 ' + e(fmtNum(am.chairman)) + ' 元；董事會 ' + e(fmtNum(am.board)) + ' 元</b></div>';
+  h += '<div><span class="k">財務核決路徑</span><b>' + nm(th.path) + '</b></div>';
+  h += '<div><span class="k">實際簽核流程</span><b>' + nm(th.actualPath) + '</b></div>';
+  h += '<div><span class="k">流程設定</span><b>BU ' + e(fl.buKey || '—') + '：二級主管關' + (fl.hasMgr2Step ? '啟用' : '未啟用') + (fl.mgr2Assignee ? '（' + e(names[fl.mgr2Assignee] || fl.mgr2Assignee) + '）' : '') + (fl.skipMgr1Applied ? '；已套用「略過一級主管」例外' : '') + '</b></div>';
+  h += '</div>';
+  h += '<div class="qap-muted" style="margin-top:6px">名冊快照' + (rs.at ? '（' + e(fmtTime(rs.at)) + '）' : '') + '：總經理 ' + who(rs.gm) + '；董事長 ' + who(rs.chairman) + '；董事會代核人 ' + who(rs.boardProxy) + '</div>';
+  h += '</details>';
+  return h;
 }
 
 function buildBlockersAlert(q) {
@@ -627,7 +660,7 @@ function buildStepsSection(q) {
   }).join('');
   let board = '';
   if (ap.board && (ap.board.resolutionDate || ap.board.resolutionNo)) {
-    board = `<div class="qap-alert info" style="margin-top:8px">董事會決議：日期 ${e(ap.board.resolutionDate || '')}　文號 ${e(ap.board.resolutionNo || '')}${ap.board.at ? '　（登錄時間 ' + e(fmtTime(ap.board.at)) + '）' : ''}</div>`;
+    board = `<div class="qap-alert info" style="margin-top:8px">董事會決議：日期 ${e(ap.board.resolutionDate || '')}　文號 ${e(ap.board.resolutionNo || '')}${ap.board.minutesRef ? '　議事錄／附件：' + e(ap.board.minutesRef) : ''}${ap.board.at ? '　（登錄時間 ' + e(fmtTime(ap.board.at)) + '）' : ''}</div>`;
   }
   return sec('簽核進度', `<ul class="qap-steps">${li}</ul>${board}`);
 }
@@ -684,6 +717,17 @@ function reassignInfo(s) {
   return { label: isM2 ? '二級主管' : '一級主管', role, cands: (s.mgrs || []).filter((u) => u.role === role && (!s.q || u.username !== s.q.owner)) };
 }
 
+/** 決議文號格式（與伺服器 checkResolutionNo 相同規則，讓使用者在送出前就看到原因）；回傳錯誤訊息，合格回空字串 */
+function resolutionNoProblem(n) {
+  n = String(n == null ? '' : n).trim();
+  if (!n) return '請填寫董事會決議文號';
+  const len = Array.from(n).length;
+  if (len < 4 || len > 40) return '董事會決議文號需為 4–40 個字元（目前 ' + len + ' 個）';
+  if (!/^[\p{L}\p{Nd}\-_\/()]+$/u.test(n)) return '董事會決議文號只能包含文字、數字與 - _ / ( ) 符號（不可有空白或其他符號）';
+  if (!/\p{Nd}/u.test(n)) return '董事會決議文號至少要包含一個數字';
+  return '';
+}
+
 function currentIsBoard(q) {
   const ap = q.approval;
   if (!ap || ap.state !== 'pending' || !Array.isArray(ap.steps)) return false;
@@ -713,7 +757,8 @@ function buildActionSection(s) {
     let f = '';
     if (perm.canApprove && boardNow) {
       f += `<div><label>董事會決議日期（必填）</label><input type="date" data-draft="resDate" value="${e(dr.resDate)}"></div>
-            <div><label>董事會決議文號（必填）</label><input type="text" maxlength="60" data-draft="resNo" value="${e(dr.resNo)}" placeholder="例：113-董-045"></div>`;
+            <div><label>董事會決議文號（必填）</label><input type="text" maxlength="40" data-draft="resNo" value="${e(dr.resNo)}" placeholder="例：113-董-045（4–40 字；文字、數字與 - _ / ( )；至少一個數字）"></div>
+            <div><label>議事錄編號／附件說明（選填，≤100 字，會記入稽核）</label><input type="text" maxlength="100" data-draft="minutesRef" value="${e(dr.minutesRef)}" placeholder="例：第 12 次董事會議事錄 第 3 案／附件：決議影本"></div>`;
     }
     f += `<div class="full"><label>簽核建議${perm.canReturn ? '（核准時選填；駁回時必填）' : '（選填）'}</label>
           <textarea data-draft="comment" maxlength="1000" placeholder="請輸入簽核建議（核准時可不填；駁回時必填原因）">${e(dr.comment)}</textarea></div>`;
@@ -811,7 +856,7 @@ async function openQuoteApproval(id) {
   const m = mountModal('quoteApprovalOverlay', '報價單簽核', '', true);
   const s = {
     id, q: null, busy: true, closed: false, ov: m.ov, body: m.body, foot: m.foot,
-    draft: { comment: '', resDate: '', resNo: '', reassign: '', reassignReason: '' }, mgrs: null,
+    draft: { comment: '', resDate: '', resNo: '', minutesRef: '', reassign: '', reassignReason: '' }, mgrs: null,
   };
   _ap = s;
   s.onKey = (ev) => {
@@ -864,7 +909,7 @@ async function runApprovalAction(s, method, path, body, okMsg) {
   await fetchApprovalQuote(s);
   if (s.closed) { if (success) afterMutation(); return; }
   if (success) {
-    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.reassign = ''; s.draft.reassignReason = '';
+    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.minutesRef = ''; s.draft.reassign = ''; s.draft.reassignReason = '';
   }
   s.busy = false;
   renderApproval(s);
@@ -950,10 +995,14 @@ async function handleApprovalAction(s, act) {
       const d = String(dr.resDate || '').trim();
       const n = String(dr.resNo || '').trim();
       if (!validDate(d)) { toast('請填寫正確的董事會決議日期'); const i = s.ov.querySelector('[data-draft="resDate"]'); if (i) i.focus(); return; }
-      if (!n) { toast('請填寫董事會決議文號'); const i = s.ov.querySelector('[data-draft="resNo"]'); if (i) i.focus(); return; }
+      const nErr = resolutionNoProblem(n);
+      if (nErr) { toast(nErr, 4500); const i = s.ov.querySelector('[data-draft="resNo"]'); if (i) i.focus(); return; }
+      const mref = String(dr.minutesRef || '').trim();
+      if (Array.from(mref).length > 100) { toast('議事錄編號／附件說明不可超過 100 個字元'); const i = s.ov.querySelector('[data-draft="minutesRef"]'); if (i) i.focus(); return; }
       body.resolutionDate = d;
       body.resolutionNo = n;
-      msg = '確認代為登錄董事會決議並核准？\n決議日期：' + d + '\n決議文號：' + n + '\n\n請確認與實際董事會紀錄一致。';
+      if (mref) body.minutesRef = mref;
+      msg = '確認代為登錄董事會決議並核准？\n決議日期：' + d + '\n決議文號：' + n + (mref ? '\n議事錄／附件：' + mref : '') + '\n\n請確認與實際董事會紀錄一致。';
     }
     const ok = await qapConfirm({ title: '確認核准', message: msg, okText: '核准' });
     if (!ok || s.closed) return;
@@ -1034,7 +1083,7 @@ ${itemRows ? `<h2>報價品項</h2><table><thead><tr><th class="c" style="width:
 <table><thead><tr><th>關卡</th><th>簽核人</th><th>狀態</th><th>時間</th><th>簽核建議／駁回原因</th></tr></thead><tbody>${stepRows}</tbody></table>
 <h2>董事會決議</h2>
 <table class="kv">
-<tr><td>決議日期</td><td>${resDate}</td><td style="width:16%;background:#f7f7f7;font-weight:700">決議文號</td><td>${resNo}</td></tr>
+<tr><td>決議日期</td><td>${resDate}</td><td style="width:16%;background:#f7f7f7;font-weight:700">決議文號</td><td>${resNo}</td></tr>${b.minutesRef ? `<tr><td>議事錄／附件</td><td colspan="3">${e(b.minutesRef)}</td></tr>` : ''}
 <tr><td>決議結果</td><td colspan="3">&#9744; 同意核准　　&#9744; 不同意　　&#9744; 附條件同意：______________________</td></tr>
 </table>
 <table class="sign" style="margin-top:10px"><tr><th style="width:25%">董事長</th><th style="width:25%">董事會秘書／管理部</th><th>備註</th></tr><tr><td></td><td></td><td></td></tr></table>

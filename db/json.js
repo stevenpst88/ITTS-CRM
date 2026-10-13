@@ -10,7 +10,29 @@
 const fs   = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, '..', 'data.json');
+const { createAuditStore, jsonlAdapter, legacyReadAdapter, createAuditFacade } = require('../lib/auditStore');
+const AuditLegacy = require('../lib/auditLegacy');
+
+const ROOT = path.join(__dirname, '..');
+const DB_FILE = path.join(ROOT, 'data.json');
+
+// 稽核事件：append-only JSON Lines（無筆數上限）；舊的 audit.log.json（500 筆）與 contact_audit.json 保留為唯讀歷史
+// 安全開關 AUDIT_EVENTS_TABLE：沒設成 '1'（預設）＝舊行為（audit.log.json 500 筆、contact_audit.json）；'1'＝append-only audit.log.jsonl。
+const readJsonArray = (f) => { try { const a = JSON.parse(fs.readFileSync(f, 'utf8')); return Array.isArray(a) ? a : []; } catch { return []; } };
+const auditStore = createAuditFacade({
+  enabled: process.env.AUDIT_EVENTS_TABLE === '1',
+  tableStore: createAuditStore(
+    jsonlAdapter({
+      file: path.join(ROOT, 'audit.log.jsonl'),
+      legacyLogFile: path.join(ROOT, 'audit.log.json'),
+      legacyContactFile: path.join(ROOT, 'contact_audit.json'),
+    }),
+    { fallbackFile: path.join(ROOT, 'audit.failed.jsonl') }
+  ),
+  legacyStore: createAuditStore(legacyReadAdapter({ readLogs: async () => readJsonArray(path.join(ROOT, 'audit.log.json')), legacyContactFile: path.join(ROOT, 'contact_audit.json') })),
+  legacyWrite: (ev) => AuditLegacy.writeJsonMode(ev, ROOT),
+});
+function insertAuditEvent(ev) { return auditStore.insert(ev); }
 
 function load() {
   if (!fs.existsSync(DB_FILE)) {
@@ -38,4 +60,4 @@ function appendAuditLog(entry) {
   save(d);
 }
 
-module.exports = { load, save, loadAuditLog, appendAuditLog };
+module.exports = { load, save, flush: () => auditStore.flush(), loadAuditLog, appendAuditLog, auditStore, insertAuditEvent };

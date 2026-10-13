@@ -20,8 +20,8 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const PORT = parseInt(process.env.AW1_PORT || '3121', 10);
 if ([3000, 3020, 3030, 3101, 3111].includes(PORT)) { console.log('拒絕：此埠保留給其他 session'); process.exit(2); }
-const FILES = ['auth.json', 'data.json', 'audit.log.json', 'mail-outbox.json'].map(f => path.join(ROOT, f));
-const guardFiles = FILES.slice(0, 3).filter(f => fs.existsSync(f));
+const FILES = ['auth.json', 'data.json', 'audit.log.json', 'mail-outbox.json', 'audit.log.jsonl', 'audit.failed.jsonl', 'contact_audit.json'].map(f => path.join(ROOT, f));
+const guardFiles = FILES.filter(f => /(auth|data|audit.log).jsonl?$/.test(f)).filter(f => fs.existsSync(f));
 if (guardFiles.length) { console.log('拒絕：此工作樹已有', guardFiles.map(f => path.basename(f)).join('/'), '（可能是真實資料），請在乾淨的 worktree 執行'); process.exit(2); }
 const bcrypt = require(path.join(ROOT, 'node_modules', 'bcryptjs'));
 

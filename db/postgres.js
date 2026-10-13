@@ -19,6 +19,9 @@
 //  搭配 REFRESH_TTL 30s → 300s（5 分鐘）：再省 80-90% 重抓次數。
 // ════════════════════════════════════════════════════════════
 const { Pool } = require('pg');
+const { createAuditStore, pgAdapter, legacyReadAdapter, createAuditFacade } = require('../lib/auditStore');
+const AuditLegacy = require('../lib/auditLegacy');
+const path = require('path');
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -217,15 +220,30 @@ function appendAuditLog(entry) {
   return _auditWriteQueue;
 }
 
+// ── 稽核事件（只增不改）：表 audit_events，單列 INSERT，不經快取、不讀-改-寫 ──
+// 舊的整包 JSONB（app_data.id='audit_log'）保留為唯讀歷史；appendAuditLog 仍保留（相容）但 server.js 已不再呼叫。
+// 安全開關 AUDIT_EVENTS_TABLE：沒設成 '1'（預設）＝第二波之前的舊行為（整包 JSONB／contact_audit.json），完全不碰 audit_events；
+// 設成 '1'＝新表（先自我檢查，失敗自動退回舊路徑）。見 lib/auditStore.js createAuditFacade。
+const AUDIT_TABLE_ON = process.env.AUDIT_EVENTS_TABLE === '1';
+const auditStore = createAuditFacade({
+  enabled: AUDIT_TABLE_ON,
+  tableStore: createAuditStore(pgAdapter({ query: (sql, params) => getPool().query(sql, params) })),
+  legacyStore: createAuditStore(legacyReadAdapter({ readLogs: () => loadAuditLog(), legacyContactFile: path.join(__dirname, '..', 'contact_audit.json') })),
+  legacyWrite: (ev) => AuditLegacy.writePgMode(ev, appendAuditLog, path.join(__dirname, '..')),
+});
+function insertAuditEvent(ev) { return auditStore.insert(ev); }
+
 // ── 等待所有背景寫入完成（含主資料 + audit log）──
 async function flush() {
   try { await _writeQueue; }      catch (e) { /* 已 log */ }
   try { await _auditWriteQueue; } catch (e) { /* 已 log */ }
+  try { await auditStore.flush(); } catch (e) { /* 已 log */ }
 }
 
 // ── 啟動時呼叫：preload 資料、跑一次性 migration ──
 async function ready() {
   await flush();
+  if (AUDIT_TABLE_ON) await auditStore.init();   // 只第一次真的檢查（記憶化）；失敗只會退回舊路徑，不丟例外
   const now = Date.now();
   if (_cache !== null && now - _lastFetch < REFRESH_TTL) {
     // 主 cache 還在 TTL 內 → 直接用，不做 audit 預載（lazy）
@@ -282,6 +300,7 @@ async function ready() {
 module.exports = {
   load, save, flush, ready,
   loadAuditLog, appendAuditLog,
+  auditStore, insertAuditEvent,
   // 給 admin 工具 / 測試用
   _loadAsync: loadAsync, _saveAsync: saveAsync,
   _loadAuditLogAsync: loadAuditLogAsync, _saveAuditLogAsync: saveAuditLogAsync,

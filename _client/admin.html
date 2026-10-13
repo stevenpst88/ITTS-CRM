@@ -235,7 +235,7 @@
       { background: #fce8e6; color: #c62828; }
     .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
     .log-SESSION_REJECTED_INACTIVE,.log-LOGIN_FAIL,.log-LOGIN_RATE_LIMITED,.log-ADMIN_RAIL_BLOCKED,.log-DISABLE_USER,.log-REVOKE_DOWNLOAD_PERMISSION,.log-SET_READONLY { background: #fce8e6; color: #c62828; }
-    .log-EXPORT_CONTACTS,.log-EXPORT_CONTACTS_ADMIN,.log-EXPORT_OPPORTUNITIES,.log-EXPORT_VISITS,.log-EXPORT_CONTRACTS,.log-EXPORT_FORECAST,.log-EXPORT_COMPANY_MASTER,.log-GRANT_DOWNLOAD_PERMISSION,.log-CHANGE_USER_ROLE,.log-REASSIGN_QUOTATION { background: #fff3e0; color: #e65100; }
+    .log-EXPORT_CONTACTS,.log-EXPORT_CONTACTS_ADMIN,.log-EXPORT_OPPORTUNITIES,.log-EXPORT_VISITS,.log-EXPORT_CONTRACTS,.log-EXPORT_FORECAST,.log-EXPORT_COMPANY_MASTER,.log-EXPORT_AUDIT_LOG,.log-GRANT_DOWNLOAD_PERMISSION,.log-CHANGE_USER_ROLE,.log-REASSIGN_QUOTATION { background: #fff3e0; color: #e65100; }
     .log-LOGOUT,.log-ENABLE_USER,.log-SET_EDITABLE { background: #e8f0fe; color: #1a73e8; }
     .log-UPDATE_PERMISSION,.log-MIGRATE_JOB_FUNCTION { background: #f3e5f5; color: #7b1fa2; }
     /* ── 名片稽核紀錄 ── */
@@ -1782,15 +1782,38 @@
       <!-- ── 異動記錄 ── -->
       <div class="admin-section" id="sec-logs">
         <div class="section-title">異動記錄</div>
-        <div class="section-sub">所有操作記錄，包含登入、帳號管理、拜訪、商機、合約、帳款異動</div>
+        <div class="section-sub">所有操作記錄，包含登入、帳號管理、拜訪、商機、合約、帳款異動。紀錄只增不改、不設筆數上限（舊資料保留為唯讀歷史，依時間合併顯示）</div>
         <div class="admin-card">
           <div class="admin-card-header">
-            <span class="admin-card-title">操作日誌</span>
-            <button class="btn btn-sm" onclick="loadLogs()" style="background:#f0f2f5;color:#333">重新整理</button>
+            <span class="admin-card-title">操作日誌 <span id="logTotal" style="font-size:12px;color:#888;font-weight:400"></span></span>
+            <span>
+              <button class="btn btn-sm" id="logExportCsv" onclick="exportLogs('csv')" style="background:#e8f0fe;color:#1a73e8">⬇ 匯出 CSV</button>
+              <button class="btn btn-sm" id="logExportJson" onclick="exportLogs('json')" style="background:#e8f0fe;color:#1a73e8">⬇ 匯出 JSON</button>
+              <button class="btn btn-sm" onclick="loadLogs()" style="background:#f0f2f5;color:#333">重新整理</button>
+            </span>
           </div>
-          <div style="overflow-x:auto;max-height:620px;overflow-y:auto" id="logList">
+          <div class="admin-card-body" id="logFilters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px;border-bottom:1px solid #f0f0f0">
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">類型</div>
+              <select id="logFilterKind" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="log">一般操作</option><option value="quote-edit">報價單編輯明細</option><option value="contact">名片欄位異動</option><option value="all">全部</option>
+              </select></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">動作代碼</div>
+              <input id="logFilterAction" placeholder="例 LOGIN_FAIL" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:140px"></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">操作者</div>
+              <input id="logFilterOperator" placeholder="帳號" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:110px"></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">開始日期</div>
+              <input type="date" id="logFilterFrom" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">結束日期</div>
+              <input type="date" id="logFilterTo" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">文字搜尋</div>
+              <input id="logFilterQ" placeholder="說明／對象／帳號" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px"></div>
+            <button class="btn" onclick="loadLogs(true)" style="background:#1a73e8;color:#fff;padding:7px 16px">🔍 查詢</button>
+            <button class="btn" onclick="clearLogFilter()" style="background:#f0f2f5;color:#333;padding:7px 12px">清除</button>
+          </div>
+          <div style="overflow-x:auto;max-height:560px;overflow-y:auto" id="logList">
             <div style="text-align:center;color:#bbb;padding:40px">載入中...</div>
           </div>
+          <div id="logPager" style="display:flex;gap:10px;align-items:center;justify-content:flex-end;padding:10px 16px;font-size:13px;color:#666"></div>
         </div>
       </div>
 
@@ -1840,6 +1863,7 @@
           <div class="admin-card-body" id="auditList" style="max-height:600px;overflow-y:auto">
             <div style="text-align:center;color:#bbb;padding:40px">請設定篩選條件後點擊查詢</div>
           </div>
+          <div id="auditPager" style="display:flex;gap:10px;align-items:center;justify-content:flex-end;padding:10px 16px;font-size:13px;color:#666"></div>
         </div>
       </div>
 
@@ -5212,7 +5236,7 @@
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
-      SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
+      EXPORT_AUDIT_LOG: '匯出稽核日誌', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 
     function parseUA(ua) {
@@ -5234,13 +5258,59 @@
       return [os, br].filter(Boolean).join(' · ');
     }
 
-    async function loadLogs() {
+    // 稽核日誌分頁／篩選：伺服端 /admin/logs?paged=1（含舊資料合併），每頁 200 筆
+    const LOG_PAGE = 200;
+    let logOffset = 0, logTotalCount = 0;
+    function logQueryParams() {
+      const p = new URLSearchParams();
+      const v = (id) => ($(id) ? $(id).value.trim() : '');
+      if (v('logFilterKind')) p.set('kind', v('logFilterKind'));
+      if (v('logFilterAction')) p.set('action', v('logFilterAction'));
+      if (v('logFilterOperator')) p.set('operator', v('logFilterOperator'));
+      if (v('logFilterFrom')) p.set('from', v('logFilterFrom'));
+      if (v('logFilterTo')) p.set('to', v('logFilterTo'));
+      if (v('logFilterQ')) p.set('q', v('logFilterQ'));
+      return p;
+    }
+    function clearLogFilter() {
+      ['logFilterAction', 'logFilterOperator', 'logFilterFrom', 'logFilterTo', 'logFilterQ'].forEach(id => { $(id).value = ''; });
+      $('logFilterKind').value = 'log';
+      loadLogs(true);
+    }
+    function logGoto(off) { logOffset = Math.max(0, off); loadLogs(false); }
+    function renderPager(elId, off, limit, total, fnName) {
+      const el = $(elId); if (!el) return;
+      const from = total ? off + 1 : 0, to = Math.min(total, off + limit);
+      el.innerHTML = `<span>第 ${from}–${to} 筆，共 ${total} 筆</span>
+        <button class="btn btn-sm" ${off <= 0 ? 'disabled' : ''} onclick="${fnName}(0)" style="background:#f0f2f5;color:#333">« 最新</button>
+        <button class="btn btn-sm" ${off <= 0 ? 'disabled' : ''} onclick="${fnName}(${Math.max(0, off - limit)})" style="background:#f0f2f5;color:#333">‹ 上一頁</button>
+        <button class="btn btn-sm" ${off + limit >= total ? 'disabled' : ''} onclick="${fnName}(${off + limit})" style="background:#f0f2f5;color:#333">下一頁 ›</button>`;
+    }
+    function exportLogs(fmt) {
+      const p = logQueryParams();
+      p.set('format', fmt);
+      const a = document.createElement('a');
+      a.href = `${API}/admin/logs/export?${p}`;
+      a.download = '';
+      document.body.appendChild(a); a.click(); a.remove();
+      showToast('已開始匯出（此動作會被記錄在稽核日誌）');
+    }
+
+    async function loadLogs(reset) {
+      if (reset) logOffset = 0;
       $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
       try {
-        const r = await adminFetch(`${API}/admin/logs`);
-        const logs = await r.json();
+        const p = logQueryParams();
+        p.set('paged', '1'); p.set('limit', String(LOG_PAGE)); p.set('offset', String(logOffset));
+        const r = await adminFetch(`${API}/admin/logs?${p}`);
+        const data = await r.json();
+        if (!r.ok) throw new Error((data && data.error) || '載入失敗');
+        const logs = data.rows || [];
+        logTotalCount = data.total || 0;
+        $('logTotal').textContent = `（共 ${logTotalCount} 筆）`;
+        renderPager('logPager', data.offset || 0, data.limit || LOG_PAGE, logTotalCount, 'logGoto');
         if (!logs.length) {
-          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">尚無異動記錄</div>';
+          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">無符合條件的異動記錄</div>';
           return;
         }
         const rows = logs.map(l => {
@@ -5267,7 +5337,7 @@
           </table>`;
       } catch (e) {
         if (e.message !== 'Session expired')
-          $('logList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入失敗</div>';
+          $('logList').innerHTML = `<div style="text-align:center;color:#e74c3c;padding:40px">載入失敗：${escH(e.message)}</div>`;
       }
     }
 
@@ -5707,7 +5777,7 @@
       const sel = $('auditFilterUser');
       if (sel.options.length <= 1) {
         try {
-          const users = await adminFetch(`${API}/admin/users`);
+          const users = await (await adminFetch(`${API}/admin/users`)).json();
           users.forEach(u => {
             const opt = document.createElement('option');
             opt.value = u.username;
@@ -5719,6 +5789,9 @@
       await loadContactAudit();
     }
 
+    let auditOffset = 0;
+    const AUDIT_PAGE = 200;
+    function auditGoto(off) { auditOffset = Math.max(0, off); loadContactAudit(false); }
     function clearAuditFilter() {
       $('auditFilterUser').value = '';
       $('auditFilterAction').value = '';
@@ -5727,7 +5800,8 @@
       loadContactAudit();
     }
 
-    async function loadContactAudit() {
+    async function loadContactAudit(reset) {
+      if (reset !== false) auditOffset = 0;
       $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">查詢中...</div>';
       const params = new URLSearchParams();
       const u = $('auditFilterUser').value;
@@ -5738,9 +5812,14 @@
       if (a) params.set('action', a);
       if (f) params.set('dateFrom', f);
       if (t) params.set('dateTo', t);
+      params.set('paged', '1'); params.set('limit', String(AUDIT_PAGE)); params.set('offset', String(auditOffset));
       try {
-        const logs = await adminFetch(`${API}/admin/contact-audit?${params}`);
-        $('auditCount').textContent = `共 ${logs.length} 筆`;
+        const r = await adminFetch(`${API}/admin/contact-audit?${params}`);
+        const data = await r.json();
+        if (!r.ok) throw new Error((data && data.error) || '載入失敗');
+        const logs = data.rows || [];
+        $('auditCount').textContent = `共 ${data.total || 0} 筆`;
+        renderPager('auditPager', data.offset || 0, data.limit || AUDIT_PAGE, data.total || 0, 'auditGoto');
         if (!logs.length) {
           $('auditList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">無符合條件的紀錄</div>';
           return;
@@ -5782,7 +5861,7 @@
     async function loadDeletedContacts() {
       $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">載入中...</div>';
       try {
-        const list = await adminFetch(`${API}/admin/deleted-contacts`);
+        const list = await (await adminFetch(`${API}/admin/deleted-contacts`)).json();
         if (!list.length) {
           $('deletedList').innerHTML = '<div style="text-align:center;color:#bbb;padding:40px">目前無已刪除的聯絡人</div>';
           return;
