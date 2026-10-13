@@ -520,6 +520,48 @@ async function secM() {
     } finally { muting = false; try { fs.unlinkSync(file); } catch { /* 已刪 */ } }
   }
   await EXTRA.mutations({ ok, eq, ROOT, fs, path, os, loadMutated, setMuting: (v) => { muting = v; mutFail = 0; return () => mutFail; } });
+
+  // 伺服器層變異：複製 server.js 改壞一條規則，起一台變異伺服器，用 A 項的同一組斷言檢查（必須出現「不對勁」）
+  const tmpFiles = [];
+  const mkMut = (name, from, to) => {
+    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    if (!srv.includes(from)) throw new Error('變異樣式找不到：' + name);
+    const f = path.join(ROOT, 'server.__mut_' + name + '.js');
+    fs.writeFileSync(f, srv.replace(from, () => to)); tmpFiles.push(f);
+    return f;
+  };
+  const fresh = async (file) => { await stopServer(); cleanupFiles(); seedExtra = null; seedFiles(); await restart(file); };
+  try {
+    {   // 匯出不寫稽核
+      await fresh(mkMut('xa', "auditExport(req, 'EXPORT_AUDIT_LOG', n,", "void (req, 'EXPORT_AUDIT_LOG', n,"));
+      await loginAll(['_s_admin']);
+      await http('_s_admin', 'GET', '/api/admin/logs/export?format=json');
+      eq(byAction(await getLogs(), 'EXPORT_AUDIT_LOG').length, 0, '變異（匯出稽核日誌不留痕）→ 沒有 EXPORT_AUDIT_LOG：A 項「兩次匯出各寫一筆」斷言會失敗（抓得到）');
+    }
+    {   // 名片稽核不寫
+      await fresh(mkMut('ca', 'function writeContactAudit(action, req, target, changes) {', 'function writeContactAudit(action, req, target, changes) {\n  return;'));
+      await loginAll(['_s_admin', '_s_u1']);
+      await http('_s_u1', 'POST', '/api/contacts', { name: '變異乙', company: '沙盒公司甲', taxId: '12345675', bu: 'ERP', email: 'm@sandbox.test' });
+      const ca = await http('_s_admin', 'GET', '/api/admin/contact-audit?paged=1');
+      eq(ca.json.total, 0, '變異（名片欄位稽核不寫）→ contact-audit 為空：A 項「新增／修改／刪除都進稽核」斷言會失敗（抓得到）');
+    }
+    {   // 分頁 offset 失效
+      await fresh(mkMut('pg', "const r = await db.auditStore.list(filters, { limit: q.limit || 200, offset: q.offset || 0 });", "const r = await db.auditStore.list(filters, { limit: q.limit || 200, offset: 0 });"));
+      await loginAll(['_s_admin']);
+      for (let i = 0; i < 8; i++) await http(null, 'POST', '/api/login', { username: 'mut_user_' + i, password: 'x' });
+      const p1 = await getLogs('?paged=1&limit=3&offset=0'), p2 = await getLogs('?paged=1&limit=3&offset=3');
+      ok(p2.rows.some(x => p1.rows.some(y => y.id === x.id)), '變異（分頁 offset 失效）→ 第二頁與第一頁重複：A 項「兩頁不重複」斷言會失敗（抓得到）');
+    }
+    {   // 日誌 API 不擋非管理員
+      await fresh(mkMut('adm', "app.get('/api/admin/logs/export', requireAdmin,", "app.get('/api/admin/logs/export', (req, res, next) => next(),"));
+      await loginAll(['_s_u1']);
+      const r = await http('_s_u1', 'GET', '/api/admin/logs/export?format=json');
+      ok(r.status !== 403, '變異（匯出端點不擋非管理員）→ 一般帳號拿到 ' + r.status + '：A 項「非管理員匯出 403」斷言會失敗（抓得到）');
+    }
+  } finally {
+    await stopServer();
+    tmpFiles.forEach(f => { try { fs.unlinkSync(f); } catch { /* 已刪 */ } });
+  }
 }
 
 // ═════════════ 主程式 ═════════════

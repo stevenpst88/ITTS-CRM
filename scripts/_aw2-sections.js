@@ -515,5 +515,32 @@ module.exports = {
   },
   seed: {},
   noServer: ['B', 'C', 'D', 'E'],
-  async mutations(h) { void h; },
+  // 變異檢查：故意弄壞 lib/quoteRoutes.js 的一條規則（複製成 lib/quoteRoutes.__mut_*.js），同一套斷言必須失敗（＝抓得到）
+  async mutations(h) {
+    const src = fs.readFileSync(path.join(ROOT, 'lib/quoteRoutes.js'), 'utf8');
+    const list = [
+      ['b-snapshot', 'B', "const { hash } = QL.recordDeletion(ctx.data, q, ctx.me, at, reason);", "const hash = 'x'.repeat(64);", '刪除不留快照'],
+      ['b-ledger', 'B', "    QL.markCreated(ctx.data, q, now);", '', '建單不登錄流水帳'],
+      ['b-admin', 'B', "if (ctx.role !== 'admin') return fail(res, 403, 'NO_PERMISSION', '只有管理員可以查看單號流水帳');", '', '流水帳端點不擋非管理員'],
+      ['c-thresholds', 'C', 'derived.thresholds = QA.buildThresholds(derived, {', 'void QA.buildThresholds(derived, {', '送簽不存規則快照'],
+      ['d-pin', 'D', "const pinned = tl.filter((x) => x && x.action === 'DRAFT_CREATE');", 'const pinned = [];', '修剪時不釘住 DRAFT_CREATE'],
+      ['d-raw', 'D', "try { auditRawEdit(q, me, action, comment, at); } catch (e) { console.warn('[quote edit audit]', e.message); }", '', '不寫原始編輯事件'],
+      ['e-format', 'E', "const rn = checkResolutionNo(b.resolutionNo);\n      if (!rn.ok) return fail(res, 400, rn.code, rn.message);","const rn = { ok: true, no: sanitizeStr(b.resolutionNo, 50) };", '不驗證決議文號格式'],
+      ['e-minutes', 'E', 'if (mr.ref) boardInfo.minutesRef = mr.ref;', '', '不存議事錄欄位'],
+    ];
+    const runners = { B: runB, C: runC, D: runD, E: runE };
+    for (const [tag, sec, from, to, desc] of list) {
+      if (!src.includes(from)) throw new Error('變異樣式找不到：' + tag);
+      const mf = path.join(ROOT, 'lib', 'quoteRoutes.__mut_' + tag + '.js');
+      fs.writeFileSync(mf, src.replace(from, () => to));
+      let n = 0;
+      try {
+        const get = h.setMuting(true);
+        try { await runners[sec](h, mf); } catch (e) { n++; /* 例外也算抓到 */ }
+        n += get();
+        h.setMuting(false);
+      } finally { h.setMuting(false); try { fs.unlinkSync(mf); } catch { /* 已刪 */ } delete require.cache[require.resolve(mf)]; }
+      h.ok(n > 0, `變異 ${tag}（${desc}）→ ${sec} 項測試必須失敗，實際失敗 ${n} 項`);
+    }
+  },
 };
