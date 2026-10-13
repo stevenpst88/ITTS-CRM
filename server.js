@@ -215,6 +215,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     apiMonitor.recordRateLimit('login');
+    try { auditLoginRateLimited(req); } catch (e) { console.error('[login-rate audit]', e && e.message); }
     res.status(429).json({ success: false, message: '嘗試次數過多，請 15 分鐘後再試' });
   }
 });
@@ -582,6 +583,45 @@ function writeLog(action, operator, target, detail, req) {
  * 只記筆數、範圍條件、格式，不記個資內容；detail 附「該使用者今日第 N 次匯出」供異常量查核
  * （計數存在行程記憶體，Vercel 多實例各自計數，只作輔助指標；權威紀錄是每次匯出各一筆稽核）。
  */
+// ── 登入失敗／登出稽核 ─────────────────────────────────────
+// LOGIN_FAIL 的 HTTP 回應一律是同一句通用訊息（不洩漏帳號是否存在、是否停用）；真正的原因（UNKNOWN_USER／BAD_PASSWORD／INACTIVE…）只寫進稽核。
+// 嘗試的帳號字串可能是使用者誤把密碼打進帳號欄：只留前 40 字、去控制字元與 < >。
+// 同一 IP＋同一帳號 30 秒內重複失敗只記第一筆，之後合併成計數，下一筆會註明「前一段期間另有 N 次」，避免撞庫／暴力試密碼洗版。
+const LOGIN_FAIL_THROTTLE_MS = 30000;
+const _loginFailSeen = new Map();   // 'ip|username' -> { t, n }
+function sanitizeAttemptName(v) {
+  return String(v == null ? '' : v).split('').map((ch) => { const c = ch.charCodeAt(0); return (c < 32 || c === 127 || ch === '<' || ch === '>') ? ' ' : ch; }).join('').trim().slice(0, 40);
+}
+function auditLoginFail(req, attempted, reason) {
+  try {
+    const name = sanitizeAttemptName(attempted);
+    const key = (req.ip || '') + '|' + name.toLowerCase() + '|' + reason;   // 原因納入鍵：同一帳號先密碼錯、後來「停用帳號用對密碼」是不同事件，不能被前者吞掉
+    const now = Date.now();
+    const seen = _loginFailSeen.get(key);
+    if (seen && now - seen.t < LOGIN_FAIL_THROTTLE_MS) { seen.n++; return; }
+    const merged = seen && seen.n > 0 ? seen.n : 0;
+    _loginFailSeen.set(key, { t: now, n: 0 });
+    if (_loginFailSeen.size > 2000) { for (const [k, v] of _loginFailSeen) if (now - v.t > LOGIN_FAIL_THROTTLE_MS) _loginFailSeen.delete(k); }
+    writeLog('LOGIN_FAIL', name || '(空白)', name || '(空白)',
+      `登入失敗：原因=${reason}${merged ? `；此 IP 對此帳號先前 ${Math.round(LOGIN_FAIL_THROTTLE_MS / 1000)} 秒窗內另有 ${merged} 次相同失敗已合併` : ''}`, req);
+  } catch (e) { console.error('[auditLoginFail]', e && e.message); }
+}
+const _loginRateSeen = new Map();   // ip -> t
+function auditLoginRateLimited(req) {
+  const ip = req.ip || '';
+  const now = Date.now();
+  if (now - (_loginRateSeen.get(ip) || 0) < 60000) return;
+  _loginRateSeen.set(ip, now);
+  if (_loginRateSeen.size > 1000) { for (const [k, t] of _loginRateSeen) if (now - t > 60000) _loginRateSeen.delete(k); }
+  writeLog('LOGIN_RATE_LIMITED', '(未登入)', ip || '(未知 IP)', '登入嘗試次數過多，已暫時封鎖此 IP（15 分鐘窗）', req);
+}
+// 不存在的帳號也做一次等成本的 bcrypt 比對，讓「帳號不存在／停用／密碼錯」的回應時間相近（成本 12 與新建密碼一致）
+let _dummyHashPromise = null;
+function dummyBcryptCompare(password) {
+  if (!_dummyHashPromise) _dummyHashPromise = bcrypt.hash(crypto.randomBytes(16).toString('hex'), 12);
+  return _dummyHashPromise.then(h => bcrypt.compare(String(password), h)).then(() => false);
+}
+
 /** GET 請求不會經過上面「寫入型請求 flush」中介層；稽核事件（匯出、停用連線被拒）在 Vercel 上要在回應送出前確保寫入完成，否則實例凍結會漏記 */
 function flushAuditBeforeEnd(req) {
   const res = req && req.res;
@@ -1078,17 +1118,32 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!username || !password) return res.status(400).json({ success: false, message: '請輸入帳號與密碼' });
     const authData = loadAuth();
     const user = authData.users.find(u => u.username === username);
-    if (!user) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
-    if (user.active === false) return res.status(403).json({ success: false, message: '帳號已停用，請聯繫管理者' });
+    const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
+    if (!user) {
+      await dummyBcryptCompare(password);   // 等成本比對，避免用回應時間探測帳號是否存在
+      auditLoginFail(req, username, 'UNKNOWN_USER');
+      return res.status(401).json(GENERIC_FAIL);
+    }
 
     // 一律 bcrypt 比對（明文遷移已於 2026-05 完成，移除 fallback 以消除 timing attack 風險）
     let isValid = false;
-    if (user.password && user.password.startsWith('$2b$')) {
+    const hashOk = !!(user.password && user.password.startsWith('$2b$'));
+    if (hashOk) {
       isValid = await bcrypt.compare(password, user.password);
+    } else {
+      await dummyBcryptCompare(password);
     }
     // 若密碼非 bcrypt 格式，視為帳號異常，要求管理員重設
 
-    if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
+    // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
+    if (user.active === false) {
+      auditLoginFail(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
+      return res.status(401).json(GENERIC_FAIL);
+    }
+    if (!isValid) {
+      auditLoginFail(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
+      return res.status(401).json(GENERIC_FAIL);
+    }
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -1132,6 +1187,8 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+  const outUser = req.session && req.session.user && req.session.user.username;
+  if (outUser) writeLog('LOGOUT', outUser, outUser, '登出', req);
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
     res.json({ success: true });

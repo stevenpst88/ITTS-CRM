@@ -47,6 +47,7 @@ function seedFiles() {
     mkUser('_s_u1', 'user', { bu: ['ERP'], supervisor: '_s_m1', canDownloadContacts: true }),
     mkUser('_s_dl', 'user', { bu: ['ERP'], canDownloadContacts: true }),
     mkUser('_s_off', 'user', { bu: ['ERP'] }),
+    mkUser('_s_slow', 'user', { bu: ['ERP'], password: bcrypt.hashSync(PW, 12) }),
     mkUser('_s_gone', 'user', { bu: ['ERP'] }),
     mkUser('_s_dem', 'manager1', { bu: ['ERP'] }),
     mkUser('_s_view', 'user', { bu: ['ERP'], accessMode: 'view' }),
@@ -501,8 +502,88 @@ async function sec4() {
   ok(!/"detail":"[^"]*password[^"]*"/i.test(all.replace(/password 已更新（值不記錄）/g, '').replace(/重設密碼/g, '')), '稽核 detail 不含 password 字樣（除遮蔽說明外）');
 }
 
+// ═════════════ 第 5 項：登入失敗／登出稽核、統一失敗訊息 ═════════════
+async function sec5() {
+  console.log('[5] 登入失敗／登出稽核');
+  const UA = 'AuditWave1-Test/1.0';
+  const attempt = async (user, pw) => {
+    const t = Date.now();
+    const res = await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': UA }, body: JSON.stringify({ username: user, password: pw }) });
+    const text = await res.text();
+    return { status: res.status, text, ms: Date.now() - t };
+  };
+  await loginAll(['_s_admin']);
+  // 統一回應：不存在／密碼錯／停用(密碼錯)／停用(密碼對)
+  await adminPutUser('_s_off', { active: false });
+  const rUnknown = await attempt('_s_nobody', 'wrong-pw-1');
+  const rBad = await attempt('_s_slow', 'wrong-pw-2');
+  const rInactiveBad = await attempt('_s_off', 'wrong-pw-3');
+  const rInactiveOk = await attempt('_s_off', PW);
+  for (const [n, r] of [['不存在', rUnknown], ['密碼錯', rBad], ['停用+密碼錯', rInactiveBad], ['停用+密碼對', rInactiveOk]]) {
+    eq(r.status, 401, n + '：HTTP 401');
+  }
+  ok(new Set([rUnknown.text, rBad.text, rInactiveBad.text, rInactiveOk.text]).size === 1, '四種失敗回應內容完全相同：' + rUnknown.text);
+  ok(!/UNKNOWN|INACTIVE|停用|不存在/.test(rUnknown.text + rInactiveOk.text), '回應不洩漏原因');
+  // 時間：不存在帳號也做了等成本的 bcrypt（>=80ms），且與「密碼錯（成本 12）」同量級
+  const t1 = []; const t2 = [];
+  for (let i = 0; i < 3; i++) { t1.push((await attempt('_s_nobody' + i, 'x')).ms); t2.push((await attempt('_s_slow', 'x' + i)).ms); }
+  t1.sort((a, b) => a - b); t2.sort((a, b) => a - b);
+  console.log(`  (不存在 ${t1[1]}ms／密碼錯 ${t2[1]}ms)`);
+  ok(t1[1] >= 60, '不存在帳號的回應時間 >= 60ms（有做 dummy bcrypt）');
+  ok(Math.abs(t1[1] - t2[1]) < Math.max(t1[1], t2[1]) * 0.7, '不存在與密碼錯的回應時間同量級');
+  // 稽核記錄
+  let logs = byAction(await getLogs(), 'LOGIN_FAIL');
+  const reasonOf = (name) => (logs.find(l => l.target === name) || {}).detail || '';
+  ok(/原因=UNKNOWN_USER/.test(reasonOf('_s_nobody')), 'LOGIN_FAIL 原因 UNKNOWN_USER');
+  ok(/原因=BAD_PASSWORD/.test(reasonOf('_s_slow')), 'LOGIN_FAIL 原因 BAD_PASSWORD');
+  const offs = logs.filter(l => l.target === '_s_off').map(l => l.detail);
+  ok(offs.some(d => /原因=INACTIVE\b/.test(d)) && offs.some(d => /原因=INACTIVE_CORRECT_PASSWORD/.test(d)), 'LOGIN_FAIL 區分 INACTIVE 與 INACTIVE_CORRECT_PASSWORD（停用帳號用對密碼）：' + offs.join(' | '));
+  const sample = logs.find(l => l.target === '_s_nobody') || {};
+  ok(sample.ip && sample.userAgent === UA && sample.timestamp, 'LOGIN_FAIL 帶 IP／User-Agent／時間');
+  // 長帳號字串截斷 + 清掉 < >
+  const long = '<img src=x onerror=alert(1)>' + 'A'.repeat(200);
+  await attempt(long, 'p');
+  logs = byAction(await getLogs(), 'LOGIN_FAIL');
+  const longRow = logs.find(l => l.target.includes('img src=x')) || {};
+  ok(longRow.target && longRow.target.length <= 40 && !/[<>]/.test(longRow.target), '帳號字串截斷 40 字且去掉 < >：' + longRow.target);
+  ok(!/wrong-pw/.test(JSON.stringify(logs)) && !JSON.stringify(logs).includes(PW), 'LOGIN_FAIL 不記錄嘗試的密碼');
+  // 節流：同 IP 同帳號 30 秒內只一筆
+  const before = byAction(await getLogs(), 'LOGIN_FAIL').filter(l => l.target === '_s_thr').length;
+  for (let i = 0; i < 5; i++) await attempt('_s_thr', 'bad' + i);
+  await attempt('_s_thr2', 'bad');
+  logs = byAction(await getLogs(), 'LOGIN_FAIL');
+  eq(logs.filter(l => l.target === '_s_thr').length - before, 1, '同 IP 同帳號 5 次失敗只記 1 筆');
+  eq(logs.filter(l => l.target === '_s_thr2').length, 1, '不同帳號各自記錄');
+  // 成功登入與登出
+  let r = await login('_s_u1');
+  eq(r.status, 200, '成功登入回應不變');
+  ok(r.json && r.json.success === true && r.json.role === 'user', '成功登入回應欄位');
+  ok(byAction(await getLogs(), 'LOGIN').some(l => l.operator === '_s_u1'), '成功登入仍有 LOGIN 稽核');
+  const lo0 = byAction(await getLogs(), 'LOGOUT').length;
+  r = await http('_s_u1', 'POST', '/api/logout');
+  eq(r.status, 200, '登出成功');
+  logs = byAction(await getLogs(), 'LOGOUT');
+  eq(logs.length - lo0, 1, '登出寫入 LOGOUT');
+  eq(logs[0].operator, '_s_u1', 'LOGOUT operator');
+  r = await http(null, 'POST', '/api/logout');
+  eq(byAction(await getLogs(), 'LOGOUT').length, lo0 + 1, '未登入呼叫登出不產生 LOGOUT');
+  r = await http('_s_u1', 'GET', '/api/me');
+  eq(r.status === 401 || r.status === 200, true, '(登出後舊 cookie 行為記錄)');
+  // 30 秒窗後的下一筆要註明合併次數
+  console.log('  (等 31 秒驗證合併計數…)');
+  await sleep(31000);
+  await attempt('_s_thr', 'bad-after-window');
+  logs = byAction(await getLogs(), 'LOGIN_FAIL').filter(l => l.target === '_s_thr');
+  ok(/另有 4 次相同失敗已合併/.test(logs[0].detail), '窗後的下一筆註明合併 4 次：' + logs[0].detail);
+  // 限流仍在：持續失敗最終 429，且留 LOGIN_RATE_LIMITED
+  let got429 = false;
+  for (let i = 0; i < 30 && !got429; i++) { const a = await attempt('_s_rl' + i, 'x'); if (a.status === 429) got429 = true; }
+  ok(got429, '登入速率限制仍生效（429）');
+  ok(byAction(await getLogs(), 'LOGIN_RATE_LIMITED').length >= 1, '限流觸發有 LOGIN_RATE_LIMITED 稽核');
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4 };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3, 4: sec4, 5: sec5 };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();
