@@ -10,7 +10,21 @@
 const fs   = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, '..', 'data.json');
+const { createAuditStore, jsonlAdapter } = require('../lib/auditStore');
+
+const ROOT = path.join(__dirname, '..');
+const DB_FILE = path.join(ROOT, 'data.json');
+
+// 稽核事件：append-only JSON Lines（無筆數上限）；舊的 audit.log.json（500 筆）與 contact_audit.json 保留為唯讀歷史
+const auditStore = createAuditStore(
+  jsonlAdapter({
+    file: path.join(ROOT, 'audit.log.jsonl'),
+    legacyLogFile: path.join(ROOT, 'audit.log.json'),
+    legacyContactFile: path.join(ROOT, 'contact_audit.json'),
+  }),
+  { fallbackFile: path.join(ROOT, 'audit.failed.jsonl') }
+);
+function insertAuditEvent(ev) { return auditStore.insert(ev); }
 
 function load() {
   if (!fs.existsSync(DB_FILE)) {
@@ -38,4 +52,4 @@ function appendAuditLog(entry) {
   save(d);
 }
 
-module.exports = { load, save, loadAuditLog, appendAuditLog };
+module.exports = { load, save, flush: () => auditStore.flush(), loadAuditLog, appendAuditLog, auditStore, insertAuditEvent };

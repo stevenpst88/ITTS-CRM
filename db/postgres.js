@@ -19,6 +19,7 @@
 //  搭配 REFRESH_TTL 30s → 300s（5 分鐘）：再省 80-90% 重抓次數。
 // ════════════════════════════════════════════════════════════
 const { Pool } = require('pg');
+const { createAuditStore, pgAdapter } = require('../lib/auditStore');
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -217,10 +218,16 @@ function appendAuditLog(entry) {
   return _auditWriteQueue;
 }
 
+// ── 稽核事件（只增不改）：表 audit_events，單列 INSERT，不經快取、不讀-改-寫 ──
+// 舊的整包 JSONB（app_data.id='audit_log'）保留為唯讀歷史；appendAuditLog 仍保留（相容）但 server.js 已不再呼叫。
+const auditStore = createAuditStore(pgAdapter({ query: (sql, params) => getPool().query(sql, params) }));
+function insertAuditEvent(ev) { return auditStore.insert(ev); }
+
 // ── 等待所有背景寫入完成（含主資料 + audit log）──
 async function flush() {
   try { await _writeQueue; }      catch (e) { /* 已 log */ }
   try { await _auditWriteQueue; } catch (e) { /* 已 log */ }
+  try { await auditStore.flush(); } catch (e) { /* 已 log */ }
 }
 
 // ── 啟動時呼叫：preload 資料、跑一次性 migration ──
@@ -282,6 +289,7 @@ async function ready() {
 module.exports = {
   load, save, flush, ready,
   loadAuditLog, appendAuditLog,
+  auditStore, insertAuditEvent,
   // 給 admin 工具 / 測試用
   _loadAsync: loadAsync, _saveAsync: saveAsync,
   _loadAuditLogAsync: loadAuditLogAsync, _saveAuditLogAsync: saveAuditLogAsync,

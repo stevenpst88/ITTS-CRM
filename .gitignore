@@ -8,6 +8,8 @@ auth.json
 data.json
 audit.log.json
 contact_audit.json
+audit.log.jsonl
+audit.failed.jsonl
 server.log
 *.log
 

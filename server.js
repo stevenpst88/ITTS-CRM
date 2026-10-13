@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const crypto = require('crypto');
 const db = require('./db');
+const AuditStore = require('./lib/auditStore');   // 稽核事件（只增不改）的篩選／輸出共用函式
 const jwtSession = require('./middleware/jwtSession');
 const storage = require('./storage');
 const gemini = require('./ai/gemini');
@@ -550,32 +551,15 @@ function saveAuth(data) {
 }
 
 function writeLog(action, operator, target, detail, req) {
-  if (_USE_DB_FOR_META) {
-    // audit log 已拆出主資料 row，不再透過 db.load()/db.save() 整顆改寫
-    db.appendAuditLog({
-      id: uuidv4(),
-      action, operator, target, detail,
-      ip:        (req && req.ip) || '',
-      userAgent: (req && req.headers && req.headers['user-agent']) || '',
-      timestamp: new Date().toISOString(),
-    });
-    return;
-  }
-  const logFile = path.join(__dirname, 'audit.log.json');
-  let logs = [];
-  try { logs = JSON.parse(fs.readFileSync(logFile, 'utf8')); } catch {}
-  logs.unshift({
-    id: uuidv4(),
-    timestamp: new Date().toISOString(),
-    action,      // 'CREATE_USER' | 'UPDATE_USER' | 'DELETE_USER' | 'RESET_PASSWORD' | 'UPDATE_PERMISSION'
-    operator,    // who did it
-    target,      // affected username
-    detail,      // description string
-    ip: req ? (req.ip || '') : '',
-    userAgent: req ? (req.get('user-agent') || '') : ''
+  // 稽核事件只增不改（lib/auditStore.js）：Postgres＝audit_events 單列 INSERT（不讀-改-寫、不依賴快取、無筆數上限）；
+  // 本機 JSON＝audit.log.jsonl 附加一行。舊資料（audit_log 整包 JSONB／audit.log.json）保留為唯讀歷史。
+  // insertAuditEvent 永不 reject：失敗會重試一次，仍失敗記 AUDIT_WRITE_FAILED（console＋備援檔＋計數），請求不受影響。
+  db.insertAuditEvent({
+    kind: 'log',
+    action, operator, target, detail,
+    ip: (req && req.ip) || '',
+    ua: (req && req.headers && req.headers['user-agent']) || '',
   });
-  if (logs.length > 500) logs = logs.slice(0, 500); // keep latest 500
-  fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), 'utf8');
 }
 
 /**
@@ -703,25 +687,27 @@ const FIELD_LABELS = {
   systemProduct:'系統產品', note:'備註', jobFunction:'職能分類'
 };
 
-// ── 聯絡人稽核日誌（寫入 contact_audit.json）────────────
-const CONTACT_AUDIT_FILE = path.join(__dirname, 'contact_audit.json');
-
+// ── 聯絡人稽核日誌（欄位級異動）：與一般稽核同一個只增不改的事件表（kind='contact'）。
+// 舊版寫本機 contact_audit.json（Vercel 唯讀 → 雲端等於沒記）；該檔若存在仍當唯讀歷史合併顯示。
 function writeContactAudit(action, req, target, changes) {
-  let logs = [];
-  try { logs = JSON.parse(fs.readFileSync(CONTACT_AUDIT_FILE, 'utf8')); } catch {}
-  logs.unshift({
-    id: uuidv4(),
-    timestamp: new Date().toISOString(),
-    userId: req.session.user.username,
-    userName: req.session.user.displayName || req.session.user.username,
-    action,          // CREATE | UPDATE | DELETE | RESTORE | PERMANENT_DELETE
+  const u = (req && req.session && req.session.user) || {};
+  const extra = {
+    userName: u.displayName || u.username || '',
     targetId: target.id,
     targetName: target.name || '',
     targetCompany: target.company || '',
-    changes: changes || []
+    changes: changes || [],
+  };
+  db.insertAuditEvent({
+    kind: 'contact',
+    action,          // CREATE | UPDATE | DELETE | RESTORE | PERMANENT_DELETE
+    operator: u.username || '',
+    target: String(target.id || ''),
+    detail: AuditStore.contactDetail(extra),
+    ip: (req && req.ip) || '',
+    ua: (req && req.headers && req.headers['user-agent']) || '',
+    extra,
   });
-  if (logs.length > 3000) logs = logs.slice(0, 3000);
-  try { fs.writeFileSync(CONTACT_AUDIT_FILE, JSON.stringify(logs, null, 2), 'utf8'); } catch {}
 }
 
 // ── 欄位白名單（Mass Assignment 防護）────────────────────
@@ -2349,22 +2335,60 @@ app.get('/api/admin/usage', requireAdmin, (req, res) => {
 });
 
 // ── Admin: get audit logs ────────────────────────────────
+// 稽核查詢條件：kind（預設 log；contact／quote-edit／all）、action、operator、from／to（YYYY-MM-DD＝台北日）、q（文字）
+function auditFiltersFromQuery(q, defKind) {
+  return { kind: q.kind || defKind || 'log', action: q.action, operator: q.operator, from: q.from, to: q.to, q: q.q };
+}
+// 不帶分頁參數＝舊行為相容（純陣列、最新 5000 筆）；帶 paged=1／limit／offset＝{ total, limit, offset, rows }
 app.get('/api/admin/logs', requireAdmin, async (req, res) => {
-  if (_USE_DB_FOR_META) {
-    // 從獨立 row 讀（拆出後省主資料 egress）；改 lazy load 後第一次查才從 DB 拉
-    try {
-      const logs = await db.loadAuditLog();
-      return res.json(logs);
-    } catch (e) {
-      console.error('[/api/admin/logs]', e);
-      return res.status(500).json({ error: '讀取日誌失敗' });
-    }
-  }
-  const logFile = path.join(__dirname, 'audit.log.json');
   try {
-    const logs = JSON.parse(fs.readFileSync(logFile, 'utf8'));
-    res.json(logs);
-  } catch { res.json([]); }
+    const q = req.query;
+    const filters = auditFiltersFromQuery(q, 'log');
+    const paged = q.paged === '1' || q.limit != null || q.offset != null;
+    if (!paged) {
+      const r = await db.auditStore.list(filters, { limit: 5000, offset: 0, cap: 5000 });
+      return res.json(r.rows.map(AuditStore.toApi));
+    }
+    const r = await db.auditStore.list(filters, { limit: q.limit || 200, offset: q.offset || 0 });
+    res.json({ total: r.total, limit: r.limit, offset: r.offset, rows: r.rows.map(AuditStore.toApi) });
+  } catch (e) {
+    console.error('[/api/admin/logs]', e);
+    res.status(500).json({ error: '讀取日誌失敗' });
+  }
+});
+
+// ── Admin: 稽核日誌匯出（CSV／JSON，分段串流；匯出本身也寫稽核 EXPORT_AUDIT_LOG）──
+app.get('/api/admin/logs/export', requireAdmin, async (req, res) => {
+  const q = req.query;
+  const format = q.format === 'json' ? 'json' : 'csv';
+  const filters = auditFiltersFromQuery(q, 'log');
+  let n;
+  try { n = await db.auditStore.total(filters); }
+  catch (e) { console.error('[logs/export]', e); return res.status(500).json({ error: '匯出失敗' }); }
+  auditExport(req, 'EXPORT_AUDIT_LOG', n, `類型 ${filters.kind}；日期 ${q.from || '不限'} ~ ${q.to || '不限'}${filters.action ? '；動作 ' + filters.action : ''}${filters.operator ? '；操作者 ' + filters.operator : ''}${filters.q ? '；含文字篩選' : ''}`, format);
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', format === 'json' ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="audit-log-${stamp}.${format}"`);
+  const write = (chunk) => (res.write(chunk) ? null : new Promise((r) => res.once('drain', r)));
+  try {
+    if (format === 'csv') res.write('\uFEFF' + AuditStore.CSV_HEAD.map(AuditStore.csvCell).join(',') + '\r\n');
+    else res.write('[');
+    let first = true, buf = [], bytes = 0;
+    for await (const r of db.auditStore.iterate(filters)) {
+      if (res.destroyed || res.writableEnded) break;
+      const piece = format === 'csv'
+        ? AuditStore.csvLine(r)
+        : (first ? '' : ',') + JSON.stringify({ id: r.id, ts: r.ts, kind: r.kind, action: r.action, operator: r.operator, target: r.target, detail: r.detail, ip: r.ip, ua: r.ua, extra: r.extra });
+      first = false;
+      buf.push(piece); bytes += piece.length;
+      if (bytes > 65536) { await write(buf.join('')); buf = []; bytes = 0; }
+    }
+    if (buf.length) await write(buf.join(''));
+    if (format === 'json') res.write(']');
+  } catch (e) {
+    console.error('[logs/export] 串流中斷', e);
+  }
+  res.end();
 });
 
 // ── Admin: 名片資料普及率 ──────────────────────────────────
@@ -9428,16 +9452,22 @@ function autoMapJobFunctionSvr(title) {
 }
 
 // ── 管理員：取得聯絡人稽核日誌 ──────────────────────────────
-app.get('/api/admin/contact-audit', requireAdmin, (req, res) => {
-  let logs = [];
-  try { logs = JSON.parse(fs.readFileSync(CONTACT_AUDIT_FILE, 'utf8')); } catch {}
-  const { userId, action, dateFrom, dateTo } = req.query;
-  let result = logs;
-  if (userId) result = result.filter(l => l.userId === userId);
-  if (action) result = result.filter(l => l.action === action);
-  if (dateFrom) result = result.filter(l => l.timestamp >= dateFrom);
-  if (dateTo)   result = result.filter(l => l.timestamp <= dateTo + 'T23:59:59Z');
-  res.json(result.slice(0, 500)); // 最多回傳 500 筆
+// 不帶 paged／limit／offset＝舊行為相容（純陣列、最多 500 筆）；帶了＝{ total, limit, offset, rows }
+app.get('/api/admin/contact-audit', requireAdmin, async (req, res) => {
+  try {
+    const q = req.query;
+    const filters = { kind: 'contact', operator: q.userId, action: q.action, from: q.dateFrom, to: q.dateTo, q: q.q };
+    const paged = q.paged === '1' || q.limit != null || q.offset != null;
+    if (!paged) {
+      const r = await db.auditStore.list(filters, { limit: 500, offset: 0 });
+      return res.json(r.rows.map(AuditStore.toApiContact));
+    }
+    const r = await db.auditStore.list(filters, { limit: q.limit || 200, offset: q.offset || 0 });
+    res.json({ total: r.total, limit: r.limit, offset: r.offset, rows: r.rows.map(AuditStore.toApiContact) });
+  } catch (e) {
+    console.error('[/api/admin/contact-audit]', e);
+    res.status(500).json({ error: '讀取名片稽核失敗' });
+  }
 });
 
 // ── 管理員：取得已軟刪除的聯絡人 ───────────────────────────
@@ -9522,6 +9552,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const uptimeStr = `${d > 0 ? d + ' 天 ' : ''}${h > 0 ? h + ' 時 ' : ''}${m} 分 ${s} 秒`;
 
   res.json({
+    auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {
       name:        pkg.name        || 'business-card-crm',
       version:     pkg.version     || '1.0.0',
@@ -9641,6 +9672,7 @@ app.get('/api/admin/infra-stats', requireAdmin, async (req, res) => {
     storage: null,
     runtime: null,
     vercel:  null,
+    auditWrites: db.auditStore.stats(),   // failed>0 ＝ 有稽核事件寫入失敗（console 有 AUDIT_WRITE_FAILED、備援檔有內容）
   };
 
   // ── 1. Supabase PostgreSQL 統計（需要 postgres 後端）──

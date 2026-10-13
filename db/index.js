@@ -28,4 +28,7 @@ module.exports = {
   // 兩個後端都有實作（json 仍存在 data.json 同檔，postgres 拆獨立 row）
   loadAuditLog:   impl.loadAuditLog,
   appendAuditLog: impl.appendAuditLog,
+  // 稽核事件（只增不改，見 lib/auditStore.js）：insertAuditEvent 永不 reject；flush 會等它們寫完
+  auditStore:       impl.auditStore,
+  insertAuditEvent: impl.insertAuditEvent,
 };
