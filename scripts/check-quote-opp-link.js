@@ -196,7 +196,7 @@ async function run() {
   c = await env.call('own1', 'POST', POSTQ, {}, body('OC', { items: [{ desc: '導入顧問', unit: '式', qty: 1, unitPrice: 600000, cost: 100000 }, { desc: '教育訓練', unit: '式', qty: 1, unitPrice: 100000, cost: 20000 }] }));
   const id2 = c.j.id; const Q2 = () => env.data.quotations.find((x) => x.id === id2);
   await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: id2 }, {});
-  for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (Q2().approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: id2 }, { hash: QA.contentHash(Q2()), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-1' }); }
+  for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (Q2().approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: id2 }, { hash: QA.contentHash(Q2()), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-2026-001' }); }
   t('3.14 前置：走完簽核 → approved', Q2().approval.state === 'approved', Q2().approval.state);
   const aprHash = Q2().approval.hash;
   r = await env.call('own1', 'PUT', PUTQ, { id: id2 }, { oppId: 'OSame' });
@@ -220,7 +220,7 @@ async function run() {
   t('5.3 舊單 PUT（沒帶 oppId）→ 200，仍沒有 oppId 欄位', r.s === 200 && !('oppId' in env.data.quotations[0]));
   r = await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: 'Q1' }, {});
   t('5.4 舊單送簽沒有商機擋關 → 200 pending', r.s === 200 && env.data.quotations[0].approval.state === 'pending', r.s + J(r.j && r.j.message));
-  for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (env.data.quotations[0].approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(env.data.quotations[0]), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-1' }); }
+  for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (env.data.quotations[0].approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: 'Q1' }, { hash: QA.contentHash(env.data.quotations[0]), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-2026-001' }); }
   t('5.5 舊單可走完簽核 → approved', env.data.quotations[0].approval.state === 'approved');
   r = await env.call('own1', 'PUT', PUTQ, { id: 'Q1' }, { oppId: 'OC' });
   t('5.6 已核准的舊單補連商機 → 409 OPP_LOCKED（不能動）', r.s === 409 && r.j.code === 'OPP_LOCKED' && !('oppId' in env.data.quotations[0]));
@@ -297,7 +297,7 @@ async function run() {
     await env.call('mgr1', 'POST', '/api/quotations/:id/return', { id: qRet }, { comment: 'no', hash: QA.contentHash(byId(qRet)) });
     await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qPend }, {});
     await env.call('own1', 'POST', '/api/quotations/:id/submit', { id: qAppr }, {});
-    for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (byId(qAppr).approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: qAppr }, { hash: QA.contentHash(byId(qAppr)), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-1' }); }
+    for (const u of ['mgr1', 'gm1', 'ch1', 'sec1']) { if (byId(qAppr).approval.state === 'pending') await env.call(u, 'POST', '/api/quotations/:id/approve', { id: qAppr }, { hash: QA.contentHash(byId(qAppr)), comment: 'ok', resolutionDate: '2026-10-10', resolutionNo: 'T-2026-001' }); }
     t('11.0 前置：草稿／被退回／簽核中／已核准各一張', !byId(qDraft).approval && byId(qRet).approval.state === 'returned' && byId(qPend).approval.state === 'pending' && byId(qAppr).approval.state === 'approved', [qDraft, qRet, qPend, qAppr].map((i) => byId(i).approval && byId(i).approval.state).join(','));
     const ib0 = (await env.call('mgr1', 'GET', '/api/quotations/inbox', {})).j;
     t('11.1 作廢前：主管收件匣有簽核中的那張', ib0.approvals.some((x) => x.id === qPend));

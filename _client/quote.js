@@ -830,8 +830,11 @@ async function exportQuote(id, quoteNo, kind) {
 async function deleteQuote(id) {
   const ok = await qConfirm('刪除報價單', '確定要刪除此報價單嗎？此動作無法復原。', '確認刪除', true);
   if (!ok) return;
+  // 稽核：刪除原因（選填，會連同整張單的快照記入稽核）；按「取消」＝不刪
+  const reason = window.prompt('刪除原因（選填，會記入稽核紀錄；不想填可直接按確定）', '');
+  if (reason === null) return;
   try {
-    const r = await fetch(`${API}/quotations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const r = await fetch(`${API}/quotations/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: String(reason).trim().slice(0, 200) }) });
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
       return showToast(e.error || '刪除失敗');
