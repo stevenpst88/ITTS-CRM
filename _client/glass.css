@@ -2513,6 +2513,33 @@ body.glass.dark .bu-card { background: color-mix(in srgb, rgba(0, 0, 0, .34) 100
 }   /* /@media screen（階段 7） */
 /* ═══ 階段 7 結束 ═══ */
 
+/* ═════════════════════════════════════════════════════════════
+ * 階段 8 併入 main 稽核第一／二波與版本頁（2026-10-14）的後台新 UI：異動記錄的篩選列／分頁／匯出鈕、名片操作紀錄分頁、
+ *        版本資訊「稽核儲存」卡（正常＝綠／退回舊路徑＝橘／寫入失敗＝紅，語意色不隨主題變）。
+ * 使用者端簽核視窗的「適用規則」收合區、改派理由輸入框、董事會代核的議事錄欄位沿用 .qap-* 既有玻璃樣式（已逐一目視確認），不需額外規則。
+ * ═════════════════════════════════════════════════════════════ */
+@media screen {
+body.glass.admin-page #logFilters { border-bottom-color: var(--g-edge) !important; }
+body.glass.admin-page :is(#logFilters, #auditFilters) :is(select, input) { background: var(--g-input) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass.admin-page :is(#logFilters, #auditFilters) div > div[style*="color:#888"] { color: var(--g-text-2) !important; }
+body.glass.admin-page :is(#logExportCsv, #logExportJson) { background: var(--q4-info-bg) !important; color: var(--q4-info) !important; border: 1px solid var(--q4-info-bd); }
+body.glass.admin-page :is(#logPager, #auditPager) { color: var(--g-text-2) !important; }
+body.glass.admin-page :is(#logPager, #auditPager) .btn { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge); }
+body.glass.admin-page :is(#logPager, #auditPager) .btn:disabled { opacity: .5; cursor: not-allowed; }
+body.glass.admin-page #logTotal { color: var(--g-text-2) !important; }
+/* 稽核儲存卡（#vAuditInfo）：行內色對應語意色 */
+body.glass.admin-page #vAuditInfo [style*="color:#1a2d52"] { color: var(--g-text) !important; }
+body.glass.admin-page #vAuditInfo :is([style*="color:#888"], [style*="color:#555"]) { color: var(--g-text-2) !important; }
+body.glass.admin-page #vAuditInfo [style*="background:#f8f9fa"] { background: var(--g-surface) !important; }
+body.glass.admin-page #vAuditInfo [style*="background:#e6f4ea"] { background: var(--q4-ok-bg) !important; color: var(--q4-ok) !important; box-shadow: inset 0 0 0 1px var(--q4-ok-bd); }
+body.glass.admin-page #vAuditInfo [style*="background:#fef3e0"] { background: var(--q4-warn-bg) !important; color: var(--q4-warn) !important; box-shadow: inset 0 0 0 1px var(--q4-warn-bd); }
+body.glass.admin-page #vAuditInfo [style*="background:#fce8e6"] { background: var(--q4-bad-bg) !important; color: var(--q4-bad) !important; box-shadow: inset 0 0 0 1px var(--q4-bad-bd); }
+body.glass.admin-page #vAuditInfo div[style*="color:#c5221f"] { color: var(--q4-bad) !important; }
+body.glass.admin-page #vAuditInfo div[style*="color:#b06000"] { color: var(--q4-warn) !important; }
+body.glass.admin-page #vAuditInfo code { background: var(--g-input); color: var(--g-text); padding: 0 4px; border-radius: 4px; }
+}   /* /@media screen（階段 8） */
+/* ═══ 階段 8 結束 ═══ */
+
 /* ───────────── 99. 自動縮放（glass-theme.js 依視窗寬高算 --gz；僅 body.glass；≤1024 寬恆為 1）─────────────
  * 列印一律還原；報價 PDF 離屏畫布帶 data-gz-off 且放在 body 外（見 quote-pdf.js／glass-theme.js hold）。 */
 body.glass { zoom: var(--gz, 1); }
