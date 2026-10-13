@@ -36,6 +36,10 @@ const PW = 'Aw1' + crypto.randomBytes(9).toString('hex') + '!Z';
 const BASE = `http://localhost:${PORT}`;
 const nowIso = new Date().toISOString();
 const mkUser = (username, role, extra) => Object.assign({ username, displayName: username, role, active: true, password: bcrypt.hashSync(PW, 6), createdAt: nowIso, passwordChangedAt: nowIso, mustChangePassword: false, canSetTargets: false, canDownloadContacts: false, bu: [] }, extra || {});
+function mkQuote(tag, steps, cur) {
+  return { id: 'q-' + tag, quoteNo: 'SB-' + tag, company: '沙盒公司甲', owner: '_s_u1', status: 'draft', createdAt: nowIso, updatedAt: nowIso, products: [], items: [],
+    approval: { state: 'pending', rulesVersion: 1, hash: 'h', submittedAt: nowIso, submittedBy: '_s_u1', steps, cur, board: null, derived: null, history: [{ at: nowIso, by: '_s_u1', action: 'SUBMIT', comment: '', tier: '' }] } };
+}
 function seedFiles() {
   const users = [
     mkUser('_s_admin', 'admin'), mkUser('_s_admin2', 'admin'),
@@ -48,6 +52,9 @@ function seedFiles() {
     mkUser('_s_view', 'user', { bu: ['ERP'], accessMode: 'view' }),
     mkUser('_s_mc', 'user', { bu: ['ERP'], mustChangePassword: true }),
     mkUser('_s_tpm', 'tecopm', { bu: [], viewOwnerScope: '_s_u1', viewGroupId: 'g1' }),
+    mkUser('_q_m1', 'manager1', { bu: ['ERP'] }), mkUser('_q_m1b', 'manager1', { bu: ['ERP'] }),
+    mkUser('_q_m2', 'manager2', { bu: ['ERP'] }), mkUser('_q_m2b', 'manager2', { bu: ['ERP'] }),
+    mkUser('_q_off', 'manager1', { bu: ['ERP'], active: false }),
   ];
   fs.writeFileSync(path.join(ROOT, 'auth.json'), JSON.stringify({ users }, null, 2));
   const d = {
@@ -59,8 +66,19 @@ function seedFiles() {
     opportunities: [{ id: 'o1', title: '沙盒商機', company: '沙盒公司甲', owner: '_s_u1', category: 'ERP', stage: 'B', amount: 100, expectedDate: new Date().getFullYear() + '-12-01', createdAt: nowIso }],
     visits: [{ id: 'v1', visitDate: '2026-01-01', owner: '_s_u1', contactName: '測試甲', topic: '沙盒', createdAt: nowIso }],
     contracts: [{ id: 'k1', contractNo: 'SB-1', company: '沙盒公司甲', owner: '_s_u1', createdAt: nowIso }],
+    quotations: [
+      // QA：一般流程 [mgr1(進行中), gm]，cur=0
+      mkQuote('QA', [{ tier: 'mgr1', label: '一級主管', assignee: '_q_m1', status: 'pending' }, { tier: 'gm', label: '總經理', assignee: null, status: 'waiting' }], 0),
+      // QB：BU 啟用二級主管流程 [mgr2(已核准), mgr1(進行中), gm]，cur=1 —— 舊程式會誤改 steps[0]
+      mkQuote('QB', [{ tier: 'mgr2', label: '二級主管', assignee: '_q_m2', status: 'approved', by: '_q_m2', at: nowIso, comment: '同意' }, { tier: 'mgr1', label: '一級主管', assignee: '_q_m1', status: 'pending' }, { tier: 'gm', label: '總經理', assignee: null, status: 'waiting' }], 1),
+      // QC：二級主管關進行中 [mgr2(進行中), mgr1, gm]，cur=0
+      mkQuote('QC', [{ tier: 'mgr2', label: '二級主管', assignee: '_q_m2', status: 'pending' }, { tier: 'mgr1', label: '一級主管', assignee: '_q_m1', status: 'waiting' }, { tier: 'gm', label: '總經理', assignee: null, status: 'waiting' }], 0),
+      // QD：已核准（不可改派）
+      Object.assign(mkQuote('QD', [{ tier: 'mgr1', label: '一級主管', assignee: '_q_m1', status: 'approved', by: '_q_m1', at: nowIso }], 1), { approvalState: 'approved' }),
+    ],
     receivables: [], callins: [], keyAccounts: [], groups: [{ id: 'g1', name: '沙盒集團', memberCompanies: ['沙盒公司甲'] }],
   };
+  d.quotations.forEach(q => { if (q.approvalState) { q.approval.state = q.approvalState; delete q.approvalState; } });
   fs.writeFileSync(path.join(ROOT, 'data.json'), JSON.stringify(d, null, 2));
 }
 function cleanupFiles() { FILES.forEach(f => { try { fs.unlinkSync(f); } catch { /* 不存在 */ } }); }
@@ -283,8 +301,83 @@ async function sec2() {
   eq(missing, [], '每個產生 xlsx 下載的路由都有 auditExport（範本除外）');
 }
 
+// ═════════════ 第 3 項：管理員改派（只動目前關卡＋理由必填）═════════════
+async function sec3() {
+  console.log('[3] 管理員改派');
+  await loginAll(['_s_admin', '_s_u1', '_q_m1']);
+  const rq = (id, body, who) => http(who || '_s_admin', 'POST', '/api/quotations/' + id + '/reassign', body);
+  const getQ = async (id) => (await http('_s_admin', 'GET', '/api/quotations/' + id)).json;
+  const dataQ = (id) => JSON.parse(fs.readFileSync(path.join(ROOT, 'data.json'), 'utf8')).quotations.find(q => q.id === id);
+  await sleep(300);
+  let r = await getQ('q-QB');
+  ok(r && r.perm && r.perm.canReassign === true, 'QB（cur=1 的一級關）管理員 canReassign=true');
+  eq((await getQ('q-QD')).perm.canReassign, false, '已核准的單 canReassign=false');
+
+  // 理由必填
+  r = await rq('q-QB', { username: '_q_m1b' });
+  eq([r.status, r.json && r.json.code], [400, 'REASON_REQUIRED'], '沒帶理由 → 400 REASON_REQUIRED');
+  r = await rq('q-QB', { username: '_q_m1b', reason: '   ' + String.fromCharCode(10, 9) + ' ' });
+  eq([r.status, r.json && r.json.code], [400, 'REASON_REQUIRED'], '理由全空白 → 400');
+  r = await rq('q-QB', { username: '_q_m1b', reason: '' });
+  eq(r.status, 400, '空字串理由 → 400');
+  eq(dataQ('q-QB').approval.steps[1].assignee, '_q_m1', '被拒絕時不改動');
+
+  // 角色／身分驗證
+  r = await rq('q-QB', { username: '_q_m2b', reason: '角色不符' });
+  eq([r.status, r.json && r.json.code], [400, 'BAD_ASSIGNEE'], '一級關不能改派給二級主管');
+  r = await rq('q-QB', { username: '_q_off', reason: '已停用' });
+  eq([r.status, r.json && r.json.code], [400, 'BAD_ASSIGNEE'], '不能改派給停用帳號');
+  r = await rq('q-QB', { username: '_s_u1', reason: '擁有者' });
+  eq(r.status, 400, '不能改派給報價單擁有者');
+  r = await rq('q-QB', { username: '_q_m1b', reason: '無權' }, '_s_u1');
+  eq(r.status, 403, '非管理員 403');
+  r = await rq('q-QD', { username: '_q_m1b', reason: '已核准' });
+  eq([r.status, r.json && r.json.code], [409, 'CANNOT_REASSIGN'], '已核准的單 409');
+
+  // 核心：QB（steps=[mgr2 已核准, mgr1 進行中], cur=1）→ 只動 steps[1]
+  const before = JSON.parse(JSON.stringify(dataQ('q-QB').approval.steps[0]));
+  r = await rq('q-QB', { username: '_q_m1b', reason: '原承辦人休假 <script>alert(1)</script>' });
+  eq(r.status, 200, 'QB 改派成功');
+  const qb = dataQ('q-QB');
+  eq(qb.approval.steps[0], before, 'QB：steps[0]（已核准的二級主管關）完全沒被動到');
+  eq(qb.approval.steps[1].assignee, '_q_m1b', 'QB：steps[1]（目前的一級關）換成新承辦人');
+  eq(qb.approval.cur, 1, 'QB：cur 不變');
+  const h = qb.approval.history[qb.approval.history.length - 1];
+  eq(h.action, 'REASSIGN', 'QB：歷史多一筆 REASSIGN');
+  eq(h.tier, 'mgr1', 'QB：歷史 tier 是實際關卡 mgr1');
+  ok(h.comment.includes('理由：') && h.comment.includes('原承辦人休假'), 'QB：歷史 comment 含理由：' + h.comment);
+  ok(!/[<>]/.test(h.comment) && !/[<>]/.test(h.meta.reason), 'QB：理由內的 < > 被清掉');
+  eq([h.meta.from, h.meta.to, h.meta.step], ['_q_m1', '_q_m1b', 1], 'QB：meta {from,to,step}');
+  ok(typeof h.meta.reason === 'string' && h.meta.reason.length > 0, 'QB：meta.reason');
+  const logs = byAction(await getLogs(), 'REASSIGN_QUOTATION');
+  ok(logs[0] && logs[0].target === 'SB-QB' && /一級主管關（第 2 關）/.test(logs[0].detail) && /_q_m1 → _q_m1b/.test(logs[0].detail) && /理由：/.test(logs[0].detail), '稽核含關卡、from→to、理由：' + (logs[0] && logs[0].detail));
+  const apiH = ((await getQ('q-QB')).approval.history || []).slice(-1)[0];
+  ok(apiH && apiH.action === 'REASSIGN' && !('meta' in apiH), 'API 回傳的歷程不含 meta');
+
+  // 二級主管關進行中（QC）：只能改派給二級主管、改的是 steps[0]
+  r = await rq('q-QC', { username: '_q_m1b', reason: '角色不符' });
+  eq([r.status, r.json && r.json.code], [400, 'BAD_ASSIGNEE'], '二級關不能改派給一級主管');
+  r = await rq('q-QC', { username: '_q_m2b', reason: '二級承辦人調動' });
+  eq(r.status, 200, 'QC 改派二級主管成功');
+  const qc = dataQ('q-QC');
+  eq([qc.approval.steps[0].assignee, qc.approval.steps[1].assignee], ['_q_m2b', '_q_m1'], 'QC：只換目前這關（二級），一級關未動');
+  eq(qc.approval.history.slice(-1)[0].tier, 'mgr2', 'QC：歷史 tier=mgr2');
+
+  // 一般流程（QA）與同人改派去重（meta.from===to）
+  r = await rq('q-QA', { username: '_q_m1b', reason: '工作分配' });
+  eq(r.status, 200, 'QA 改派成功');
+  eq(dataQ('q-QA').approval.steps[0].assignee, '_q_m1b', 'QA：steps[0] 換人');
+  r = await rq('q-QA', { username: '_q_m1b', reason: '同一人再改派' });
+  eq(r.status, 200, 'QA 改派給目前承辦人本人仍可');
+  const ha = dataQ('q-QA').approval.history.slice(-1)[0];
+  eq([ha.meta.from, ha.meta.to], ['_q_m1b', '_q_m1b'], '同人改派：meta.from===meta.to（信件模組靠它不重複寄）');
+  r = await rq('q-QA', { username: '_q_m1', reason: 'x'.repeat(500) });
+  eq(r.status, 200, '超長理由被截斷而非拒絕');
+  eq(dataQ('q-QA').approval.history.slice(-1)[0].meta.reason.length, 200, '理由最長 200 字');
+}
+
 // ═════════════ 主程式 ═════════════
-const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2 };
+const SECTIONS = { 1: sec1, '1b': sec1b, 2: sec2, 3: sec3 };
 (async () => {
   const only = (process.env.AW1_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
   seedFiles();
