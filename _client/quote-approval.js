@@ -675,6 +675,15 @@ function buildHistorySection(q) {
 }
 
 /** 目前輪到的關卡是否為董事會（僅決定「要不要顯示決議欄位」，能不能簽仍看 perm） */
+/** 管理員改派：依目前這一關（mgr2／mgr1）決定標籤與候選人（角色必須對應；伺服器端也會再驗） */
+function reassignInfo(s) {
+  const ap = s.q && s.q.approval;
+  const st = ap && Array.isArray(ap.steps) ? ap.steps[ap.cur] : null;
+  const isM2 = !!st && st.tier === 'mgr2';
+  const role = isM2 ? 'manager2' : 'manager1';
+  return { label: isM2 ? '二級主管' : '一級主管', role, cands: (s.mgrs || []).filter((u) => u.role === role && (!s.q || u.username !== s.q.owner)) };
+}
+
 function currentIsBoard(q) {
   const ap = q.approval;
   if (!ap || ap.state !== 'pending' || !Array.isArray(ap.steps)) return false;
@@ -711,11 +720,14 @@ function buildActionSection(s) {
     parts.push(`<div class="qap-form">${f}</div>`);
   }
   if (perm.canReassign) {
-    const opts = (s.mgrs || []).map((u) => `<option value="${e(u.username)}"${dr.reassign === u.username ? ' selected' : ''}>${e(u.displayName || u.username)}（${e(u.username)}）</option>`).join('');
-    parts.push(`<div class="qap-form" style="margin-top:10px"><div class="full"><label>改派一級主管關（管理員只能改派，不能代簽）</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><select data-draft="reassign" style="flex:1;min-width:200px"><option value="">請選擇一級主管…</option>${opts}</select>
+    const rs = reassignInfo(s);   // 目前這一關是二級還是一級主管關，候選人依此篩選
+    const cands = rs.cands;
+    const opts = cands.map((u) => `<option value="${e(u.username)}"${dr.reassign === u.username ? ' selected' : ''}>${e(u.displayName || u.username)}（${e(u.username)}）</option>`).join('');
+    parts.push(`<div class="qap-form" style="margin-top:10px"><div class="full"><label>改派${e(rs.label)}關（管理員只能改派，不能代簽）</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><select data-draft="reassign" style="flex:1;min-width:200px"><option value="">請選擇${e(rs.label)}…</option>${opts}</select>
       <button class="btn btn-secondary" type="button" data-act="reassign"${s.busy ? ' disabled' : ''}>改派</button></div>
-      ${(s.mgrs || []).length ? '' : '<div class="qap-muted" style="margin-top:4px">找不到可改派的一級主管帳號。</div>'}</div></div>`);
+      <input type="text" data-draft="reassignReason" maxlength="200" value="${e(dr.reassignReason || '')}" placeholder="改派理由（必填，最多 200 字；會記入簽核歷程與稽核記錄）" style="margin-top:6px;width:100%">
+      ${cands.length ? '' : `<div class="qap-muted" style="margin-top:4px">找不到可改派的${e(rs.label)}帳號。</div>`}</div></div>`);
   }
   if (!parts.length) return '';
   return sec('你的簽核動作', parts.join(''));
@@ -788,7 +800,7 @@ async function fetchApprovalQuote(s) {
     const c = await apiCall('GET', '/quote-approval/config');
     if (s.closed) return false;
     const users = c.ok && Array.isArray(c.data.users) ? c.data.users : [];
-    s.mgrs = users.filter((u) => u.role === 'manager1' && u.active !== false);
+    s.mgrs = users.filter((u) => (u.role === 'manager1' || u.role === 'manager2') && u.active !== false);
   }
   return true;
 }
@@ -799,7 +811,7 @@ async function openQuoteApproval(id) {
   const m = mountModal('quoteApprovalOverlay', '報價單簽核', '', true);
   const s = {
     id, q: null, busy: true, closed: false, ov: m.ov, body: m.body, foot: m.foot,
-    draft: { comment: '', resDate: '', resNo: '', reassign: '' }, mgrs: null,
+    draft: { comment: '', resDate: '', resNo: '', reassign: '', reassignReason: '' }, mgrs: null,
   };
   _ap = s;
   s.onKey = (ev) => {
@@ -852,7 +864,7 @@ async function runApprovalAction(s, method, path, body, okMsg) {
   await fetchApprovalQuote(s);
   if (s.closed) { if (success) afterMutation(); return; }
   if (success) {
-    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.reassign = '';
+    s.draft.comment = ''; s.draft.resDate = ''; s.draft.resNo = ''; s.draft.reassign = ''; s.draft.reassignReason = '';
   }
   s.busy = false;
   renderApproval(s);
@@ -895,11 +907,14 @@ async function handleApprovalAction(s, act) {
   }
   if (act === 'reassign') {
     if (!perm.canReassign) return;
-    if (!dr.reassign) { toast('請先選擇要改派的一級主管'); return; }
+    const rs = reassignInfo(s);
+    if (!dr.reassign) { toast('請先選擇要改派的' + rs.label); return; }
+    const reason = String(dr.reassignReason || '').trim();
+    if (!reason) { toast('請填寫改派理由（必填）'); const ri = s.ov.querySelector('[data-draft="reassignReason"]'); if (ri) ri.focus(); return; }
     const u = (s.mgrs || []).find((x) => x.username === dr.reassign);
-    const ok = await qapConfirm({ title: '確認改派', message: '將目前的一級主管關改派給「' + (u ? (u.displayName || u.username) : dr.reassign) + '」？\n（改派不等於代簽）', okText: '改派' });
+    const ok = await qapConfirm({ title: '確認改派', message: '將目前的' + rs.label + '關改派給「' + (u ? (u.displayName || u.username) : dr.reassign) + '」？\n理由：' + reason + '\n（改派不等於代簽；理由會記入簽核歷程與稽核記錄）', okText: '改派' });
     if (!ok || s.closed) return;
-    runApprovalAction(s, 'POST', '/reassign', { username: dr.reassign }, '已改派');
+    runApprovalAction(s, 'POST', '/reassign', { username: dr.reassign, reason }, '已改派');
     return;
   }
   if (act === 'approve' || act === 'return') {

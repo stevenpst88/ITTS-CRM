@@ -234,6 +234,9 @@
     .log-DELETE_USER,.log-DELETE_VISIT,.log-DELETE_OPP,.log-DELETE_CONTRACT,.log-DELETE_RECEIVABLE
       { background: #fce8e6; color: #c62828; }
     .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
+    .log-SESSION_REJECTED_INACTIVE,.log-LOGIN_FAIL,.log-LOGIN_RATE_LIMITED,.log-ADMIN_RAIL_BLOCKED,.log-DISABLE_USER,.log-REVOKE_DOWNLOAD_PERMISSION,.log-SET_READONLY { background: #fce8e6; color: #c62828; }
+    .log-EXPORT_CONTACTS,.log-EXPORT_CONTACTS_ADMIN,.log-EXPORT_OPPORTUNITIES,.log-EXPORT_VISITS,.log-EXPORT_CONTRACTS,.log-EXPORT_FORECAST,.log-EXPORT_COMPANY_MASTER,.log-GRANT_DOWNLOAD_PERMISSION,.log-CHANGE_USER_ROLE,.log-REASSIGN_QUOTATION { background: #fff3e0; color: #e65100; }
+    .log-LOGOUT,.log-ENABLE_USER,.log-SET_EDITABLE { background: #e8f0fe; color: #1a73e8; }
     .log-UPDATE_PERMISSION,.log-MIGRATE_JOB_FUNCTION { background: #f3e5f5; color: #7b1fa2; }
     /* ── 名片稽核紀錄 ── */
     .audit-item { padding: 14px 0; border-bottom: 1px solid #f0f2f5; }
@@ -5205,6 +5208,10 @@
       SET_TARGET: '設定目標',
       IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
       QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
+      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
+      ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
+      EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
+      REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
       SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 

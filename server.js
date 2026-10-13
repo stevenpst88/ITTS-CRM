@@ -80,6 +80,74 @@ if (SESSION_BACKEND === 'memory') {
   app.use(jwtSession);
 }
 
+// ── 每次請求即時比對帳號現況（內控：停用／降權／離職立即生效）──────────────
+// JWT 是 stateless（8 小時），本地 express-session 也是登入當下的快照。這裡在所有受保護邏輯之前，
+// 以 auth 帳號紀錄為準：帳號不存在或 active===false → 清 cookie、回 401；其餘用 DB 現值覆寫
+// session 內的 role / displayName / bu / viewOwnerScope / viewGroupId（就地修改，不重簽 cookie，不信任 cookie 副本）。
+// 成本：Postgres 模式 db.load() 為記憶體快照（stale check 已在上方 ready 中介層）；JSON 模式以 auth.json 的
+// mtime+size 判斷變動、並有 5 秒 TTL 後備，saveAuth() 也會主動作廢，所以不會每次請求都讀檔。
+const SESSION_ACCT_TTL_MS = 5000;
+let _sessAcctCache = null; // { t, key, map }
+function invalidateSessionAcctCache() { _sessAcctCache = null; }
+function _authFileKey() {
+  try { const st = fs.statSync(path.join(__dirname, 'auth.json')); return st.mtimeMs + ':' + st.size; } catch { return ''; }
+}
+function lookupAccountForSession(username) {
+  if (_USE_DB_FOR_META) return loadAuth().users.find(u => u.username === username) || null;
+  const key = _authFileKey();
+  const now = Date.now();
+  if (!_sessAcctCache || _sessAcctCache.key !== key || now - _sessAcctCache.t > SESSION_ACCT_TTL_MS) {
+    const map = new Map();
+    loadAuth().users.forEach(u => map.set(u.username, u));
+    _sessAcctCache = { t: now, key, map };
+  }
+  return _sessAcctCache.map.get(username) || null;
+}
+const _sessRejectLogAt = new Map(); // username -> 上次寫稽核的時間（每人每分鐘最多一筆）
+function _logSessionRejected(req, username, reason) {
+  const now = Date.now();
+  const last = _sessRejectLogAt.get(username) || 0;
+  if (now - last < 60000) return;
+  _sessRejectLogAt.set(username, now);
+  if (_sessRejectLogAt.size > 500) { for (const [k, t] of _sessRejectLogAt) if (now - t > 60000) _sessRejectLogAt.delete(k); }
+  try {
+    flushAuditBeforeEnd(req);
+    writeLog('SESSION_REJECTED_INACTIVE', username, username,
+      `已登入的連線被拒絕：${reason}（請求 ${req.method} ${String(req.path).slice(0, 80)}）；連線已強制登出`, req);
+  } catch (e) { console.error('[session-reject log]', e); }
+}
+app.use((req, res, next) => {
+  const su = req.session && req.session.user;
+  if (!su || !su.username) return next();
+  let acct;
+  try { acct = lookupAccountForSession(su.username); } catch (e) { console.error('[session-refresh]', e); return next(); }
+  const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : null);
+  if (bad) {
+    _logSessionRejected(req, su.username, bad);
+    const finish = () => {
+      if (req.path.startsWith('/api/') && req.path !== '/api/login' && req.path !== '/api/logout') {
+        return res.status(401).json({ error: '帳號已停用或不存在，請重新登入', code: 'SESSION_INVALID' });
+      }
+      next();
+    };
+    try { req.session.destroy(() => { try { res.clearCookie('connect.sid'); } catch {} finish(); }); }
+    catch (e) { finish(); }
+    return;
+  }
+  // 以 DB 現值為準（就地更新，不重簽 cookie）
+  su.role = acct.role || 'user';
+  if (acct.displayName) su.displayName = acct.displayName;
+  su.bu = normalizeBu(acct.bu);
+  if (su.role === 'tecopm' || su.role === 'groupsales') {
+    su.viewOwnerScope = acct.viewOwnerScope || null;
+    su.viewGroupId = acct.viewGroupId || null;
+    try { const g = (db.load().groups || []).find(x => x.id === su.viewGroupId); su.viewGroupName = (g && g.name) || ''; } catch {}
+  } else {
+    delete su.viewOwnerScope; delete su.viewGroupId; delete su.viewGroupName;
+  }
+  next();
+});
+
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
   // Content Security Policy：useDefaults:false 完全自訂，避免 Helmet v8 預設
@@ -147,6 +215,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     apiMonitor.recordRateLimit('login');
+    try { auditLoginRateLimited(req); } catch (e) { console.error('[login-rate audit]', e && e.message); }
     res.status(429).json({ success: false, message: '嘗試次數過多，請 15 分鐘後再試' });
   }
 });
@@ -470,6 +539,7 @@ function loadAuth() {
 }
 
 function saveAuth(data) {
+  invalidateSessionAcctCache();
   if (_USE_DB_FOR_META) {
     const d = db.load();
     d._auth = data;
@@ -508,6 +578,75 @@ function writeLog(action, operator, target, detail, req) {
   fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), 'utf8');
 }
 
+/**
+ * 資料匯出稽核：每個「把資料帶出系統」的匯出端點在送出檔案前呼叫。
+ * 只記筆數、範圍條件、格式，不記個資內容；detail 附「該使用者今日第 N 次匯出」供異常量查核
+ * （計數存在行程記憶體，Vercel 多實例各自計數，只作輔助指標；權威紀錄是每次匯出各一筆稽核）。
+ */
+// ── 登入失敗／登出稽核 ─────────────────────────────────────
+// LOGIN_FAIL 的 HTTP 回應一律是同一句通用訊息（不洩漏帳號是否存在、是否停用）；真正的原因（UNKNOWN_USER／BAD_PASSWORD／INACTIVE…）只寫進稽核。
+// 嘗試的帳號字串可能是使用者誤把密碼打進帳號欄：只留前 40 字、去控制字元與 < >。
+// 同一 IP＋同一帳號 30 秒內重複失敗只記第一筆，之後合併成計數，下一筆會註明「前一段期間另有 N 次」，避免撞庫／暴力試密碼洗版。
+const LOGIN_FAIL_THROTTLE_MS = 30000;
+const _loginFailSeen = new Map();   // 'ip|username' -> { t, n }
+function sanitizeAttemptName(v) {
+  return String(v == null ? '' : v).split('').map((ch) => { const c = ch.charCodeAt(0); return (c < 32 || c === 127 || ch === '<' || ch === '>') ? ' ' : ch; }).join('').trim().slice(0, 40);
+}
+function auditLoginFail(req, attempted, reason) {
+  try {
+    const name = sanitizeAttemptName(attempted);
+    const key = (req.ip || '') + '|' + name.toLowerCase() + '|' + reason;   // 原因納入鍵：同一帳號先密碼錯、後來「停用帳號用對密碼」是不同事件，不能被前者吞掉
+    const now = Date.now();
+    const seen = _loginFailSeen.get(key);
+    if (seen && now - seen.t < LOGIN_FAIL_THROTTLE_MS) { seen.n++; return; }
+    const merged = seen && seen.n > 0 ? seen.n : 0;
+    _loginFailSeen.set(key, { t: now, n: 0 });
+    if (_loginFailSeen.size > 2000) { for (const [k, v] of _loginFailSeen) if (now - v.t > LOGIN_FAIL_THROTTLE_MS) _loginFailSeen.delete(k); }
+    writeLog('LOGIN_FAIL', name || '(空白)', name || '(空白)',
+      `登入失敗：原因=${reason}${merged ? `；此 IP 對此帳號先前 ${Math.round(LOGIN_FAIL_THROTTLE_MS / 1000)} 秒窗內另有 ${merged} 次相同失敗已合併` : ''}`, req);
+  } catch (e) { console.error('[auditLoginFail]', e && e.message); }
+}
+const _loginRateSeen = new Map();   // ip -> t
+function auditLoginRateLimited(req) {
+  const ip = req.ip || '';
+  const now = Date.now();
+  if (now - (_loginRateSeen.get(ip) || 0) < 60000) return;
+  _loginRateSeen.set(ip, now);
+  if (_loginRateSeen.size > 1000) { for (const [k, t] of _loginRateSeen) if (now - t > 60000) _loginRateSeen.delete(k); }
+  writeLog('LOGIN_RATE_LIMITED', '(未登入)', ip || '(未知 IP)', '登入嘗試次數過多，已暫時封鎖此 IP（15 分鐘窗）', req);
+}
+// 不存在的帳號也做一次等成本的 bcrypt 比對，讓「帳號不存在／停用／密碼錯」的回應時間相近（成本 12 與新建密碼一致）
+let _dummyHashPromise = null;
+function dummyBcryptCompare(password) {
+  if (!_dummyHashPromise) _dummyHashPromise = bcrypt.hash(crypto.randomBytes(16).toString('hex'), 12);
+  return _dummyHashPromise.then(h => bcrypt.compare(String(password), h)).then(() => false);
+}
+
+/** GET 請求不會經過上面「寫入型請求 flush」中介層；稽核事件（匯出、停用連線被拒）在 Vercel 上要在回應送出前確保寫入完成，否則實例凍結會漏記 */
+function flushAuditBeforeEnd(req) {
+  const res = req && req.res;
+  if (!res || res._auditFlushWrapped || typeof db.flush !== 'function') return;
+  res._auditFlushWrapped = true;
+  const origEnd = res.end.bind(res);
+  res.end = function (...args) {
+    Promise.resolve().then(() => db.flush()).catch((e) => console.error('[audit flush]', e)).finally(() => origEnd(...args));
+    return res;
+  };
+}
+const _exportDaily = new Map(); // 'user|YYYY-MM-DD' -> n
+function auditExport(req, action, count, scope, format) {
+  try {
+    const user = (req.session && req.session.user && req.session.user.username) || '?';
+    const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);   // 台北日期
+    const key = user + '|' + day;
+    const n = (_exportDaily.get(key) || 0) + 1;
+    _exportDaily.set(key, n);
+    if (_exportDaily.size > 2000) { for (const k of _exportDaily.keys()) if (!k.endsWith('|' + day)) _exportDaily.delete(k); }
+    flushAuditBeforeEnd(req);
+    writeLog(action, user, '資料匯出', `匯出 ${count} 筆；範圍：${scope}；格式：${format || 'xlsx'}；該帳號今日第 ${n} 次匯出`, req);
+  } catch (e) { console.error('[auditExport]', e && e.message); }
+}
+
 // ── 簽核信件派送（E1–E6）單例 ─────────────────────────────
 // 規格與模組分工見 lib/mail/README.md。MAIL_MODE 未設＝off（安全預設）：完全不寄、不渲染、不碰儲存體。
 // 本階段真傳輸（Microsoft Graph）還沒實作，live 模式是 stub（回 NOT_CONFIGURED）→ 任何模式都不會真的寄出。
@@ -518,6 +657,7 @@ const { createQuoteMail } = require('./lib/mail/quoteMail');
 const { registerMailRoutes } = require('./lib/mail/routes');
 const { renderJumpPage } = require('./lib/mail/link');
 const { validateUserEmail, maskedAuditDetail } = require('./lib/mail/userEmail');
+const AD = require('./lib/auditDiff');
 const mailConfig = getMailConfig();
 let _mailPool = null;
 /** outbox 專用的 pg 連線（沿用 db/postgres.js、lib/apiMonitor.js 的慣例：max 2、ssl、connectionTimeoutMillis 5000）；第一次查詢才建立 */
@@ -978,17 +1118,32 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!username || !password) return res.status(400).json({ success: false, message: '請輸入帳號與密碼' });
     const authData = loadAuth();
     const user = authData.users.find(u => u.username === username);
-    if (!user) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
-    if (user.active === false) return res.status(403).json({ success: false, message: '帳號已停用，請聯繫管理者' });
+    const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
+    if (!user) {
+      await dummyBcryptCompare(password);   // 等成本比對，避免用回應時間探測帳號是否存在
+      auditLoginFail(req, username, 'UNKNOWN_USER');
+      return res.status(401).json(GENERIC_FAIL);
+    }
 
     // 一律 bcrypt 比對（明文遷移已於 2026-05 完成，移除 fallback 以消除 timing attack 風險）
     let isValid = false;
-    if (user.password && user.password.startsWith('$2b$')) {
+    const hashOk = !!(user.password && user.password.startsWith('$2b$'));
+    if (hashOk) {
       isValid = await bcrypt.compare(password, user.password);
+    } else {
+      await dummyBcryptCompare(password);
     }
     // 若密碼非 bcrypt 格式，視為帳號異常，要求管理員重設
 
-    if (!isValid) return res.status(401).json({ success: false, message: '帳號或密碼錯誤' });
+    // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
+    if (user.active === false) {
+      auditLoginFail(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
+      return res.status(401).json(GENERIC_FAIL);
+    }
+    if (!isValid) {
+      auditLoginFail(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
+      return res.status(401).json(GENERIC_FAIL);
+    }
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -1032,6 +1187,8 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+  const outUser = req.session && req.session.user && req.session.user.username;
+  if (outUser) writeLog('LOGOUT', outUser, outUser, '登出', req);
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
     res.json({ success: true });
@@ -1956,6 +2113,32 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// 帳號異動稽核用的欄位快照／欄位清單（不含 password、passwordChangedAt、email 位址等機敏資料）
+const USER_AUDIT_FIELDS = [
+  { key: 'displayName', label: '顯示名稱' }, { key: 'nickname', label: '暱稱' }, { key: 'role', label: '角色' }, { key: 'bu', label: 'BU' },
+  { key: 'active', label: '啟用' }, { key: 'accessMode', label: '存取模式' }, { key: 'canDownloadContacts', label: '可下載客戶名單' },
+  { key: 'canSetTargets', label: '可設定目標' }, { key: 'pureSupervisor', label: '純主管(唯讀掛名)' }, { key: 'supervisor', label: '直屬主管' },
+  { key: 'viewOwnerScope', label: '查看業務範圍' }, { key: 'viewGroupId', label: '查看集團' },
+];
+function userAuditSnap(u) {
+  const x = u || {};
+  const role = x.role || 'user';
+  return {
+    displayName: x.displayName || '', nickname: x.nickname || '', role, bu: normalizeBu(x.bu),
+    active: x.active !== false, accessMode: role === 'admin' ? 'edit' : (x.accessMode === 'view' ? 'view' : 'edit'),
+    canDownloadContacts: !!x.canDownloadContacts, canSetTargets: !!x.canSetTargets, pureSupervisor: !!x.pureSupervisor,
+    supervisor: x.supervisor || '', viewOwnerScope: x.viewOwnerScope || '', viewGroupId: x.viewGroupId || '',
+  };
+}
+
+/** 啟用中的管理員人數（_pool 等系統帳號不算；role==='admin' 且 active!==false） */
+function countActiveAdmins(users) { return (users || []).filter(x => x.role === 'admin' && x.active !== false).length; }
+/** 管理員安全護欄被觸發：回應 + 稽核（ADMIN_RAIL_BLOCKED，記下誰、對誰、想做什麼、為什麼被擋） */
+function adminRailBlock(req, res, status, code, message, target, attempted) {
+  try { writeLog('ADMIN_RAIL_BLOCKED', req.session.user.username, target, `被攔截（${code}）：${attempted}`, req); } catch (e) { console.error('[adminRail log]', e && e.message); }
+  return res.status(status).json({ error: message, code });
+}
+
 // ── Admin: update user ───────────────────────────────────
 app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
@@ -1976,6 +2159,28 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (req.body && 'email' in req.body) {
     emailCheck = validateUserEmail(req.body.email, { config: mailConfig, users: auth.users, selfUsername: req.params.username });
     if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
+  }
+  const userBefore = userAuditSnap(auth.users[idx]);   // 異動前快照（只含可編輯的非機敏欄位；不含密碼雜湊／Email 位址）
+  // ── 管理員安全護欄（內控）：避免自我提權／自我鎖死，且系統永遠至少留一位啟用中的管理員 ──
+  {
+    const opName0 = req.session.user.username;
+    const effRole = role !== undefined ? role : userBefore.role;
+    const effActive = active !== undefined ? !!active : userBefore.active;
+    const effAccess = effRole === 'admin' ? 'edit' : (accessMode !== undefined ? (accessMode === 'view' ? 'view' : 'edit') : userBefore.accessMode);
+    const changes = [];
+    if (effRole !== userBefore.role) changes.push(`角色 ${userBefore.role}→${effRole}`);
+    if (effActive !== userBefore.active) changes.push(`啟用 ${userBefore.active ? '是' : '否'}→${effActive ? '是' : '否'}`);
+    if (effAccess !== userBefore.accessMode) changes.push(`存取模式 ${userBefore.accessMode}→${effAccess}`);
+    if (userBefore.role === 'admin' && userBefore.active && (effRole !== 'admin' || !effActive) && countActiveAdmins(auth.users) <= 1) {
+      return adminRailBlock(req, res, 400, 'LAST_ADMIN_PROTECTED',
+        '無法停用或降級最後一位啟用中的管理員，請先建立或啟用另一位管理員',
+        req.params.username, `嘗試${changes.join('、') || '停用／降級'}，但這是最後一位啟用中的管理員`);
+    }
+    if (req.params.username === opName0 && changes.length) {
+      return adminRailBlock(req, res, 403, 'ADMIN_SELF_CHANGE_FORBIDDEN',
+        '管理員不能變更自己的角色、啟用狀態或存取模式（避免自我提權或把自己鎖在系統外），請由另一位管理員操作',
+        req.params.username, `管理員嘗試變更自己的${changes.join('、')}`);
+    }
   }
   const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
@@ -2038,7 +2243,18 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   Object.assign(target, u);
   saveAuth(auth);
   const buLabel = u.bu ? u.bu.join('+') : '全公司';
-  writeLog('UPDATE_USER', req.session.user.username, req.params.username, `更新帳號設定（BU=${buLabel}）` + (nickCheck && nickCheck.nickname !== nickBefore ? `；暱稱 ${nickBefore || '∅'}→${nickCheck.nickname || '∅'}` : '') + (u.role !== roleBefore ? `；角色 ${roleBefore}→${u.role}` : '') + (emailCheck && maskedAuditDetail(emailBefore, emailCheck.value) !== maskedAuditDetail('', '') ? '；' + maskedAuditDetail(emailBefore, emailCheck.value) : ''), req);
+  // 異動前→後（欄位層級）。Email 只記「未設定→已設定／已變更／已清除」，絕不寫位址
+  const userAfter = userAuditSnap(u);
+  const diffs = AD.fieldDiff(userBefore, userAfter, USER_AUDIT_FIELDS);
+  if (emailCheck && maskedAuditDetail(emailBefore, emailCheck.value) !== maskedAuditDetail('', '')) diffs.push(maskedAuditDetail(emailBefore, emailCheck.value));
+  const opName = req.session.user.username;
+  writeLog('UPDATE_USER', opName, req.params.username, AD.joinCapped(diffs, { prefix: `更新帳號設定（BU=${buLabel}）｜變更：`, max: AD.MAX_DETAIL }) + (diffs.length ? '' : '無欄位變更'), req);
+  // 重要權限異動另寫「獨立動作」，稽核人員可直接用動作名稱篩選
+  const who = `${req.params.username}（${u.displayName || ''}）`;
+  if (userBefore.active !== userAfter.active) writeLog(userAfter.active ? 'ENABLE_USER' : 'DISABLE_USER', opName, req.params.username, `${userAfter.active ? '啟用' : '停用'}帳號 ${who}；角色=${userAfter.role}；停用後既有連線下一個請求即失效`, req);
+  if (userBefore.canDownloadContacts !== userAfter.canDownloadContacts) writeLog(userAfter.canDownloadContacts ? 'GRANT_DOWNLOAD_PERMISSION' : 'REVOKE_DOWNLOAD_PERMISSION', opName, req.params.username, `${userAfter.canDownloadContacts ? '開通' : '收回'}客戶名單下載權限：${who}`, req);
+  if (userBefore.accessMode !== userAfter.accessMode) writeLog(userAfter.accessMode === 'view' ? 'SET_READONLY' : 'SET_EDITABLE', opName, req.params.username, `存取模式 ${userBefore.accessMode}→${userAfter.accessMode}（${userAfter.accessMode === 'view' ? '改為唯讀' : '改為可編輯'}）：${who}`, req);
+  if (userBefore.role !== userAfter.role) writeLog('CHANGE_USER_ROLE', opName, req.params.username, `角色 ${userBefore.role}→${userAfter.role}：${who}`, req);
   res.json({ success: true });
 });
 
@@ -2067,8 +2283,8 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   const auth = loadAuth();
   const idx = auth.users.findIndex(u => u.username === req.params.username);
   if (idx === -1) return res.status(404).json({ error: '找不到此帳號' });
-  if (auth.users[idx].role === 'admin' && auth.users.filter(u => u.role === 'admin').length <= 1)
-    return res.status(400).json({ error: '無法刪除最後一位管理者' });
+  if (auth.users[idx].role === 'admin' && (auth.users.filter(u => u.role === 'admin').length <= 1 || (auth.users[idx].active !== false && countActiveAdmins(auth.users) <= 1)))
+    return adminRailBlock(req, res, 400, 'LAST_ADMIN_PROTECTED', '無法刪除最後一位管理者', req.params.username, '嘗試刪除最後一位啟用中的管理員');
   const deleted = auth.users[idx];
   auth.users.splice(idx, 1);
   saveAuth(auth);
@@ -2240,20 +2456,39 @@ app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
   if (!matrix || typeof matrix !== 'object') {
     return res.status(400).json({ error: '格式錯誤：須提供 matrix 物件' });
   }
+  const permBefore = JSON.parse(JSON.stringify(getRolePermissions()));
   saveRolePermissions(matrix);
-  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', '更新角色功能權限矩陣', req);
+  const permAfter = getRolePermissions();
+  // 逐角色列出新增／移除的功能（用中文功能名稱）；沒有變動就明說
+  const fLabel = (k) => ((FEATURE_REGISTRY.find(f => f.key === k) || {}).label) || k;
+  const permDiffs = [];
+  KNOWN_ROLES.forEach(role => {
+    if (role === 'admin') return;
+    const d = AD.setDiff(permBefore[role] || [], permAfter[role] || []);
+    if (d.add.length || d.del.length) permDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(fLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(fLabel).join('、') + ']' : ''}`);
+  });
+  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動', req);
   res.json({ success: true });
 });
 
 // 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
 app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
   const data = db.load();
+  const resetBefore = JSON.parse(JSON.stringify(getRolePermissions()));
   if (data.rolePermissions || data.rolePermissionsKnownFeatures) {
     delete data.rolePermissions;
     delete data.rolePermissionsKnownFeatures;
     db.save(data);
   }
-  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', '重置角色功能權限為系統預設', req);
+  const resetAfter = getRolePermissions();
+  const resetFLabel = (k) => ((FEATURE_REGISTRY.find(f => f.key === k) || {}).label) || k;
+  const resetDiffs = [];
+  KNOWN_ROLES.forEach(role => {
+    if (role === 'admin') return;
+    const d = AD.setDiff(resetBefore[role] || [], resetAfter[role] || []);
+    if (d.add.length || d.del.length) resetDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(resetFLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(resetFLabel).join('、') + ']' : ''}`);
+  });
+  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動', req);
   res.json({ success: true });
 });
 
@@ -3264,6 +3499,7 @@ app.get('/api/export', requireAuth, (req, res, next) => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '聯絡人');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_CONTACTS', rows.length, `聯絡人名單；依角色(${req.session.user.role})可視範圍：${exportOwners.length} 位業務、BU=${normalizeBu(req.session.user.bu).join('+') || '不限'}`, 'xlsx');
   res.setHeader('Content-Disposition', 'attachment; filename="contacts.xlsx"');
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -4555,6 +4791,7 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_FORECAST', opps.length, `${yr} 年度商機預測；依角色(${user.role})可視範圍：${forecastOwners.length} 位業務`, 'xlsx');
   const fname = `${yr}%E5%B9%B4SalesPipeline_${encodeURIComponent(salesPerson || 'export')}_${dateStr}.xlsx`;
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -4610,6 +4847,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_OPPORTUNITIES', rows.length, '商機資料（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%95%86%E6%A9%9F%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -4665,6 +4903,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_CONTACTS_ADMIN', rows.length, '客戶/聯絡人資料（管理員全量，不分業務，未刪除者）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%AE%A2%E6%88%B6%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -5075,6 +5314,7 @@ app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_VISITS', rows.length, '拜訪/日報記錄（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E6%97%A5%E5%A0%B1%E8%A8%98%E9%8C%84_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -5200,6 +5440,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  auditExport(req, 'EXPORT_CONTRACTS', rows.length, '合約資料（管理員全量，不分業務）', 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''%E5%90%88%E7%B4%84%E8%B3%87%E6%96%99_${dateStr}.xlsx`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
@@ -6520,8 +6761,14 @@ app.post('/api/admin/integrations', requireAdmin, (req, res) => {
   if (idx >= 0) data.integrations[idx] = item;
   else data.integrations.push(item);
   db.save(data);
+  // 異動前→後（只列非機敏欄位；密碼／clientSecret 只標示「已更新」，絕不寫值或密文）
+  const intDiffs = prev ? AD.fieldDiff(prev, item, [
+    { key: 'name', label: '名稱' }, { key: 'enabled', label: '啟用' }, { key: 'baseUrl', label: 'baseUrl' }, { key: 'authType', label: '認證方式' },
+    { key: 'username', label: '使用者名稱' }, { key: 'clientId', label: 'clientId' }, { key: 'tokenEndpoint', label: 'tokenEndpoint' },
+  ]) : [`新增整合：baseUrl=${AD.show(item.baseUrl, 80)}、使用者=${AD.show(item.username)}`];
+  INTEGRATION_SECRET_FIELDS.forEach(f => { if (typeof b[f] === 'string' && b[f] !== '' && (!prev || prev[f] !== item[f])) intDiffs.push(`${f} 已更新（值不記錄）`); });
   writeLog('SAVE_INTEGRATION', operator, item.name,
-    `type:${item.type} enabled:${item.enabled} auth:${item.authType}`, req);
+    AD.joinCapped(intDiffs, { prefix: `type:${item.type} enabled:${item.enabled} auth:${item.authType}｜異動：` }) + (intDiffs.length ? '' : '無欄位變更'), req);
   res.json(maskIntegration(item));
 });
 
@@ -8180,6 +8427,7 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '企業主檔');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_COMPANY_MASTER', rows.length, `企業主檔（角色=${req.session.user.role}，全量）`, 'xlsx');
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent('企業主檔.xlsx')}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.send(buf);
