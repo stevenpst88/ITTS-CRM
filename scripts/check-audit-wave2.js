@@ -527,7 +527,7 @@ const ctx = () => ({ ok, eq, sleep, http, login, loginAll, getLogs, byAction, ar
 const ORDER = ['A', 'B', 'C', 'D', 'E', 'M'];
 (async () => {
   const only = (process.env.AW2_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
-  const SECTIONS = Object.assign({ A: secA, M: secM }, EXTRA.sections(ctx));
+  const SECTIONS = Object.assign({ A: secA, M: secM }, EXTRA.sections(ctx()));
   const seedFor = { A: (f) => {
     f.legacyLog = [
       { id: 'LEG-OLD-1', timestamp: '2020-01-02T03:04:05.000Z', action: 'LEGACY_ACT', operator: 'legacy_op', target: 'x', detail: '舊紀錄一', ip: '9.9.9.9', userAgent: 'old-ua' },
@@ -539,7 +539,10 @@ const ORDER = ['A', 'B', 'C', 'D', 'E', 'M'];
     for (const k of ORDER) {
       if (!SECTIONS[k] || (k === 'M' && process.env.AW2_SKIP_MUT)) continue;
       if (only.length && !only.includes(k)) continue;
-      if (k === 'M') { await SECTIONS[k](); continue; }
+      if (k === 'M' || (EXTRA.noServer || []).includes(k)) {   // 不需要伺服器的項目（假 app＋記憶體資料庫）
+        try { await SECTIONS[k](); } catch (e) { fail++; failures.push(`第 ${k} 項例外：${e && e.stack || e}`); console.log('  ✗ 例外', e && e.stack || e); }
+        continue;
+      }
       await stopServer(); cleanupFiles();
       seedExtra = (EXTRA.seed && EXTRA.seed[k]) || seedFor[k] || null;
       seedFiles(); await restart();
