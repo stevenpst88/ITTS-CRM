@@ -442,7 +442,7 @@ async function secA() {
   eq((await getLogs('?paged=1&operator=legacy_op')).total, 1, '[A] 操作者篩選（舊資料）');
   eq((await getLogs('?paged=1&from=2020-01-01&to=2020-01-31')).total, 2, '[A] 日期範圍（舊資料 2020-01）');
   eq((await getLogs('?paged=1&q=' + encodeURIComponent('舊紀錄二'))).total, 1, '[A] 文字搜尋');
-  ok((await getLogs('?paged=1&from=' + new Date(Date.now() + 86400000).toISOString().slice(0, 10))).total === 0, '[A] 未來日期範圍為空');
+  ok((await getLogs('?paged=1&from=' + new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10))).total === 0, '[A] 未來日期範圍為空（用 UTC+2 天，避開台北／UTC 跨日邊界）');
   // 名片稽核
   const ca = await http('_s_admin', 'GET', '/api/admin/contact-audit?paged=1&limit=50');
   ok(ca.status === 200 && Array.isArray(ca.json.rows), '[A] contact-audit 分頁形狀');
