@@ -309,7 +309,7 @@ function scanNoMutation() {
       if (e.isDirectory()) { if (!skipDir.has(e.name)) walk(path.join(dir, e.name)); continue; }
       if (!/\.(js|mjs|cjs|html|sql|ps1|json)$/.test(e.name)) continue;
       const p = path.join(dir, e.name);
-      if (p.endsWith('audit_events_protect.sql') || p.endsWith('check-audit-wave2.js')) continue;
+      if (p.endsWith('audit_events_protect.sql') || p.endsWith('check-audit-wave2.js') || p.endsWith('verify-audit-pg.js')) continue;   // verify-audit-pg.js 是人工對拋棄式測試庫執行的驗證腳本，刻意含清理 DELETE 與保護 SQL 的 UPDATE/DELETE/TRUNCATE 測試（應用程式本身不含）
       let t = ''; try { t = fs.readFileSync(p, 'utf8'); } catch { continue; }
       if (/\b(UPDATE\s+(public\.)?audit_events|DELETE\s+FROM\s+(public\.)?audit_events|TRUNCATE\s+(TABLE\s+)?(public\.)?audit_events)\b/i.test(t)) hits.push(path.relative(ROOT, p));
     }
