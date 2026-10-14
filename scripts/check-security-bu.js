@@ -5,8 +5,8 @@
  *      前端 QPB／QCL／admin.html／admin-users-view.js／app.js、productCatalog 種子）；html 的 <option>、核取方塊、樣式
  *   2) validateBuInput（從 server.js 原始碼抽出來在 vm 內執行）：資安 通過；多 BU 去重；無效值（"資安 "、"SEC"）被濾掉；錯誤訊息列出五個 BU
  *   3) 秘書可視範圍（lib/quoteRoutes.js inViewScope，經 GET /api/quotations）：
- *        掛滿「舊四個 BU」的秘書維持看全部（不需加掛 資安）、四個＋資安 也看全部；只掛資安 → 只看資安業務的單；
- *        只掛舊四個中的部分（如 ERP+ITS+MDM）→ 不會因為新增 資安 而多看到 資安 的單；沒有 BU → 什麼都看不到
+ *        2026-10-14 起秘書跨 BU 唯讀看全部報價單（與自己掛哪些 BU 無關，含只掛 資安、部分 BU、沒有 BU）；
+ *        一般業務仍只看自己的、管理員看全部
  *   4) 簽核流程設定：GET 帶 資安（預設 hasMgr2Step:false）；PUT 可開關 資安；舊設定檔（沒有 資安 鍵）讀取時補 false
  *   5) 簽核關卡的 BU 判斷（buildActualTiers）：bu 為陣列 ['資安']／字串／多 BU（取第一個）都對得上設定
  * 用法：node scripts/check-security-bu.js（不需要伺服器；不碰 data.json／auth.json／audit.log.json）
@@ -34,7 +34,7 @@ const arrOf = (src, re) => { const m = re.exec(src); return m ? J(JSON.parse(m[1
   const srv = read('server.js'), qr = read('lib/quoteRoutes.js'), adm = read('_client/admin.html'), app = read('_client/app.js'), idx = read('_client/index.html'), css = read('_client/style.css');
   t('1.1 server.js VALID_BUS＝五個 BU', arrOf(srv, /const VALID_BUS = (\[[^\]]*\])/) === J(BUS5));
   t('1.2 server.js BU 對比 API 的 BUS＝五個 BU（/api/exec/bu-comparison）', arrOf(srv, /app\.get\('\/api\/exec\/bu-comparison'[\s\S]*?const BUS = (\[[^\]]*\])/) === J(BUS5));
-  t('1.3 lib/quoteRoutes.js ALL_BUS＝五個 BU；LEGACY_ALL_BUS＝舊四個（秘書「掛滿＝看全部」的基準）', arrOf(qr, /const ALL_BUS = (\[[^\]]*\])/) === J(BUS5) && arrOf(qr, /const LEGACY_ALL_BUS = (\[[^\]]*\])/) === J(BUS5.slice(0, 4)) && /LEGACY_ALL_BUS\.every\(/.test(qr));
+  t('1.3 lib/quoteRoutes.js ALL_BUS＝五個 BU；LEGACY_ALL_BUS 已移除（秘書改為跨 BU 看全部，不再用「掛滿四個 BU」判斷）', arrOf(qr, /const ALL_BUS = (\[[^\]]*\])/) === J(BUS5) && !/LEGACY_ALL_BUS/.test(qr));
   t('1.4 牌價簿 BUS 與 quoteRoutes／QPB／QCL／後台 PB_BUS 同值同序；MAX_TOTAL＝300', J(PB.BUS) === J(BUS5) && PB.MAX_TOTAL === 300 && arrOf(read('_client/quote-pricebook.js'), /var BUS = (\[[^\]]*\])/) === J(BUS5) && arrOf(read('_client/quote-costlines.js'), /const PB_BUS = (\[[^\]]*\])/) === J(BUS5) && arrOf(adm, /const PB_BUS = (\[[^\]]*\])/) === J(BUS5));
   t('1.5 後台其他清單：簽核流程 AF_BUS、商品目錄 PC_BUS、帳號管理 BU_LIST 都是五個 BU', arrOf(adm, /const AF_BUS = (\[[^\]]*\])/) === J(BUS5) && arrOf(adm, /const PC_BUS = (\[[^\]]*\])/) === J(BUS5) && J(V.BU_LIST) === J(BUS5));
   t('1.6 前端 app.js：setupBuSelector 的 ALL_BUS、BU 業績總覽 BUS 都含 資安', arrOf(app, /const ALL_BUS = (\[[^\]]*\])/) === J(BUS5) && arrOf(app, /function renderBuBreakdown[\s\S]*?const BUS = (\[[^\]]*\])/) === J(BUS5));
@@ -97,10 +97,10 @@ const arrOf = (src, re) => { const m = re.exec(src); return m ? J(JSON.parse(m[1
   const ALLQ = ['q1', 'q2', 'q3', 'q4'];
   t('3.1 舊行為不變：掛滿 ERP/ITS/MDM/CRM 的秘書（沒有 資安）仍看到全部報價單，包含 資安 業務的單', J(await seen('s_all4')) === J(ALLQ), J(await seen('s_all4')));
   t('3.2 掛滿五個 BU 的秘書看全部', J(await seen('s_all5')) === J(ALLQ));
-  t('3.3 只掛 資安 的秘書：只看到 資安 業務（含 資安+ERP 多 BU）發起的單，看不到純 ERP／ITS 的單', J(await seen('s_sec')) === J(['q3', 'q4']), J(await seen('s_sec')));
-  t('3.4 只掛舊四個的一部分（ERP+ITS+MDM）：不會因為新增 資安 而變成看全部；看 ERP／ITS 與 資安+ERP 多 BU 的單，看不到純 資安 的單', J(await seen('s_part')) === J(['q1', 'q2', 'q4']), J(await seen('s_part')));
-  t('3.5 沒有 BU 的秘書看不到任何單', J(await seen('s_none')) === J([]));
-  t('3.6 ITS+資安 的秘書：看 ITS 與 資安 的單（含多 BU）、不看純 ERP', J(await seen('s_its_sec')) === J(['q2', 'q3', 'q4']), J(await seen('s_its_sec')));
+  t('3.3 只掛 資安 的秘書：跨 BU 看全部（2026-10-14 新規則；舊規則只看 q3、q4）', J(await seen('s_sec')) === J(ALLQ), J(await seen('s_sec')));
+  t('3.4 只掛部分 BU（ERP+ITS+MDM）的秘書：跨 BU 看全部，含純 資安 的單（舊規則看不到 q3）', J(await seen('s_part')) === J(ALLQ), J(await seen('s_part')));
+  t('3.5 沒有 BU 的秘書也看全部（舊規則什麼都看不到）', J(await seen('s_none')) === J(ALLQ));
+  t('3.6 ITS+資安 的秘書：跨 BU 看全部，含純 ERP（舊規則看不到 q1）', J(await seen('s_its_sec')) === J(ALLQ), J(await seen('s_its_sec')));
   t('3.7 管理員看全部；各 BU 業務只看自己的（不受 資安 影響）', J(await seen('adm')) === J(ALLQ) && J(await seen('o_sec')) === J(['q3']) && J(await seen('o_erp')) === J(['q1']));
 
   const g0 = await call('adm', 'GET', '/api/admin/quote-approval/flow-config');
