@@ -1214,6 +1214,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="quote-steps\.js"/g, `src="quote-steps.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pdf\.js"/g,     `src="quote-pdf.js?v=${BUILD_VERSION}"`)
+      .replace(/src="config-review\.js"/g, `src="config-review.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-coststeps\.js"/g, `src="quote-coststeps.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin-users-view\.js"/g, `src="admin-users-view.js?v=${BUILD_VERSION}"`)
@@ -9556,6 +9557,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   res.json({
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
+    approvalConfigDualReview: require('./lib/configReview').isEnabled(process.env),   // 簽核設定變更「兩人覆核」開關（環境變數 APPROVAL_CONFIG_DUAL_REVIEW=1；只讀，畫面不可切換）
     app: {
       name:        pkg.name        || 'business-card-crm',
       version:     pkg.version     || '1.0.0',
