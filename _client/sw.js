@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v10';   // v10：併入 main 稽核第一/二波與版本頁；v9：併入 main（商機報價／公告／統編守門／資安BU／毛利預覽）並玻璃化；v8：行銷／顧問首頁（role-homes.js 新檔、glass-dash.js 匯出 GlassKit、app.js／style.css 小改）；v7：glass 首頁（glass-dash.js 新檔、glass.css、app.js 的 _countUp/loadManagerHome 小改）；v6：glass 色彩主題＋側欄分組（glass-theme.js、glass.css、app.js 變動）；v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
+const SW_VERSION = 'itts-crm-v11';   // v11：併入 main XSS 跳脫修補；v10：併入 main 稽核第一/二波與版本頁；v9：併入 main（商機報價／公告／統編守門／資安BU／毛利預覽）並玻璃化；v8：行銷／顧問首頁（role-homes.js 新檔、glass-dash.js 匯出 GlassKit、app.js／style.css 小改）；v7：glass 首頁（glass-dash.js 新檔、glass.css、app.js 的 _countUp/loadManagerHome 小改）；v6：glass 色彩主題＋側欄分組（glass-theme.js、glass.css、app.js 變動）；v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 

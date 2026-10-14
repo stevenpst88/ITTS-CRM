@@ -1,6 +1,8 @@
 const API = '/api';
 
 // ── XSS 防護：HTML 字符轉義 ───────────────────────────────
+// 內嵌 onclick 的字串參數：JSON 編碼（成為合法 JS 字串字面值）再 HTML 跳脫（屬性值）
+function jsArg(v) { return escapeHtml(JSON.stringify(String(v === null || v === undefined ? '' : v))); }
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -544,16 +546,16 @@ function renderZombieSection() {
       : '<span class="z-sev-badge z-sev-warn">🟡 警示</span>';
     const stageStyle = `color:${STAGE_COLOR[z.stage]||'#333'};font-weight:700`;
     const lastVisitTxt = z.lastVisit
-      ? `${z.lastVisit}<br><small style="color:#aaa">${z.daysSinceAny} 天前</small>`
+      ? `${escapeHtml(z.lastVisit)}<br><small style="color:#aaa">${z.daysSinceAny} 天前</small>`
       : '<span style="color:#e74c3c">從未</span>';
     const reasonHtml = z.reasons.map(r => `<div class="z-reason-item">• ${escapeHtml(r)}</div>`).join('');
     return `<tr class="z-row ${sevCls}" data-id="${z.id}">
       <td>${sevLabel}</td>
       <td><strong>${escapeHtml(z.company||'-')}</strong></td>
       <td>${escapeHtml(z.contactName||'-')}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${z.product||''}">${escapeHtml(z.product||'-')}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(z.product||'')}">${escapeHtml(z.product||'-')}</td>
       <td style="text-align:right">${z.amount?Number(z.amount).toLocaleString():'-'}</td>
-      <td><span style="${stageStyle}">${z.stage}</span></td>
+      <td><span style="${stageStyle}">${escapeHtml(z.stage)}</span></td>
       <td style="white-space:nowrap">${lastVisitTxt}</td>
       <td class="z-reasons">${reasonHtml}</td>
       <td>${escapeHtml(z.ownerName||z.owner)}</td>
@@ -1091,11 +1093,11 @@ function renderCompanyMasterDetail(d) {
   const fmtK = n => '$' + (Number(n) || 0).toLocaleString() + ' K';
   const card = (inner) => `<div class="cm-card">${inner}</div>`;
   const info = [
-    ['統一編號', c.taxId || '無'],
+    ['統一編號', escapeHtml(c.taxId || '無')],
     ['資本額', cmFmtCap(c.capital)],
-    ['產業', c.industry || '—'],
-    ['負責人', c.representative || '—'],
-    ['地址', c.address || '—'],
+    ['產業', escapeHtml(c.industry || '—')],
+    ['負責人', escapeHtml(c.representative || '—')],
+    ['地址', escapeHtml(c.address || '—')],
     ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],
   ].map(([k, v]) => `<div style="min-width:190px"><span class="cm-label">${k}</span><br><span style="font-size:14px">${v}</span></div>`).join('');
 
@@ -1110,7 +1112,7 @@ function renderCompanyMasterDetail(d) {
     ${td(escapeHtml(c.phone || c.mobile || ''))}${td(escapeHtml(c.email || ''))}
     ${td(CM_EMP_LABEL[c.employmentStatus] || '在職')}${td(escapeHtml(c.ownerDisplay || ''))}</tr>`);
   const oppRows = d.opps.map(o => `<tr>
-    ${td(escapeHtml(o.product || ''))}${td(CM_STAGE_LABEL[o.stage] || o.stage || '')}
+    ${td(escapeHtml(o.product || ''))}${td(escapeHtml(CM_STAGE_LABEL[o.stage] || o.stage || ''))}
     ${td(fmtK(o.amount), 'text-align:right')}${td(escapeHtml(o.stage === 'Won' ? (o.achievedDate || '') : (o.expectedDate || '')))}
     ${td(escapeHtml(o.ownerDisplay || ''))}</tr>`);
   const ctrRows = d.contracts.map(x => `<tr>
@@ -1727,7 +1729,7 @@ function renderKeyAccountView() {
         .sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''))
         .map(o => {
           const amt = parseFloat(o.amount) || 0;
-          const stageBadge = `<span class="ka-stage-${o.stage}">${o.stage}</span>`;
+          const stageBadge = `<span class="ka-stage-${escapeHtml(o.stage)}">${escapeHtml(o.stage)}</span>`;
           return `<tr>
             <td style="width:60px">${stageBadge}</td>
             <td>${escapeHtml(o.product || o.description || '—')}</td>
@@ -1799,9 +1801,9 @@ function buildContactCard(c, extraClass = '') {
   card.className = 'contact-card' + (isKa ? ' is-ka' : '') + (extraClass ? ' ' + extraClass : '');
   card.dataset.id = c.id;
   const titleOnly = c.title || '';
-  const imageThumb = c.cardImage ? `<img class="card-image-thumb" src="${c.cardImage}" alt="名片">` : '';
+  const imageThumb = c.cardImage ? `<img class="card-image-thumb" src="${escapeHtml(c.cardImage)}" alt="名片">` : '';
   const oppBadge = c.opportunityStage
-    ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[c.opportunityStage]?.cls || ''}">${c.opportunityStage}｜${OPPORTUNITY_LABELS[c.opportunityStage]?.label.split('｜')[1] || ''}</span>`
+    ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[c.opportunityStage]?.cls || ''}">${escapeHtml(c.opportunityStage)}｜${OPPORTUNITY_LABELS[c.opportunityStage]?.label.split('｜')[1] || ''}</span>`
     : '';
   const primaryMark = c.isPrimary ? `<span class="primary-badge">&#11088; 主要</span>` : '';
   // 人員狀態 badge（向下相容：舊資料只有 isResigned）
@@ -1826,14 +1828,14 @@ function buildContactCard(c, extraClass = '') {
   else if (kaIsMine) kaTooltip = `取消 Key Account 標記（你是 Account Owner）`;
   else kaTooltip = `⭐ Account Owner: ${kaOwnerDisp}（無權移除）`;
   const kaBtn = isCustomer && c.company
-    ? `<button class="ka-star-btn ${isKa ? 'active' : ''}${isKa && !kaIsMine ? ' ka-star-others' : ''}" data-ka-company="${escapeHtml(c.company)}" title="${kaTooltip}">${isKa ? '⭐' : '☆'}</button>`
+    ? `<button class="ka-star-btn ${isKa ? 'active' : ''}${isKa && !kaIsMine ? ' ka-star-others' : ''}" data-ka-company="${escapeHtml(c.company)}" title="${escapeHtml(kaTooltip)}">${isKa ? '⭐' : '☆'}</button>`
     : '';
   const kaChip = isKa
     ? `<span class="ka-chip" title="Account Owner: ${escapeHtml(kaOwnerDisp)}">⭐ KEY ACCOUNT${kaIsMine ? '（我管理）' : ''}</span>`
     : '';
   card.innerHTML = `
     <div class="card-top" style="position:relative">
-      <div class="avatar" style="background:linear-gradient(135deg,${c1},${c2})">${getInitial(c.name)}</div>
+      <div class="avatar" style="background:linear-gradient(135deg,${c1},${c2})">${escapeHtml(getInitial(c.name))}</div>
       <div class="card-name-block">
         <div class="card-name">${escapeHtml(c.name) || '-'} ${primaryMark}</div>
         <div class="card-title-company">${escapeHtml(titleOnly) || '&nbsp;'}</div>
@@ -2038,8 +2040,8 @@ function buildCompanyGroupEl(company, members) {
   const industry = members.find(c => c.industry)?.industry;
   const [c1, c2] = avatarColor(company);
   const oppBadge = opp
-    ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[opp]?.cls || ''}">${opp}｜${OPPORTUNITY_LABELS[opp]?.label.split('｜')[1] || ''}</span>` : '';
-  const industryBadge = industry ? `<span class="industry-badge">${industry}</span>` : '';
+    ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[opp]?.cls || ''}">${escapeHtml(opp)}｜${OPPORTUNITY_LABELS[opp]?.label.split('｜')[1] || ''}</span>` : '';
+  const industryBadge = industry ? `<span class="industry-badge">${escapeHtml(industry)}</span>` : '';
 
   const memberIds = new Set(members.map(c => c.id));
   const recentVisit = [...allVisits]
@@ -2054,15 +2056,15 @@ function buildCompanyGroupEl(company, members) {
   const recentVisitHtml = recentVisit
     ? `<div class="cg-recent-row">
          <span class="cg-recent-icon">&#128203;</span>
-         <span class="cg-recent-date">${recentVisit.visitDate || ''}</span>
-         <span class="cg-recent-text">${recentVisit.topic || ''}</span>
+         <span class="cg-recent-date">${escapeHtml(recentVisit.visitDate || '')}</span>
+         <span class="cg-recent-text">${escapeHtml(recentVisit.topic || '')}</span>
        </div>`
     : `<div class="cg-recent-row cg-recent-empty">尚無拜訪記錄</div>`;
   const recentOppHtml = recentOpp
     ? `<div class="cg-recent-row">
          <span class="cg-recent-icon">&#128161;</span>
-         <span class="cg-opp-stage opp-${(recentOpp.stage||'').toLowerCase()}">${recentOpp.stage}</span>
-         <span class="cg-recent-text">${recentOpp.product || recentOpp.category || ''}</span>
+         <span class="cg-opp-stage opp-${escapeHtml((recentOpp.stage||'').toLowerCase())}">${escapeHtml(recentOpp.stage)}</span>
+         <span class="cg-recent-text">${escapeHtml(recentOpp.product || recentOpp.category || '')}</span>
          ${recentOpp.amount ? `<span class="cg-opp-amt">${Number(recentOpp.amount).toLocaleString()} K</span>` : ''}
        </div>`
     : '';
@@ -2071,7 +2073,7 @@ function buildCompanyGroupEl(company, members) {
   group.className = 'company-group';
   group.innerHTML = `
     <div class="company-group-header">
-      <div class="company-avatar" style="background:linear-gradient(135deg,${c1},${c2})">${company.charAt(0)}</div>
+      <div class="company-avatar" style="background:linear-gradient(135deg,${c1},${c2})">${escapeHtml(company.charAt(0))}</div>
       <div class="company-group-info">
         <div class="company-group-name">${escapeHtml(company)}</div>
         <div class="company-group-primary">&#11088; ${escapeHtml(primary.name)}${primary.title ? '・' + escapeHtml(primary.title) : ''}</div>
@@ -2747,7 +2749,7 @@ $('lookupBtn').addEventListener('click', async () => {
 
 function renderCompanyInfo(d) {
   const listedBadge = d.stockCode
-    ? `<span class="${d.listedType === '上市' ? 'badge-listed' : 'badge-otc'}">${d.listedType}</span><span class="stock-code">${d.stockCode}</span><small style="color:#888;margin-left:6px">${d.exchange}</small>`
+    ? `<span class="${d.listedType === '上市' ? 'badge-listed' : 'badge-otc'}">${escapeHtml(d.listedType)}</span><span class="stock-code">${escapeHtml(d.stockCode)}</span><small style="color:#888;margin-left:6px">${escapeHtml(d.exchange)}</small>`
     : `<span class="badge-unlisted">未上市櫃</span>`;
 
   const yr1 = d.dataYear1 || 2025;
@@ -2782,11 +2784,11 @@ function renderCompanyInfo(d) {
     <div class="company-info-card">
       <div class="ci-section">
         <div class="ci-section-title">基本資料</div>
-        <div class="ci-row"><span class="ci-label">公司名稱</span><span class="ci-value">${d.companyName || '-'}</span></div>
-        <div class="ci-row"><span class="ci-label">負責人</span><span class="ci-value">${d.representative || '-'}</span></div>
-        <div class="ci-row"><span class="ci-label">公司狀態</span><span class="ci-value">${d.companyStatus || '-'}</span></div>
-        <div class="ci-row"><span class="ci-label">資本額</span><span class="ci-value">${d.capital || '-'}</span></div>
-        <div class="ci-row"><span class="ci-label">地址</span><span class="ci-value">${d.address || '-'}</span></div>
+        <div class="ci-row"><span class="ci-label">公司名稱</span><span class="ci-value">${escapeHtml(d.companyName || '-')}</span></div>
+        <div class="ci-row"><span class="ci-label">負責人</span><span class="ci-value">${escapeHtml(d.representative || '-')}</span></div>
+        <div class="ci-row"><span class="ci-label">公司狀態</span><span class="ci-value">${escapeHtml(d.companyStatus || '-')}</span></div>
+        <div class="ci-row"><span class="ci-label">資本額</span><span class="ci-value">${escapeHtml(d.capital || '-')}</span></div>
+        <div class="ci-row"><span class="ci-label">地址</span><span class="ci-value">${escapeHtml(d.address || '-')}</span></div>
       </div>
       <div class="ci-section">
         <div class="ci-section-title">上市／上櫃資訊</div>
@@ -2882,7 +2884,7 @@ const OPPORTUNITY_LABELS = {
 };
 function renderOpportunityBadge(stage) {
   const o = OPPORTUNITY_LABELS[stage];
-  if (!o) return stage;
+  if (!o) return escapeHtml(stage);
   return `<span class="opp-badge ${o.cls}">${o.label}</span><span class="opp-sub">${o.sub}</span>`;
 }
 
@@ -2898,7 +2900,7 @@ function updateCompanyDatalist(contacts) {
     .map(c => c.company);
 
   const dl = $('companyList');
-  dl.innerHTML = recent.map(name => `<option value="${name}">`).join('');
+  dl.innerHTML = recent.map(name => `<option value="${escapeHtml(name)}">`).join('');
 }
 
 // ── 搜尋（200ms debounce：避免每鍵都打 API）──────────────────
@@ -3275,7 +3277,7 @@ async function checkCompanySimilar() {
     if (!res.ok) { box.style.display = 'none'; return; }
     const d = await res.json();
     if (d.matches && d.matches.length) {
-      const list = d.matches.map(m => m.taxId ? `${m.name}（統編 ${m.taxId}）` : m.name).join('、');
+      const list = d.matches.map(m => m.taxId ? `${escapeHtml(m.name)}（統編 ${escapeHtml(m.taxId)}）` : escapeHtml(m.name)).join('、');
       box.innerHTML = `⚠ 系統已有相似公司：${list}。請確認是否為同一家，避免重複建檔（如是同一家，建議填該公司統編或通知行銷合併主檔）。`;
       box.style.display = 'block';
     } else {
@@ -3473,7 +3475,7 @@ function openView(id) {
   let html = '';
 
   if (c.cardImage) {
-    html += `<img class="view-card-image" src="${c.cardImage}" alt="名片圖片">`;
+    html += `<img class="view-card-image" src="${escapeHtml(c.cardImage)}" alt="名片圖片">`;
   }
 
   html += `
@@ -3884,7 +3886,7 @@ function makeCell(date, visitMap, today, otherMonth) {
     const badge = document.createElement('div');
     badge.className = `cal-visit-badge vt-${vt}`;
     badge.title = `${vt}｜${name}${company ? '・' + company : ''}\n${v.topic || ''}`;
-    badge.innerHTML = `<span class="badge-type">${vt}</span>${name}${company ? '・' + company : ''}`;
+    badge.innerHTML = `<span class="badge-type">${escapeHtml(vt)}</span>${escapeHtml(name)}${company ? '・' + escapeHtml(company) : ''}`;
     badge.addEventListener('click', e => { e.stopPropagation(); openVisitView(v.id); });
     visitsDiv.appendChild(badge);
   });
@@ -3928,16 +3930,16 @@ function openAllVisitsOfDay(dateStr, visits) {
   const list = visits.map(v => {
     const contact = allContacts.find(c => c.id === v.contactId);
     const name = contact ? contact.name : v.contactName || '';
-    return `<div class="day-visit-row" data-id="${v.id}">
-      <span class="visit-type-badge">${v.visitType||'親訪'}</span>
-      <span style="font-weight:600;margin:0 6px">${name}</span>
-      <span style="color:#555">${v.topic||''}</span>
+    return `<div class="day-visit-row" data-id="${escapeHtml(v.id)}">
+      <span class="visit-type-badge">${escapeHtml(v.visitType||'親訪')}</span>
+      <span style="font-weight:600;margin:0 6px">${escapeHtml(name)}</span>
+      <span style="color:#555">${escapeHtml(v.topic||'')}</span>
     </div>`;
   }).join('');
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
   overlay.innerHTML = `<div class="modal modal-sm" style="width:420px">
-    <div class="modal-header"><h2>${dateStr} 拜訪記錄</h2>
+    <div class="modal-header"><h2>${escapeHtml(dateStr)} 拜訪記錄</h2>
       <button class="modal-close" id="dayListClose">✕</button></div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">${list}</div>
   </div>`;
@@ -5173,11 +5175,11 @@ async function loadManagerAchievement(year) {
       // 季度目標已改為「月度預算每 3 個月加總」的推導值，不再提供直接編輯
       // （手動改了也會被月度預算蓋掉）。要調整請走下方「設定月度預算」。
       const budgetBtn = (canManage && !isTeamView)
-        ? `<button onclick="openMbBudgetModal('${r.username}',${year})" style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>`
+        ? `<button onclick="openMbBudgetModal(${jsArg(r.username)},${year})" style="width:100%;font-size:11px;padding:5px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer">📆 設定月度預算</button>`
         : '';
       const manageBlock = canManage ? `
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0">
-          <div class="qr-row" data-user="${r.username}" data-year="${year}" style="margin-bottom:8px">
+          <div class="qr-row" data-user="${escapeHtml(r.username)}" data-year="${year}" style="margin-bottom:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
               <span style="font-size:11px;color:#666;font-weight:600">季度目標（K）${teamHint}</span>
               <span style="font-size:9px;color:#9ca3af">月度預算加總</span>
@@ -5191,10 +5193,10 @@ async function loadManagerAchievement(year) {
       return `
       <div class="ach-gauge-card gauge-card-light" style="border-radius:14px;padding:14px 16px;width:250px;box-sizing:border-box;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
         <div style="font-size:17px;font-weight:700;color:#1a2d52;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-          ${r.displayName}${badge}
+          ${escapeHtml(r.displayName)}${badge}
         </div>
         ${makeGaugeSvg(r.rate, color)}
-        <div class="mgr-target-cell" data-user="${r.username}" data-year="${year}" data-amount="${r.target || ''}"
+        <div class="mgr-target-cell" data-user="${escapeHtml(r.username)}" data-year="${year}" data-amount="${r.target || ''}"
             style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 4px">
           <span style="font-size:11px;color:#888">目標</span>
           <span class="mgr-target-display" title="點擊編輯目標"
@@ -5805,7 +5807,7 @@ function renderMonthBudgetCard() {
     // 取得業務員 displayName（透過 ownerMap 或 username）
     const ownerLabel = (_ownerMapCache && _ownerMapCache[b.owner]) ? _ownerMapCache[b.owner] : b.owner;
     const editBtn = canEditActuals
-      ? `<button class="btn btn-sm btn-outline mb-edit-actual-btn" onclick="openMbActualModal('${b.owner}',${year})">✏️ 編輯認列</button>`
+      ? `<button class="btn btn-sm btn-outline mb-edit-actual-btn" onclick="openMbActualModal(${jsArg(b.owner)},${year})">✏️ 編輯認列</button>`
       : '';
     const manualTag = hasManual
       ? `<span class="mb-manual-tag">含手動認列</span>` : '';
@@ -5814,7 +5816,7 @@ function renderMonthBudgetCard() {
       <div class="mb-section">
         <div class="mb-section-header">
           <span class="mb-year-badge">${year} 年</span>
-          ${budgetRows.length > 1 ? `<span style="font-size:13px;font-weight:600;color:#374151">${ownerLabel}</span>` : ''}
+          ${budgetRows.length > 1 ? `<span style="font-size:13px;font-weight:600;color:#374151">${escapeHtml(ownerLabel)}</span>` : ''}
           ${manualTag}
           ${editBtn}
         </div>
@@ -6564,13 +6566,13 @@ function renderOppTable() {
       `<option value="${s}" ${o.stage===s?'selected':''}>${OPP_STAGE_LABELS[s]||s}</option>`
     ).join('');
     return `<tr class="${won ? 'opp-won-row' : ''} ${zombieCls}" data-id="${o.id}">
-      <td data-label="建立日期">${o.createdAt ? o.createdAt.slice(0,10) : ''}</td>
+      <td data-label="建立日期">${o.createdAt ? escapeHtml(o.createdAt.slice(0,10)) : ''}</td>
       <td data-label="客戶公司">${zombieBadge}${kaCompanyMark(o.company)}${escapeHtml(o.company||'-')}</td>
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
-      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${escapeHtml(o.product||'-')}</td>
+      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product||'-')}</td>
       <td data-label="預估金額（K）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
-      <td data-label="預計成交日">${o.expectedDate || '-'}</td>
+      <td data-label="預計成交日">${escapeHtml(o.expectedDate || '-')}</td>
       <td data-label="狀態">
         <select class="opp-stage-sel" data-id="${o.id}" style="color:${OPP_STAGE_COLORS[o.stage]||'#333'}">${stageOpts}</select>
       </td>
@@ -6591,19 +6593,19 @@ function renderOppTable() {
 
   const lostRows = lostList.map(o => {
     const deletedDate = o.deletedAt ? o.deletedAt.slice(0,10) : '';
-    const reason = o.deleteReason ? `<span class="opp-lost-reason" title="${o.deleteReason}">原因：${o.deleteReason}</span>` : '';
+    const reason = o.deleteReason ? `<span class="opp-lost-reason" title="${escapeHtml(o.deleteReason)}">原因：${escapeHtml(o.deleteReason)}</span>` : '';
     return `<tr class="opp-lost-row" data-id="${o.id}">
       <td data-label="建立日期"><span class="opp-lost-date">${o.createdAt ? o.createdAt.slice(0,10) : '-'}</span></td>
-      <td data-label="客戶公司">${kaCompanyMark(o.company)}${o.company || '-'}</td>
-      <td data-label="聯絡人">${o.contactName || '-'}</td>
-      <td data-label="商機類別">${o.category || '-'}</td>
-      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.product||''}">${o.product || '-'}</td>
+      <td data-label="客戶公司">${kaCompanyMark(o.company)}${escapeHtml(o.company || '-')}</td>
+      <td data-label="聯絡人">${escapeHtml(o.contactName || '-')}</td>
+      <td data-label="商機類別">${escapeHtml(o.category || '-')}</td>
+      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product || '-')}</td>
       <td data-label="預估金額（K）" style="text-align:right">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
-      <td data-label="預計成交日">${o.expectedDate || '-'}</td>
+      <td data-label="預計成交日">${escapeHtml(o.expectedDate || '-')}</td>
       <td data-label="狀態">
         <span class="opp-lost-badge">💔 流失</span>
         ${reason}
-        ${deletedDate ? `<div style="font-size:11px;color:#aaa;margin-top:2px">刪除於 ${deletedDate}</div>` : ''}
+        ${deletedDate ? `<div style="font-size:11px;color:#aaa;margin-top:2px">刪除於 ${escapeHtml(deletedDate)}</div>` : ''}
       </td>
       <td data-label="操作">
         <button class="btn btn-sm opp-restore-btn" data-id="${o.id}" title="還原此商機至 Pipeline 階段">↩️ 還原</button>
@@ -7325,8 +7327,8 @@ function showOppVisitTooltip(e, opp) {
     tip.innerHTML = `
       <div class="ovt-header">📋 最新業務日報</div>
       <div class="ovt-meta">
-        <span class="ovt-date">${latest.visitDate || ''}</span>
-        <span class="ovt-type">${typeIcon} ${latest.visitType || '親訪'}</span>
+        <span class="ovt-date">${escapeHtml(latest.visitDate || '')}</span>
+        <span class="ovt-type">${typeIcon} ${escapeHtml(latest.visitType || '親訪')}</span>
       </div>
       <div class="ovt-topic">${escapeHtml(latest.topic || '—')}</div>
       ${contentSnip !== '—' ? `<div class="ovt-content">${escapeHtml(contentSnip)}</div>` : ''}
@@ -7719,7 +7721,7 @@ function renderPrFunnel(funnel) {
     const color = STAGE_COLOR[f.stage] || '#90a4ae';
     return `
       <div class="pr-funnel-row">
-        <div class="pr-funnel-lbl">${STAGE_LBL[f.stage]||f.stage}</div>
+        <div class="pr-funnel-lbl">${escapeHtml(STAGE_LBL[f.stage]||f.stage)}</div>
         <div class="pr-funnel-bar-wrap">
           <div class="pr-funnel-bar" style="width:${pct}%;background:${color}"></div>
         </div>
@@ -7768,7 +7770,7 @@ function renderPrFunnel(funnel) {
 
 function renderPrMoves(data) {
   const fmt = o => {
-    const stageTag = o.stage ? `<span class="pr-stage-tag" style="background:${STAGE_COLOR[o.stage]||'#90a4ae'}20;color:${STAGE_COLOR[o.stage]||'#90a4ae'};border:1px solid ${STAGE_COLOR[o.stage]||'#90a4ae'}40">${STAGE_LBL[o.stage]||o.stage}</span>` : '';
+    const stageTag = o.stage ? `<span class="pr-stage-tag" style="background:${STAGE_COLOR[o.stage]||'#90a4ae'}20;color:${STAGE_COLOR[o.stage]||'#90a4ae'};border:1px solid ${STAGE_COLOR[o.stage]||'#90a4ae'}40">${escapeHtml(STAGE_LBL[o.stage]||o.stage)}</span>` : '';
     const amt = o.amount ? `<span class="pr-deal-amt">${o.amount.toLocaleString()}K</span>` : '';
     return `<div class="pr-deal-row">
       <div class="pr-deal-info">
@@ -7801,9 +7803,9 @@ function renderPrMoves(data) {
         <div class="pr-deal-product">${escapeHtml(o.product||'')}</div>
       </div>
       <div class="pr-deal-right">
-        <span class="pr-stage-tag" style="background:${fi}20;color:${fi};border:1px solid ${fi}40">${STAGE_LBL[o.from]||o.from}</span>
+        <span class="pr-stage-tag" style="background:${fi}20;color:${fi};border:1px solid ${fi}40">${escapeHtml(STAGE_LBL[o.from]||o.from)}</span>
         <span style="color:#888;font-size:11px">→</span>
-        <span class="pr-stage-tag" style="background:${ti}20;color:${ti};border:1px solid ${ti}40">${STAGE_LBL[o.to]||o.to}</span>
+        <span class="pr-stage-tag" style="background:${ti}20;color:${ti};border:1px solid ${ti}40">${escapeHtml(STAGE_LBL[o.to]||o.to)}</span>
         ${amtHtml}
       </div>
     </div>`;
@@ -7849,7 +7851,7 @@ function renderPrMoves(data) {
     $('prAmountChangeList').innerHTML = acList.length
       ? acList.map(c => {
           const stageTag = c.stage
-            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${STAGE_LBL[c.stage]||c.stage}</span>`
+            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${escapeHtml(STAGE_LBL[c.stage]||c.stage)}</span>`
             : '';
           const diffColor = c.diff > 0 ? '#0a8a4a' : c.diff < 0 ? '#c62828' : '#888';
           const diffSign = c.diff > 0 ? '+' : '';
@@ -7876,7 +7878,7 @@ function renderPrMoves(data) {
       ? dcList.map(c => {
           const amt = c.amount ? `<span class="pr-deal-amt">${c.amount.toLocaleString()}K</span>` : '';
           const stageTag = c.stage
-            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${STAGE_LBL[c.stage]||c.stage}</span>`
+            ? `<span class="pr-stage-tag" style="background:${(STAGE_COLOR[c.stage]||'#90a4ae')}20;color:${STAGE_COLOR[c.stage]||'#90a4ae'};border:1px solid ${(STAGE_COLOR[c.stage]||'#90a4ae')}40">${escapeHtml(STAGE_LBL[c.stage]||c.stage)}</span>`
             : '';
           let dateHtml;
           if (!c.oldDate && c.newDate) {
@@ -8010,11 +8012,11 @@ function renderSapNoticeBar(list) {
     ${notices.map(({ c, n }) => `
       <div class="sap-notice-item" style="border-left:4px solid ${n.color};background:${n.bg}">
         <span class="sap-notice-badge" style="color:${n.color}">${n.label}</span>
-        <span class="sap-notice-co">${c.company || '—'}</span>
-        <span class="sap-notice-prod">【${c.product}】</span>
+        <span class="sap-notice-co">${escapeHtml(c.company || '—')}</span>
+        <span class="sap-notice-prod">【${escapeHtml(c.product)}】</span>
         年度到期日：<strong>${n.nextDate}</strong>，
         還有 <strong style="color:${n.daysLeft <= 30 ? '#c62828' : n.color}">${n.daysLeft} 天</strong>
-        ${c.contractNo ? `<span class="sap-notice-no">（${c.contractNo}）</span>` : ''}
+        ${c.contractNo ? `<span class="sap-notice-no">（${escapeHtml(c.contractNo)}）</span>` : ''}
       </div>`).join('')}`;
 }
 
@@ -8096,9 +8098,9 @@ function renderContractTable(baseList, tbodyId, search = '', filterStatus = '') 
     const rowCls = { urgent:'ct-urgent', expiring:'ct-expiring', expired:'ct-expired' }[st.key] || '';
 
     // 到期日欄：原合約迄日 + 續約資訊 + 進度條 + 剩餘天數
-    let endCellHtml = c.endDate || '—';
+    let endCellHtml = escapeHtml(c.endDate || '—');
     if (st.isRenewed) {
-      endCellHtml += `<div class="ct-renew-label">→ 續約至: ${c.renewDate}</div>`;
+      endCellHtml += `<div class="ct-renew-label">→ 續約至: ${escapeHtml(c.renewDate)}</div>`;
     }
     if (st.days !== null) {
       const barHtml = `<div class="ct-progress-wrap">
@@ -8114,21 +8116,21 @@ function renderContractTable(baseList, tbodyId, search = '', filterStatus = '') 
     const tr = document.createElement('tr');
     tr.className = rowCls;
     tr.innerHTML = `
-      <td><strong>${c.contractNo || '—'}</strong></td>
+      <td><strong>${escapeHtml(c.contractNo || '—')}</strong></td>
       <td>${kaCompanyMark(c.company)}<strong>${escapeHtml(c.company || '—')}</strong>${c.contactName ? `<div style="font-size:11px;color:#888">${escapeHtml(c.contactName)}</div>` : ''}</td>
-      <td>${c.product || '—'}</td>
-      <td>${c.startDate || '—'}</td>
+      <td>${escapeHtml(c.product || '—')}</td>
+      <td>${escapeHtml(c.startDate || '—')}</td>
       <td>${endCellHtml}</td>
       <td style="text-align:right">
         ${c.amount ? Number(c.amount).toLocaleString() : '—'}
         ${c.tcv ? `<div style="font-size:11px;color:#1565c0;font-weight:600;margin-top:2px">TCV ${Number(c.tcv).toLocaleString()}K</div>` : ''}
       </td>
-      <td>${c.salesPerson || '—'}</td>
+      <td>${escapeHtml(c.salesPerson || '—')}</td>
       <td>
         <span class="ct-badge ${badgeCls}">${st.label}</span>
         ${(() => { const n = getAnnualNotification(c); return n ? `<div class="ct-notice-badge" style="color:${n.color};background:${n.bg}">${n.label}<br><span style="font-weight:400">${n.daysLeft}天後到期</span></div>` : ''; })()}
       </td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${c.note || ''}">${c.note || '—'}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(c.note || '')}">${escapeHtml(c.note || '—')}</td>
       <td>
         <div class="ct-actions">
           <button class="ct-btn ct-btn-edit" data-id="${c.id}">編輯</button>
@@ -8990,13 +8992,13 @@ function renderReceivables() {
     const balance = r.amount - (r.paidAmount || 0);
     return `<tr>
       <td>${kaCompanyMark(r.company)}${escapeHtml(r.company || '-')}</td>
-      <td>${r.contactName || '-'}</td>
-      <td>${r.invoiceNo || '-'}</td>
-      <td>${r.invoiceDate || '-'}</td>
-      <td>${r.dueDate || '-'}</td>
+      <td>${escapeHtml(r.contactName || '-')}</td>
+      <td>${escapeHtml(r.invoiceNo || '-')}</td>
+      <td>${escapeHtml(r.invoiceDate || '-')}</td>
+      <td>${escapeHtml(r.dueDate || '-')}</td>
       <td>${st === 'overdue' ? `<span style="color:#d32f2f;font-weight:700">${days} 天</span>` : '-'}</td>
-      <td>${r.amount.toLocaleString()} ${r.currency || 'NTD'}</td>
-      <td>${balance.toLocaleString()} ${r.currency || 'NTD'}</td>
+      <td>${r.amount.toLocaleString()} ${escapeHtml(r.currency || 'NTD')}</td>
+      <td>${balance.toLocaleString()} ${escapeHtml(r.currency || 'NTD')}</td>
       <td><span class="recv-badge ${STATUS_CLS[st]}">${STATUS_LABEL[st]}</span></td>
       <td>
         <button class="btn btn-sm" onclick="openEditReceivable('${r.id}')">編輯</button>
@@ -9189,7 +9191,7 @@ async function openAssignModal(id) {
   }
   const sel = $('assignToUser');
   sel.innerHTML = '<option value="">請選擇業務...</option>' +
-    callinUsers.map(u => `<option value="${u.username}">${u.displayName || u.username}</option>`).join('');
+    callinUsers.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.displayName || u.username)}</option>`).join('');
   $('callinAssignOverlay').style.display = 'flex';
 }
 $('callinAssignClose').addEventListener('click', () => $('callinAssignOverlay').style.display = 'none');
@@ -10369,7 +10371,7 @@ function renderMgrCommit(c) {
   const block = (label, color, group, hint) => {
     const items = group.items.slice(0, 4).map(o => `
       <div class="mgr-commit-item">
-        <span class="mgr-commit-stage" style="background:${color}">${o.stage}</span>
+        <span class="mgr-commit-stage" style="background:${color}">${escapeHtml(o.stage)}</span>
         <span class="mgr-commit-co">${kaCompanyMark(o.company)}${escapeHtml(o.company || '—')}</span>
         <span class="mgr-commit-prod">${escapeHtml(o.product || '')}</span>
         <span class="mgr-commit-amt">${fmt(o.amount)}K</span>
@@ -10539,11 +10541,11 @@ function renderCampaignCards() {
     return `
       <div class="campaign-card" data-id="${c.id}">
         <div class="campaign-card-header">
-          <span class="campaign-type-badge">${typeLabel}</span>
-          <span class="campaign-status-badge" style="color:${statusColor};background:${statusColor}18">${statusLabel}</span>
+          <span class="campaign-type-badge">${escapeHtml(typeLabel)}</span>
+          <span class="campaign-status-badge" style="color:${statusColor};background:${statusColor}18">${escapeHtml(statusLabel)}</span>
         </div>
         <div class="campaign-card-name">${escapeHtml(c.name)}</div>
-        <div class="campaign-card-date">${c.startDate || ''}${c.endDate && c.endDate !== c.startDate ? ' ～ ' + c.endDate : ''}</div>
+        <div class="campaign-card-date">${escapeHtml(c.startDate || '')}${c.endDate && c.endDate !== c.startDate ? ' ～ ' + escapeHtml(c.endDate) : ''}</div>
         ${c.description ? `<div class="campaign-card-desc">${escapeHtml(c.description)}</div>` : ''}
         <div class="campaign-card-stats">
           <div class="campaign-stat">
@@ -10558,7 +10560,7 @@ function renderCampaignCards() {
             <div class="campaign-stat-val">${c.leadCount > 0 ? convRate + '%' : '—'}</div>
             <div class="campaign-stat-lbl">轉換率</div>
           </div>
-          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${c.budget}K</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
+          ${c.budget ? `<div class="campaign-stat"><div class="campaign-stat-val">$${escapeHtml(c.budget)}K</div><div class="campaign-stat-lbl">預算</div></div>` : ''}
         </div>
         ${c.targetCount > 0 ? `
           <div style="margin-top:10px">
@@ -10713,7 +10715,7 @@ function renderLeadsTable() {
       <td>${escapeHtml(l.contactName || '—')}</td>
       <td style="color:#888;font-size:12px">${escapeHtml(l.title || '—')}</td>
       <td style="font-size:12px;color:#555">${escapeHtml(l.campaignName || '—')}</td>
-      <td><span class="lead-status-badge" style="color:${statusColor};background:${statusColor}18">${statusLabel}</span></td>
+      <td><span class="lead-status-badge" style="color:${statusColor};background:${statusColor}18">${escapeHtml(statusLabel)}</span></td>
       <td style="font-size:12px">${escapeHtml(assignedName)}</td>
       <td style="font-size:12px;color:#aaa">${(l.createdAt||'').slice(0,10)}</td>
       <td style="white-space:nowrap">${actions}</td>

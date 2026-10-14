@@ -718,6 +718,12 @@ function writeContactAudit(action, req, target, changes) {
 function pickFields(obj, fields) {
   return fields.reduce((acc, f) => { if (f in obj) acc[f] = obj[f]; return acc; }, {});
 }
+// ── 名片圖片欄位驗證（防儲存型 XSS：cardImage 會被前端放進 <img src>）──
+// 只接受：空值，或本系統上傳回傳的網址 /uploads/<uuid>.<副檔名>（storage/local.js、storage/supabase.js 皆為 uuid+ext）。
+// 程式庫內沒有任何流程會產生 data: URL，所以不放行。
+const CARD_IMAGE_RE = /^\/uploads\/[0-9a-fA-F-]{36}\.[A-Za-z0-9]{1,10}$/;
+function isValidCardImage(v) { return !v || (typeof v === 'string' && CARD_IMAGE_RE.test(v)); }
+const CARD_IMAGE_ERR = '名片圖片網址格式不正確（僅接受系統上傳的圖片）';
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
 const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
@@ -2011,6 +2017,12 @@ function validateSupervisor(users, username, supervisorInput) {
  * 全站唯一：不分大小寫與前後空白，不得與「其他」帳號的帳號、顯示名稱、暱稱相同（自己的不算）。
  * 只在送入暱稱時才檢查，所以既有的重複顯示名稱（兩位 Steven）不會讓其他欄位的修改被卡住。
  */
+// ── 帳號／顯示名稱規則（只套用在「新建」與「變更」的值；既有帳號不在登入或讀取時強制，見 GET /api/admin/users/name-violations）──
+// 帳號會被放進許多 innerHTML／inline onclick，所以新帳號限定英數與 . _ -
+const USERNAME_RE = /^[A-Za-z0-9._-]{1,50}$/;
+// 顯示名稱：去掉 < > 與控制字元後 trim（保留中文、空白、括號、emoji）
+function cleanDisplayName(v) { return String(v == null ? '' : v).replace(/[<>\u0000-\u001f\u007f]/g, '').trim(); }
+function hasBadDisplayName(v) { return /[<>\u0000-\u001f\u007f]/.test(String(v == null ? '' : v)); }
 function validateNickname(users, nicknameInput, selfUsername) {
   const raw = String(nicknameInput == null ? '' : nicknameInput).trim();
   if (!raw) return { nickname: '' };
@@ -2036,12 +2048,26 @@ function validateBuInput(role, buInput) {
 }
 
 // ── Admin: create user ───────────────────────────────────
+// 唯讀：列出「既有」不符合新規則的帳號（只回帳號代碼與違規類型，不回顯名稱內容；不自動修改任何資料）
+app.get('/api/admin/users/name-violations', requireAdmin, (req, res) => {
+  const auth = loadAuth();
+  const usernameViolations = [], displayNameViolations = [], nicknameViolations = [];
+  (auth.users || []).forEach(u => {
+    if (!USERNAME_RE.test(String(u.username || ''))) usernameViolations.push(u.username);
+    if (hasBadDisplayName(u.displayName)) displayNameViolations.push(u.username);
+    if (/[<>&"'\u0000-\u001f]/.test(String(u.nickname || ''))) nicknameViolations.push(u.username);
+  });
+  res.json({ total: (auth.users || []).length, usernameViolations, displayNameViolations, nicknameViolations,
+    count: new Set([...usernameViolations, ...displayNameViolations, ...nicknameViolations]).size });
+});
+
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const { username, password, displayName, nickname, role, bu, canDownloadContacts, canSetTargets,
           accessMode, viewOwnerScope, viewGroupId, supervisor, pureSupervisor } = req.body;
   if (!username || !password) return res.status(400).json({ error: '帳號與密碼為必填' });
   const pwErr = validatePasswordStrength(password);
   if (pwErr) return res.status(400).json({ error: pwErr });
+  if (!USERNAME_RE.test(String(username).trim())) return res.status(400).json({ error: '帳號只能使用英文、數字與 . _ -（最多 50 字）' });
   const auth = loadAuth();
   if (auth.users.find(u => u.username === username)) return res.status(400).json({ error: '帳號已存在' });
 
@@ -2080,7 +2106,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const newUser = {
     username: username.trim(),
     password: hashedPassword,
-    displayName: displayName || username,
+    displayName: cleanDisplayName(displayName) || username.trim(),
     ...(nickCheck.nickname ? { nickname: nickCheck.nickname } : {}),
     ...(emailCheck && emailCheck.value ? { email: emailCheck.value } : {}),
     role: finalRole,
@@ -2183,7 +2209,8 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     if (supCheck.error) return res.status(400).json({ error: supCheck.error });
     u.supervisor = supCheck.supervisor;
   }
-  if (displayName !== undefined)        u.displayName = displayName;
+  // 顯示名稱：值有變動才去除 < > 與控制字元（未變動的舊值原樣保留，不因為存其他欄位而被改寫）
+  if (displayName !== undefined)        u.displayName = (String(displayName) === String(u.displayName == null ? '' : u.displayName)) ? displayName : cleanDisplayName(displayName);
   if (nickCheck) { if (nickCheck.nickname) u.nickname = nickCheck.nickname; else delete u.nickname; }
   if (emailCheck) { if (emailCheck.value) u.email = emailCheck.value; else delete u.email; }
   if (role !== undefined)               u.role = role;
@@ -3206,6 +3233,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     if (!_tax) return res.status(400).json({ error: '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
     if (!/^\d{8}$/.test(_tax)) return res.status(400).json({ error: '統一編號需為 8 碼數字' });
   }
+  if (!isValidCardImage(req.body.cardImage)) return res.status(400).json({ error: CARD_IMAGE_ERR });
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
@@ -3303,6 +3331,10 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
   // 產業屬性僅行銷／管理員可改；其餘角色即使前端送出也一律忽略（後端雙保險，維持 industry 由行銷維護）
   if (!isAdminOrMarketing(req) && 'industry' in safeBody) delete safeBody.industry;
+  // 名片圖片：只在「有帶且與目前儲存值不同」時驗證，舊資料中不合規的值不會擋住其他欄位的編輯
+  if (safeBody.cardImage !== undefined && String(safeBody.cardImage || '') !== String(old.cardImage || '') && !isValidCardImage(safeBody.cardImage)) {
+    return res.status(400).json({ error: CARD_IMAGE_ERR });
+  }
   // 統一編號：非境外時，若有動到 taxId 就必須是 8 碼（清空或格式錯都擋）；不帶 taxId 的偏更新（看板拖曳等）不受影響
   if (req.body.taxId !== undefined) {
     const effForeign = req.body.isForeign !== undefined ? (req.body.isForeign === true || req.body.isForeign === 'true') : !!old.isForeign;

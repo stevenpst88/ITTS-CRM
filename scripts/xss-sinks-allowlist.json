@@ -1,0 +1,18 @@
+{
+  "_說明": "check-xss-sinks.js 靜態掃描的白名單：已人工稽核、確認插值內容不是使用者／伺服器資料（或已在別處跳脫）的項目。比對條件：file + (expr 完全相同 或 exprRe 正規式相符) + 該行含 lineHas。新增前務必確認真的不是使用者可控欄位；能改成 escapeHtml(...) 就不要放白名單。程式碼改掉後，沒有對應的項目會讓測試失敗，請同步移除。",
+  "entries": [
+    { "file": "app.js", "exprRe": "^(typeof kaCompanyMark === 'function' \\? )?kaCompanyMark\\([a-z]+\\.company\\)( : '')?$", "lineHas": "", "why": "kaCompanyMark() 只回傳固定的 ⭐ span，title 內的帳號顯示名稱已 escapeHtml" },
+    { "file": "app.js", "exprRe": "^\\(?(STAGE_COLOR|stageColor|OPP_STAGE_COLORS)\\[[a-z]+\\.stage\\]\\|\\|'#[0-9a-f]{3,6}'\\)?$", "lineHas": "", "why": "階段色表查表：值是程式碼內的色碼常數，查不到時用固定色碼；使用者資料只當 key，不會進 HTML" },
+    { "file": "app.js", "exprRe": "^[a-z]+\\.stage ?=== ?[a-z]+\\?'selected':''$", "lineHas": "", "why": "布林比較，只輸出固定字串 selected" },
+    { "file": "app.js", "expr": "s.name", "lineHas": "${s.key}｜${s.name}", "why": "儀表板 SVG：DASH_STAGES 常數（A｜Commit…），非使用者資料" },
+    { "file": "app.js", "expr": "OPPORTUNITY_LABELS[c.opportunityStage]?.cls || ''", "lineHas": "opp-badge opp-card", "why": "OPPORTUNITY_LABELS 常數表查表（cls）；階段本身已 escapeHtml" },
+    { "file": "app.js", "expr": "OPPORTUNITY_LABELS[c.opportunityStage]?.label.split('｜')[1] || ''", "lineHas": "opp-badge opp-card", "why": "OPPORTUNITY_LABELS 常數表查表（label）" },
+    { "file": "app.js", "exprRe": "^\\(\\(\\) => \\{ const jfCat = JOB_FUNCTION_CATEGORIES\\.find", "lineHas": "職能分類", "why": "職能分類徽章：JOB_FUNCTION_CATEGORIES 為程式碼常數（bg/color/label），使用者資料只當查表 key" },
+    { "file": "app.js", "expr": "c.opportunityStage ? renderOpportunityBadge(c.opportunityStage) : '-'", "lineHas": "商機分類", "why": "renderOpportunityBadge 對非常數階段值已 escapeHtml（見該函式）" },
+    { "file": "app.js", "expr": "i.company", "lineHas": "const lines = list.slice(0, 8).map(i =>", "why": "Chart.js tooltip 純文字陣列（canvas 繪製），不經 innerHTML" },
+    { "file": "app.js", "expr": "i.product ? '｜' + i.product : ''", "lineHas": "const lines = list.slice(0, 8).map(i =>", "why": "Chart.js tooltip 純文字陣列（canvas 繪製），不經 innerHTML" },
+    { "file": "admin.html", "exprRe": "^u\\.username === e\\.username \\? 'selected' : ''$", "lineHas": "", "why": "布林比較，只輸出固定字串 selected（同一行的 value／顯示文字已 escH）" },
+    { "file": "admin.html", "expr": "p.name", "lineHas": "font-size:13px;font-weight:700;color:#1a2d52", "why": "套件版本頁：套件名稱來自伺服器的 package.json 依賴清單（非使用者輸入）" },
+    { "file": "admin.html", "expr": "t.name", "lineHas": "font-family:monospace", "why": "資料庫容量頁：資料表名稱來自 Postgres 系統目錄（非使用者輸入）" }
+  ]
+}
