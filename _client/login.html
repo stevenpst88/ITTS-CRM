@@ -241,6 +241,8 @@
       font-size: 13px; margin-bottom: 16px; display: none;
     }
     .error-msg.show { display: block; }
+    .notice-msg { background: #fff4e5; color: #8a5300; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .notice-msg.show { display: block; }
     .footer-note { text-align: center; font-size: 11px; color: #ccc; margin-top: 32px; }
 
     @media (max-width: 800px) {
@@ -321,6 +323,7 @@
   </div>
 
   <div class="form-wrap">
+    <div class="notice-msg" id="loginNotice" role="status"></div>
     <div class="error-msg" id="errorMsg">帳號或密碼錯誤，請重新輸入</div>
     <form id="loginForm">
       <div class="form-group">
@@ -574,6 +577,15 @@ function drawGlobe() {
 }
 
 drawGlobe();
+
+/* 被伺服器登出時（閒置逾時／連線失效）由 app.js 留下原因，這裡顯示友善提示（只顯示一次） */
+(function showLoginNotice() {
+  var code = '';
+  try { code = sessionStorage.getItem('loginNotice') || ''; sessionStorage.removeItem('loginNotice'); } catch (e) { return; }
+  var MSG = { SESSION_IDLE_TIMEOUT: '閒置過久已登出，請重新登入', SESSION_EXPIRED: '登入已逾時，請重新登入', SESSION_INVALID: '您的連線已失效（帳號停用或已不存在），請重新登入' };
+  var el = document.getElementById('loginNotice');
+  if (el && MSG[code]) { el.textContent = MSG[code]; el.classList.add('show'); }
+})();
 
 /* ── 登入邏輯 ── */
 document.getElementById('loginForm').addEventListener('submit', async function(e) {

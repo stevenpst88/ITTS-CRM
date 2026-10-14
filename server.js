@@ -26,6 +26,8 @@ const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
 const app = express();
+// 帳號鎖定／閒置逾時（兩個開關預設關閉；見 lib/loginGuard.js）。鎖定狀態存在主資料 blob 的 loginFailures
+const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) } });
 const PORT = process.env.PORT || 3000;
 
 // ── 信任 Vercel 代理（取得正確的 req.ip / HTTPS 判斷）──
@@ -149,6 +151,24 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ── 閒置逾時（SESSION_IDLE_MINUTES>0 才啟用；預設關閉＝本段什麼都不做）──────────────────────
+// 以簽章過的 session 內 lat（最後活動時間）判斷；一分鐘內最多重簽一次 JWT（無 DB 寫入）。
+// 輪詢端點（poll-bundle／notifications／announcements/active）不算活動。細節見 lib/loginGuard.js。
+const _idleLogAt = new Map();
+app.use(loginGuard.idleMiddleware({
+  isJwt: SESSION_BACKEND !== 'memory',
+  onExpire: (req, username, kind) => {
+    const now = Date.now();
+    if (now - (_idleLogAt.get(username) || 0) < 60000) return;
+    _idleLogAt.set(username, now);
+    if (_idleLogAt.size > 500) { for (const [k, t] of _idleLogAt) if (now - t > 60000) _idleLogAt.delete(k); }
+    flushAuditBeforeEnd(req);
+    writeLog('SESSION_IDLE_TIMEOUT', username, username,
+      kind === 'idle' ? `閒置超過 ${loginGuard.config.idleMinutes} 分鐘，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`
+        : `登入已超過 8 小時，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`, req);
+  },
+}));
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
@@ -590,6 +610,18 @@ function auditLoginFail(req, attempted, reason) {
     writeLog('LOGIN_FAIL', name || '(空白)', name || '(空白)',
       `登入失敗：原因=${reason}${merged ? `；此 IP 對此帳號先前 ${Math.round(LOGIN_FAIL_THROTTLE_MS / 1000)} 秒窗內另有 ${merged} 次相同失敗已合併` : ''}`, req);
   } catch (e) { console.error('[auditLoginFail]', e && e.message); }
+}
+/** 登入失敗：寫稽核（30 秒節流）＋累計鎖定計數（LOGIN_LOCKOUT=1 才有作用）；剛達門檻時另記 LOGIN_LOCKED */
+function loginFailed(req, attempted, reason) {
+  auditLoginFail(req, attempted, reason);
+  try {
+    const r = loginGuard.recordFailure(attempted);
+    if (r && r.justLocked) {
+      const name = sanitizeAttemptName(attempted);
+      writeLog('LOGIN_LOCKED', name || '(空白)', name || '(空白)',
+        `連續登入失敗達 ${loginGuard.config.maxFails} 次，帳號名稱已鎖定至 ${new Date(r.until).toISOString()}（第 ${r.lockCount} 次鎖定；鎖定期間連正確密碼也拒絕，管理員可於後台解鎖）`, req);
+    }
+  } catch (e) { console.error('[loginFailed]', e && e.message); }
 }
 const _loginRateSeen = new Map();   // ip -> t
 function auditLoginRateLimited(req) {
@@ -1106,9 +1138,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const authData = loadAuth();
     const user = authData.users.find(u => u.username === username);
     const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才生效）：鎖定期間連「正確密碼」也拒絕，且回應與密碼錯完全相同（同訊息、同狀態碼、同成本的 bcrypt 比對）；不存在的帳號名稱也會鎖，行為一致
+    if (loginGuard.checkLocked(username).locked) {
+      await dummyBcryptCompare(password);
+      auditLoginFail(req, username, 'LOCKED');
+      return res.status(401).json(GENERIC_FAIL);
+    }
     if (!user) {
       await dummyBcryptCompare(password);   // 等成本比對，避免用回應時間探測帳號是否存在
-      auditLoginFail(req, username, 'UNKNOWN_USER');
+      loginFailed(req, username, 'UNKNOWN_USER');
       return res.status(401).json(GENERIC_FAIL);
     }
 
@@ -1124,13 +1162,14 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
     if (user.active === false) {
-      auditLoginFail(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
+      loginFailed(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
       return res.status(401).json(GENERIC_FAIL);
     }
     if (!isValid) {
-      auditLoginFail(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
+      loginFailed(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
       return res.status(401).json(GENERIC_FAIL);
     }
+    try { loginGuard.recordSuccess(username); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -1980,7 +2019,10 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     // 直屬主管（組織階層；空值 = 頂層或未設定）
     supervisor:     u.supervisor     || '',
     // 唯讀掛名主管（業績由部屬彙總，不計本人）——供帳號編輯器勾選框回填
-    pureSupervisor: !!u.pureSupervisor
+    pureSupervisor: !!u.pureSupervisor,
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才會有值）：後台列表顯示「已鎖定」徽章
+    locked: loginGuard.lockoutEnabled ? !!loginGuard.getLock(u.username) : false,
+    lockUntil: loginGuard.lockoutEnabled ? ((loginGuard.getLock(u.username) || {}).lockUntil || null) : null
   }));
   res.json(users);
 });
@@ -2258,6 +2300,7 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
   user.passwordChangedAt = new Date().toISOString();
   user.mustChangePassword = true;
   saveAuth(auth);
+  try { loginGuard.unlock(req.params.username); } catch (e) { console.error('[unlock on reset]', e && e.message); }   // 管理員重設密碼＝同時解除登入鎖定
   writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼（強制使用者下次登入更換）`, req);
   res.json({ success: true });
 });
@@ -2277,6 +2320,22 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 帳號鎖定：管理員檢視／解鎖（LOGIN_LOCKOUT=1 才有鎖定資料）─────────────────────────────
+app.get('/api/admin/login-locks', requireAdmin, (req, res) => {
+  const known = new Set(loadAuth().users.map(u => String(u.username).toLowerCase()));
+  res.json({
+    enabled: loginGuard.lockoutEnabled,
+    maxFails: loginGuard.config.maxFails,
+    locks: loginGuard.listLocks().map(l => ({ ...l, exists: known.has(l.username) })),
+  });
+});
+app.post('/api/admin/users/:username/unlock', requireAdmin, (req, res) => {
+  const target = String(req.params.username || '');
+  const had = loginGuard.unlock(target);
+  writeLog('LOGIN_UNLOCK', req.session.user.username, target.slice(0, 40), had ? `管理員解除帳號 ${target.slice(0, 40)} 的登入鎖定` : `管理員對 ${target.slice(0, 40)} 執行解鎖（原本沒有鎖定紀錄）`, req);
+  res.json({ success: true, wasLocked: had });
 });
 
 // ── 訂閱方案 API ──────────────────────────────────────────
@@ -9555,6 +9614,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const rt = deriveRuntimeInfo(process.env);
   res.json({
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
+    loginGuard: { lockout: loginGuard.lockoutEnabled, maxFails: loginGuard.config.maxFails, lockMinutes: loginGuard.config.lockMs / 60000, idleMinutes: loginGuard.config.idleMinutes },   // 兩個開關的現況（預設皆關）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {
       name:        pkg.name        || 'business-card-crm',

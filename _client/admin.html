@@ -4677,8 +4677,10 @@
     async function adminFetch(url, options = {}) {
       const r = await fetch(url, options);
       if (r.status === 401 || r.status === 403) {
+        let idleMsg = '';
+        if (r.status === 401) { try { const j = await r.clone().json(); if (j && j.code === 'SESSION_IDLE_TIMEOUT') idleMsg = '閒置過久已登出，請重新登入'; } catch (_) { /* 非 JSON 回應 */ } }
         showLoginScreen();
-        $('adminLoginErr').textContent = 'Session 已過期，請重新登入';
+        $('adminLoginErr').textContent = idleMsg || 'Session 已過期，請重新登入';
         $('adminLoginErr').classList.add('show');
         throw new Error('Session expired');
       }
@@ -4757,7 +4759,8 @@
         : '<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">✏️ 可編輯</span>';
     }
     function uvRoleBadge(u) { return `<span class="badge badge-${uvCls(u.role)}">${escH(UV.roleLabel(u.role))}</span>`; }
-    function uvStatusBadge(u) { return `<span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span>`; }
+    function uvStatusBadge(u) { return `<span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span>` + (u.locked ? ` <span class="badge badge-inactive" data-locked="1" title="連續登入失敗已鎖定${u.lockUntil ? '，至 ' + escH(new Date(u.lockUntil).toLocaleString()) : ''}；鎖定期間連正確密碼也無法登入">🔒 已鎖定</span>` : ''); }
+    function uvUnlockBtn(u, un) { return u.locked ? `<button class="btn btn-sm btn-primary" data-action="unlock" data-username="${un}">解鎖</button>` : ''; }
 
     function uvRowHtml(u, nameCount) {
       const un = escH(u.username);
@@ -4786,7 +4789,7 @@
           <td>
             <div style="display:flex;gap:6px;flex-wrap:nowrap">
               <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
-              <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+              ${uvUnlockBtn(u, un)}<button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
               <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
             </div>
           </td>
@@ -4817,7 +4820,7 @@
           </div>
           <div class="uv-cactions">
             <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
-            <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+            ${uvUnlockBtn(u, un)}<button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
             <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
           </div>
         </article>`;
@@ -4979,7 +4982,19 @@
       if (action === 'edit')    openEditUser(username);
       if (action === 'resetpw') openResetPw(username);
       if (action === 'delete')  openDeleteUser(username);
+      if (action === 'unlock')  unlockUser(username);
     });
+    // 解除登入鎖定（LOGIN_LOCKOUT=1 時才會出現「已鎖定」徽章與此按鈕）
+    async function unlockUser(username) {
+      if (!confirm('確定解除帳號 ' + username + ' 的登入鎖定？（會寫入稽核紀錄 LOGIN_UNLOCK）')) return;
+      try {
+        const r = await adminFetch(`${API}/admin/users/${encodeURIComponent(username)}/unlock`, { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { showToast(d.error || '解鎖失敗'); return; }
+        showToast('✅ 已解除鎖定');
+        loadUsers();
+      } catch (e) { if (e.message !== 'Session expired') showToast('解鎖失敗'); }
+    }
     document.addEventListener('change', function(e) {
       const inp = e.target.closest('input[data-action="toggle"]');
       if (!inp) return;
@@ -5238,7 +5253,7 @@
       SET_TARGET: '設定目標',
       IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
       QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
-      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
+      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
