@@ -1195,6 +1195,8 @@ app.get(/^\/q\/.*$/i, (req, res) => {
 });
 app.use('/deep-link.js', express.static(path.join(__dirname, '_client', 'deep-link.js'), STATIC_NO_CACHE));
 registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json' });
+// 稽核防竄改（hash chain／錨點／每日排程／簽核歷程鏈檢查）；預設關閉（AUDIT_CHAIN 沒設成 1 時只回報「未啟用」）。放在強制改密碼與角色白名單 middleware 之後。
+require('./lib/auditChainRoutes').register(app, { requireAdmin, writeLog, db });
 
 // ── 受保護路由（需驗證）─────────────────────────────────
 // 伺服器啟動時間戳，用於前端資源版本控制（每次重啟強制瀏覽器重抓）

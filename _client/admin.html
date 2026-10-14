@@ -2500,6 +2500,12 @@
           <div class="admin-card-body" id="vAuditInfo" style="padding:14px"></div>
         </div>
 
+        <!-- 稽核防竄改（hash chain） -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🔗 稽核防竄改</span></div>
+          <div class="admin-card-body" id="vChainInfo" style="padding:14px"></div>
+        </div>
+
         <!-- 後端套件 -->
         <div class="admin-card" style="margin-bottom:16px">
           <div class="admin-card-header"><span class="admin-card-title">📦 後端套件（Node.js）</span></div>
@@ -6019,6 +6025,105 @@
       return html;
     }
 
+    // ── 稽核防竄改（hash chain）卡：版本資訊頁。全部文字經 escH；按鈕不帶任何資料進屬性 ──
+    const CHAIN_REASON = {
+      SEQ_GAP: '序號不連續（中間缺列、重複或順序被改）', PREV_MISMATCH: '與前一筆的銜接雜湊不符', HASH_MISMATCH: '內容與簽章不符（欄位被改過或金鑰不同）',
+      UNKNOWN_KID: '找不到該金鑰代號的金鑰', TRUNCATED: '錨點記錄的那一筆已不在資料庫（尾端被截掉）', ANCHOR_MISMATCH: '錨點那一筆的雜湊與當時記錄的不同（被改寫或回溯）',
+      ANCHOR_HMAC_INVALID: '錨點本身的簽章不正確',
+      OFF: '尚未啟用', NO_KEY: '沒有可用的金鑰', KEY_TOO_SHORT: '金鑰太短（至少 16 字元）', TABLE_MODE_OFF: '稽核新資料表尚未啟用（AUDIT_EVENTS_TABLE=1）', COLUMNS_NOT_READY: '鏈欄位尚未建立',
+    };
+    function chainReasonText(r) { return CHAIN_REASON[r] || String(r || ''); }
+    function chainFmtTs(ts) { return ts ? String(ts).replace('T', ' ').slice(0, 19) + ' UTC' : '—'; }
+    /** h＝GET /api/admin/audit-chain/head 的回應；vr＝剛按「立即驗證」的結果（或 {error}），沒有就用 h.lastVerify */
+    function verChainHtml(h, vr) {
+      if (!h || typeof h !== 'object') return '<div style="color:#888;font-size:13px">此伺服器版本未提供稽核防竄改資訊</div>';
+      const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const w = h.writes || {};
+      const lv = vr && !vr.error ? { ts: vr.ts, ok: vr.ok, checked: vr.checked, complete: vr.complete, firstBreak: vr.firstBreak, anchorChecked: !!vr.anchor } : (h.lastVerify || null);
+      const risk = num(w.breakRisk);
+      let chip, cc, cb;
+      if (!h.configured && !h.canVerify)      { chip = '未啟用';        cc = '#5f6368'; cb = '#f1f3f4'; }
+      else if (lv && lv.ok === false)         { chip = '驗證失敗';      cc = '#c5221f'; cb = '#fce8e6'; }
+      else if (risk > 0 || (h.configured && !h.enabled)) { chip = h.enabled ? '有事件未上鏈' : '無法啟用'; cc = '#b06000'; cb = '#fef3e0'; }
+      else if (h.enabled)                     { chip = '運作中';        cc = '#137333'; cb = '#e6f4ea'; }
+      else                                    { chip = '已停用（可驗證）'; cc = '#b06000'; cb = '#fef3e0'; }
+      const cells = [
+        { label: '新事件上鏈', value: h.enabled ? '是' : '否', warn: h.configured && !h.enabled },
+        { label: '鏈頭序號', value: h.canVerify ? num(h.headSeq) : '—' },
+        { label: '金鑰代號', value: h.kid || '—' },
+        { label: '未上鏈風險', value: risk, bad: risk > 0 },
+      ];
+      let html = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+        '<span id="chainChip" style="font-size:11px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + cc + ';background:' + cb + '">' + escH(chip) + '</span>' +
+        '<span style="font-size:14px;font-weight:700;color:#1a2d52">稽核日誌雜湊鏈（HMAC，金鑰只在伺服器環境變數）</span></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
+        cells.map(i => '<div style="background:#f8f9fa;border-radius:10px;padding:12px 14px;border-left:3px solid ' + (i.bad ? '#ea4335' : i.warn ? '#f9ab00' : '#34a853') + '">' +
+          '<div style="font-size:11px;color:#888;margin-bottom:4px">' + escH(i.label) + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:' + (i.bad ? '#c5221f' : '#1a2d52') + '">' + escH(String(i.value)) + '</div></div>').join('') + '</div>';
+      if (vr && vr.error) {
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;color:#c5221f">驗證沒有完成：' + escH(String(vr.error).slice(0, 200)) + '</div>';
+      } else if (lv) {
+        const bk = lv.firstBreak;
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;line-height:1.7;color:' + (lv.ok ? '#137333' : '#c5221f') + '">' +
+          '<strong>' + (lv.ok ? '✓ 驗證通過' : '✗ 驗證失敗') + '</strong>　' + escH(chainFmtTs(lv.ts)) + '　已檢查 ' + escH(String(num(lv.checked))) + ' 筆' +
+          (lv.complete === false ? '（尚未驗完）' : '') + (lv.anchorChecked ? '（含錨點比對）' : '') +
+          (bk ? '<br>第一個斷點：序號 ' + escH(String(num(bk.seq))) + '　原因：' + escH(chainReasonText(bk.reason)) + (bk.detail ? '　<span style="color:#555">' + escH(String(bk.detail).slice(0, 200)) + '</span>' : '') : '') + '</div>';
+        if (vr && !vr.error && (num(vr.legacyUncovered) || num(vr.unchainedAfterStart))) {
+          html += '<div style="margin-top:6px;font-size:12px;color:#b06000">未納入鏈（舊資料）：' + escH(String(num(vr.legacyUncovered))) + ' 筆' +
+            (num(vr.unchainedAfterStart) ? '；鏈啟用後仍有 ' + escH(String(num(vr.unchainedAfterStart))) + ' 筆沒有簽章（關閉期間寫入、寫入失敗改走備援，或有人直接寫入資料庫——請對照稽核日誌）' : '') + '</div>';
+        }
+      } else if (h.canVerify) {
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;color:#555">尚未驗證過。</div>';
+      }
+      const la = h.lastAnchor;
+      const wh = h.webhook || {};
+      html += '<div style="margin-top:10px;font-size:12px;color:#555;line-height:1.8">最近錨點：' + (la ? escH(chainFmtTs(la.ts)) + '（序號 ' + escH(String(num(la.seq))) + '）' : '尚無') +
+        '；已保存 ' + escH(String(num(h.anchorsStored))) + ' 份　｜　外部推送：' + (wh.configured ? (wh.valid ? '已設定（' + escH(String(wh.host || '')) + '）' : '設定無效（' + escH(chainReasonText(wh.reason)) + '）') : '未設定') +
+        '　｜　每日排程密鑰：' + (h.cronSecretConfigured ? '已設定' : '<span style="color:#b06000">未設定（排程不會執行）</span>') + '</div>';
+      if (h.canVerify) {
+        html += '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">' +
+          '<button id="chainVerifyBtn" class="btn btn-sm btn-primary" onclick="chainVerifyNow()">立即驗證</button>' +
+          '<button id="chainAnchorBtn" class="btn btn-sm" style="background:#f0f2f5;color:#333" onclick="chainDownloadAnchor()">下載錨點</button></div>' +
+          '<div style="margin-top:8px;font-size:11px;color:#888">錨點是鏈頭的簽章快照；請定期下載並保存在離線或另一套系統，日後可用來證明日誌沒有被截尾或回溯。</div>';
+      } else {
+        html += '<div style="margin-top:12px;font-size:12px;color:#555;line-height:1.7">' + escH(chainReasonText(h.reason)) +
+          '。要啟用：在環境變數設定 <code>AUDIT_CHAIN_SECRET</code>（長隨機字串）、<code>AUDIT_EVENTS_TABLE=1</code>、<code>AUDIT_CHAIN=1</code> 後重新部署。</div>';
+      }
+      return html;
+    }
+    async function loadChainCard(vr) {
+      const el = $('vChainInfo');
+      if (!el) return;
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/head`);
+        if (!r.ok) { el.innerHTML = verChainHtml(null); return; }
+        el.innerHTML = verChainHtml(await r.json(), vr);
+      } catch (e) { if (e.message !== 'Session expired') el.innerHTML = '<div style="color:#c5221f;font-size:13px">讀取稽核防竄改狀態失敗</div>'; }
+    }
+    async function chainVerifyNow() {
+      const b = $('chainVerifyBtn');
+      if (b) { b.disabled = true; b.textContent = '驗證中…'; }
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/verify`);
+        const j = await r.json();
+        await loadChainCard(r.ok ? j : { error: j.error || ('HTTP ' + r.status) });
+      } catch (e) { if (e.message !== 'Session expired') await loadChainCard({ error: '連線失敗' }); }
+    }
+    async function chainDownloadAnchor() {
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/anchor?download=1`);
+        const j = await r.json();
+        if (!r.ok) { showToast(j.error || '取得錨點失敗'); return; }
+        const blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'audit-anchor-' + j.seq + '-' + String(j.ts).slice(0, 10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        showToast('已下載錨點（序號 ' + j.seq + '）');
+      } catch (e) { if (e.message !== 'Session expired') showToast('取得錨點失敗'); }
+    }
+
     async function loadVersionInfo() {
       try {
         const r = await adminFetch(`${API}/admin/version`);
@@ -6056,6 +6161,7 @@
         // 資料庫
         $('vDbInfo').innerHTML = verDbHtml(d);
         $('vAuditInfo').innerHTML = verAuditHtml(d);
+        loadChainCard();
 
         // 後端套件
         $('vBackendPkgs').innerHTML = d.backend.map(p => `

@@ -11,7 +11,8 @@
     { "source": "/(.*)", "destination": "/api/index" }
   ],
   "crons": [
-    { "path": "/api/cron/mail-outbox", "schedule": "0 0 * * *" }
+    { "path": "/api/cron/mail-outbox", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/audit-anchor", "schedule": "10 0 * * *" }
   ],
   "regions": ["hnd1"]
 }
