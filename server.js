@@ -27,6 +27,7 @@ const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
 const app = express();
 // 帳號鎖定／閒置逾時（兩個開關預設關閉；見 lib/loginGuard.js）。鎖定狀態存在主資料 blob 的 loginFailures
+const accessReview = require('./lib/accessReview');   // 季度帳號與權限覆核報表（純函式）
 const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) } });
 const PORT = process.env.PORT || 3000;
 
@@ -1180,6 +1181,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       return res.status(401).json(GENERIC_FAIL);
     }
     try { loginGuard.recordSuccess(username); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
+    // 最後登入時間（季度帳號覆核用）：寫在帳號紀錄上，同一人 6 小時內最多寫一次，所以一般登入幾乎不增加寫入；失敗不影響登入
+    try {
+      if (accessReview.shouldStampLogin(user, Date.now())) {
+        const iso = new Date().toISOString();
+        user.lastLoginAt = iso;
+        if (!authData.lastLoginTrackingSince) authData.lastLoginTrackingSince = iso;
+        saveAuth(authData);
+      }
+    } catch (e) { console.error('[lastLoginAt]', e && e.message); }
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -2330,6 +2340,50 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 季度帳號與權限覆核（admin 專用；報表不含密碼雜湊／token／email 位址）────────────────
+function buildAccessReport() {
+  const auth = loadAuth();
+  const matrix = getRolePermissions();
+  return accessReview.buildReport({
+    users: auth.users, data: db.load(), now: Date.now(), trackingSince: auth.lastLoginTrackingSince || null,
+    featuresFor: (role) => role === 'admin' ? ALL_FEATURES.slice() : (matrix[role] || (DEFAULT_ROLE_PERMISSIONS[role] || [])).slice(),
+    userLabel: (u) => userLabel(u, u.username),
+    featureRouteMap: featureGuardLib.describe(FEATURE_REGISTRY),
+  });
+}
+app.get('/api/admin/access-review', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  if (String(req.query.format || 'json').toLowerCase() === 'csv') {
+    auditExport(req, 'EXPORT_ACCESS_REVIEW', report.accounts.length, '季度帳號與權限覆核報表（不含密碼／email 位址）', 'csv');
+    const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="access-review-${day}.csv"`, 'Cache-Control': 'no-store' });
+    return res.send(accessReview.toCsv(report));
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({}, report, { snapshotHash: accessReview.snapshotHash(report) }));
+});
+app.get('/api/admin/access-review/history', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({ currentHash: accessReview.snapshotHash(report) }, accessReview.historyView(db.load().accessReviews || [], accessReview.snapshotHash(report))));
+});
+// 簽核：只增不改（沒有任何修改／刪除路由）；每筆帶 prevHash／recordHash 鏈，被改動會被 verifyChain 抓到。
+// 目前只需一位管理員；若日後要雙人覆核，比照核決設定的兩人覆核機制加在此處（見 lib/accessReview.js 檔頭備註）。
+app.post('/api/admin/access-review/signoff', requireAdmin, (req, res) => {
+  const auth = loadAuth();
+  const v = accessReview.validateSignoff(req.body, auth.users.map(u => u.username));
+  if (v.error) return res.status(400).json({ error: v.error });
+  const d = db.load();
+  if (!Array.isArray(d.accessReviews)) d.accessReviews = [];
+  if (!accessReview.verifyChain(d.accessReviews).ok) return res.status(409).json({ error: '既有簽核紀錄的雜湊鏈驗證失敗，請先查明原因再簽核', code: 'CHAIN_BROKEN' });
+  const report = buildAccessReport();
+  const rec = accessReview.makeSignoffRecord({ list: d.accessReviews, v, by: req.session.user.username, at: new Date().toISOString(), report });
+  d.accessReviews.push(rec);
+  db.save(d);
+  writeLog('ACCESS_REVIEW_SIGNOFF', req.session.user.username, v.quarter, `完成 ${v.quarter} 季度帳號覆核簽核：${rec.accountCount} 個帳號、例外 ${v.exceptions.length} 筆、快照 ${rec.snapshotHash.slice(0, 12)}`, req);
+  res.json({ success: true, record: rec });
 });
 
 // ── 路由 → 功能對照表（稽核用）：同一份資料也是後端功能權限驗證實際使用的表 ──
