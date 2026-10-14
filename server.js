@@ -1131,6 +1131,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── 後端功能權限驗證（FEATURE_GUARD_MODE=off|log|enforce，預設 log＝只記錄不阻擋；見 lib/featureGuard.js）──
+// 放在「帳號即時比對」「唯讀」「集團角色路徑白名單」之後、所有業務路由之前；角色以 DB 現值（上方已覆寫 session）為準，
+// 功能清單用 getUserFeatures（與前端導覽同一份矩陣），所以矩陣一改立即生效。
+const featureGuardLib = require('./lib/featureGuard');
+const featureGuard = featureGuardLib.create({
+  getFeatures: (role) => getUserFeatures(role),
+  audit: (req, action, operator, target, detail) => { flushAuditBeforeEnd(req); writeLog(action, operator, target, detail, req); },
+});
+app.use('/api/', featureGuard.middleware);
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -2320,6 +2330,22 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 路由 → 功能對照表（稽核用）：同一份資料也是後端功能權限驗證實際使用的表 ──
+app.get('/api/admin/feature-route-map', requireAdmin, (req, res) => {
+  res.json({
+    mode: featureGuard.mode,
+    counters: featureGuard.snapshot(),
+    kinds: {
+      FEATURES: '需擁有 features 其中之一（ANY-of）', ANY: '需擁有至少一個功能（全域唯讀清單）', ALWAYS: '登入後一律放行',
+      SELF: '由路由自身的角色／名冊／關係檢查把關', ADMIN: 'requireAdmin', UNCLASSIFIED: '尚未歸類：視同放行，每個路由只記錄一次',
+    },
+    features: FEATURE_REGISTRY.map(f => ({ key: f.key, label: f.label })),
+    routes: featureGuardLib.describe(FEATURE_REGISTRY),
+    unmappedRegistered: featureGuardLib.unmappedRegistered(app),   // 已註冊卻不在對照表的非管理員 /api 路由（應為空）
+    observedUnclassified: Array.from(featureGuard.unclassifiedSeen),
+  });
 });
 
 // ── 帳號鎖定：管理員檢視／解鎖（LOGIN_LOCKOUT=1 才有鎖定資料）─────────────────────────────
@@ -9614,6 +9640,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const rt = deriveRuntimeInfo(process.env);
   res.json({
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
+    featureGuard: featureGuard.snapshot(),   // 後端功能權限驗證：{ mode, wouldDeny, denied, unclassified }
     loginGuard: { lockout: loginGuard.lockoutEnabled, maxFails: loginGuard.config.maxFails, lockMinutes: loginGuard.config.lockMs / 60000, idleMinutes: loginGuard.config.idleMinutes },   // 兩個開關的現況（預設皆關）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {

@@ -5253,7 +5253,7 @@
       SET_TARGET: '設定目標',
       IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
       QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
-      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
+      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', FEATURE_GUARD_WOULD_DENY: '功能權限（試行：會被擋）', FEATURE_GUARD_DENY: '功能權限（已阻擋）', FEATURE_GUARD_UNCLASSIFIED: '功能權限（路由未歸類）', ACCESS_REVIEW_SIGNOFF: '季度帳號覆核簽核', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
@@ -6034,6 +6034,27 @@
       return html;
     }
 
+    // 安全開關現況（後端功能權限驗證／帳號鎖定／閒置逾時）：舊版 API 缺欄位時回空字串
+    function verGuardHtml(d) {
+      const g = d && d.featureGuard, l = d && d.loginGuard;
+      if (!g && !l) return '';
+      const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const chip = (txt, c, bg) => '<span style="font-size:11px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + c + ';background:' + bg + '">' + escH(txt) + '</span>';
+      let h = '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;display:flex;flex-direction:column;gap:10px">';
+      if (g) {
+        const m = String(g.mode || '');
+        const c = m === 'enforce' ? ['已強制執行', '#137333', '#e6f4ea'] : m === 'off' ? ['已關閉', '#5f6368', '#f1f3f4'] : ['試行中（只記錄不阻擋）', '#b06000', '#fef3e0'];
+        h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" data-guard="feature"><strong style="color:#1a2d52;font-size:13px">後端功能權限驗證</strong>' + chip(c[0], c[1], c[2]) +
+          '<span style="font-size:12px;color:#555">模式 <code>' + escH(m) + '</code>・本次啟動以來「若強制執行會被擋」' + escH(String(n(g.wouldDeny))) + ' 次・已阻擋 ' + escH(String(n(g.denied))) + ' 次</span></div>';
+      }
+      if (l) {
+        h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" data-guard="login"><strong style="color:#1a2d52;font-size:13px">帳號鎖定／閒置逾時</strong>' +
+          (l.lockout ? chip('鎖定已啟用（連續 ' + n(l.maxFails) + ' 次失敗，首次鎖 ' + n(l.lockMinutes) + ' 分鐘）', '#137333', '#e6f4ea') : chip('帳號鎖定：關閉', '#5f6368', '#f1f3f4')) +
+          (n(l.idleMinutes) > 0 ? chip('閒置逾時 ' + n(l.idleMinutes) + ' 分鐘', '#137333', '#e6f4ea') : chip('閒置逾時：關閉', '#5f6368', '#f1f3f4')) + '</div>';
+      }
+      return h + '</div>';
+    }
+
     async function loadVersionInfo() {
       try {
         const r = await adminFetch(`${API}/admin/version`);
@@ -6070,7 +6091,7 @@
 
         // 資料庫
         $('vDbInfo').innerHTML = verDbHtml(d);
-        $('vAuditInfo').innerHTML = verAuditHtml(d);
+        $('vAuditInfo').innerHTML = verAuditHtml(d) + verGuardHtml(d);
 
         // 後端套件
         $('vBackendPkgs').innerHTML = d.backend.map(p => `
