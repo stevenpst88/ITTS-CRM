@@ -25,6 +25,13 @@ const QPDF_MARGIN_MM = 10;                 // 第 2 頁起的上緣、與每頁�
 const QPDF_OVERLAY_PX = { w: 1240, h: 1754 };   // 整頁圖層（A4，約 150 dpi）：只放頁尾與浮水印，透明底
 const QPDF_FONT = '"Microsoft JhengHei","PingFang TC","Noto Sans CJK TC","Noto Sans TC",sans-serif';
 
+// 報價專用章的位置微調（css px，以 900px 寬的紙張為準；相對於「預覽版面原本的章位置」＝簽名欄上方）。
+// 壓線：章的垂直中心落在「Prepared by／ITTS Corp.」那條橫線略上方，章的下半蓋住橫線與公司名稱字樣，像真實印章蓋在簽名線上。
+// 預覽版面：章 84px、top 2px（中心距簽名區頂 44px）；橫線在簽名區頂下 94px（高 88＋間距 6）。Y=40 → 中心 84px（線上方 10px），底緣 126px（蓋住橫線與公司名稱上半）。
+const STAMP_LINE_OFFSET_X = 0;
+const STAMP_LINE_OFFSET_Y = 40;
+const _qpdfStampOffset = { x: STAMP_LINE_OFFSET_X, y: STAMP_LINE_OFFSET_Y };   // 可變副本（只供測試／截圖比較舊位置時覆寫）
+
 let _qpdfLibsPromise = null;
 
 function _qpdfLoadScript(src) {
@@ -73,9 +80,9 @@ function _qpdfPlanPages(total, candidates, pxPerMm, tailSlack) {
   return pages;
 }
 
-/** 頁尾文字（每頁都印）：發出序號＋版本雜湊 */
+/** 頁尾文字（每頁都印）：發出序號＋版本雜湊＋類型小字（草稿）／（正式）。即使浮水印關閉，也能從頁尾辨識這份是草稿還是正式版 */
 function _qpdfFooterText(iss) {
-  return '發出序號 ' + String(iss.issueNo) + '｜版本雜湊 ' + String(iss.shortHash);
+  return '發出序號 ' + String(iss.issueNo) + '｜版本雜湊 ' + String(iss.shortHash) + (iss.kind === 'draft' ? '（草稿）' : iss.kind === 'official' ? '（正式）' : '');
 }
 
 /**
@@ -87,7 +94,7 @@ function _qpdfOverlayCanvas(iss, pageNo, pageCount) {
   c.width = QPDF_OVERLAY_PX.w; c.height = QPDF_OVERLAY_PX.h;
   const g = c.getContext('2d');
   const k = c.width / QPDF_A4_MM.w;   // px / mm
-  if (iss.kind === 'draft') {
+  if (iss.kind === 'draft' && iss.watermark === true) {   // 浮水印由伺服器開關決定（POST /issue 的 watermark），前端不自己判斷
     g.save();
     g.translate(c.width / 2, c.height / 2);
     g.rotate(-Math.PI / 6);
@@ -143,7 +150,7 @@ async function _qpdfBuildDoc(q, info, opts) {
     const sealImg = paper.querySelector('.qpv-seal');
     if (sealImg && sealImg.complete && sealImg.naturalWidth > 0 && sealImg.style.display !== 'none') {
       const r = sealImg.getBoundingClientRect();
-      seal = { img: sealImg, x: r.left - pr.left, y: r.top - pr.top, w: r.width, h: r.height };
+      seal = { img: sealImg, x: r.left - pr.left + _qpdfStampOffset.x, y: r.top - pr.top + _qpdfStampOffset.y, w: r.width, h: r.height };
       sealImg.style.visibility = 'hidden';
     }
 
@@ -243,7 +250,7 @@ async function exportQuotePdf(id, quoteNo) {
     const official = iss.kind === 'official';
     const sealSrc = official && iss.stampToken ? await _qpdfFetchSeal(id, iss.stampToken) : null;
     const info = await _qpvLoadInfo(id);
-    const built = await _qpdfBuildDoc(q, info, { issuance: { issueNo: iss.issueNo, shortHash: iss.shortHash, kind: iss.kind }, sealSrc: sealSrc });
+    const built = await _qpdfBuildDoc(q, info, { issuance: { issueNo: iss.issueNo, shortHash: iss.shortHash, kind: iss.kind, watermark: iss.watermark === true }, sealSrc: sealSrc });
     // 次要回報：伺服器看不到瀏覽器端產生的檔案，檔案產生成功後回報一次（帶發出序號，伺服器只把序號寫進稽核、不重複計數）；失敗不擋下載
     await fetch(API + '/quotations/' + encodeURIComponent(id) + '/export-log', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: 'pdf', issueNo: iss.issueNo }),

@@ -9554,6 +9554,8 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
 
   const rt = deriveRuntimeInfo(process.env);
   res.json({
+    // 報價文件發出機制的目前開關（只回布林）：未核准可否發出草稿、草稿浮水印是否啟用
+    quoteIssuance: { draftIssueAllowed: require('./lib/quoteIssuance').allowUnapprovedIssue(), draftWatermark: require('./lib/quoteIssuance').draftWatermarkEnabled() },
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {

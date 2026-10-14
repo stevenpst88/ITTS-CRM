@@ -2498,6 +2498,7 @@
         <div class="admin-card" style="margin-bottom:16px">
           <div class="admin-card-header"><span class="admin-card-title">🧾 稽核儲存</span></div>
           <div class="admin-card-body" id="vAuditInfo" style="padding:14px"></div>
+          <div class="admin-card-body" id="vIssueInfo" style="padding:0 14px 14px"></div>
         </div>
 
         <!-- 後端套件 -->
@@ -5976,6 +5977,12 @@
         '<span style="font-size:18px;flex-shrink:0">💡</span><div><strong>' + escH(db.engine || '—') + '</strong><br>' +
         '<span style="color:#555;line-height:1.7">' + escH(db.note || '') + '</span></div></div>';
     }
+    function verIssueHtml(d) {
+      const q = d && d.quoteIssuance;
+      if (!q) return '';
+      const chip = (label, on) => '<span style="font-size:12px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + (on ? '#137333' : '#5f6368') + ';background:' + (on ? '#e6f4ea' : '#f1f3f4') + '">' + escH(label) + '：' + (on ? '開' : '關') + '</span>';
+      return '<div style="font-size:12px;color:#888;margin-bottom:6px">報價文件發出開關（環境變數）</div><div style="display:flex;gap:8px;flex-wrap:wrap">' + chip('未核准可發出草稿', !!q.draftIssueAllowed) + chip('草稿浮水印', !!q.draftWatermark) + '</div>';
+    }
     function verAuditHtml(d) {
       if (!d || !d.auditStore) {
         return '<div style="color:#888;font-size:13px">此伺服器版本未提供稽核儲存資訊</div>';
@@ -6056,6 +6063,7 @@
         // 資料庫
         $('vDbInfo').innerHTML = verDbHtml(d);
         $('vAuditInfo').innerHTML = verAuditHtml(d);
+        $('vIssueInfo').innerHTML = verIssueHtml(d);
 
         // 後端套件
         $('vBackendPkgs').innerHTML = d.backend.map(p => `
