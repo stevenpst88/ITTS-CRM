@@ -799,6 +799,7 @@ function renderApproval(s) {
     html += `<div class="qap-alert warn">此報價單被駁回${last && last.byName ? '（' + e(last.byName) + '）' : ''}${last && last.comment ? '：' + e(last.comment) : ''}。修改後可重新送簽。</div>`;
   }
   { const tn = textEditNotice(q); if (tn) html += `<div class="qap-alert warn qap-textedit" id="qapTextEditBanner" role="status"><span>⚠ ${e(tn)}。核准有效、未重新簽核。</span><button class="btn btn-secondary btn-sm" type="button" data-act="textdiff">查看差異</button></div>`; }
+  if (perm.quoteReadonly) html += '<div class="qap-alert info" role="status">你的報價單權限類型是『唯讀』：可檢視這張報價單，但不能簽核、駁回或代核。如需簽核請洽管理員調整。</div>';
   html += buildBlockersAlert(q);
   html += sec('報價摘要', `<div class="qap-grid">
       <div><span class="k">報價單號</span><b>${e(q.quoteNo || '')}</b></div>
@@ -845,7 +846,7 @@ async function fetchApprovalQuote(s) {
     const c = await apiCall('GET', '/quote-approval/config');
     if (s.closed) return false;
     const users = c.ok && Array.isArray(c.data.users) ? c.data.users : [];
-    s.mgrs = users.filter((u) => (u.role === 'manager1' || u.role === 'manager2') && u.active !== false);
+    s.mgrs = users.filter((u) => (u.role === 'manager1' || u.role === 'manager2') && u.active !== false && u.quoteMode !== 'readonly');   // 唯讀者不能被改派（伺服器也會擋）
   }
   return true;
 }
@@ -2032,6 +2033,12 @@ function emailBadge(s, username) {
   return ` <span class="qap-badge warn" data-mail-status="${st}" title="${e(EMAIL_STATUS_TIP[st])}">${e(EMAIL_STATUS_LABEL[st])}</span>`;
 }
 
+/** 名冊裡舊有的『唯讀』帳號：標出來提醒管理員移除（他們在動作當下一定會被擋，不是簽核人） */
+function roUserBadge(s, un, key) {
+  const u = (s.cfg.users || []).find((x) => x.username === un);
+  return u && u.quoteMode === 'readonly' && key !== 'costProviders' ? ' <span title="報價單權限類型為唯讀：不是有效的簽核人，請移除或先改為簽核" style="background:#fef3c7;color:#92400e;font-size:11px;padding:1px 5px;border-radius:99px">唯讀</span>' : '';
+}
+
 function buildRosterTab(s) {
   const users = (s.cfg.users || []).filter((u) => u.active !== false).slice()
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username), 'zh-Hant'));
@@ -2048,8 +2055,9 @@ function buildRosterTab(s) {
   ROSTER_GROUPS.forEach((g) => {
     const sel = s.roster[g.key] || [];
     const mailRelevant = MAIL_ROSTER_KEYS.indexOf(g.key) >= 0;
-    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}${mailRelevant ? emailBadge(s, un) : ''}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
-    const opts = users.filter((u) => sel.indexOf(u.username) < 0)
+    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}${roUserBadge(s, un, g.key)}${mailRelevant ? emailBadge(s, un) : ''}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
+    // 報價單權限類型為『唯讀』的人不能列入簽核／代核／管章名單（伺服器也會擋）；成本填寫人是填寫職能，不受限
+    const opts = users.filter((u) => sel.indexOf(u.username) < 0 && !(u.quoteMode === 'readonly' && g.key !== 'costProviders'))
       .map((u) => `<option value="${e(u.username)}">${e(u.displayName || u.username)}（${e(u.username)}）${u.role ? ' · ' + e(u.role) : ''}${mailRelevant && emailProblem(s, u.username) ? ' · ' + e(EMAIL_STATUS_LABEL[emailProblem(s, u.username)]) : ''}</option>`).join('');
     html += sec(e(g.label), `<div class="qap-muted" style="margin-bottom:6px">${e(g.desc)}</div>
       <div class="qap-path">${chips}</div>
