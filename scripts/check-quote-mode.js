@@ -542,7 +542,7 @@ async function secM() {
   try {
     // 變異 1：唯讀者的簽核資格檢查（stepActorOk）退回舊的 canAct
     {
-      const f = mkMut('m1', null, ["if (!step || !canApproveAct(users[me])) return false;", "if (!step || !canAct(users[me])) return false;"]);
+      const f = mkMut('m1', null, ["if (!step || !(forView ? canAct(users[me]) : canApproveAct(users[me]))) return false;", "if (!step || !canAct(users[me])) return false;"]);
       await fresh(f);
       const o = await readonlyApprover();
       ok(o.approveStatus === 200 || o.canApprove === true, `變異1（stepActorOk 不排除唯讀）→ 唯讀者 approve=${o.approveStatus}、canApprove=${o.canApprove}：sec2 的 403／canApprove=false 斷言會失敗（抓得到）`);
