@@ -75,7 +75,14 @@ async function _qpdfBuildDoc(q, info) {
   host.setAttribute('aria-hidden', 'true');
   host.style.cssText = 'position:fixed;left:-12000px;top:0;width:' + QPV_PAPER_WIDTH + 'px;background:#fff;pointer-events:none;';
   host.innerHTML = buildQuotePreviewHtml(q, info);
-  document.body.appendChild(host);
+  // 玻璃自動縮放（glass-theme.js）：離屏畫布放在 body 外（不被 zoom）、帶上 body 字型、量測不補償；擷取時再暫停縮放，PDF 輸出與 zoom=1 位元相同
+  const gz = window.__glassScale && window.__glassScale.get() !== 1;
+  if (gz) {
+    host.setAttribute('data-gz-off', '');
+    host.style.fontFamily = getComputedStyle(document.body).fontFamily; host.style.color = getComputedStyle(document.body).color;
+    document.documentElement.appendChild(host);
+  } else document.body.appendChild(host);
+  let gzResume = null;
   try {
     const paper = host.firstElementChild;
     paper.style.boxShadow = 'none';
@@ -111,10 +118,12 @@ async function _qpdfBuildDoc(q, info) {
     Array.prototype.forEach.call(paper.querySelectorAll('.qpv-remarks > div'), function (el, i) { if (i > 0) cand.push(rel(el)); });
 
     const scale = Math.max(0.5, Math.min(QPDF_SCALE, Math.sqrt(QPDF_MAX_PIXELS / (QPV_PAPER_WIDTH * total)), QPDF_MAX_SIDE / total));
+    if (gz) gzResume = window.__glassScale.hold();   // html2canvas 的隱藏 iframe 會掛在 body 底下被 zoom 影響字型量測
     const canvas = await window.html2canvas(paper, {
       scale: scale, backgroundColor: '#ffffff', useCORS: true, logging: false,
       width: QPV_PAPER_WIDTH, windowWidth: QPV_PAPER_WIDTH,
     });
+    if (gzResume) { gzResume(); gzResume = null; }
     const s = canvas.width / QPV_PAPER_WIDTH;   // 實際倍率
     if (seal) {
       const nw = seal.img.naturalWidth, nh = seal.img.naturalHeight;
@@ -146,6 +155,7 @@ async function _qpdfBuildDoc(q, info) {
     doc.setProperties({ title: String(q.quoteNo || 'quotation'), creator: 'ITTS-CRM' });
     return { doc: doc, pageCount: pages.length, stamped: !!seal, canvas: canvas, pages: pages };
   } finally {
+    if (gzResume) gzResume();
     host.remove();
   }
 }

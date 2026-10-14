@@ -197,6 +197,8 @@ function applyPermissions() {
   const FEATURE_NAV_MAP = {
     home: 'navHome',
     managerHome: 'navManagerHome',
+    marketingHome: 'navMarketingHome',
+    consultHome: 'navConsultHome',
     execDash: 'navExecDash',
     prospects: 'navProspects',
     contacts: 'navContacts',
@@ -223,6 +225,10 @@ function applyPermissions() {
     const el = $(navId);
     if (el) el.style.display = allowedFeatures.has(key) ? '' : 'none';
   });
+  // 顧問角色有專屬首頁時，不再顯示業務版「首頁」（避免兩個首頁）；其他角色不受影響
+  if (allowedFeatures.has('consultHome') && (userPermissions.role === 'consult_manager_south' || userPermissions.role === 'consult_manager_north')) {
+    const nh = $('navHome'); if (nh) nh.style.display = 'none';
+  }
   // YoY 營收同期比（BI 報表）：併入角色功能權限表（key 'yoy'），由上方迴圈統一控管；伺服器端 /api/yoy 另有把關
 
   // Pipeline 月度變動：嵌入商機動態報表下方（仍以角色硬編，未列入勾選表）
@@ -772,11 +778,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navManagerHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', managerHome:'navManagerHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin', transfer:'navTransfer' };
+  ['navHome','navManagerHome','navMarketingHome','navConsultHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', marketingHome:'navMarketingHome', consultHome:'navConsultHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin', transfer:'navTransfer' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', managerHome:'主管首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理', transfer:'責任業務名單移轉' };
+  const titles = { null:'首頁', managerHome:'主管首頁', marketingHome:'行銷首頁', consultHome:'顧問首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理', transfer:'責任業務名單移轉' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -786,6 +792,7 @@ function setActiveNav(section) {
     $('subMenuAccounting').classList.add('open');
     $('navAccountingGroup').querySelector('.nav-arrow').classList.add('open');
   }
+  if (window.NavGroups) window.NavGroups.onActive();   // 側欄分組：展開所在組並移動滑動膠囊
 }
 
 function showDashboard() {
@@ -794,7 +801,7 @@ function showDashboard() {
   $('dashboardView').style.display = '';
   // 把所有 section view 全部隱藏
   ['prospectsView','contactsView','companyMasterView','keyAccountView','visitsView','targetsView','pipelineView',
-   'forecastView','lostOppView','execDashView','yoyView','managerHomeView','campaignsView','leadsView',
+   'forecastView','lostOppView','execDashView','yoyView','managerHomeView','marketingHomeView','consultHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
    'receivablesView','callinView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
@@ -837,6 +844,7 @@ function _countUp(el, to, opts) {
   const suffix = opts.suffix || '', dur = opts.dur || 850;
   const fmt = opts.fmt || (n => Math.round(n).toLocaleString());
   to = Number(to) || 0;
+  el.dataset.to = String(to);   // 終值（玻璃首頁 glass-dash.js 讀這個，動畫途中 textContent 是中間值）
   if (_prefersReduce()) { el.textContent = fmt(to) + suffix; return; }
   const start = performance.now();
   (function tick(now) {
@@ -861,6 +869,8 @@ function showSection(section) {
   $('execDashView').style.display     = section === 'execDash'    ? '' : 'none';
   if ($('yoyView')) $('yoyView').style.display = section === 'yoy' ? '' : 'none';
   $('managerHomeView').style.display  = section === 'managerHome' ? '' : 'none';
+  if ($('marketingHomeView')) $('marketingHomeView').style.display = section === 'marketingHome' ? '' : 'none';
+  if ($('consultHomeView')) $('consultHomeView').style.display = section === 'consultHome' ? '' : 'none';
   $('campaignsView').style.display    = section === 'campaigns'   ? '' : 'none';
   $('leadsView').style.display        = section === 'leads'       ? '' : 'none';
   $('lostOppView').style.display          = section === 'lostOpp'        ? '' : 'none';
@@ -887,6 +897,8 @@ function showSection(section) {
   if (section === 'execDash')    loadExecDash();
   if (section === 'yoy')         loadYoyView();
   if (section === 'managerHome') loadManagerHome();
+  if (section === 'marketingHome' && window.RoleHomes) window.RoleHomes.loadMarketing();
+  if (section === 'consultHome' && window.RoleHomes) window.RoleHomes.loadConsult();
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
@@ -1390,6 +1402,8 @@ $('navLostOpp').addEventListener('click',         () => showSection('lostOpp'));
 $('navExecDash').addEventListener('click',        () => showSection('execDash'));
 if ($('navYoy')) $('navYoy').addEventListener('click', () => showSection('yoy'));
 $('navManagerHome').addEventListener('click',     () => showSection('managerHome'));
+$('navMarketingHome').addEventListener('click',   () => showSection('marketingHome'));
+$('navConsultHome').addEventListener('click',      () => showSection('consultHome'));
 $('navCampaigns').addEventListener('click',       () => showSection('campaigns'));
 $('navLeads').addEventListener('click',           () => showSection('leads'));
 $('navQuotations').addEventListener('click',      () => showSection('quotations'));
@@ -1408,6 +1422,7 @@ $('navContractGroup').addEventListener('click', () => {
   const arrow = $('navContractGroup').querySelector('.nav-arrow');
   const isOpen = sub.classList.toggle('open');
   arrow.classList.toggle('open', isOpen);
+  if (window.NavGroups) window.NavGroups.reflow();
 });
 
 // ── 帳務管理側邊欄群組展開/收合 ──────────────────────────
@@ -1416,6 +1431,7 @@ $('navAccountingGroup').addEventListener('click', () => {
   const arrow = $('navAccountingGroup').querySelector('.nav-arrow');
   const isOpen = sub.classList.toggle('open');
   arrow.classList.toggle('open', isOpen);
+  if (window.NavGroups) window.NavGroups.reflow();
 });
 
 // ── 載入聯絡人 ───────────────────────────────────────────
@@ -2609,6 +2625,7 @@ function tgRender() {
   }
   if (show) {
     box.style.cssText = `display:block;font-size:12.5px;line-height:1.5;margin-top:6px;padding:6px 10px;border-radius:6px;background:${bg};color:${fg};border:1px solid ${bd}`;
+    box.dataset.tg = g.status === 'matched' ? 'ok' : (g.status === 'notfound' || g.status === 'unavailable') ? 'bad' : 'info';   // glass.css 用來換色（無玻璃時無作用）
     box.innerHTML = parts.join('');
     const rb = $('taxGuardRetry');
     if (rb) rb.addEventListener('click', () => tgStartLookup(true));
@@ -3578,6 +3595,13 @@ function _rememberDeepLink(forLogin) {
 function _clearDeepLink() {
   try { if (window.ITTSDeepLink) window.ITTSDeepLink.clear(); } catch (_) { /* 忽略 */ }
 }
+// 行銷／顧問專屬首頁：回傳 section 名稱或 ''（features 來自 /api/me/permissions，載入後存在 userPermissions）
+function _roleHomeSection(role, user) {
+  const f = new Set((userPermissions && userPermissions.features) || []);
+  if (role === 'marketing' && f.has('marketingHome')) return 'marketingHome';
+  if ((role === 'consult_manager_south' || role === 'consult_manager_north') && f.has('consultHome')) return 'consultHome';
+  return '';
+}
 async function initUser() {
   try {
     const res = await fetch('/api/me');
@@ -3647,6 +3671,8 @@ async function initUser() {
     $('dashboardGreeting').textContent = greet + '，' + user.displayName + ' 👋';
 
     // ── 登入後依角色決定預設頁面 ──────────────────────────
+    // 行銷／顧問要依功能權限決定首頁：features 可能還沒回來（loadPermissions 與 initUser 並行），先等
+    if ((user.role === 'marketing' || /^consult_manager_/.test(user.role || '')) && !userPermissions.features) await loadPermissions();
     const isFirstLoad = !!sessionStorage.getItem('justLoggedIn');
     if (isFirstLoad) {
       sessionStorage.removeItem('justLoggedIn');
@@ -3657,6 +3683,9 @@ async function initUser() {
       } else if (role === 'manager1' || role === 'manager2' || role === 'executive') {
         // 一級 / 二級主管 / 董總 → 主管首頁
         showSection('managerHome');
+      } else if (_roleHomeSection(role, user)) {
+        // 行銷 → 行銷首頁；南／北區顧問主管 → 顧問首頁（該角色有對應功能權限才導向）
+        showSection(_roleHomeSection(role, user));
       } else {
         // 其他角色（業務、秘書、行銷、admin 等）→ 一般首頁
         // 若有上次記錄則還原，否則顯示首頁
@@ -3670,6 +3699,9 @@ async function initUser() {
     } else if ((user.role || 'user') === 'tecopm') {
       // 非首次載入時的安全網：tecopm 一律強制進預測表
       showSection('forecast');
+    } else if (currentSection === null && _roleHomeSection(user.role, user)) {
+      // 重新整理後落在業務版首頁（舊 lastSection=dashboard）：行銷／顧問改進自己的首頁
+      showSection(_roleHomeSection(user.role, user));
     }
     // 推播深連結（/index.html#quote:<id>）：登入初始化完成後開啟該張報價單。
     // 信件連結（/q/<id> → 登入頁 → 這裡）：網址片段優先；網址上沒有時改用 sessionStorage 暫存的那一份（取一次即清，不會重複開）
@@ -8364,8 +8396,9 @@ function toggleDarkMode() {
 }
 
 (function initDarkMode() {
-  if (localStorage.getItem('darkMode') === '1') {
-    document.body.classList.add('dark');
+  // body 的 dark 由 index.html 開頭腳本決定（含「玻璃模式且未曾選擇 → 預設深色」）；這裡只同步按鈕圖示
+  if (localStorage.getItem('darkMode') === '1') document.body.classList.add('dark');
+  if (document.body.classList.contains('dark')) {
     const btn = document.getElementById('darkModeToggle');
     if (btn) btn.textContent = '☀️';
   }
@@ -8377,126 +8410,242 @@ loadContacts(); // 背景載入聯絡人，供圖表與拜訪記錄使用
 loadIndustryOptions(); // 載入動態產業分類，建立名片表單下拉
 loadProductCatalog(); // 載入 Admin 維護的銷售商品目錄（覆寫商機下拉；失敗沿用寫死 fallback）
 
-// ── 側邊欄拖動排序 ─────────────────────────────────────────
-(function initSidebarDrag() {
-  var nav = document.querySelector('.sidebar-nav');
-  if (!nav) return;
+// ── 側欄分組（手風琴）＋ 滑動膠囊 ＋ 組內拖動排序 ───────────────
+// 五個領域分組（.sg）：標題列＝色點＋名稱＋「可見項目數」；一次只展開一組，並自動展開目前頁面所在的組。
+// 項目本身的顯示/隱藏仍由既有權限迴圈以 style.display 控制；這裡用 MutationObserver 監看，
+// 即時重算各組數量，0 個可見項目的組自動隱藏（class sg-empty，不動 style 屬性，避免觸發自己）。
+// 滑動膠囊（#navPill）：目前頁面項目後方的玻璃膠囊，換頁時沿移動方向拉長再彈性定位；JS 未就緒時 .active 項目自帶底色（graceful fallback）。
+// 拖動排序：僅限同組內；順序存 localStorage 'sidebarNavOrderV2'（{組名:[id,...]}），舊 key 'sidebarNavOrder' 不再讀取。
+window.NavGroups = (function initNavGroups() {
+  var nav = document.getElementById('sidebarNav');
+  var pill = document.getElementById('navPill');
+  if (!nav || !pill) return null;
+  var groups = Array.prototype.slice.call(nav.querySelectorAll('.sg'));
+  var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-  var STORAGE_KEY = 'sidebarNavOrder';
+  // ── 可見項目計數 ──
+  function isHidden(el, stop) {
+    for (var n = el; n && n !== stop; n = n.parentNode) {
+      if (n.nodeType === 1 && n.style && n.style.display === 'none') return true;
+    }
+    // 子選單（合約/帳務）：標題列被權限隱藏時，底下子項目也算不可見
+    var sg = el.closest('.sidebar-nav-group');
+    if (sg && sg !== el) {
+      var hd = sg.querySelector('.sidebar-nav-group-hd');
+      if (hd && hd.style.display === 'none') return true;
+    }
+    return false;
+  }
+  function leafItems(g) {
+    return Array.prototype.filter.call(g.querySelectorAll('.sidebar-nav-item:not(.sidebar-nav-group-hd)'), function (el) { return !isHidden(el, g); });
+  }
+  function refresh() {
+    groups.forEach(function (g) {
+      var n = leafItems(g).length;
+      g.classList.toggle('sg-empty', n === 0);
+      var c = g.querySelector('.sg-count'); if (c) c.textContent = n;
+    });
+    reflow();
+  }
+
+  // ── 展開/收合 ──
+  function setOpen(g, open) {
+    g.classList.toggle('sg-open', !!open);
+    var hd = g.querySelector('.sg-hd'); if (hd) hd.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function openOnly(g) { groups.forEach(function (x) { setOpen(x, x === g); }); }
+
+  // ── 膠囊 ──
+  var token = 0, anim = null, cur = null, settleTimer = null, pendingSettle = false;
+  function activeEl() { return nav.querySelector('.sidebar-nav-item.active'); }
+  function relRect(r) {
+    var n = nav.getBoundingClientRect();
+    return { t: r.top - n.top + nav.scrollTop, h: r.height, l: r.left - n.left + nav.scrollLeft, w: r.width };
+  }
+  function geoOf(el) {
+    if (!el) return null;
+    var g = el.closest('.sg');
+    if (!g || !g.classList.contains('sg-open') || g.classList.contains('sg-empty')) return null;
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    return relRect(r);
+  }
+  function css(o) { return { top: o.t + 'px', height: o.h + 'px', left: o.l + 'px', width: o.w + 'px' }; }
+  function setPill(o) { pill.style.top = o.t + 'px'; pill.style.height = o.h + 'px'; pill.style.left = o.l + 'px'; pill.style.width = o.w + 'px'; }
+  function stopAnim() { token++; if (anim) { try { anim.cancel(); } catch (e) {} anim = null; } }
+  function hide() { stopAnim(); pill.classList.remove('on'); cur = null; }
+  function placeNow(el) {
+    var gm = geoOf(el);
+    if (!gm) { hide(); return false; }
+    stopAnim(); setPill(gm); pill.classList.add('on'); nav.classList.add('pill-on'); cur = el; return true;
+  }
+  function appear(el) {
+    if (!placeNow(el)) return;
+    if (reduce || !pill.animate) return;
+    pill.animate([{ transform: 'scale(.9)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 340, easing: 'cubic-bezier(.34,1.56,.5,1)' });
+  }
+  // 沿移動方向拉長（約 25%）→ 彈性收斂到目標。inline 樣式「立刻」設成目標位置，動畫只負責過程（無 fill）：
+  // 即使動畫被中斷、被瀏覽器丟棄或分頁在背景不跑動畫，膠囊最終一定停在正確位置。
+  function glideTo(el) {
+    var gm = geoOf(el);
+    if (!gm) { hide(); return; }
+    if (reduce || !pill.animate || !cur || !pill.classList.contains('on')) { placeNow(el); return; }
+    var c = relRect(pill.getBoundingClientRect());   // 含進行中動畫的即時位置
+    stopAnim(); setPill(gm); cur = el;
+    var u = { t: Math.min(c.t, gm.t), l: Math.min(c.l, gm.l) };
+    u.h = Math.max(c.t + c.h, gm.t + gm.h) - u.t; u.w = Math.max(c.l + c.w, gm.l + gm.w) - u.l;
+    var k0 = css(c), k1 = css(u), k2 = css(gm);
+    k0.offset = 0; k0.easing = 'cubic-bezier(.3,0,.6,1)';
+    k1.offset = .25; k1.easing = 'cubic-bezier(.34,1.56,.5,1)';
+    k2.offset = 1;
+    anim = pill.animate([k0, k1, k2], { duration: 620 });
+  }
+  // 版面變動（視窗縮放、子選單展開）：不做動畫，直接對齊
+  function reflow() {
+    if (pendingSettle) return;
+    var el = activeEl();
+    if (!el) { hide(); return; }
+    placeNow(el);
+  }
+  // 展開/收合動畫期間先藏膠囊；動畫結束（transitionend，保險用逾時）後，若目前頁所在組是開的才現身
+  function finishSettle() {
+    if (!pendingSettle) return;
+    pendingSettle = false; clearTimeout(settleTimer);
+    var el = activeEl();
+    if (el) appear(el); else hide();
+  }
+  function settleThenAppear() {
+    pendingSettle = true; hide();
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(finishSettle, reduce ? 0 : 900);
+  }
+  nav.addEventListener('transitionend', function (e) {
+    if (e.propertyName === 'grid-template-rows' && e.target.classList && e.target.classList.contains('sg-body')) finishSettle();
+  });
+
+  // 換頁（setActiveNav 之後呼叫）
+  function onActive() {
+    var el = activeEl();
+    groups.forEach(function (g) { g.classList.toggle('sg-has-active', !!el && g.contains(el)); });
+    if (!el) { hide(); return; }
+    var g = el.closest('.sg');
+    if (g && !g.classList.contains('sg-open')) {   // 跨組：展開目標組，待動畫結束再讓膠囊現身
+      openOnly(g);
+      settleThenAppear();
+    } else if (!pendingSettle) {
+      glideTo(el);
+    }
+    try { el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+  }
+
+  // 標題列點擊：手風琴
+  groups.forEach(function (g) {
+    var hd = g.querySelector('.sg-hd');
+    if (!hd) return;
+    hd.addEventListener('click', function () {
+      var willOpen = !g.classList.contains('sg-open');
+      if (willOpen) openOnly(g); else setOpen(g, false);
+      settleThenAppear();
+    });
+  });
+
+  // 權限迴圈改 style.display → 重算數量（忽略膠囊自己的 style 變動）
+  var raf = 0;
+  new MutationObserver(function (muts) {
+    for (var i = 0; i < muts.length; i++) {
+      if (muts[i].target !== pill) {
+        if (!raf) raf = setTimeout(function () { raf = 0; refresh(); }, 0);   // 不用 rAF：分頁在背景時 rAF 不會跑，數量會卡住
+        return;
+      }
+    }
+  }).observe(nav, { attributes: true, attributeFilter: ['style'], subtree: true });
+  if (window.ResizeObserver) new ResizeObserver(function () { reflow(); }).observe(nav);
+  window.addEventListener('resize', reflow);
+  window.addEventListener('load', reflow);
+
+  // ── 組內拖動排序 ──
+  var KEY = 'sidebarNavOrderV2';
   var dragSrc = null;
-
-  // 取得可拖動的直接子元素（排除 display:none 的）
-  function getNavChildren() {
-    return Array.from(nav.children).filter(function(el) {
-      return el.style.display !== 'none';
-    });
-  }
-
+  function inners() { return Array.prototype.slice.call(nav.querySelectorAll('.sg-inner')); }
   function saveOrder() {
-    var order = Array.from(nav.children).map(function(el) {
-      return el.id || '';
+    var o = {};
+    inners().forEach(function (inn) {
+      o[inn.getAttribute('data-sg-inner')] = Array.prototype.map.call(inn.children, function (el) { return el.id || ''; }).filter(Boolean);
     });
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(order)); } catch(e) {}
+    try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
   }
-
   function restoreOrder() {
-    try {
-      var stored = localStorage.getItem(STORAGE_KEY);
-      if (!stored) return;
-      var order = JSON.parse(stored);
-      if (!Array.isArray(order) || !order.length) return;
-      // 先記錄目前 DOM 順序（HTML 原始順序），方便為新項目找參考錨點
-      var originalOrder = Array.from(nav.children).map(function(el){ return el.id || ''; });
-      var savedSet = new Set(order.filter(Boolean));
-      // 步驟 1：依存檔順序把舊項目重新排好（appendChild = 移到末尾）
-      order.forEach(function(id) {
-        if (!id) return;
-        var el = document.getElementById(id);
-        if (el && el.parentNode === nav) nav.appendChild(el);
+    var o;
+    try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return; }
+    if (!o || typeof o !== 'object') return;
+    inners().forEach(function (inn) {
+      var ids = o[inn.getAttribute('data-sg-inner')];
+      if (!Array.isArray(ids)) return;
+      var orig = Array.prototype.map.call(inn.children, function (el) { return el.id || ''; });
+      var saved = {}; ids.forEach(function (id) { saved[id] = true; });
+      ids.forEach(function (id) {   // 只重排「本組」的項目；存檔裡屬於別組或已不存在的 id 一律忽略
+        var el = id && document.getElementById(id);
+        if (el && el.parentNode === inn) inn.appendChild(el);
       });
-      // 步驟 2：新項目（在 DOM 但不在存檔中）依原 HTML 順序，插入到「在 HTML 中緊跟著它的舊項目」之前
-      originalOrder.forEach(function(id, idx) {
-        if (!id || savedSet.has(id)) return;
+      orig.forEach(function (id, idx) {   // 新項目（不在存檔）依原順序插到「原本緊跟在後、且在存檔內」的項目之前
+        if (!id || saved[id]) return;
         var el = document.getElementById(id);
-        if (!el || el.parentNode !== nav) return;
-        // 找原 HTML 中該項目之後第一個「在存檔內」的舊項目作為錨點
+        if (!el || el.parentNode !== inn) return;
         var anchor = null;
-        for (var j = idx + 1; j < originalOrder.length; j++) {
-          if (savedSet.has(originalOrder[j])) {
-            anchor = document.getElementById(originalOrder[j]);
-            break;
-          }
-        }
-        if (anchor && anchor.parentNode === nav) nav.insertBefore(el, anchor);
-        else nav.appendChild(el);
+        for (var j = idx + 1; j < orig.length; j++) if (saved[orig[j]]) { anchor = document.getElementById(orig[j]); break; }
+        if (anchor && anchor.parentNode === inn) inn.insertBefore(el, anchor); else inn.appendChild(el);
       });
-    } catch(e) {}
+    });
   }
-
-  function clearIndicators() {
-    Array.from(nav.children).forEach(function(el) {
+  function clearInd() {
+    Array.prototype.forEach.call(nav.querySelectorAll('.sidebar-drag-over-top,.sidebar-drag-over-bottom,.sidebar-drag-src'), function (el) {
       el.classList.remove('sidebar-drag-over-top', 'sidebar-drag-over-bottom', 'sidebar-drag-src');
     });
   }
-
+  function sameGroup(el) { return dragSrc && el.parentNode === dragSrc.parentNode; }
   function onDragStart(e) {
-    dragSrc = this;
-    this.classList.add('sidebar-drag-src');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', this.id || '');
+    dragSrc = this; this.classList.add('sidebar-drag-src');
+    e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', this.id || '');
   }
-
   function onDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (!dragSrc || this === dragSrc) return;
-    clearIndicators();
-    dragSrc.classList.add('sidebar-drag-src');
-    // 判斷滑鼠在元素上半或下半
-    var rect = this.getBoundingClientRect();
-    var midY = rect.top + rect.height / 2;
-    if (e.clientY < midY) {
-      this.classList.add('sidebar-drag-over-top');
-    } else {
-      this.classList.add('sidebar-drag-over-bottom');
-    }
+    if (!sameGroup(this)) return;   // 跨組：不 preventDefault → 不允許放下
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    if (this === dragSrc) return;
+    clearInd(); dragSrc.classList.add('sidebar-drag-src');
+    var r = this.getBoundingClientRect();
+    this.classList.add(e.clientY < r.top + r.height / 2 ? 'sidebar-drag-over-top' : 'sidebar-drag-over-bottom');
   }
-
   function onDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!dragSrc || dragSrc === this) { clearIndicators(); return; }
-    var rect = this.getBoundingClientRect();
-    var midY = rect.top + rect.height / 2;
-    if (e.clientY < midY) {
-      nav.insertBefore(dragSrc, this);
-    } else {
-      nav.insertBefore(dragSrc, this.nextSibling);
-    }
-    clearIndicators();
-    saveOrder();
+    if (!sameGroup(this)) { clearInd(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (dragSrc === this) { clearInd(); return; }
+    var r = this.getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) this.parentNode.insertBefore(dragSrc, this);
+    else this.parentNode.insertBefore(dragSrc, this.nextSibling);
+    clearInd(); saveOrder();
+    var el = activeEl(); if (el) placeNow(el);
   }
-
-  function onDragEnd() {
-    clearIndicators();
-    dragSrc = null;
-  }
-
-  function applyDrag() {
-    Array.from(nav.children).forEach(function(el) {
-      if (!el._dragBound) {
-        el._dragBound = true;
-        el.setAttribute('draggable', 'true');
-        el.addEventListener('dragstart', onDragStart);
-        el.addEventListener('dragover',  onDragOver);
-        el.addEventListener('drop',      onDrop);
-        el.addEventListener('dragend',   onDragEnd);
-      }
-    });
-  }
-
+  function onDragEnd() { clearInd(); dragSrc = null; }
   restoreOrder();
-  applyDrag();
+  inners().forEach(function (inn) {
+    Array.prototype.forEach.call(inn.children, function (el) {
+      el.setAttribute('draggable', 'true');
+      el.addEventListener('dragstart', onDragStart);
+      el.addEventListener('dragover', onDragOver);
+      el.addEventListener('drop', onDrop);
+      el.addEventListener('dragend', onDragEnd);
+    });
+  });
+
+  // 初始：先算數量；目前頁面所在組展開，膠囊直接就位
+  refresh();
+  var first = activeEl();
+  if (first) {
+    var fg = first.closest('.sg');
+    if (fg) { openOnly(fg); fg.classList.add('sg-has-active'); }
+    setTimeout(function () { placeNow(first); }, 0);
+  }
+  return { refresh: refresh, onActive: onActive, reflow: reflow };
 })();
 
 // 還原上次所在頁面
@@ -10143,6 +10292,7 @@ async function loadManagerHome() {
   _revealIn(document.querySelectorAll('#managerHomeView .mgr-card'));
   renderMgrAging(d.aging);
   renderMgrTopCust(d.topCustomers);
+  if (window.GlassMgr) window.GlassMgr.update(d);   // 玻璃主管首頁摘要（glass-dash.js；沒開玻璃時 no-op）
 }
 
 // ── Gap 分析（年底預測）──────────────────────────────────

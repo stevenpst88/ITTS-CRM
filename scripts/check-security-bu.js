@@ -41,7 +41,7 @@ const arrOf = (src, re) => { const m = re.exec(src); return m ? J(JSON.parse(m[1
   t('1.7 商品目錄種子有 資安 鍵（空陣列）；deriveDropdowns 對沒有 資安 鍵的舊目錄不丟錯', Array.isArray(PC.SEED_PRODUCT_CATALOG.bus['資安']) && PC.SEED_PRODUCT_CATALOG.bus['資安'].length === 0 && !!PC.deriveDropdowns({ bus: { ERP: [] } }) && PC.deriveDropdowns(PC.SEED_PRODUCT_CATALOG).OPP_PRODUCTS['資安'] !== undefined);
   const optCount = (html, v) => (html.match(new RegExp('<option value="' + v + '">' + v + '</option>', 'g')) || []).length;
   t('1.8 index.html：4 個 BU 下拉（預測篩選、cOppCategory、oppCategory、oppEditCategory）都有 資安 選項', optCount(idx, '資安') === 4 && optCount(idx, 'MDM') === 4);
-  t('1.9 admin.html 使用者表單有 資安 核取方塊（class bu-cb）', /class="bu-cb" value="資安"/.test(adm) && (adm.match(/class="bu-cb" value="/g) || []).length === 5);
+  t('1.9 admin.html 使用者表單有 資安 核取方塊（class bu-cb；glass 分支的 a11y 階段多一個 ax-sq16）', /class="bu-cb(?: ax-sq16)?" value="資安"/.test(adm) && (adm.match(/class="bu-cb(?: ax-sq16)?" value="/g) || []).length === 5);
   t('1.10 客戶類別按鈕：兩個對話框都有 pl-sec／data-pl="資安"；style.css 有 .pl-sec；BU 卡片格線 5 欄', (app.match(/pl-btn pl-sec" data-pl="資安"/g) || []).length === 2 && /\.pl-sec \{/.test(css) && /\.bu-breakdown-grid \{ display: grid; grid-template-columns: repeat\(5, 1fr\)/.test(css));
   t('1.11 資安 顏色 #e11d48 與既有四色不同（四處淺色表＋一處深色表）', ['#1a73e8', '#0a8a4a', '#e37400', '#7c3aed', '#d97706'].every((c) => c !== '#e11d48') && (app.match(/#e11d48/g) || []).length >= 3 && (adm.match(/#e11d48/g) || []).length >= 3 && /'資安':'#fb7185'/.test(app));
 

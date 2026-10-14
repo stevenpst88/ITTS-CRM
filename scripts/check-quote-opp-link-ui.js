@@ -56,7 +56,7 @@ t('4.4 app.js：新增商機模式隱藏報價單列', /if \(isCreate\) \{ const
 
 // 沒碰到的檔案（git 比對：本檢查只讀工作樹，這裡確認這些檔案不含商機連結字樣）
 ['_client/quote-preview.js', '_client/quote-pdf.js', '_client/quote-approval.js'].forEach((f) => { const s = fs.existsSync(path.join(ROOT, f)) ? rd(f) : ''; t('5.1 ' + f + ' 沒有商機連結字樣（客戶文件／簽核畫面不受影響）', !/qOpp|oppId|oppSnapshot/.test(s)); });
-t('5.2 glass 樣式檔沒有商機連結字樣', ['_client/glass.css', '_client/style-glass.css'].every((f) => !fs.existsSync(path.join(ROOT, f)) || !/q-opp|qOpp/.test(rd(f))));
+t('5.2 glass 樣式檔：main 上沒有商機連結字樣；glass 分支則 q-opp 規則只能出現在「階段 7」區塊（glass.css）', ['_client/glass.css', '_client/style-glass.css'].every((f) => !fs.existsSync(path.join(ROOT, f)) || !/q-opp|qOpp/.test(rd(f)) || (f === '_client/glass.css' && /階段 7 併入 main/.test(rd(f)))));
 
 // 商機作廢→報價單失效、建單入口只給能建單的角色
 t('6.1 index.html：「新增報價單」預設隱藏（設定載入後才顯示，避免閃現）；有 #qInvalidBanner、#oppDeleteQuoteWarn、狀態篩選 invalid', /id="addQuoteBtn" style="display:none"/.test(html) && html.includes('id="qInvalidBanner"') && html.includes('id="oppDeleteQuoteWarn"') && /<option value="invalid">/.test(html));
