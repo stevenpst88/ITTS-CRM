@@ -4,7 +4,9 @@
   "description": "名片管理 CRM 系統",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node scripts/check-xss-sinks.js",
+    "test:xss": "node scripts/check-xss-sinks.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
