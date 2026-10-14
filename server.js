@@ -276,7 +276,7 @@ app.use((req, res, next) => {
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
-  if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  if (/^\/api\/quotations\/[^/]+\/(?:export-log|issue)$/.test(req.path)) return next();   // issue＝正式文件發出（唯讀帳號也能下載，必須留紀錄）
   // 公告「我知道了」：只寫入自己的已讀回條，唯讀帳號也必須能確認，否則一次性公告會永遠彈出
   if (/^\/api\/announcements\/[^/]+\/ack$/.test(req.path)) return next();
   // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響

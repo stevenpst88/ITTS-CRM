@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v6';   // v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
+const SW_VERSION = 'itts-crm-v7';   // v7：正式文件發出機制（quote-pdf／quote-preview／quote-approval／quote.js 改版，蓋章需 stampToken）；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
