@@ -156,6 +156,11 @@ async function secA(QIS) {
     for (const v of ['1', 'true', 'yes']) { process.env.QUOTE_ALLOW_UNAPPROVED_ISSUE = v; ok(QIS.allowUnapprovedIssue(), `[A13] 環境變數 ${v} 不誤判為禁止`); }
     delete process.env.QUOTE_ALLOW_UNAPPROVED_ISSUE;
     ok(QIS.allowUnapprovedIssue(), '[A13] 預設允許（與現況一致）');
+    delete process.env.QUOTE_DRAFT_WATERMARK;
+    ok(!QIS.draftWatermarkEnabled(), '[A13b] 草稿浮水印預設關');
+    for (const v of ['1', 'true', 'ON']) { process.env.QUOTE_DRAFT_WATERMARK = v; ok(QIS.draftWatermarkEnabled(), `[A13b] QUOTE_DRAFT_WATERMARK=${v} → 啟用`); }
+    for (const v of ['0', 'false', '', 'x']) { process.env.QUOTE_DRAFT_WATERMARK = v; ok(!QIS.draftWatermarkEnabled(), `[A13b] QUOTE_DRAFT_WATERMARK=${v || '(空)'} → 不啟用`); }
+    delete process.env.QUOTE_DRAFT_WATERMARK;
     // stillValid／verify
     const recO = data.quoteIssuances.find(x => x.issueNo === 'ISS-QU-1-001');
     ok(QIS.stillValidOf(recO, q1), '[A14] official 內容未變且核准有效 → stillValid');
@@ -187,7 +192,7 @@ async function secA(QIS) {
     eq(new Set(nos).size, 50, '[A17] 連發 50 次序號全不重複');
     eq(nos[49], 'ISS-QU-RACE-050', '[A17] 序號單調遞增');
   } finally {
-    for (const [k, v] of [['JWT_SECRET', saved.j], ['SESSION_SECRET', saved.s], ['QUOTE_ISSUE_SECRET', saved.i], ['QUOTE_ALLOW_UNAPPROVED_ISSUE', saved.a]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    for (const [k, v] of [['JWT_SECRET', saved.j], ['SESSION_SECRET', saved.s], ['QUOTE_ISSUE_SECRET', saved.i], ['QUOTE_ALLOW_UNAPPROVED_ISSUE', saved.a], ['QUOTE_DRAFT_WATERMARK', undefined]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
 }
 
@@ -294,6 +299,8 @@ async function secB() {
   eq([j.kind, j.issueNo, j.format], ['official', 'ISS-QU-202610-001-001', 'pdf'], '[B1] kind=official、序號、格式');
   ok(/^[0-9a-f]{12}$/.test(j.shortHash || '') && j.shortHash === crypto.createHash('sha256').update(j.issueNo + ':' + hashOf('Q1')).digest('hex').slice(0, 12), '[B1] shortHash＝sha256(issueNo:contentHash) 前 12 碼');
   ok(typeof j.stampToken === 'string' && j.stampToken.length > 40, '[B1] 有 stampToken');
+  eq(j.watermark, false, '[B1] 浮水印開關預設關：POST /issue 回 watermark:false（由伺服器決定）');
+  { const vr = await http('_s_admin', 'GET', '/api/admin/version'); eq(vr.json && vr.json.quoteIssuance, { draftIssueAllowed: true, draftWatermark: false }, '[B1] /api/admin/version 回報開關狀態（只有布林）：預設可發草稿、浮水印關'); }
   ok(!isNaN(Date.parse(j.issuedAt)) && Math.abs(Date.now() - Date.parse(j.issuedAt)) < 60000, '[B1] issuedAt 為伺服器時間');
   eq(r.headers.get('cache-control'), 'no-store', '[B1] 回應 no-store');
   // B2 seal：沒有憑證 → 403；有憑證一次；第二次 403
@@ -460,20 +467,24 @@ async function secC() {
   const zo = await readZip(oldBuf), zn = await readZip(newBuf);
   eq(Object.keys(zn).sort(), Object.keys(zo).sort(), '[C1] 未帶 issuance：部件清單與舊版相同');
   ok(Object.keys(zo).every(n => zo[n].equals(zn[n])), '[C1] 未帶 issuance：每個部件內容與舊版位元級相同');
-  const issO = { issueNo: 'ISS-QU-X-001-007', shortHash: 'abcdef012345', kind: 'official' };
-  const issD = { issueNo: 'ISS-QU-X-001-008', shortHash: '0123456789ab', kind: 'draft' };
+  const issO = { issueNo: 'ISS-QU-X-001-007', shortHash: 'abcdef012345', kind: 'official', watermark: false };
+  const issD = { issueNo: 'ISS-QU-X-001-008', shortHash: '0123456789ab', kind: 'draft', watermark: false };
+  const issDW = Object.assign({}, issD, { watermark: true });
   const bo = await readZip(await NEW.buildQuoteWorkbook(q, TPL, Object.assign({}, base, { issuance: issO, report: {} })));
   const bd = await readZip(await NEW.buildQuoteWorkbook(q, TPL, Object.assign({}, base, { approved: false, issuance: issD, report: {} })));
+  const bdw = await readZip(await NEW.buildQuoteWorkbook(q, TPL, Object.assign({}, base, { approved: false, issuance: issDW, report: {} })));
   const sheet = (z) => z['xl/worksheets/sheet1.xml'].toString('utf8');
-  ok(sheet(bo).includes('發出序號 ISS-QU-X-001-007｜版本雜湊 abcdef012345'), '[C2] official：G5 含發出序號與版本雜湊');
+  ok(sheet(bo).includes('發出序號 ISS-QU-X-001-007｜版本雜湊 abcdef012345（正式）'), '[C2] official：G5 含發出序號、版本雜湊與（正式）');
   ok(!sheet(bo).includes('草稿'), '[C2] official：沒有草稿標記');
-  ok(sheet(bd).includes('發出序號 ISS-QU-X-001-008｜版本雜湊 0123456789ab') && sheet(bd).includes('草稿／未經核准'), '[C3] draft：含序號、短雜湊與「草稿／未經核准」');
+  ok(sheet(bd).includes('發出序號 ISS-QU-X-001-008｜版本雜湊 0123456789ab（草稿）') && !sheet(bd).includes('草稿／未經核准'), '[C3] draft（浮水印關）：G5 有序號、短雜湊與（草稿），沒有 G4 大標記');
+  ok(sheet(bdw).includes('發出序號 ISS-QU-X-001-008｜版本雜湊 0123456789ab（草稿）') && sheet(bdw).includes('草稿／未經核准'), '[C3] draft（浮水印開）：G5＋G4「草稿／未經核准」');
+  ok(!sheet(bo).includes('草稿'), '[C3] official：永遠沒有草稿字樣');
   const stripCells = (x) => x.replace(/<c r="G4"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/, '').replace(/<c r="G5"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/, '');
   const names = Object.keys(zo).filter(n => n !== 'xl/worksheets/sheet1.xml' && n !== 'xl/styles.xml');
   ok(names.every(n => zo[n].equals(bo[n]) && zo[n].equals(bd[n])), '[C4] 其餘部件（圖片、sharedStrings、workbook、列印設定…）與舊版位元級相同');
   ok(stripCells(sheet(bo)) === stripCells(sheet(zo)), '[C4] official：工作表除 G4／G5 兩格外與舊版逐字相同');
   const zoSheetNoG = stripCells(sheet(zo));
-  ok(stripCells(sheet(bd)) === zoSheetNoG, '[C4] draft：工作表除 G4／G5 兩格外與舊版逐字相同');
+  ok(stripCells(sheet(bd)) === zoSheetNoG && stripCells(sheet(bdw)) === zoSheetNoG, '[C4] draft（浮水印開／關）：工作表除 G4／G5 兩格外與舊版逐字相同');
   const stylesO = zo['xl/styles.xml'].toString('utf8'), stylesN = bd['xl/styles.xml'].toString('utf8');
   const nOld = +/<cellXfs count="(\d+)"/.exec(stylesO)[1], nNew = +/<cellXfs count="(\d+)"/.exec(stylesN)[1];
   eq(nNew, nOld + 2, '[C5] styles.xml 只追加 2 個樣式（發出標記用）');
@@ -490,7 +501,7 @@ async function secC() {
   eq(r.headers.get('x-quote-seal'), 'none', '[C6] X-Quote-Seal 仍為 none（Excel 不蓋章）');
   r = await http('_s_owner', 'GET', '/api/quotations/Q2/export');
   z = await readZip(r.buf);
-  ok(r.status === 200 && r.headers.get('x-quote-approval') === 'unapproved' && r.headers.get('x-issue-kind') === 'draft' && sheet(z).includes('草稿／未經核准') && sheet(z).includes('發出序號 ' + r.headers.get('x-issue-no')), '[C7] 未核准單 export：仍可下載、標頭 unapproved、檔內有草稿標記與序號');
+  ok(r.status === 200 && r.headers.get('x-quote-approval') === 'unapproved' && r.headers.get('x-issue-kind') === 'draft' && !sheet(z).includes('草稿／未經核准') && sheet(z).includes('發出序號 ' + r.headers.get('x-issue-no')) && sheet(z).includes('（草稿）'), '[C7] 未核准單 export：仍可下載、標頭 unapproved、檔內有草稿標記與序號');
   const logs = await getLogs();
   ok(logs.some(l => l.action === 'EXPORT_QUOTATION' && l.detail.includes('發出序號 ' + no1)), '[C8] EXPORT_QUOTATION 稽核保留且帶 issueNo');
   ok(logs.some(l => l.action === 'ISSUE_QUOTE' && l.detail.includes(no1)), '[C8] 同時有 ISSUE_QUOTE');
@@ -506,9 +517,20 @@ async function secC() {
   ok(r.status === 200 && lg3.some(l => l.action === 'EXPORT_QUOTATION_PDF' && l.detail.includes('發出序號不符')), '[C9] export-log 帶別人的／偽造序號 → 不採信，只註記');
   r = await http('_s_owner', 'POST', '/api/quotations/Q1/export-log', { format: 'pdf' });
   ok(r.status === 200 && (await getLogs()).some(l => l.action === 'EXPORT_QUOTATION_PDF' && l.detail.includes('未帶發出序號')), '[C9] 舊版前端（不帶序號）仍可回報，註記未帶序號');
+  // 浮水印開關開啟
+  await freshServer(undefined, { QUOTE_DRAFT_WATERMARK: '1' });
+  r = await http('_s_owner', 'GET', '/api/quotations/Q2/export');
+  z = await readZip(r.buf);
+  ok(sheet(z).includes('草稿／未經核准') && sheet(z).includes('（草稿）'), '[C7b] 浮水印開：未核准 Excel 有 G4「草稿／未經核准」且 G5 有（草稿）');
+  r = await http('_s_owner', 'GET', '/api/quotations/Q1/export');
+  z = await readZip(r.buf);
+  ok(!sheet(z).includes('草稿') && sheet(z).includes('（正式）'), '[C7b] 浮水印開：核准有效的 Excel 沒有草稿標記、G5 有（正式）');
+  { const i2 = await issue('_s_owner', 'Q2'); eq([i2.json.kind, i2.json.watermark, i2.json.stampToken], ['draft', true, undefined], '[C7b] 浮水印開：/issue 回 watermark:true，草稿仍是 draft、仍無憑證'); const i3 = await issue('_s_owner', 'Q1'); eq([i3.json.kind, i3.json.watermark], ['official', true], '[C7b] 浮水印開：official 的回應也帶開關狀態'); }
+  { const vr = await http('_s_admin', 'GET', '/api/admin/version'); eq(vr.json && vr.json.quoteIssuance, { draftIssueAllowed: true, draftWatermark: true }, '[C7b] /api/admin/version：浮水印開'); }
   // 禁止草稿模式
   await freshServer(undefined, { QUOTE_ALLOW_UNAPPROVED_ISSUE: '0' });
   const n0 = (dataNow().quoteIssuances || []).length;
+  { const vr = await http('_s_admin', 'GET', '/api/admin/version'); eq(vr.json && vr.json.quoteIssuance, { draftIssueAllowed: false, draftWatermark: false }, '[C10] /api/admin/version：禁止草稿發出、浮水印關'); }
   r = await http('_s_owner', 'GET', '/api/quotations/Q2/export');
   eq([r.status, r.json && r.json.code], [409, 'NOT_APPROVED'], '[C10] ALLOW=false：未核准 export → 409 NOT_APPROVED');
   r = await issue('_s_owner', 'Q2');
@@ -525,11 +547,11 @@ async function secC() {
 function makeDom(state) {
   const canvases = [];
   const mkCanvas = (w, h) => {
-    const c = { id: canvases.length, width: w || 0, height: h || 0, texts: [], fonts: [], ops: [], rotated: 0 };
+    const c = { id: canvases.length, width: w || 0, height: h || 0, texts: [], fonts: [], ops: [], args: [], rotated: 0 };
     c.getContext = () => ({
       fillStyle: '', font: '', textAlign: '', textBaseline: '', globalCompositeOperation: '',
       save() {}, restore() {}, translate() {}, rotate() { c.rotated++; }, setTransform() {}, fillRect() { c.ops.push('fillRect'); },
-      drawImage() { c.ops.push('drawImage'); }, fillText(t) { c.texts.push(String(t)); },
+      drawImage(...a) { c.ops.push('drawImage'); c.args.push(a); }, fillText(t) { c.texts.push(String(t)); },
     });
     c.toDataURL = () => 'data:image/png;base64,CANVAS' + c.id;
     canvases.push(c);
@@ -539,10 +561,10 @@ function makeDom(state) {
     style: {}, children: [],
     querySelectorAll(sel) { if (sel === '.qpv-sealnote') return state.sealnotes; return []; },
     querySelector(sel) {
-      if (sel === '.qpv-seal' && /class="qpv-seal"/.test(state.html || '')) return { complete: true, naturalWidth: 8, naturalHeight: 8, style: {}, getBoundingClientRect: () => ({ left: 700, top: 800, width: 84, height: 84 }) };
+      if (sel === '.qpv-seal' && /class="qpv-seal"/.test(state.html || '')) return { complete: true, naturalWidth: 8, naturalHeight: 8, style: {}, getBoundingClientRect: () => ({ left: 700, top: state.sealTop || 800, width: 84, height: 84 }) };
       return null;
     },
-    getBoundingClientRect: () => ({ top: 0, left: 0, height: 1000, width: 900, bottom: 1000 }),
+    getBoundingClientRect: () => ({ top: 0, left: 0, height: state.paperH || 1000, width: 900, bottom: state.paperH || 1000 }),
   };
   const host = { style: {}, setAttribute() {}, set innerHTML(v) { state.html = v; state.htmlAtBuildSealSrc = state.getSealSrc && state.getSealSrc(); }, get firstElementChild() { return paper; }, remove() { state.hostRemoved = true; } };
   const document = {
@@ -598,8 +620,9 @@ async function secD() {
   console.log('[D] 前端 PDF 流程（vm 假 DOM）');
   const q = { id: 'Q1', quoteNo: 'QU-202610-001', company: '甲公司', owner: 'u', approval: { state: 'approved', valid: true }, perm: { canSeePrice: true },
     items: [{ lid: 'a', desc: '品項', qty: 1, unit: '式', unitPrice: 100 }], quoteDate: '2026-10-14', discountType: 'none', products: [] };
-  const issOfficial = { issueNo: 'ISS-QU-202610-001-005', kind: 'official', shortHash: 'abc123def456', issuedAt: nowIso, stampToken: 'TOKEN.SIG' };
-  const issDraft = { issueNo: 'ISS-QU-202610-002-001', kind: 'draft', shortHash: '0a1b2c3d4e5f', issuedAt: nowIso };
+  const issOfficial = { issueNo: 'ISS-QU-202610-001-005', kind: 'official', shortHash: 'abc123def456', issuedAt: nowIso, stampToken: 'TOKEN.SIG', watermark: false };
+  const issDraft = { issueNo: 'ISS-QU-202610-002-001', kind: 'draft', shortHash: '0a1b2c3d4e5f', issuedAt: nowIso, watermark: false };
+  const issDraftW = Object.assign({}, issDraft, { watermark: true });
   const overlays = (S) => S.addImages.filter(a => a.w === 210 && a.h === 297).map(a => S.dom.canvases[parseInt(/CANVAS(\d+)/.exec(a.url)[1], 10)]);
   const run = async (opts) => { const C = loadClient(opts); C.state.dom = C.dom; await C.ctx.exportQuotePdf('Q1', 'QU-202610-001'); return C; };
 
@@ -614,7 +637,7 @@ async function secD() {
   eq(S.saves.length, 1, '[D1] 有存檔');
   ok(/蓋報價專用章/.test(S.toasts[S.toasts.length - 1]) && S.toasts[S.toasts.length - 1].includes('ISS-QU-202610-001-005'), '[D1] 完成提示含「已蓋」與序號');
   let ovs = overlays({ addImages: S.addImages, dom: C.dom });
-  ok(ovs.length >= 1 && ovs.every(o => o.texts.includes('發出序號 ISS-QU-202610-001-005｜版本雜湊 abc123def456')), '[D2] 每一頁頁尾都有「發出序號 …｜版本雜湊 …」');
+  ok(ovs.length >= 1 && ovs.every(o => o.texts.includes('發出序號 ISS-QU-202610-001-005｜版本雜湊 abc123def456（正式）')), '[D2] 每一頁頁尾都有「發出序號 …｜版本雜湊 …」');
   ok(ovs.every(o => !o.texts.includes('草稿・未經核准') && o.rotated === 0), '[D2] official 沒有浮水印');
   ok(ovs.every((o, i) => o.texts.includes((i + 1) + ' / ' + ovs.length)), '[D2] 頁碼 i / n');
   eq(S.addImages.length, ovs.length * 2, '[D2] 每頁 = 內容圖 + 一張透明圖層（內容圖不被改）');
@@ -627,10 +650,31 @@ async function secD() {
   ok(!S.calls.some(c => /seal/.test(c)), '[D5] draft：完全不去取章');
   ok(!/qpv-seal"/.test(S.html), '[D5] draft：預覽 HTML 沒有章圖');
   ovs = overlays({ addImages: S.addImages, dom: C.dom });
-  ok(ovs.length >= 1 && ovs.every(o => o.texts.includes('草稿・未經核准') && o.rotated >= 1), '[D5] draft：每頁斜向「草稿・未經核准」浮水印');
-  ok(ovs.every(o => o.texts.includes('發出序號 ISS-QU-202610-002-001｜版本雜湊 0a1b2c3d4e5f')), '[D5] draft：頁尾照樣有序號與雜湊');
+  ok(ovs.length >= 1 && ovs.every(o => !o.texts.includes('草稿・未經核准') && o.rotated === 0), '[D5] draft（浮水印開關關）：沒有浮水印');
+  ok(ovs.every(o => o.texts.includes('發出序號 ISS-QU-202610-002-001｜版本雜湊 0a1b2c3d4e5f（草稿）')), '[D5] draft（浮水印關）：頁尾仍有序號、雜湊與（草稿）');
   ok(/草稿/.test(S.saves[0]) && /草稿・未經核准/.test(S.toasts[S.toasts.length - 1]), '[D5] draft：檔名與提示標示草稿');
+  { const CW = await run({ quote: qUn, issueResp: issDraftW }); const ow = overlays({ addImages: CW.state.addImages, dom: CW.dom });
+    ok(ow.length >= 1 && ow.every(o => o.texts.includes('草稿・未經核准') && o.rotated >= 1), '[D5w] draft（浮水印開）：每頁斜向「草稿・未經核准」浮水印');
+    ok(ow.every(o => o.texts.includes('發出序號 ISS-QU-202610-002-001｜版本雜湊 0a1b2c3d4e5f（草稿）')) && !CW.state.calls.some(c => /seal/.test(c)) && CW.state.mainCanvas.ops.filter(x => x === 'drawImage').length === 0, '[D5w] draft（浮水印開）：頁尾（草稿）、仍不取章、不蓋章');
+    const CO = await run({ quote: q, issueResp: Object.assign({}, issOfficial, { watermark: true }) }); const oo = overlays({ addImages: CO.state.addImages, dom: CO.dom });
+    ok(oo.every(o => o.rotated === 0 && !o.texts.includes('草稿・未經核准')), '[D5w] official：開關開也沒有浮水印'); }
   eq(S.mainCanvas.ops.filter(x => x === 'drawImage').length, 0, '[D5] draft：紙張畫布沒有疊任何章');
+  // D11 蓋章位置（壓線）：章畫在『預覽版面位置 + STAMP_LINE_OFFSET』
+  { const cst = (n) => vm.runInContext(n, C.ctx); const OY = cst('STAMP_LINE_OFFSET_Y'), OX = cst('STAMP_LINE_OFFSET_X');
+    const sd = S0 => S0.mainCanvas.args[0];
+    C = await run({ quote: q, issueResp: issOfficial }); const a0 = sd(C.state);
+    eq([OX, OY], [0, 40], '[D11] 常數 STAMP_LINE_OFFSET_X/Y＝0/40');
+    ok(a0 && a0[1] === (700 + OX) * 2 && a0[2] === (800 + OY) * 2 && OY > 0, `[D11] 章座標＝(預覽位置＋偏移)×倍率（${a0 && a0.slice(1, 3)}）`);
+    ok(a0[2] + a0[4] <= 2000 && a0[1] + a0[3] <= 1800, '[D11] 章仍在紙張畫布內');
+    // 多頁：章只畫一次，且落在「有簽名區」那一頁的範圍內
+    const C4 = loadClient({ quote: q, issueResp: issOfficial }); C4.state.paperH = 3000; C4.state.sealTop = 2850;
+    const b4 = await C4.ctx._qpdfBuildDoc(q, { issueDate: '2026-10-14', issuer: {}, remarks: ['r1'] }, { sealSrc: 'data:image/png;base64,SEAL', issuance: { issueNo: 'X', shortHash: 'y', kind: 'official' } });
+    const drawn = C4.state.mainCanvas.args; const scale = C4.state.mainCanvas.width / 900;
+    const yTop = drawn[0][2] / scale, hits = b4.pages.filter(p => yTop + 42 >= p.y0 && yTop + 42 < p.y1);
+    ok(b4.pageCount >= 2 && drawn.length === 1 && hits.length === 1 && hits[0] === b4.pages[b4.pages.length - 1], `[D11] 多頁（${b4.pageCount} 頁）：章只畫一次，且中心落在最後一頁（簽名區所在頁）`);
+    // 舊位置對照：偏移 0 ＝ 預覽原位
+    const C5 = loadClient({ quote: q, issueResp: issOfficial }); vm.runInContext('_qpdfStampOffset.y = 0', C5.ctx);
+    await C5.ctx.exportQuotePdf('Q1', 'N'); eq(sd(C5.state)[2], 800 * 2, '[D11] 偏移 0＝舊位置（供截圖對照）'); }
   // D6 伺服器說 draft 但前端以為已核准 → 以伺服器為準，不蓋章
   C = await run({ quote: q, issueResp: issDraft }); S = C.state;
   ok(!S.calls.some(c => /seal/.test(c)) && !/qpv-seal"/.test(S.html) && S.mainCanvas.ops.filter(x => x === 'drawImage').length === 0, '[D6] 前端以為已核准、伺服器說 draft → 不取章、不蓋章（不信任前端狀態）');
@@ -703,11 +747,11 @@ function copyMut(rels, edits) {
   out.server = sf; out.files = [f('quoteIssuance'), f('quoteExcel'), f('quoteRoutes'), sf];
   return out;
 }
-async function mutRun(name, edits, probe) {
+async function mutRun(name, edits, probe, env) {
   const m = copyMut(null, edits);
   try {
     muting = true; mutFail = 0;
-    try { await freshServer(m.server); await probe(); } catch (e) { mutFail++; if (process.env.QISS_MUTDBG) console.log('    exception:', e.message); }
+    try { await freshServer(m.server, env); await probe(); } catch (e) { mutFail++; if (process.env.QISS_MUTDBG) console.log('    exception:', e.message); }
     muting = false;
     ok(mutFail > 0, `變異 ${name} → 對應檢查必須失敗，實際失敗 ${mutFail} 項`);
   } finally { muting = false; await stopServer(); m.files.forEach(x => { try { fs.unlinkSync(x); } catch { /* 已刪 */ } }); }
@@ -735,10 +779,21 @@ async function secM() {
     ok(s.status === 403, '（變異探針）沒憑證必須 403');
   });
   // M5 草稿標記
-  await mutRun('草稿 Excel 沒有標記', [{ file: 'excel', name: 'draftmark', from: "if (opts.issuance.kind === 'draft') sh.setText", to: "if (false) sh.setText" }], async () => {
+  await mutRun('草稿 Excel 沒有標記', [{ file: 'excel', name: 'draftmark', from: "if (opts.issuance.kind === 'draft' && opts.issuance.watermark === true) sh.setText", to: "if (false) sh.setText" }], async () => {
     const r = await http('_s_owner', 'GET', '/api/quotations/Q2/export');
     const z = await readZip(r.buf);
-    ok(z['xl/worksheets/sheet1.xml'].toString('utf8').includes('草稿／未經核准'), '（變異探針）草稿 Excel 必須有標記');
+    ok(z['xl/worksheets/sheet1.xml'].toString('utf8').includes('草稿／未經核准'), '（變異探針）浮水印開時草稿 Excel 必須有標記');
+  }, { QUOTE_DRAFT_WATERMARK: '1' });
+  // M5b 開關關閉時 Excel 仍標記
+  await mutRun('浮水印關閉時 Excel 仍標草稿', [{ file: 'excel', name: 'wmoff', from: "opts.issuance.kind === 'draft' && opts.issuance.watermark === true", to: "opts.issuance.kind === 'draft'" }], async () => {
+    const r = await http('_s_owner', 'GET', '/api/quotations/Q2/export');
+    const z = await readZip(r.buf);
+    ok(!z['xl/worksheets/sheet1.xml'].toString('utf8').includes('草稿／未經核准'), '（變異探針）開關關閉時不得有 G4 標記');
+  });
+  // M5c 伺服器端開關恆為開
+  await mutRun('伺服器浮水印開關恆開', [{ file: 'issuance', name: 'wmon', from: "return /^(1|true|yes|on)$/i.test(String(process.env.QUOTE_DRAFT_WATERMARK || '').trim());", to: 'return true;' }], async () => {
+    const r = await issue('_s_owner', 'Q2');
+    ok(r.json.watermark === false, '（變異探針）預設 /issue 必須回 watermark:false');
   });
   // M6 kind 信任前端
   await mutRun('kind 信任前端', [{ file: 'routes', name: 'trustkind', from: "const iss = recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();", to: "if (req.body && req.body.kind === 'official') { q.approval = live.approval = Object.assign({}, live.approval || {}, { state: 'approved', hash: QA.contentHash(q) }); }\n    const iss = recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();" }], async () => {
@@ -761,6 +816,24 @@ async function secM() {
     muting = false;
     ok(mutFail > 0, `變異 前端 issue 失敗仍繼續下載 → 對應檢查必須失敗，實際失敗 ${mutFail} 項`);
   } finally { muting = false; try { fs.unlinkSync(pdfFile); } catch { /* 已刪 */ } }
+  // M9 前端：浮水印不看伺服器開關
+  { const pf = path.join(ROOT, '_client', 'quote-pdf.__mut3.js'); const from3 = "iss.kind === 'draft' && iss.watermark === true";
+    if (!pdfSrc.includes(from3)) throw new Error('變異樣式找不到：前端浮水印');
+    fs.writeFileSync(pf, pdfSrc.replace(from3, () => "iss.kind === 'draft'")); tmpFiles.push(pf);
+    try { muting = true; mutFail = 0;
+      try { const C = loadClient({ quote: { id: 'Q1', quoteNo: 'N', approval: { state: 'none', valid: false }, perm: {}, items: [], products: [] }, issueResp: { issueNo: 'ISS-N-001', kind: 'draft', shortHash: 'a', watermark: false }, pdfFile: pf }); await C.ctx.exportQuotePdf('Q1', 'N');
+        ok(C.dom.canvases.filter(c => c.width === 1240).every(c => c.rotated === 0), '（變異探針）開關關閉不得畫浮水印'); } catch (e) { mutFail++; }
+      muting = false; ok(mutFail > 0, `變異 前端浮水印不看伺服器開關 → 對應檢查必須失敗，實際失敗 ${mutFail} 項`);
+    } finally { muting = false; try { fs.unlinkSync(pf); } catch { /* 已刪 */ } } }
+  // M10 前端：章不壓線（偏移 0）
+  { const pf = path.join(ROOT, '_client', 'quote-pdf.__mut4.js'); const from4 = 'const STAMP_LINE_OFFSET_Y = 40;';
+    if (!pdfSrc.includes(from4)) throw new Error('變異樣式找不到：章偏移');
+    fs.writeFileSync(pf, pdfSrc.replace(from4, () => 'const STAMP_LINE_OFFSET_Y = 0;')); tmpFiles.push(pf);
+    try { muting = true; mutFail = 0;
+      try { const C = loadClient({ quote: { id: 'Q1', quoteNo: 'N', approval: { state: 'approved', valid: true }, perm: {}, items: [], products: [] }, issueResp: { issueNo: 'ISS-N-001', kind: 'official', shortHash: 'a', stampToken: 'T', watermark: false }, pdfFile: pf }); await C.ctx.exportQuotePdf('Q1', 'N');
+        ok(C.state.mainCanvas.args[0][2] > 800 * 2, '（變異探針）章必須往下移到簽名線'); } catch (e) { mutFail++; }
+      muting = false; ok(mutFail > 0, `變異 章位置偏移為 0 → 對應檢查必須失敗，實際失敗 ${mutFail} 項`);
+    } finally { muting = false; try { fs.unlinkSync(pf); } catch { /* 已刪 */ } } }
   // M8 前端：draft 仍蓋章（取章不看 kind）
   const pdfFile2 = path.join(ROOT, '_client', 'quote-pdf.__mut2.js');
   const from2 = "const official = iss.kind === 'official';";
