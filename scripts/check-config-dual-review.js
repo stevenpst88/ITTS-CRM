@@ -156,7 +156,8 @@ async function secOff() {
   let baseRes = null;
   try {
     const tarFile = path.join(tmp, 'base.tar');
-    execFileSync('git', ['-C', ROOT, 'archive', '--format=tar', '-o', tarFile, ref]);
+    // 排除根目錄的中文檔名啟動檔（.bat／.vbs）：部分 Windows tar／終端機編碼組合解不開非 ASCII 檔名，且伺服器用不到它們
+    execFileSync('git', ['-C', ROOT, 'archive', '--format=tar', '-o', tarFile, ref, '--', '.', ':(exclude,glob)*.bat', ':(exclude,glob)*.vbs']);
     const dir = path.join(tmp, 'src'); fs.mkdirSync(dir);
     execFileSync('tar', ['-xf', 'base.tar', '-C', 'src'], { cwd: tmp });   // 用相對路徑：Windows 的 tar 會把 "C:" 當成遠端主機
     fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'junction');
