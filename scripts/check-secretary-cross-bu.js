@@ -272,9 +272,9 @@ async function sec3() {
   }
   let r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/export');
   ok(r.buf.slice(0, 2).toString() === 'PK', '3.1 秘書跨 BU 下載 Excel 為有效 xlsx（PK 檔頭）');
-  r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/seal');
+  r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/seal?stampToken=x');   // 整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
   ok(r.status === 404 && r.json && r.json.code === 'NO_SEAL', '3.2 seal 端點對秘書走同一判斷：到達「未核准無章」404 而非 403');
-  r = await http('_s_u_erp', 'GET', '/api/quotations/q-QI/seal');
+  r = await http('_s_u_erp', 'GET', '/api/quotations/q-QI/seal?stampToken=x');   // 整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
   eq(r.status, 403, '3.3 無關業務 seal 403');
   // 稽核：匯出與 PDF 記錄
   const lg = await logsOf('EXPORT_QUOTATION');
