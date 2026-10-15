@@ -143,6 +143,7 @@ app.use((req, res, next) => {
   su.role = acct.role || 'user';
   if (acct.displayName) su.displayName = acct.displayName;
   su.bu = normalizeBu(acct.bu);
+  su.quoteMode = QM.modeOf(acct);   // 只進自己的 session（/api/me 回給本人）；他人的 quoteMode 只有 GET /api/admin/users 給管理員
   if (su.role === 'tecopm' || su.role === 'groupsales') {
     su.viewOwnerScope = acct.viewOwnerScope || null;
     su.viewGroupId = acct.viewGroupId || null;
@@ -679,6 +680,7 @@ const { registerMailRoutes } = require('./lib/mail/routes');
 const { renderJumpPage } = require('./lib/mail/link');
 const { validateUserEmail, maskedAuditDetail } = require('./lib/mail/userEmail');
 const AD = require('./lib/auditDiff');
+const QM = require('./lib/quoteMode');   // 報價單權限類型 quoteMode（簽核／唯讀二擇一）：非建單角色帳號的職能分工
 const mailConfig = getMailConfig();
 let _mailPool = null;
 /** outbox 專用的 pg 連線（沿用 db/postgres.js、lib/apiMonitor.js 的慣例：max 2、ssl、connectionTimeoutMillis 5000）；第一次查詢才建立 */
@@ -2049,6 +2051,10 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     active: u.active !== false,
     // Phase 3：存取模式（admin 永遠 edit）
     accessMode: (u.role === 'admin') ? 'edit' : (u.accessMode === 'view' ? 'view' : 'edit'),
+    // 報價單權限類型：'approver'(簽核)｜'readonly'(唯讀)｜''(未設定)；applicable＝此帳號是否適用（非建單角色，或列在總經理／董事長名冊）、required＝適用且角色有報價單功能（新增／改角色時必填）
+    quoteMode: QM.modeOf(u),
+    quoteModeApplicable: QM.isApplicable(u.role || 'user', u.username, quoteRosterOf()),
+    quoteModeRequired: QM.isApplicable(u.role || 'user', u.username, quoteRosterOf()) && quoteFeatureOn(u.role || 'user'),
     // 集團PM 專用欄位（其他角色為 undefined）
     viewOwnerScope: u.viewOwnerScope || null,
     viewGroupId:    u.viewGroupId    || null,
@@ -2062,6 +2068,75 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
   }));
   res.json(users);
 });
+
+// ── 報價單權限類型（quoteMode）輔助 ───────────────────────────
+/** 簽核名冊（data.quoteApproval.roster）；用來判斷「列在總經理／董事長名冊的人」也算非建單者 */
+function quoteRosterOf() { try { return ((db.load().quoteApproval) || {}).roster || {}; } catch { return {}; } }
+/** 角色是否開了「報價單」功能（功能權限矩陣） */
+function quoteFeatureOn(role) { return role === 'admin' || getUserFeatures(role).includes('quotations'); }
+/**
+ * 決定這次請求後帳號的 quoteMode。回 { error:{code,message} } 或 { value, prev, notice }。
+ *  · before：既有帳號（新增時為 null）；effRole：套用本次請求後的角色；roleChanged：本次是否改了角色
+ *  · 適用（applicable）＝非建單角色或在總經理／董事長名冊；必填（required）＝適用且該角色有報價單功能
+ *  · 新增帳號、或這次把角色改成「原本不適用→適用」且角色有報價單功能 → 必填（QUOTE_MODE_REQUIRED）；
+ *    舊帳號原樣編輯其他欄位不強迫補（不自動遷移，後台標『未設定』＋報表）；但已設定過的不能清回未設定
+ *  · 建單角色（不適用）送來的值一律不存（notice『此角色為建單角色，不適用』）；
+ *    由『簽核』改成建單角色必須同時明確清除（送空字串），否則 QUOTE_MODE_ROLE_CONFLICT（避免簽核人同時是建單者）；『唯讀』改建單角色則自動清除
+ */
+function resolveQuoteMode({ body, before, username, effRole, roleChanged }) {
+  const pi = QM.parseInput(body && body.quoteMode);
+  if (!pi.ok) return { error: { code: 'BAD_QUOTE_MODE', message: '報價單權限類型只能是「簽核」或「唯讀」' } };
+  const prev = QM.modeOf(before);
+  const roster = quoteRosterOf();
+  const applicable = QM.isApplicable(effRole, username, roster);
+  const wasApplicable = before ? QM.isApplicable(before.role || 'user', username, roster) : false;
+  const required = applicable && quoteFeatureOn(effRole);
+  if (roleChanged && !applicable && prev === 'approver' && !(pi.present && pi.value === '')) {
+    return { error: { code: 'QUOTE_MODE_ROLE_CONFLICT', message: '此帳號目前的報價單權限類型是『簽核』；要改成建單角色（業務／二級主管等）前，請同時清除報價單權限類型（簽核人與建單者不能是同一人）' } };
+  }
+  let value = prev, notice = null;
+  if (pi.present) {
+    if (!pi.value) {
+      if (required && prev) return { error: { code: 'QUOTE_MODE_REQUIRED', message: '報價單權限類型為必填（此角色有報價單功能且不建單），不能清回未設定；請選「簽核」或「唯讀」' } };
+      value = '';
+    } else if (!applicable) {
+      value = ''; notice = '此角色為建單角色，不適用';
+    } else value = pi.value;
+  } else if (roleChanged && !applicable && prev) {
+    value = ''; notice = '此角色為建單角色，不適用；已自動清除原有的報價單權限類型';
+  }
+  if (required && !value && (!before || (roleChanged && !wasApplicable))) {
+    return { error: { code: 'QUOTE_MODE_REQUIRED', message: '請選擇「報價單權限類型」（簽核／唯讀）：此角色有報價單功能且不建立報價單，必須明確指定是否擔任簽核人' } };
+  }
+  return { value, prev, notice };
+}
+/** 稽核 + 通知：quoteMode 有變動才寫 QUOTE_MODE_CHANGE（before→after，走 lib/auditDiff）；改成『簽核』另通知被設定的人 */
+function auditQuoteModeChange(req, username, role, displayName, prev, next) {
+  if (prev === next) return;
+  const fmt = (v) => (v ? QM.MODE_LABEL[v] : '未設定');
+  const diff = AD.fieldDiff({ quoteMode: prev }, { quoteMode: next }, [{ key: 'quoteMode', label: '報價單權限類型', fmt }]);
+  const opName = req.session.user.username;
+  writeLog('QUOTE_MODE_CHANGE', opName, username, `${diff.join('；')}｜帳號 ${username}（${displayName || ''}）角色=${role}`, req);
+  if (next === 'approver') {
+    try {
+      const opLabel = userLabel(loadAuth().users.find(x => x.username === opName), opName);
+      pushNotification(username, 'quote_mode_changed', '🔏 報價單簽核權限已變更', `你的報價單簽核權限已由管理員 ${opLabel} 設為『簽核』`);
+    } catch (e) { console.warn('[quoteMode notify]', e && e.message); }
+  }
+}
+
+/** 角色功能權限變動後：哪些「新開了報價單功能的非建單角色」還有帳號沒設定 quoteMode（只列出、不阻擋） */
+function quoteModeMissingAfterPermChange(before, after) {
+  const out = [];
+  QM.NON_CREATOR_ROLES.forEach((role) => {
+    const gained = !(before[role] || []).includes('quotations') && (after[role] || []).includes('quotations');
+    if (!gained) return;
+    const users = loadAuth().users.filter(x => x.role === role && x.active !== false && !QM.modeOf(x)).map(x => x.username);
+    if (users.length) out.push({ role, users });
+  });
+  return out;
+}
+const quoteModeMissingNote = (m) => (m.length ? '｜新開報價單功能但未設定報價單權限類型的帳號：' + m.map(x => x.role + '(' + x.users.join(',') + ')').join('、') : '');
 
 // 校驗直屬主管：不可指向自己、必須存在、不可形成循環（A→B→A）
 function validateSupervisor(users, username, supervisorInput) {
@@ -2155,6 +2230,8 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 
   const supCheck = validateSupervisor(auth.users, username.trim(), supervisor);
   if (supCheck.error) return res.status(400).json({ error: supCheck.error });
+  const qmRes = resolveQuoteMode({ body: req.body, before: null, username: username.trim(), effRole: finalRole, roleChanged: false });
+  if (qmRes.error) return res.status(400).json({ error: qmRes.error.message, code: qmRes.error.code });
 
   // 集團PM 必須指定 viewOwnerScope + viewGroupId
   if (GROUP_SCOPED_ROLES.includes(finalRole)) {
@@ -2188,14 +2265,16 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     mustChangePassword: true,   // 第一次登入必須更換密碼
     supervisor: supCheck.supervisor,
     pureSupervisor: !!pureSupervisor,
+    ...(qmRes.value ? { quoteMode: qmRes.value } : {}),
     ...(GROUP_SCOPED_ROLES.includes(finalRole) ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
   const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : ''), req);
-  res.json({ success: true });
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : '') + (newUser.quoteMode ? `；報價單權限類型=${QM.MODE_LABEL[newUser.quoteMode]}` : ''), req);
+  auditQuoteModeChange(req, newUser.username, finalRole, newUser.displayName, '', qmRes.value);   // 新增就設定也要有 QUOTE_MODE_CHANGE（未設定→簽核／唯讀）；設為簽核另通知本人
+  res.json({ success: true, quoteMode: qmRes.value, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
 
 // 帳號異動稽核用的欄位快照／欄位清單（不含 password、passwordChangedAt、email 位址等機敏資料）
@@ -2204,6 +2283,7 @@ const USER_AUDIT_FIELDS = [
   { key: 'active', label: '啟用' }, { key: 'accessMode', label: '存取模式' }, { key: 'canDownloadContacts', label: '可下載客戶名單' },
   { key: 'canSetTargets', label: '可設定目標' }, { key: 'pureSupervisor', label: '純主管(唯讀掛名)' }, { key: 'supervisor', label: '直屬主管' },
   { key: 'viewOwnerScope', label: '查看業務範圍' }, { key: 'viewGroupId', label: '查看集團' },
+  { key: 'quoteMode', label: '報價單權限類型', fmt: (v) => (v ? QM.MODE_LABEL[v] : '未設定') },
 ];
 function userAuditSnap(u) {
   const x = u || {};
@@ -2213,6 +2293,7 @@ function userAuditSnap(u) {
     active: x.active !== false, accessMode: role === 'admin' ? 'edit' : (x.accessMode === 'view' ? 'view' : 'edit'),
     canDownloadContacts: !!x.canDownloadContacts, canSetTargets: !!x.canSetTargets, pureSupervisor: !!x.pureSupervisor,
     supervisor: x.supervisor || '', viewOwnerScope: x.viewOwnerScope || '', viewGroupId: x.viewGroupId || '',
+    quoteMode: QM.modeOf(x),
   };
 }
 
@@ -2246,6 +2327,14 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
   }
   const userBefore = userAuditSnap(auth.users[idx]);   // 異動前快照（只含可編輯的非機敏欄位；不含密碼雜湊／Email 位址）
+  // 報價單權限類型（quoteMode）：先驗證再改動。管理員不能改自己的（避免自己給自己簽核權限；也不能自己解除）
+  const qmPi = QM.parseInput(req.body && req.body.quoteMode);
+  if (!qmPi.ok) return res.status(400).json({ error: '報價單權限類型只能是「簽核」或「唯讀」', code: 'BAD_QUOTE_MODE' });
+  if (req.params.username === req.session.user.username && qmPi.present && qmPi.value !== QM.modeOf(auth.users[idx])) {
+    return adminRailBlock(req, res, 403, 'QUOTE_MODE_SELF_CHANGE_FORBIDDEN',
+      '管理員不能變更自己的報價單權限類型（避免自我授權），請由另一位管理員操作',
+      req.params.username, `管理員嘗試把自己的報價單權限類型 ${QM.modeOf(auth.users[idx]) ? QM.MODE_LABEL[QM.modeOf(auth.users[idx])] : '未設定'}→${qmPi.value ? QM.MODE_LABEL[qmPi.value] : '未設定'}`);
+  }
   // ── 管理員安全護欄（內控）：避免自我提權／自我鎖死，且系統永遠至少留一位啟用中的管理員 ──
   {
     const opName0 = req.session.user.username;
@@ -2267,6 +2356,10 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
         req.params.username, `管理員嘗試變更自己的${changes.join('、')}`);
     }
   }
+  // 管理員安全護欄之後才驗證 quoteMode（護欄的 403 優先於 quoteMode 的 400）
+  const qmRes = resolveQuoteMode({ body: req.body, before: auth.users[idx], username: req.params.username,
+    effRole: role !== undefined ? role : userBefore.role, roleChanged: role !== undefined && role !== userBefore.role });
+  if (qmRes.error) return res.status(400).json({ error: qmRes.error.message, code: qmRes.error.code });
   const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
@@ -2292,6 +2385,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (canDownloadContacts !== undefined) u.canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       u.canSetTargets = !!canSetTargets;
   if (pureSupervisor !== undefined)      u.pureSupervisor = !!pureSupervisor;
+  if (qmRes.value) u.quoteMode = qmRes.value; else delete u.quoteMode;
   if (active !== undefined)             u.active = !!active;
   // Phase 3：存取模式（admin 永遠 edit）
   if (effectiveRole === 'admin') {
@@ -2341,7 +2435,8 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (userBefore.canDownloadContacts !== userAfter.canDownloadContacts) writeLog(userAfter.canDownloadContacts ? 'GRANT_DOWNLOAD_PERMISSION' : 'REVOKE_DOWNLOAD_PERMISSION', opName, req.params.username, `${userAfter.canDownloadContacts ? '開通' : '收回'}客戶名單下載權限：${who}`, req);
   if (userBefore.accessMode !== userAfter.accessMode) writeLog(userAfter.accessMode === 'view' ? 'SET_READONLY' : 'SET_EDITABLE', opName, req.params.username, `存取模式 ${userBefore.accessMode}→${userAfter.accessMode}（${userAfter.accessMode === 'view' ? '改為唯讀' : '改為可編輯'}）：${who}`, req);
   if (userBefore.role !== userAfter.role) writeLog('CHANGE_USER_ROLE', opName, req.params.username, `角色 ${userBefore.role}→${userAfter.role}：${who}`, req);
-  res.json({ success: true });
+  auditQuoteModeChange(req, req.params.username, userAfter.role, u.displayName, userBefore.quoteMode, userAfter.quoteMode);
+  res.json({ success: true, quoteMode: userAfter.quoteMode, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
 
 // ── Admin: reset password ────────────────────────────────
@@ -2639,6 +2734,7 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
     canSetTargets: user.canSetTargets || false,
     active: user.active !== false,
     accessMode,                       // Phase 3：View / Edit 模式
+    quoteMode: QM.modeOf(user),       // 報價單權限類型（本人的）：''｜approver｜readonly
     features: getUserFeatures(role)   // Phase 1：依角色功能權限矩陣
   });
 });
@@ -2648,7 +2744,8 @@ app.get('/api/admin/role-permissions', requireAdmin, (req, res) => {
   res.json({
     features: FEATURE_REGISTRY,
     roles: KNOWN_ROLES,
-    matrix: getRolePermissions()
+    matrix: getRolePermissions(),
+    nonCreatorQuoteRoles: QM.NON_CREATOR_ROLES   // 不建立報價單的角色：這些角色的帳號若有報價單功能，必須指定報價單權限類型（簽核／唯讀）。帳號表單用它判斷要不要顯示欄位
   });
 });
 
@@ -2668,8 +2765,9 @@ app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
     const d = AD.setDiff(permBefore[role] || [], permAfter[role] || []);
     if (d.add.length || d.del.length) permDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(fLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(fLabel).join('、') + ']' : ''}`);
   });
-  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動', req);
-  res.json({ success: true });
+  const qmMissing = quoteModeMissingAfterPermChange(permBefore, permAfter);
+  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', (permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動') + quoteModeMissingNote(qmMissing), req);
+  res.json({ success: true, ...(qmMissing.length ? { quoteModeMissing: qmMissing, quoteModeNotice: '以下角色新開了報價單功能，但仍有帳號未設定報價單權限類型（簽核／唯讀）；不會被擋，請到使用者管理逐一設定，或看 /api/admin/quote-mode-report' } : {}) });
 });
 
 // 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
@@ -2689,8 +2787,9 @@ app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
     const d = AD.setDiff(resetBefore[role] || [], resetAfter[role] || []);
     if (d.add.length || d.del.length) resetDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(resetFLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(resetFLabel).join('、') + ']' : ''}`);
   });
-  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動', req);
-  res.json({ success: true });
+  const qmMissingR = quoteModeMissingAfterPermChange(resetBefore, resetAfter);
+  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', (resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動') + quoteModeMissingNote(qmMissingR), req);
+  res.json({ success: true, ...(qmMissingR.length ? { quoteModeMissing: qmMissingR } : {}) });
 });
 
 // ── 名片圖片上傳設定（使用 storage 模組的 engine）─────────
