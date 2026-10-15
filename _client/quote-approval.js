@@ -688,6 +688,34 @@ function textEditNotice(q) {
   return `${lead}（最後修改：${fmtTime(te.lastAt)}　${te.lastByName || ''}；共 ${te.count || 0} 次）`;
 }
 
+/**
+ * 防拆單提醒（伺服器 QUOTE_SPLIT_GUARD=warn 才會帶 q.split；off／log 沒有 → 這兩個函式都回空字串，面板與以前完全相同）。
+ * 簽核中／已核准顯示「送簽當時」凍結的內容（split.atSubmit），其他情況顯示即時評估。只有單號、金額、張數；其他張的內容已由伺服器依檢視者權限過濾。
+ */
+function splitNtd(c) { return 'NT$ ' + Math.round(Number(c) / 100).toLocaleString('en-US'); }
+function buildSplitBanner(q) {
+  const sp = q && q.split;
+  if (!sp) return '';
+  const st = q.approval && q.approval.state;
+  const frozen = (st === 'pending' || st === 'approved') && sp.atSubmit ? sp.atSubmit : null;
+  const v = frozen || (sp.live && sp.live.suspect ? sp.live : null);
+  if (!v) return '';
+  const n = (v.siblings || []).filter((x) => x.revenueCents !== null && x.revenueCents !== undefined && (frozen || x.counted)).length + (Number(v.hiddenCount) || 0);
+  const when = frozen && frozen.at ? `（送簽時 ${e(fmtTime(frozen.at))} 的評估）` : '';
+  return `<div class="qap-alert warn qap-split" id="qapSplitBanner" role="status">⚠ <b>疑似拆單提醒</b>${when}：同一商機在 ${e(v.windowDays)} 天內的報價累計 <b>${e(splitNtd(v.cumCents))}</b>（本張 ${e(splitNtd(v.ownCents))}，另有 ${e(n)} 張），超過 ${e(splitNtd(Number(v.thresholdYuan) * 100))} 的簽核金額門檻，但本張單獨未達該門檻。系統不會因此改變簽核層級；請確認這是否為同一案件被拆成多張報價。清單見下方「同商機其他報價單」。${Number(v.hiddenCount) > 0 ? `（其中 ${e(v.hiddenCount)} 張你無權檢視）` : ''}</div>`;
+}
+const SPLIT_STATE_LABEL = { none: '未送簽', pending: '簽核中', approved: '已核准', returned: '已駁回' };
+const SPLIT_WHY_LABEL = { INVALID: '已失效（商機作廢）', OUT_OF_WINDOW: '超出回看天數', NO_AMOUNT: '無金額', LEGACY_REJECTED: '舊狀態已拒絕' };
+function buildSplitSection(q) {
+  const sp = q && q.split;
+  const live = sp && sp.live;
+  if (!live || !Array.isArray(live.siblings) || !live.siblings.length) return '';
+  const rows = live.siblings.map((x) => `<tr><td>${e(x.quoteNo || '')}</td><td>${e(x.ownerName || '')}</td><td class="r">${e(fmtTime(x.createdAt))}</td><td>${e(SPLIT_STATE_LABEL[x.approvalState] || x.approvalState || '')}</td><td class="r">${x.revenueCents === null || x.revenueCents === undefined ? '<span class="qap-muted">—</span>' : e(splitNtd(x.revenueCents))}</td><td>${x.counted ? '計入' : `<span class="qap-muted">${e(SPLIT_WHY_LABEL[x.why] || '不計入')}</span>`}</td></tr>`).join('');
+  const more = Number(live.siblingsMore) > 0 ? `<div class="qap-muted">…另 ${e(live.siblingsMore)} 張未列出</div>` : '';
+  const hid = Number(live.hiddenCount) > 0 ? `<div class="qap-muted">另有 ${e(live.hiddenCount)} 張同商機報價單你無權檢視（未列出單號與金額）。</div>` : '';
+  return sec('同商機其他報價單', `<div class="qap-muted" style="margin-bottom:6px">金額為折扣後未稅（與簽核金額門檻同一基準）；以下為「目前」的即時計算（上方橫幅是送簽當時的評估）：累計＝本張 ${e(splitNtd(live.ownCents))}＋計入的其他張，共 ${e(splitNtd(live.cumCents))}（回看 ${e(live.windowDays)} 天）。</div><div class="qap-tablewrap"><table class="qap-table"><thead><tr><th>單號</th><th>業務</th><th class="r">建立時間</th><th>狀態</th><th class="r">金額（折後未稅）</th><th>累計</th></tr></thead><tbody>${rows}</tbody></table></div>${more}${hid}`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapSplitList">');
+}
+
 /** 簽核歷程＋編輯事件時間軸（q.timeline）合併並依時間排序；同一時間簽核事件在前。舊單沒有 timeline 就只有簽核歷程（輸出不變） */
 function mergedHistory(q) {
   const h = q.approval && Array.isArray(q.approval.history) ? q.approval.history : [];
@@ -815,6 +843,7 @@ function renderApproval(s) {
     html += `<div class="qap-alert warn">此報價單被駁回${last && last.byName ? '（' + e(last.byName) + '）' : ''}${last && last.comment ? '：' + e(last.comment) : ''}。修改後可重新送簽。</div>`;
   }
   { const tn = textEditNotice(q); if (tn) html += `<div class="qap-alert warn qap-textedit" id="qapTextEditBanner" role="status"><span>⚠ ${e(tn)}。核准有效、未重新簽核。</span><button class="btn btn-secondary btn-sm" type="button" data-act="textdiff">查看差異</button></div>`; }
+  html += buildSplitBanner(q);   // 防拆單提醒（warn 模式才有）
   if (perm.quoteReadonly) html += '<div class="qap-alert info" role="status">你的報價單權限類型是『唯讀』：可檢視這張報價單，但不能簽核、駁回或代核。如需簽核請洽管理員調整。</div>';
   html += buildBlockersAlert(q);
   html += sec('報價摘要', `<div class="qap-grid">
@@ -831,6 +860,7 @@ function renderApproval(s) {
   html += buildJudgeSection(q);
   html += buildCostSection(q);
   html += buildStepsSection(q);
+  html += buildSplitSection(q);   // 同商機其他報價單（warn 模式才有）
   html += buildActionSection(s);
   html += buildHistorySection(q);
   html += buildIssuancesSection(s);
