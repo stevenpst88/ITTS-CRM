@@ -2169,7 +2169,8 @@ function renderSettings(s) {
   if (me.isAdmin) { tabs.push(['roster', '簽核名冊']); tabs.push(['classes', '商品歸類表']); }
   tabs.push(['rules', me.isAdmin ? '核決門檻與報價專用章' : '報價專用章']);
   if (!tabs.some((t) => t[0] === s.tab)) s.tab = tabs[0][0];
-  s.tabs.innerHTML = '<div class="qap-tabs">' + tabs.map((t) => `<button class="qap-tab${s.tab === t[0] ? ' on' : ''}" type="button" data-act="tab" data-tab="${t[0]}">${e(t[1])}</button>`).join('') + '</div>';
+  s.tabs.innerHTML = '<div class="qap-tabs">' + tabs.map((t) => `<button class="qap-tab${s.tab === t[0] ? ' on' : ''}" type="button" data-act="tab" data-tab="${t[0]}">${e(t[1])}</button>`).join('') + '</div>' + (me.isAdmin && s.cr ? '<div id="qapCrHost" style="padding:4px 4px 0"></div>' : '');
+  if (me.isAdmin && s.cr) s.cr.paint(s.tabs.querySelector('#qapCrHost'));
   const keep = s.body.scrollTop;
   if (s.tab === 'roster') s.body.innerHTML = buildRosterTab(s);
   else if (s.tab === 'classes') { s.body.innerHTML = buildClassesTab(s); renderClassRows(s); }
@@ -2177,7 +2178,7 @@ function renderSettings(s) {
   s.body.scrollTop = keep;
   const dis = s.busy ? ' disabled' : '';
   let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="sp"></span>`;
-  if (me.isAdmin) f += `<span class="qap-muted">${s.dirty ? '有未儲存的變更' : ''}</span><button class="btn btn-primary" type="button" data-act="save"${dis}>儲存名冊與歸類</button>`;
+  if (me.isAdmin) f += `<span class="qap-muted">${s.dirty ? '有未儲存的變更' : ''}</span><button class="btn btn-primary" type="button" data-act="save"${dis}>${e(s.cr ? s.cr.saveLabel('儲存名冊與歸類') : '儲存名冊與歸類')}</button>`;
   s.foot.innerHTML = f;
 }
 
@@ -2221,7 +2222,9 @@ async function saveSettings(s) {
   if (s.closed) return;
   if (res.ok) {
     s.dirty = false;
-    toast('簽核設定已儲存');
+    // 兩人覆核啟用時伺服器回 202（只是提出、尚未生效）；沒變更回 200 noChange
+    toast(res.status === 202 || (res.data && res.data.noChange) ? window.CfgReview.proposalMessage(res.data) : '簽核設定已儲存', res.status === 202 ? 6000 : undefined);
+    if (s.cr) s.cr.refresh();
     await loadSettingsConfig(s);   // 以伺服器實際儲存的內容為準
     if (s.closed) return;
   } else {
@@ -2284,6 +2287,8 @@ async function openQuoteApprovalSettings() {
     clsSearch: '', onlyUncls: false, hasSeal: false, sealTs: Date.now(),
   };
   _st = s;
+  // 簽核設定變更「兩人覆核」（_client/config-review.js；開關是伺服器環境變數，這裡只顯示狀態）
+  s.cr = window.CfgReview ? window.CfgReview.create({ api: apiCall, onApplied: () => { loadSettingsConfig(s).then(() => { if (!s.closed) renderSettings(s); }); } }) : null;
   s.onKey = (ev) => {
     if (ev.key !== 'Escape') return;
     if (!s.ov.isConnected) { document.removeEventListener('keydown', s.onKey); return; }
@@ -2369,6 +2374,7 @@ async function openQuoteApprovalSettings() {
   }
   s.busy = false;
   renderSettings(s);
+  if (s.cr && me.isAdmin) s.cr.refresh().then(() => { if (!s.closed) renderSettings(s); });   // 抓到開關狀態後，儲存鈕文字才會變成「提出變更（待覆核）」
 }
 
 function renderSettingsLoading(s) {

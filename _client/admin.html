@@ -2580,6 +2580,7 @@
       <div class="admin-section" id="sec-approval-flow">
         <div class="section-title">⚙️ 簽核流程設定</div>
         <div class="section-sub">設定各 BU 是否啟用二級主管複核步驟，以及個別人員的例外規則（例如跳過一級主管直送總經理）。設定儲存後，新送簽的報價單即採用新流程；已在簽核中的單子不受影響。</div>
+        <div id="afCrHost" style="max-width:900px;margin-bottom:10px"></div>
         <div class="admin-card" style="padding:18px;max-width:900px">
           <div id="afBuSection" style="margin-bottom:24px">
             <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#374151">各 BU 簽核流程（勾選即時預覽）</div>
@@ -3157,6 +3158,7 @@
   <div class="toast" id="toast"></div>
 
   <script src="glass-theme.js"></script>
+  <script src="config-review.js"></script>
   <script src="admin-users-view.js"></script>
   <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
@@ -3441,7 +3443,19 @@
     // ── 簽核流程設定（Admin）───────────────────────────────────
     const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const AF_ACTIONS = [{ value: 'skip_mgr1', label: '跳過一級主管' }];
-    let _afInited = false, _afCfg = null, _afUsers = null;
+    let _afInited = false, _afCfg = null, _afUsers = null, _afCr = null;
+
+    // 兩人覆核（_client/config-review.js）用的 API：刻意不走 adminFetch——它把任何 403 都當成 session 過期而跳回登入畫面，
+    // 但「不能覆核自己的申請」就是正常的 403（SELF_REVIEW_FORBIDDEN）。
+    async function _afCrApi(method, path, body) {
+      const opt = { method, headers: {}, credentials: 'same-origin' };
+      if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+      let r;
+      try { r = await fetch(API + path, opt); } catch (e) { return { ok: false, status: 0, data: { error: '網路連線失敗，請稍後再試' } }; }
+      if (r.status === 401) { showLoginScreen(); return { ok: false, status: 401, data: { error: 'Session 已過期，請重新登入' } }; }
+      let d = null; try { d = await r.json(); } catch (e) { d = null; }
+      return { ok: r.ok, status: r.status, data: d || {} };
+    }
 
     async function initApprovalFlow() {
       if (_afInited) return;
@@ -3461,6 +3475,11 @@
         _afRender();
         $('afSaveBtn').addEventListener('click', _afSave);
         $('afAddExBtn').addEventListener('click', _afAddException);
+        if (window.CfgReview) {
+          _afCr = window.CfgReview.create({ api: _afCrApi, onApplied: async () => { try { const c = await adminFetch('/api/admin/quote-approval/flow-config'); if (c.ok) { _afCfg = await c.json(); _afRender(); } } catch (e) { /* 重新整理頁面即可 */ } } });
+          _afCr.paint($('afCrHost'));
+          _afCr.refresh().then(() => { $('afSaveBtn').textContent = _afCr.enabled() ? _afCr.saveLabel('') : '💾 儲存設定'; });
+        }
       } catch (e) {
         st.textContent = '載入失敗：' + e.message;
       }
@@ -3569,7 +3588,16 @@
       _afCfg.buSettings = buSettings;
       try {
         const r = await adminFetch('/api/admin/quote-approval/flow-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buSettings, exceptions: _afCfg.exceptions || [] }) });
-        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.status); }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (r.status === 202 || d.noChange) {
+          // 兩人覆核啟用：只是「提出」，尚未生效。畫面改回伺服器目前實際生效的設定，避免看起來像已經改了
+          st.textContent = '📨 ' + window.CfgReview.proposalMessage(d);
+          const c = await adminFetch('/api/admin/quote-approval/flow-config');
+          if (c.ok) { _afCfg = await c.json(); _afRender(); }
+          if (_afCr) _afCr.refresh();
+          return;
+        }
         st.textContent = '✅ 儲存成功';
         setTimeout(() => { st.textContent = ''; }, 3000);
       } catch (e) {
