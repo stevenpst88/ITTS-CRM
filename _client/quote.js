@@ -809,6 +809,8 @@ async function exportQuote(id, quoteNo, kind) {
       return showToast(e.error || '匯出失敗');
     }
     const approvedFile = r.headers.get('X-Quote-Approval') === 'approved';
+    const issueNo = r.headers.get('X-Issue-No') || '';   // 伺服器核發的發出序號（已印在檔案裡；未核准的 Excel 會標「草稿／未經核准」）
+    const issueTag = issueNo ? `（發出序號 ${issueNo}）` : '';
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -819,8 +821,8 @@ async function exportQuote(id, quoteNo, kind) {
     a.remove();
     URL.revokeObjectURL(url);
     // Excel 一律不蓋報價專用章；已核准的單提醒「正式有章的版本是 PDF」
-    showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶'
-      : (approvedFile ? '報價單 Excel 已下載（Excel 不蓋報價專用章；要給客戶的正式報價單請下載 PDF）' : '報價單 Excel 已下載（未核准，不蓋報價專用章）'));
+    showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶' + issueTag
+      : (approvedFile ? '報價單 Excel 已下載（Excel 不蓋報價專用章；要給客戶的正式報價單請下載 PDF）' + issueTag : '報價單 Excel 已下載（未核准，已標示草稿，不蓋報價專用章）' + issueTag));
   } catch(e) {
     showToast('匯出失敗，請重試');
   }

@@ -707,6 +707,22 @@ function buildHistorySection(q) {
   return sec(hasEdit ? '簽核與編輯歷程' : '簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
 }
 
+/**
+ * 發出紀錄（正式文件發出機制，唯讀）：這張單每次下載 PDF／Excel 由伺服器核發的發出序號。可摺疊；全部欄位 e() 跳脫。
+ * s.issuances＝GET /quotations/:id/issuances 的結果（伺服器算好 stillValid）；沒有紀錄就不顯示這一段。
+ */
+const ISS_KIND = { official: '正式', draft: '草稿', internal: '內部' };
+const ISS_FORMAT = { pdf: 'PDF', xlsx: 'Excel', 'pnl-xlsx': '毛利分析' };
+function buildIssuancesSection(s) {
+  const list = Array.isArray(s.issuances) ? s.issuances : [];
+  if (!list.length) return '';
+  const rows = list.map((r) => `<tr><td>${e(r.issueNo)}</td><td>${e(ISS_KIND[r.kind] || r.kind)}</td><td>${e(ISS_FORMAT[r.format] || r.format)}</td><td class="r">${e(fmtTime(r.issuedAt))}</td><td>${e(r.issuedByName || r.issuedBy || '')}</td><td>${r.stillValid ? '有效' : '<span class="qap-muted">已失效（內容已變更）</span>'}</td></tr>`).join('');
+  return `<details class="qap-sec qap-ref" id="qapIssuances">
+    <summary>發出紀錄<span class="qap-muted">　共 ${e(list.length)} 筆（每次下載 PDF／Excel 由系統核發序號；內容或核准變動後，舊序號顯示「已失效」）</span></summary>
+    <div class="qap-tablewrap"><table class="qap-table"><thead><tr><th>發出序號</th><th>類型</th><th>格式</th><th class="r">時間</th><th>發出人</th><th>狀態</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </details>`;
+}
+
 /** 目前輪到的關卡是否為董事會（僅決定「要不要顯示決議欄位」，能不能簽仍看 perm） */
 /** 管理員改派：依目前這一關（mgr2／mgr1）決定標籤與候選人（角色必須對應；伺服器端也會再驗） */
 function reassignInfo(s) {
@@ -816,6 +832,7 @@ function renderApproval(s) {
   html += buildStepsSection(q);
   html += buildActionSection(s);
   html += buildHistorySection(q);
+  html += buildIssuancesSection(s);
   s.body.innerHTML = html;
   mountCostDetail(s.body, q);
   s.body.scrollTop = keep;
@@ -841,6 +858,13 @@ async function fetchApprovalQuote(s) {
     return false;
   }
   s.q = r.data;
+  // 發出紀錄（有發出過才查；查不到不影響簽核面板）
+  s.issuances = [];
+  if (s.q.issuanceCount > 0 && !(s.q.perm && s.q.perm.canSeePrice === false)) {
+    const ir = await apiCall('GET', '/quotations/' + encodeURIComponent(s.id) + '/issuances');
+    if (s.closed) return false;
+    if (ir.ok && ir.data && Array.isArray(ir.data.issuances)) s.issuances = ir.data.issuances;
+  }
   if (s.q.perm && s.q.perm.canReassign && !s.mgrs) {
     const c = await apiCall('GET', '/quote-approval/config');
     if (s.closed) return false;

@@ -297,7 +297,7 @@ app.use((req, res, next) => {
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
-  if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  if (/^\/api\/quotations\/[^/]+\/(?:export-log|issue)$/.test(req.path)) return next();   // issue＝正式文件發出（唯讀帳號也能下載，必須留紀錄）
   // 公告「我知道了」：只寫入自己的已讀回條，唯讀帳號也必須能確認，否則一次性公告會永遠彈出
   if (/^\/api\/announcements\/[^/]+\/ack$/.test(req.path)) return next();
   // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響
@@ -9735,6 +9735,8 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
 
   const rt = deriveRuntimeInfo(process.env);
   res.json({
+    // 報價文件發出機制的目前開關（只回布林）：未核准可否發出草稿、草稿浮水印是否啟用
+    quoteIssuance: { draftIssueAllowed: require('./lib/quoteIssuance').allowUnapprovedIssue(), draftWatermark: require('./lib/quoteIssuance').draftWatermarkEnabled() },
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
     featureGuard: featureGuard.snapshot(),   // 後端功能權限驗證：{ mode, wouldDeny, denied, unclassified }
     loginGuard: { lockout: loginGuard.lockoutEnabled, maxFails: loginGuard.config.maxFails, lockMinutes: loginGuard.config.lockMs / 60000, idleMinutes: loginGuard.config.idleMinutes },   // 兩個開關的現況（預設皆關）
