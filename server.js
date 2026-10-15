@@ -26,6 +26,9 @@ const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
 const app = express();
+// 帳號鎖定／閒置逾時（兩個開關預設關閉；見 lib/loginGuard.js）。鎖定狀態存在主資料 blob 的 loginFailures
+const accessReview = require('./lib/accessReview');   // 季度帳號與權限覆核報表（純函式）
+const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) } });
 const PORT = process.env.PORT || 3000;
 
 // ── 信任 Vercel 代理（取得正確的 req.ip / HTTPS 判斷）──
@@ -149,6 +152,24 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ── 閒置逾時（SESSION_IDLE_MINUTES>0 才啟用；預設關閉＝本段什麼都不做）──────────────────────
+// 以簽章過的 session 內 lat（最後活動時間）判斷；一分鐘內最多重簽一次 JWT（無 DB 寫入）。
+// 輪詢端點（poll-bundle／notifications／announcements/active）不算活動。細節見 lib/loginGuard.js。
+const _idleLogAt = new Map();
+app.use(loginGuard.idleMiddleware({
+  isJwt: SESSION_BACKEND !== 'memory',
+  onExpire: (req, username, kind) => {
+    const now = Date.now();
+    if (now - (_idleLogAt.get(username) || 0) < 60000) return;
+    _idleLogAt.set(username, now);
+    if (_idleLogAt.size > 500) { for (const [k, t] of _idleLogAt) if (now - t > 60000) _idleLogAt.delete(k); }
+    flushAuditBeforeEnd(req);
+    writeLog('SESSION_IDLE_TIMEOUT', username, username,
+      kind === 'idle' ? `閒置超過 ${loginGuard.config.idleMinutes} 分鐘，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`
+        : `登入已超過 8 小時，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`, req);
+  },
+}));
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
@@ -593,6 +614,18 @@ function auditLoginFail(req, attempted, reason) {
     writeLog('LOGIN_FAIL', name || '(空白)', name || '(空白)',
       `登入失敗：原因=${reason}${merged ? `；此 IP 對此帳號先前 ${Math.round(LOGIN_FAIL_THROTTLE_MS / 1000)} 秒窗內另有 ${merged} 次相同失敗已合併` : ''}`, req);
   } catch (e) { console.error('[auditLoginFail]', e && e.message); }
+}
+/** 登入失敗：寫稽核（30 秒節流）＋累計鎖定計數（LOGIN_LOCKOUT=1 才有作用）；剛達門檻時另記 LOGIN_LOCKED */
+function loginFailed(req, attempted, reason) {
+  auditLoginFail(req, attempted, reason);
+  try {
+    const r = loginGuard.recordFailure(attempted);
+    if (r && r.justLocked) {
+      const name = sanitizeAttemptName(attempted);
+      writeLog('LOGIN_LOCKED', name || '(空白)', name || '(空白)',
+        `連續登入失敗達 ${loginGuard.config.maxFails} 次，帳號名稱已鎖定至 ${new Date(r.until).toISOString()}（第 ${r.lockCount} 次鎖定；鎖定期間連正確密碼也拒絕，管理員可於後台解鎖）`, req);
+    }
+  } catch (e) { console.error('[loginFailed]', e && e.message); }
 }
 const _loginRateSeen = new Map();   // ip -> t
 function auditLoginRateLimited(req) {
@@ -1112,6 +1145,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── 後端功能權限驗證（FEATURE_GUARD_MODE=off|log|enforce，預設 log＝只記錄不阻擋；見 lib/featureGuard.js）──
+// 放在「帳號即時比對」「唯讀」「集團角色路徑白名單」之後、所有業務路由之前；角色以 DB 現值（上方已覆寫 session）為準，
+// 功能清單用 getUserFeatures（與前端導覽同一份矩陣），所以矩陣一改立即生效。
+const featureGuardLib = require('./lib/featureGuard');
+const featureGuard = featureGuardLib.create({
+  getFeatures: (role) => getUserFeatures(role),
+  audit: (req, action, operator, target, detail) => { flushAuditBeforeEnd(req); writeLog(action, operator, target, detail, req); },
+});
+app.use('/api/', featureGuard.middleware);
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -1119,9 +1162,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const authData = loadAuth();
     const user = authData.users.find(u => u.username === username);
     const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才生效）：鎖定期間連「正確密碼」也拒絕，且回應與密碼錯完全相同（同訊息、同狀態碼、同成本的 bcrypt 比對）；不存在的帳號名稱也會鎖，行為一致
+    if (loginGuard.checkLocked(username).locked) {
+      await dummyBcryptCompare(password);
+      auditLoginFail(req, username, 'LOCKED');
+      return res.status(401).json(GENERIC_FAIL);
+    }
     if (!user) {
       await dummyBcryptCompare(password);   // 等成本比對，避免用回應時間探測帳號是否存在
-      auditLoginFail(req, username, 'UNKNOWN_USER');
+      loginFailed(req, username, 'UNKNOWN_USER');
       return res.status(401).json(GENERIC_FAIL);
     }
 
@@ -1137,13 +1186,23 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
     if (user.active === false) {
-      auditLoginFail(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
+      loginFailed(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
       return res.status(401).json(GENERIC_FAIL);
     }
     if (!isValid) {
-      auditLoginFail(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
+      loginFailed(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
       return res.status(401).json(GENERIC_FAIL);
     }
+    try { loginGuard.recordSuccess(username); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
+    // 最後登入時間（季度帳號覆核用）：寫在帳號紀錄上，同一人 6 小時內最多寫一次，所以一般登入幾乎不增加寫入；失敗不影響登入
+    try {
+      if (accessReview.shouldStampLogin(user, Date.now())) {
+        const iso = new Date().toISOString();
+        user.lastLoginAt = iso;
+        if (!authData.lastLoginTrackingSince) authData.lastLoginTrackingSince = iso;
+        saveAuth(authData);
+      }
+    } catch (e) { console.error('[lastLoginAt]', e && e.message); }
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -1995,7 +2054,10 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     // 直屬主管（組織階層；空值 = 頂層或未設定）
     supervisor:     u.supervisor     || '',
     // 唯讀掛名主管（業績由部屬彙總，不計本人）——供帳號編輯器勾選框回填
-    pureSupervisor: !!u.pureSupervisor
+    pureSupervisor: !!u.pureSupervisor,
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才會有值）：後台列表顯示「已鎖定」徽章
+    locked: loginGuard.lockoutEnabled ? !!loginGuard.getLock(u.username) : false,
+    lockUntil: loginGuard.lockoutEnabled ? ((loginGuard.getLock(u.username) || {}).lockUntil || null) : null
   }));
   res.json(users);
 });
@@ -2294,6 +2356,7 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
   user.passwordChangedAt = new Date().toISOString();
   user.mustChangePassword = true;
   saveAuth(auth);
+  try { loginGuard.unlock(req.params.username); } catch (e) { console.error('[unlock on reset]', e && e.message); }   // 管理員重設密碼＝同時解除登入鎖定
   writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼（強制使用者下次登入更換）`, req);
   res.json({ success: true });
 });
@@ -2313,6 +2376,82 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 季度帳號與權限覆核（admin 專用；報表不含密碼雜湊／token／email 位址）────────────────
+function buildAccessReport() {
+  const auth = loadAuth();
+  const matrix = getRolePermissions();
+  return accessReview.buildReport({
+    users: auth.users, data: db.load(), now: Date.now(), trackingSince: auth.lastLoginTrackingSince || null,
+    featuresFor: (role) => role === 'admin' ? ALL_FEATURES.slice() : (matrix[role] || (DEFAULT_ROLE_PERMISSIONS[role] || [])).slice(),
+    userLabel: (u) => userLabel(u, u.username),
+    featureRouteMap: featureGuardLib.describe(FEATURE_REGISTRY),
+  });
+}
+app.get('/api/admin/access-review', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  if (String(req.query.format || 'json').toLowerCase() === 'csv') {
+    auditExport(req, 'EXPORT_ACCESS_REVIEW', report.accounts.length, '季度帳號與權限覆核報表（不含密碼／email 位址）', 'csv');
+    const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="access-review-${day}.csv"`, 'Cache-Control': 'no-store' });
+    return res.send(accessReview.toCsv(report));
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({}, report, { snapshotHash: accessReview.snapshotHash(report) }));
+});
+app.get('/api/admin/access-review/history', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({ currentHash: accessReview.snapshotHash(report) }, accessReview.historyView(db.load().accessReviews || [], accessReview.snapshotHash(report))));
+});
+// 簽核：只增不改（沒有任何修改／刪除路由）；每筆帶 prevHash／recordHash 鏈，被改動會被 verifyChain 抓到。
+// 目前只需一位管理員；若日後要雙人覆核，比照核決設定的兩人覆核機制加在此處（見 lib/accessReview.js 檔頭備註）。
+app.post('/api/admin/access-review/signoff', requireAdmin, (req, res) => {
+  const auth = loadAuth();
+  const v = accessReview.validateSignoff(req.body, auth.users.map(u => u.username));
+  if (v.error) return res.status(400).json({ error: v.error });
+  const d = db.load();
+  if (!Array.isArray(d.accessReviews)) d.accessReviews = [];
+  if (!accessReview.verifyChain(d.accessReviews).ok) return res.status(409).json({ error: '既有簽核紀錄的雜湊鏈驗證失敗，請先查明原因再簽核', code: 'CHAIN_BROKEN' });
+  const report = buildAccessReport();
+  const rec = accessReview.makeSignoffRecord({ list: d.accessReviews, v, by: req.session.user.username, at: new Date().toISOString(), report });
+  d.accessReviews.push(rec);
+  db.save(d);
+  writeLog('ACCESS_REVIEW_SIGNOFF', req.session.user.username, v.quarter, `完成 ${v.quarter} 季度帳號覆核簽核：${rec.accountCount} 個帳號、例外 ${v.exceptions.length} 筆、快照 ${rec.snapshotHash.slice(0, 12)}`, req);
+  res.json({ success: true, record: rec });
+});
+
+// ── 路由 → 功能對照表（稽核用）：同一份資料也是後端功能權限驗證實際使用的表 ──
+app.get('/api/admin/feature-route-map', requireAdmin, (req, res) => {
+  res.json({
+    mode: featureGuard.mode,
+    counters: featureGuard.snapshot(),
+    kinds: {
+      FEATURES: '需擁有 features 其中之一（ANY-of）', ANY: '需擁有至少一個功能（全域唯讀清單）', ALWAYS: '登入後一律放行',
+      SELF: '由路由自身的角色／名冊／關係檢查把關', ADMIN: 'requireAdmin', UNCLASSIFIED: '尚未歸類：視同放行，每個路由只記錄一次',
+    },
+    features: FEATURE_REGISTRY.map(f => ({ key: f.key, label: f.label })),
+    routes: featureGuardLib.describe(FEATURE_REGISTRY),
+    unmappedRegistered: featureGuardLib.unmappedRegistered(app),   // 已註冊卻不在對照表的非管理員 /api 路由（應為空）
+    observedUnclassified: Array.from(featureGuard.unclassifiedSeen),
+  });
+});
+
+// ── 帳號鎖定：管理員檢視／解鎖（LOGIN_LOCKOUT=1 才有鎖定資料）─────────────────────────────
+app.get('/api/admin/login-locks', requireAdmin, (req, res) => {
+  const known = new Set(loadAuth().users.map(u => String(u.username).toLowerCase()));
+  res.json({
+    enabled: loginGuard.lockoutEnabled,
+    maxFails: loginGuard.config.maxFails,
+    locks: loginGuard.listLocks().map(l => ({ ...l, exists: known.has(l.username) })),
+  });
+});
+app.post('/api/admin/users/:username/unlock', requireAdmin, (req, res) => {
+  const target = String(req.params.username || '');
+  const had = loginGuard.unlock(target);
+  writeLog('LOGIN_UNLOCK', req.session.user.username, target.slice(0, 40), had ? `管理員解除帳號 ${target.slice(0, 40)} 的登入鎖定` : `管理員對 ${target.slice(0, 40)} 執行解鎖（原本沒有鎖定紀錄）`, req);
+  res.json({ success: true, wasLocked: had });
 });
 
 // ── 訂閱方案 API ──────────────────────────────────────────
@@ -9596,6 +9735,8 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
   const rt = deriveRuntimeInfo(process.env);
   res.json({
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
+    featureGuard: featureGuard.snapshot(),   // 後端功能權限驗證：{ mode, wouldDeny, denied, unclassified }
+    loginGuard: { lockout: loginGuard.lockoutEnabled, maxFails: loginGuard.config.maxFails, lockMinutes: loginGuard.config.lockMs / 60000, idleMinutes: loginGuard.config.idleMinutes },   // 兩個開關的現況（預設皆關）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
     app: {
       name:        pkg.name        || 'business-card-crm',

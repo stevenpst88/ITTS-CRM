@@ -98,6 +98,14 @@ function setState(s){
   btn.classList.toggle('hot',s==='loading'||s==='success'||btn.dataset.hover==='1');
   if(ITTS.onState)ITTS.onState(s);
 }
+/* 被伺服器登出時（閒置逾時／連線失效）由 app.js 留下原因，這裡顯示友善提示（只顯示一次；來自 feat/audit3-batch2） */
+function showLoginNotice(){
+  let code='';
+  try{code=sessionStorage.getItem('loginNotice')||'';sessionStorage.removeItem('loginNotice')}catch(e){return}
+  const MSG={SESSION_IDLE_TIMEOUT:'閒置過久已登出，請重新登入',SESSION_EXPIRED:'登入已逾時，請重新登入',SESSION_INVALID:'您的連線已失效（帳號停用或已不存在），請重新登入'};
+  const el=$('#loginNotice');
+  if(el&&MSG[code]){el.textContent=MSG[code];el.classList.add('show')}
+}
 function initForm(){
   const u=$('#username'),p=$('#password'),eye=$('#eyeBtn'),caps=$('#capsHint'),btn=$('#loginBtn'),form=$('#loginForm');
   eye.onclick=()=>{const show=p.type==='password';p.type=show?'text':'password';eye.setAttribute('aria-pressed',show);eye.setAttribute('aria-label',show?'隱藏密碼':'顯示密碼')};
@@ -257,7 +265,7 @@ void main(){
 
 /* ═══ 電影感開場：主程式 ═══ */
 (function(){
-initForm();buildDock();applyTheme(true);
+showLoginNotice();initForm();buildDock();applyTheme(true);
 const cvGL=$('#gl'),cvLite=$('#lite'),card=$('#card'),stage=$('.stage'),tagEl=$('#tagline'),subEl=$('#tagSub'),logoSvg=$('#logoSvg'),ring=$('#ring'),flash=$('#flash'),skipEl=$('#skip'),fadeEl=$('#fade'),done=$('#done');
 const hero=document.createElement('div');hero.className='hero';stage.insertBefore(hero,card);
 const INTRO=3.2,TAG='讓每一次拜訪都有價值';

@@ -58,6 +58,8 @@ canvas.bgc{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0
 .error-msg{display:none;margin-bottom:14px;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;
   color:var(--err-tx);background:var(--err-bg);border:1px solid var(--err-bd)}
 .error-msg.show{display:block;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+.notice-msg{display:none;margin-bottom:14px;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;color:var(--tx);background:rgba(255,170,60,.16);border:1px solid rgba(255,170,60,.35)}
+.notice-msg.show{display:block}
 @keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
 .fld{margin-bottom:15px}
 .fld label{display:block;font-size:12.5px;font-weight:600;color:var(--tx2);margin:0 0 7px 6px;letter-spacing:.12em}
