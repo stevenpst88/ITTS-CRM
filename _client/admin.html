@@ -233,7 +233,17 @@
       { background: #e8f0fe; color: #1a73e8; }
     .log-DELETE_USER,.log-DELETE_VISIT,.log-DELETE_OPP,.log-DELETE_CONTRACT,.log-DELETE_RECEIVABLE
       { background: #fce8e6; color: #c62828; }
-    .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
+    .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS,.log-CSP_VIOLATION,.log-CSP_REPORT_THROTTLED { background: #fff3e0; color: #e65100; }
+    /* CSP 違規觀察卡（版本資訊頁）：用 class 而非 style=，不增加行內樣式 */
+    .csp-body { padding: 14px; }
+    .csp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #1a2d52; }
+    .csp-chip { font-size: 11px; font-weight: 700; padding: 3px 12px; border-radius: 12px; }
+    .csp-chip.on { color: #b06000; background: #fef3e0; }
+    .csp-chip.off { color: #5f6368; background: #f1f3f4; }
+    .csp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+    .csp-grid h4 { margin: 0 0 6px; font-size: 12px; color: #1a2d52; }
+    .csp-grid ol { margin: 0; padding-left: 18px; font-size: 12px; color: #444; line-height: 1.7; word-break: break-all; }
+    .csp-note { margin-top: 10px; font-size: 11px; color: #888; line-height: 1.6; }
     .log-SESSION_REJECTED_INACTIVE,.log-LOGIN_FAIL,.log-LOGIN_RATE_LIMITED,.log-ADMIN_RAIL_BLOCKED,.log-DISABLE_USER,.log-REVOKE_DOWNLOAD_PERMISSION,.log-SET_READONLY { background: #fce8e6; color: #c62828; }
     .log-EXPORT_CONTACTS,.log-EXPORT_CONTACTS_ADMIN,.log-EXPORT_OPPORTUNITIES,.log-EXPORT_VISITS,.log-EXPORT_CONTRACTS,.log-EXPORT_FORECAST,.log-EXPORT_COMPANY_MASTER,.log-EXPORT_AUDIT_LOG,.log-GRANT_DOWNLOAD_PERMISSION,.log-CHANGE_USER_ROLE,.log-REASSIGN_QUOTATION { background: #fff3e0; color: #e65100; }
     .log-LOGOUT,.log-ENABLE_USER,.log-SET_EDITABLE { background: #e8f0fe; color: #1a73e8; }
@@ -2682,6 +2692,12 @@
         <div class="admin-card" style="margin-bottom:16px">
           <div class="admin-card-header"><span class="admin-card-title">🔗 稽核防竄改</span></div>
           <div class="admin-card-body" id="vChainInfo" style="padding:14px"></div>
+        </div>
+
+        <!-- CSP 違規觀察（Report-Only，唯讀摘要） -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🛡️ CSP 違規觀察</span></div>
+          <div class="admin-card-body csp-body" id="vCspInfo">載入中…</div>
         </div>
 
         <!-- 後端套件 -->
@@ -5582,7 +5598,7 @@
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
-      EXPORT_AUDIT_LOG: '匯出稽核日誌', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
+      EXPORT_AUDIT_LOG: '匯出稽核日誌', CSP_VIOLATION: 'CSP 違規回報（觀察）', CSP_REPORT_THROTTLED: 'CSP 回報已達寫入上限', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 
     function parseUA(ua) {
@@ -6440,6 +6456,38 @@
         el.innerHTML = verChainHtml(await r.json(), vr);
       } catch (e) { if (e.message !== 'Session expired') el.innerHTML = '<div style="color:#c5221f;font-size:13px">讀取稽核防竄改狀態失敗</div>'; }
     }
+    // CSP 違規觀察（Report-Only）：唯讀摘要，資料來自稽核 CSP_VIOLATION（近 7 天）。全部用 textContent 組畫面，不經 innerHTML。
+    function cspMk(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+    function cspTop(title, arr) {
+      const box = cspMk('div'); box.appendChild(cspMk('h4', '', title));
+      const ol = cspMk('ol');
+      (arr || []).forEach(x => ol.appendChild(cspMk('li', '', String(x.name) + '（' + Number(x.count) + '）')));
+      if (!ol.children.length) ol.appendChild(cspMk('li', '', '—'));
+      box.appendChild(ol); return box;
+    }
+    async function loadCspCard() {
+      const el = $('vCspInfo');
+      if (!el) return;
+      try {
+        const r = await adminFetch(`${API}/admin/csp-summary`);
+        if (!r.ok) { el.textContent = '讀取 CSP 違規摘要失敗'; return; }
+        const d = await r.json();
+        const head = cspMk('div', 'csp-head');
+        head.appendChild(cspMk('strong', '', 'Report-Only 觀察'));
+        head.appendChild(cspMk('span', 'csp-chip ' + (d.enabled ? 'on' : 'off'), d.enabled ? '觀察中（不阻擋）' : '已關閉'));
+        head.appendChild(cspMk('span', '', '近 ' + Number(d.days) + ' 天違規 ' + Number(d.total) + ' 次（不同事件 ' + Number(d.events) + ' 筆＋10 分鐘窗內合併 ' + Number(d.merged) + ' 次）'));
+        const grid = cspMk('div', 'csp-grid');
+        grid.appendChild(cspTop('前 5 名違反的指令', d.topDirectives));
+        grid.appendChild(cspTop('前 5 名來源（blocked）', d.topSources));
+        grid.appendChild(cspTop('前 5 名頁面', d.topPages));
+        const note = cspMk('div', 'csp-note',
+          '這是「若改成嚴格 CSP 會被擋」的演練數據，現行強制政策照舊、使用者無感。' +
+          (d.truncated ? '筆數超過 1000，排名為近似值。' : '') +
+          (d.throttled ? '期間有 ' + Number(d.throttled) + ' 次因寫入上限而節流，實際次數可能更多。' : '') +
+          (d.styleReport ? '（已開啟 style 嚴格觀察，行內樣式回報會很多）' : ''));
+        el.replaceChildren(head, grid, note);
+      } catch (e) { if (e.message !== 'Session expired') el.textContent = '讀取 CSP 違規摘要失敗'; }
+    }
     async function chainVerifyNow() {
       const b = $('chainVerifyBtn');
       if (b) { b.disabled = true; b.textContent = '驗證中…'; }
@@ -6651,6 +6699,7 @@
         $('vDbInfo').innerHTML = verDbHtml(d);
         $('vAuditInfo').innerHTML = verAuditHtml(d) + verGuardHtml(d);
         loadChainCard();
+        loadCspCard();
         $('vIssueInfo').innerHTML = verIssueHtml(d);
 
         // 後端套件
