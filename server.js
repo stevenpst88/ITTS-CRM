@@ -1023,6 +1023,10 @@ function findDuplicateContact(data, owner, name, company, taxId) {
 const STATIC_CACHE      = { maxAge: '1d' };
 const STATIC_NO_CACHE   = { maxAge: 0, etag: false, lastModified: false };
 app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_NO_CACHE));
+// 登入頁的外部樣式／腳本（登入前就要能載入，所以必須公開；不可放進 requireAuth 之後的 _client 靜態檔）
+app.use('/login-cinematic.css', express.static(path.join(__dirname, '_client', 'login-cinematic.css'), STATIC_NO_CACHE));
+app.use('/login-cinematic.js', express.static(path.join(__dirname, '_client', 'login-cinematic.js'), STATIC_NO_CACHE));
+app.use('/login-boot.js', express.static(path.join(__dirname, '_client', 'login-boot.js'), STATIC_NO_CACHE));
 app.use('/itts-logo.png', express.static(path.join(__dirname, '_client', 'itts-logo.png'), STATIC_CACHE));
 app.use('/itts-logo.svg', express.static(path.join(__dirname, '_client', 'itts-logo.svg'), STATIC_CACHE));
 
