@@ -707,6 +707,22 @@ function buildHistorySection(q) {
   return sec(hasEdit ? '簽核與編輯歷程' : '簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
 }
 
+/**
+ * 發出紀錄（正式文件發出機制，唯讀）：這張單每次下載 PDF／Excel 由伺服器核發的發出序號。可摺疊；全部欄位 e() 跳脫。
+ * s.issuances＝GET /quotations/:id/issuances 的結果（伺服器算好 stillValid）；沒有紀錄就不顯示這一段。
+ */
+const ISS_KIND = { official: '正式', draft: '草稿', internal: '內部' };
+const ISS_FORMAT = { pdf: 'PDF', xlsx: 'Excel', 'pnl-xlsx': '毛利分析' };
+function buildIssuancesSection(s) {
+  const list = Array.isArray(s.issuances) ? s.issuances : [];
+  if (!list.length) return '';
+  const rows = list.map((r) => `<tr><td>${e(r.issueNo)}</td><td>${e(ISS_KIND[r.kind] || r.kind)}</td><td>${e(ISS_FORMAT[r.format] || r.format)}</td><td class="r">${e(fmtTime(r.issuedAt))}</td><td>${e(r.issuedByName || r.issuedBy || '')}</td><td>${r.stillValid ? '有效' : '<span class="qap-muted">已失效（內容已變更）</span>'}</td></tr>`).join('');
+  return `<details class="qap-sec qap-ref" id="qapIssuances">
+    <summary>發出紀錄<span class="qap-muted">　共 ${e(list.length)} 筆（每次下載 PDF／Excel 由系統核發序號；內容或核准變動後，舊序號顯示「已失效」）</span></summary>
+    <div class="qap-tablewrap"><table class="qap-table"><thead><tr><th>發出序號</th><th>類型</th><th>格式</th><th class="r">時間</th><th>發出人</th><th>狀態</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </details>`;
+}
+
 /** 目前輪到的關卡是否為董事會（僅決定「要不要顯示決議欄位」，能不能簽仍看 perm） */
 /** 管理員改派：依目前這一關（mgr2／mgr1）決定標籤與候選人（角色必須對應；伺服器端也會再驗） */
 function reassignInfo(s) {
@@ -799,6 +815,7 @@ function renderApproval(s) {
     html += `<div class="qap-alert warn">此報價單被駁回${last && last.byName ? '（' + e(last.byName) + '）' : ''}${last && last.comment ? '：' + e(last.comment) : ''}。修改後可重新送簽。</div>`;
   }
   { const tn = textEditNotice(q); if (tn) html += `<div class="qap-alert warn qap-textedit" id="qapTextEditBanner" role="status"><span>⚠ ${e(tn)}。核准有效、未重新簽核。</span><button class="btn btn-secondary btn-sm" type="button" data-act="textdiff">查看差異</button></div>`; }
+  if (perm.quoteReadonly) html += '<div class="qap-alert info" role="status">你的報價單權限類型是『唯讀』：可檢視這張報價單，但不能簽核、駁回或代核。如需簽核請洽管理員調整。</div>';
   html += buildBlockersAlert(q);
   html += sec('報價摘要', `<div class="qap-grid">
       <div><span class="k">報價單號</span><b>${e(q.quoteNo || '')}</b></div>
@@ -816,6 +833,7 @@ function renderApproval(s) {
   html += buildStepsSection(q);
   html += buildActionSection(s);
   html += buildHistorySection(q);
+  html += buildIssuancesSection(s);
   s.body.innerHTML = html;
   mountCostDetail(s.body, q);
   s.body.scrollTop = keep;
@@ -841,11 +859,18 @@ async function fetchApprovalQuote(s) {
     return false;
   }
   s.q = r.data;
+  // 發出紀錄（有發出過才查；查不到不影響簽核面板）
+  s.issuances = [];
+  if (s.q.issuanceCount > 0 && !(s.q.perm && s.q.perm.canSeePrice === false)) {
+    const ir = await apiCall('GET', '/quotations/' + encodeURIComponent(s.id) + '/issuances');
+    if (s.closed) return false;
+    if (ir.ok && ir.data && Array.isArray(ir.data.issuances)) s.issuances = ir.data.issuances;
+  }
   if (s.q.perm && s.q.perm.canReassign && !s.mgrs) {
     const c = await apiCall('GET', '/quote-approval/config');
     if (s.closed) return false;
     const users = c.ok && Array.isArray(c.data.users) ? c.data.users : [];
-    s.mgrs = users.filter((u) => (u.role === 'manager1' || u.role === 'manager2') && u.active !== false);
+    s.mgrs = users.filter((u) => (u.role === 'manager1' || u.role === 'manager2') && u.active !== false && u.quoteMode !== 'readonly');   // 唯讀者不能被改派（伺服器也會擋）
   }
   return true;
 }
@@ -2032,6 +2057,12 @@ function emailBadge(s, username) {
   return ` <span class="qap-badge warn" data-mail-status="${st}" title="${e(EMAIL_STATUS_TIP[st])}">${e(EMAIL_STATUS_LABEL[st])}</span>`;
 }
 
+/** 名冊裡舊有的『唯讀』帳號：標出來提醒管理員移除（他們在動作當下一定會被擋，不是簽核人） */
+function roUserBadge(s, un, key) {
+  const u = (s.cfg.users || []).find((x) => x.username === un);
+  return u && u.quoteMode === 'readonly' && key !== 'costProviders' ? ' <span title="報價單權限類型為唯讀：不是有效的簽核人，請移除或先改為簽核" style="background:#fef3c7;color:#92400e;font-size:11px;padding:1px 5px;border-radius:99px">唯讀</span>' : '';
+}
+
 function buildRosterTab(s) {
   const users = (s.cfg.users || []).filter((u) => u.active !== false).slice()
     .sort((a, b) => String(a.displayName || a.username).localeCompare(String(b.displayName || b.username), 'zh-Hant'));
@@ -2048,8 +2079,9 @@ function buildRosterTab(s) {
   ROSTER_GROUPS.forEach((g) => {
     const sel = s.roster[g.key] || [];
     const mailRelevant = MAIL_ROSTER_KEYS.indexOf(g.key) >= 0;
-    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}${mailRelevant ? emailBadge(s, un) : ''}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
-    const opts = users.filter((u) => sel.indexOf(u.username) < 0)
+    const chips = sel.map((un) => `<span class="qap-chip sel">${e(userText(s, un))}${roUserBadge(s, un, g.key)}${mailRelevant ? emailBadge(s, un) : ''}<button type="button" data-act="rmUser" data-g="${e(g.key)}" data-u="${e(un)}" title="移除" aria-label="移除">&#10005;</button></span>`).join('') || '<span class="qap-muted">（尚未指定）</span>';
+    // 報價單權限類型為『唯讀』的人不能列入簽核／代核／管章名單（伺服器也會擋）；成本填寫人是填寫職能，不受限
+    const opts = users.filter((u) => sel.indexOf(u.username) < 0 && !(u.quoteMode === 'readonly' && g.key !== 'costProviders'))
       .map((u) => `<option value="${e(u.username)}">${e(u.displayName || u.username)}（${e(u.username)}）${u.role ? ' · ' + e(u.role) : ''}${mailRelevant && emailProblem(s, u.username) ? ' · ' + e(EMAIL_STATUS_LABEL[emailProblem(s, u.username)]) : ''}</option>`).join('');
     html += sec(e(g.label), `<div class="qap-muted" style="margin-bottom:6px">${e(g.desc)}</div>
       <div class="qap-path">${chips}</div>
@@ -2169,7 +2201,8 @@ function renderSettings(s) {
   if (me.isAdmin) { tabs.push(['roster', '簽核名冊']); tabs.push(['classes', '商品歸類表']); }
   tabs.push(['rules', me.isAdmin ? '核決門檻與報價專用章' : '報價專用章']);
   if (!tabs.some((t) => t[0] === s.tab)) s.tab = tabs[0][0];
-  s.tabs.innerHTML = '<div class="qap-tabs">' + tabs.map((t) => `<button class="qap-tab${s.tab === t[0] ? ' on' : ''}" type="button" data-act="tab" data-tab="${t[0]}">${e(t[1])}</button>`).join('') + '</div>';
+  s.tabs.innerHTML = '<div class="qap-tabs">' + tabs.map((t) => `<button class="qap-tab${s.tab === t[0] ? ' on' : ''}" type="button" data-act="tab" data-tab="${t[0]}">${e(t[1])}</button>`).join('') + '</div>' + (me.isAdmin && s.cr ? '<div id="qapCrHost" style="padding:4px 4px 0"></div>' : '');
+  if (me.isAdmin && s.cr) s.cr.paint(s.tabs.querySelector('#qapCrHost'));
   const keep = s.body.scrollTop;
   if (s.tab === 'roster') s.body.innerHTML = buildRosterTab(s);
   else if (s.tab === 'classes') { s.body.innerHTML = buildClassesTab(s); renderClassRows(s); }
@@ -2177,7 +2210,7 @@ function renderSettings(s) {
   s.body.scrollTop = keep;
   const dis = s.busy ? ' disabled' : '';
   let f = `<button class="btn btn-secondary" type="button" data-act="close"${dis}>關閉</button><span class="sp"></span>`;
-  if (me.isAdmin) f += `<span class="qap-muted">${s.dirty ? '有未儲存的變更' : ''}</span><button class="btn btn-primary" type="button" data-act="save"${dis}>儲存名冊與歸類</button>`;
+  if (me.isAdmin) f += `<span class="qap-muted">${s.dirty ? '有未儲存的變更' : ''}</span><button class="btn btn-primary" type="button" data-act="save"${dis}>${e(s.cr ? s.cr.saveLabel('儲存名冊與歸類') : '儲存名冊與歸類')}</button>`;
   s.foot.innerHTML = f;
 }
 
@@ -2221,7 +2254,9 @@ async function saveSettings(s) {
   if (s.closed) return;
   if (res.ok) {
     s.dirty = false;
-    toast('簽核設定已儲存');
+    // 兩人覆核啟用時伺服器回 202（只是提出、尚未生效）；沒變更回 200 noChange
+    toast(res.status === 202 || (res.data && res.data.noChange) ? window.CfgReview.proposalMessage(res.data) : '簽核設定已儲存', res.status === 202 ? 6000 : undefined);
+    if (s.cr) s.cr.refresh();
     await loadSettingsConfig(s);   // 以伺服器實際儲存的內容為準
     if (s.closed) return;
   } else {
@@ -2284,6 +2319,8 @@ async function openQuoteApprovalSettings() {
     clsSearch: '', onlyUncls: false, hasSeal: false, sealTs: Date.now(),
   };
   _st = s;
+  // 簽核設定變更「兩人覆核」（_client/config-review.js；開關是伺服器環境變數，這裡只顯示狀態）
+  s.cr = window.CfgReview ? window.CfgReview.create({ api: apiCall, onApplied: () => { loadSettingsConfig(s).then(() => { if (!s.closed) renderSettings(s); }); } }) : null;
   s.onKey = (ev) => {
     if (ev.key !== 'Escape') return;
     if (!s.ov.isConnected) { document.removeEventListener('keydown', s.onKey); return; }
@@ -2369,6 +2406,7 @@ async function openQuoteApprovalSettings() {
   }
   s.busy = false;
   renderSettings(s);
+  if (s.cr && me.isAdmin) s.cr.refresh().then(() => { if (!s.closed) renderSettings(s); });   // 抓到開關狀態後，儲存鈕文字才會變成「提出變更（待覆核）」
 }
 
 function renderSettingsLoading(s) {

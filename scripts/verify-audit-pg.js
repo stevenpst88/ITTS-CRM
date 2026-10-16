@@ -13,6 +13,7 @@
  *   node scripts/verify-audit-pg.js                 # 會要求你輸入資料庫主機名稱的前 8 個字元確認
  *   node scripts/verify-audit-pg.js --yes-this-is-test-db      # 略過互動確認
  *   node scripts/verify-audit-pg.js --yes-this-is-test-db --drop   # 跑完後把 audit_events 整張表刪掉（預設保留）
+ *   node scripts/verify-audit-pg.js --yes-this-is-test-db --chain  # 另外執行 [13] 防竄改鏈驗證（第三波；見下方說明）
  *   Remove-Item Env:AUDIT_VERIFY_DATABASE_URL, Env:AUDIT_VERIFY_FORBIDDEN_SUBSTR     # 跑完清掉環境變數
  *
  * 預期時間：約 1–4 分鐘（取決於到 Supabase 的網路延遲；其中 5200 筆大量資料用單一 SQL 產生，其餘走真實程式路徑）。
@@ -42,6 +43,15 @@
  *   [10] 退回    表不可用（暫時把表換成會出錯的 view）時：記 AUDIT_TABLE_UNAVAILABLE、事件仍寫進舊路徑；結束後還原
  *   [11] 清理    只刪本次寫入的資料（extra->>'verifyRun'）；若舊整包列是本腳本建立的也一併刪除
  *   [12] 保護    在交易內套用 supabase/audit_events_protect.sql：UPDATE／DELETE／TRUNCATE 被拒、INSERT 仍可；最後 ROLLBACK
+ *   [13] 防竄改鏈（只有加 --chain 才執行；見 lib/auditChain.js 檔頭的操作手冊）
+ *        13.1 以 AUDIT_CHAIN=1＋這次執行產生的丟棄式隨機金鑰載入真實的 db/postgres.js：自動補 seq／prev_hash／row_hash／kid 欄位與 seq 唯一索引（ALTER … IF NOT EXISTS，冪等；欄位保留是無害的 schema 補強）
+ *        13.2 3 個實例併發寫 100 筆：序號 1..N 無缺號、prev_hash 逐筆銜接、沒有降級（advisory lock 有效），並印出每筆平均耗時
+ *        13.3 特殊內容（NUL、控制字元、jsonb 鍵序、5 萬字、毫秒時間）寫入後讀回，鏈仍驗證通過
+ *        13.4 在交易內竄改（改欄位／時間／操作者／extra、改 prev_hash／kid、刪中間列、刪首列、插入偽造列、換順序、截尾＋錨點）→ 驗證在正確序號抓到；全部 ROLLBACK 後鏈恢復通過；錯誤金鑰失敗；區間驗證
+ *               （若資料表已套用 protect SQL，UPDATE／DELETE 會被拒絕，改以「被拒絕」為證，略過其餘竄改情境）
+ *        13.5 換金鑰（kid 輪替）接續同一條鏈，SECRETS_JSON 帶舊 secret 可驗證整條
+ *        13.6 只清除本次標記（extra.verifyChain）的列
+ *        前置：資料庫內若已有「非本腳本產生」的鏈資料，[13] 整段略過（不碰真實的鏈）。建議只對 Test 專案執行。
  */
 const fs = require('fs');
 const path = require('path');
@@ -75,6 +85,161 @@ function canon(v) {
   return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
 }
 function safeDecode(s) { try { return decodeURIComponent(s); } catch { return s; } }
+
+/**
+ * [13] 防竄改鏈（--chain 才會執行）。在真 Postgres 上驗證 lib/auditChain.js 與 lib/auditStore.js 的鏈：
+ *   欄位／索引冪等建立、3 個實例併發 100 筆（序號 1..N 無缺號、prev_hash 逐筆銜接、advisory lock）、內容原樣讀回後仍驗證通過（時間精度／jsonb 重排／NUL／超長）、
+ *   交易內竄改（改欄位／改時間／刪中間列／插入偽造列／換順序／截尾）→ 驗證在正確序號抓到、ROLLBACK 後恢復通過、帶錨點抓截尾、錯誤金鑰失敗、只清除本次標記的列。
+ * 金鑰是這次執行產生的丟棄式隨機值，只在記憶體，不印出、不寫檔。前置條件：資料庫裡不可有「非本腳本產生」的鏈資料（有就整段略過，不碰真實的鏈）。
+ * ctx：{ pool, q, say, check, skip, loadRepo(flag, extraEnv), runId, op, AS(lib/auditStore), AC(lib/auditChain), count }
+ */
+async function chainSection(ctx) {
+  const { pool, q, say, check, skip, loadRepo, runId, op, AS, AC } = ctx;
+  const secret = 'vfy-' + crypto.randomBytes(24).toString('hex');
+  const chainEnv = { AUDIT_CHAIN: '1', AUDIT_CHAIN_SECRET: secret, AUDIT_CHAIN_KID: 'vfy1' };
+  const cfg = AC.getConfig(chainEnv);
+  const opc = op + '_ch';
+  const mark = (o) => Object.assign({ verifyRun: runId, verifyChain: '1' }, o || {});
+  const hasCols = async () => Number((await q(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'audit_events' AND table_schema = current_schema() AND column_name IN ('seq','prev_hash','row_hash','kid')`))[0].n) === 4;
+
+  // 前置：不碰真實的鏈
+  if (await hasCols()) {
+    const foreign = Number((await q(`SELECT count(*)::int AS n FROM audit_events WHERE seq IS NOT NULL AND coalesce(extra->>'verifyChain', '') <> '1'`))[0].n);
+    if (foreign > 0) { skip('[13] 鏈', `資料庫已有 ${foreign} 筆非本腳本產生的鏈資料，為避免動到真實的鏈整段略過`); return; }
+    const old = await q(`DELETE FROM audit_events WHERE extra->>'verifyChain' = '1' RETURNING id`);
+    if (old.length) say(`    （先清掉上次中斷留下的 ${old.length} 筆鏈測試資料）`);
+  }
+
+  // [13.1] 補欄位（冪等）＋索引
+  const A = loadRepo('1', chainEnv);
+  await A.auditStore.init();
+  check('[13.1] 新表模式，鏈已啟用（金鑰為本次丟棄式隨機值）', A.auditStore.mode() === 'table' && !!(A.auditStore.stats().chain && A.auditStore.stats().chain.enabled), A.auditStore.stats());
+  await A.insertAuditEvent({ kind: 'log', action: 'CH_BOOT', operator: opc, detail: 'boot', extra: mark() });   // 第一筆寫入會觸發 ensureSchema 補鏈欄位
+  await A.flush();
+  const cols = await q(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'audit_events' AND table_schema = current_schema() AND column_name IN ('seq','prev_hash','row_hash','kid')`);
+  const got = Object.fromEntries(cols.map((c) => [c.column_name, c.data_type]));
+  check('[13.1] 鏈欄位存在且型別正確（seq bigint；prev_hash／row_hash／kid text）', JSON.stringify(got, Object.keys(got).sort()) === JSON.stringify({ kid: 'text', prev_hash: 'text', row_hash: 'text', seq: 'bigint' }), got);
+  const idx = (await q(`SELECT indexdef FROM pg_indexes WHERE tablename = 'audit_events' AND indexname = 'audit_events_seq_uidx'`));
+  check('[13.1] seq 唯一索引（partial：WHERE seq IS NOT NULL）存在', idx.length === 1 && /UNIQUE/i.test(idx[0].indexdef) && /seq IS NOT NULL/i.test(idx[0].indexdef), idx);
+  const A2 = loadRepo('1', chainEnv); await A2.auditStore.init(); await A2.auditStore.chainSource();
+  check('[13.1] 第二個實例再跑一次補欄位（IF NOT EXISTS）不出錯', A2.auditStore.stats().chain && A2.auditStore.stats().chain.ddlFailed === false);
+
+  // [13.2] 3 個實例併發 100 筆
+  const insts = [A, A2, loadRepo('1', chainEnv)];
+  const t0 = Date.now();
+  const ps = [];
+  for (let i = 0; i < 100; i++) ps.push(insts[i % 3].insertAuditEvent({ kind: i % 7 === 0 ? 'contact' : 'log', action: 'CH_CONC', operator: opc, target: 'i' + (i % 3), detail: '併發 ' + i + ' 😀', extra: mark({ i, nested: { z: [1, '中', null] } }) }));
+  const res = await Promise.all(ps);
+  for (const m of insts) await m.flush();
+  const ms = Date.now() - t0;
+  say(`    （100 筆併發寫入共 ${ms} ms，約 ${(ms / 100).toFixed(1)} ms／筆——每筆多一個交易＋advisory lock，全站稽核寫入因此序列化）`);
+  check('[13.2] 100 筆寫入全部回報成功', res.every((r) => r === true), res.filter((r) => r !== true).length);
+  check('[13.2] 沒有任何一筆因鏈衝突而降級（breakRisk 全為 0）', insts.every((m) => m.auditStore.stats().chain && m.auditStore.stats().chain.breakRisk === 0), insts.map((m) => m.auditStore.stats().chain));
+  const rows = await q(`SELECT seq, prev_hash, row_hash, kid FROM audit_events WHERE seq IS NOT NULL ORDER BY seq`);
+  const N = rows.length;
+  check('[13.2] 鏈上共 101 筆（boot ＋ 100 筆）', N === 101, N);
+  check('[13.2] seq 為 1..N 無缺號、無重複', rows.every((r, i) => Number(r.seq) === i + 1), rows.slice(0, 3).map((r) => r.seq));
+  check('[13.2] 每一筆 prev_hash 等於前一筆 row_hash（第一筆為 64 個 0）', rows.every((r, i) => r.prev_hash === (i ? rows[i - 1].row_hash : AC.GENESIS)) && rows.every((r) => /^[0-9a-f]{64}$/.test(r.row_hash) && r.kid === 'vfy1'));
+  const src = await A.auditStore.chainSource();
+  let v = await AC.verifyChain(src, cfg, {});
+  check('[13.2] verifyChain 通過：101 筆、鏈頭序號 101', v.ok && v.checked === 101 && v.headSeq === 101 && v.legacyUncovered === 0 && v.unchainedAfterStart === 0, v);
+
+  // [13.3] 內容原樣讀回仍可驗證（時間精度、jsonb 重排、NUL、控制字元、超長）
+  const nasty = [
+    { kind: 'log', action: 'CH_RT', operator: opc, target: 'T\u0000X', detail: '中文 😀 含\u0000NUL 與\u0001\u001f控制字元 "引號" \\反斜線\\', ip: '::1', ua: 'UA/1', extra: mark({ b: 1, a: { d: [3, 2, 1], c: null }, s: '\u0000x', n: 1.5, big: 12345678901, t: true }) },
+    { kind: 'quote-edit', action: 'CH_RT', operator: opc, target: 'Q', detail: 'x'.repeat(50000), extra: mark({ quoteNo: 'Q-1', count: 1 }) },
+    { kind: 'log', action: 'CH_RT', operator: opc, ts: '2026-03-04T05:06:07.089Z', detail: '指定時間（毫秒精度）', extra: mark() },
+  ];
+  for (const e of nasty) await A.insertAuditEvent(e);
+  await A.flush();
+  v = await AC.verifyChain(src, cfg, {});
+  check('[13.3] 特殊內容（NUL／控制字元／jsonb 鍵序／超長／毫秒時間）寫入後讀回，鏈仍驗證通過（雜湊的是實際儲存的值）', v.ok && v.checked === 101 + nasty.length, v);
+  const NN = 101 + nasty.length;
+
+  // [13.4] 交易內竄改 → 驗證抓到 → ROLLBACK 後恢復
+  const cx = await pool.connect();
+  let tamperOk = true;
+  try {
+    await cx.query('BEGIN');
+    const txSrc = AS.pgAdapter({ query: (s, p) => cx.query(s, p), chain: null });
+    const trial = async (label, stmts, expectSeq, expectReason, extraOpts) => {
+      await cx.query('SAVEPOINT t1');
+      let rejected = null;
+      try { for (const [s, p] of stmts) await cx.query(s, p); } catch (e) { rejected = e; }
+      if (rejected) { await cx.query('ROLLBACK TO SAVEPOINT t1'); return { rejected: true }; }
+      const r = await AC.verifyChain(txSrc, cfg, extraOpts || {});
+      await cx.query('ROLLBACK TO SAVEPOINT t1');
+      const reasons = [].concat(expectReason);
+      check(`[13.4] ${label} → 在 seq ${expectSeq} 以 ${reasons.join('／')} 抓到`, !r.ok && r.firstBreak && r.firstBreak.seq === expectSeq && reasons.includes(r.firstBreak.reason), r.firstBreak);
+      return { rejected: false, r };
+    };
+    const first = await trial('改 detail', [[`UPDATE audit_events SET detail = '被竄改' WHERE seq = 50 AND operator = $1`, [opc]]], 50, 'HASH_MISMATCH');
+    if (first.rejected) {
+      tamperOk = false;
+      say('    （UPDATE 被資料庫拒絕——audit_events 已套用保護 SQL；竄改情境改以「被拒絕」本身為證，略過其餘交易內竄改測試）');
+      check('[13.4] 已保護的資料表：UPDATE 被拒絕', true);
+    } else {
+      await trial('改 ts', [[`UPDATE audit_events SET ts = ts + interval '1 second' WHERE seq = 60 AND operator = $1`, [opc]]], 60, 'HASH_MISMATCH');
+      await trial('改 operator', [[`UPDATE audit_events SET operator = operator || 'x' WHERE seq = 61`, []]], 61, 'HASH_MISMATCH');
+      await trial('改 extra（jsonb）', [[`UPDATE audit_events SET extra = jsonb_set(extra, '{i}', '999'::jsonb) WHERE seq = 62`, []]], 62, 'HASH_MISMATCH');
+      await trial('改 prev_hash', [[`UPDATE audit_events SET prev_hash = repeat('a', 64) WHERE seq = 63`, []]], 63, 'PREV_MISMATCH');
+      await trial('改 kid', [[`UPDATE audit_events SET kid = 'nope' WHERE seq = 64`, []]], 64, 'UNKNOWN_KID');
+      await trial('刪中間列', [[`DELETE FROM audit_events WHERE seq = 70 AND operator = $1`, [opc]]], 70, 'SEQ_GAP');
+      await trial('刪第一列', [[`DELETE FROM audit_events WHERE seq = 1 AND operator = $1`, [opc]]], 1, 'SEQ_GAP');
+      await trial('插入偽造列（接在鏈尾、亂填雜湊）', [[`INSERT INTO audit_events (kind, action, operator, extra, seq, prev_hash, row_hash, kid) VALUES ('log', 'CH_FORGED', $1, $2::jsonb, $3::bigint, repeat('b', 64), repeat('c', 64), 'vfy1')`, [opc, JSON.stringify(mark()), NN + 1]]], NN + 1, ['PREV_MISMATCH', 'HASH_MISMATCH']);
+      await trial('換順序（交換 seq 80、81）', [
+        [`UPDATE audit_events SET seq = -1 WHERE seq = 80`, []], [`UPDATE audit_events SET seq = 80 WHERE seq = 81`, []], [`UPDATE audit_events SET seq = 81 WHERE seq = -1`, []]], 80, ['PREV_MISMATCH', 'HASH_MISMATCH']);
+      // 沒有鏈欄位的直接寫入：不算斷鏈，但被計入警示
+      await cx.query('SAVEPOINT t2');
+      await cx.query(`INSERT INTO audit_events (kind, action, operator, extra) VALUES ('log', 'CH_DIRECT', $1, $2::jsonb)`, [opc, JSON.stringify(mark())]);
+      const rd = await AC.verifyChain(txSrc, cfg, {});
+      await cx.query('ROLLBACK TO SAVEPOINT t2');
+      check('[13.4] 鏈啟用後被直接 INSERT（沒有鏈欄位）的列 → 鏈仍通過，但 unchainedAfterStart=1 警示', rd.ok && rd.unchainedAfterStart === 1, rd);
+      // 截尾：沒有錨點偵測不到（已知限制），有錨點抓得到
+      const head = await src.chainHead(), cnt = await src.chainCount();
+      const anchor = AC.makeAnchor(cfg, head, cnt);
+      await cx.query('SAVEPOINT t3');
+      await cx.query(`DELETE FROM audit_events WHERE seq > $1::bigint AND extra->>'verifyChain' = '1'`, [NN - 3]);
+      const noA = await AC.verifyChain(txSrc, cfg, {});
+      const withA = await AC.verifyChain(txSrc, cfg, { anchor });
+      await cx.query('ROLLBACK TO SAVEPOINT t3');
+      check('[13.4] 截掉尾端 3 筆、不帶錨點 → 驗證仍通過（已知限制）', noA.ok && noA.headSeq === NN - 3, noA);
+      check('[13.4] 截掉尾端 3 筆、帶錨點 → TRUNCATED', !withA.ok && withA.anchor && withA.anchor.reason === 'TRUNCATED', withA.anchor);
+      check('[13.4] 錨點簽章可驗證，且未被截尾時比對通過', AC.verifyAnchor(cfg, anchor) && (await AC.verifyChain(src, cfg, { anchor })).anchor.ok);
+    }
+  } finally {
+    await cx.query('ROLLBACK').catch(() => {});
+    cx.release();
+  }
+  v = await AC.verifyChain(src, cfg, {});
+  check('[13.4] ROLLBACK 後：鏈完整恢復，仍驗證通過', v.ok && v.checked === NN, v);
+  const wrong = await AC.verifyChain(src, AC.getConfig({ AUDIT_CHAIN: '1', AUDIT_CHAIN_SECRET: 'vfy-wrong-' + crypto.randomBytes(16).toString('hex'), AUDIT_CHAIN_KID: 'vfy1' }), {});
+  check('[13.4] 用錯誤金鑰驗證 → 第 1 筆就 HASH_MISMATCH（只拿到資料庫的人無法偽造出可驗證的鏈）', !wrong.ok && wrong.firstBreak && wrong.firstBreak.seq === 1 && wrong.firstBreak.reason === 'HASH_MISMATCH', wrong.firstBreak);
+  const part = await AC.verifyChain(src, cfg, { from: 10, to: 20 });
+  check('[13.4] 區間驗證（10..20）11 筆通過', part.ok && part.checked === 11 && part.complete, part);
+
+  // [13.5] 換金鑰（kid 輪替）接續同一條鏈
+  const secret2 = 'vfy2-' + crypto.randomBytes(24).toString('hex');
+  const chainEnv2 = { AUDIT_CHAIN: '1', AUDIT_CHAIN_SECRET: secret2, AUDIT_CHAIN_KID: 'vfy2', AUDIT_CHAIN_SECRETS_JSON: JSON.stringify({ vfy1: secret }) };
+  const R = loadRepo('1', chainEnv2);
+  for (let i = 0; i < 3; i++) await R.insertAuditEvent({ kind: 'log', action: 'CH_ROT', operator: opc, detail: 'rot ' + i, extra: mark() });
+  await R.flush();
+  const cfg2 = AC.getConfig(chainEnv2);
+  const rk = (await q(`SELECT kid FROM audit_events WHERE seq > $1::bigint ORDER BY seq`, [NN])).map((r) => r.kid);
+  check('[13.5] 換金鑰後新列 kid=vfy2，序號接續', rk.join() === 'vfy2,vfy2,vfy2', rk);
+  v = await AC.verifyChain(await R.auditStore.chainSource(), cfg2, {});
+  check('[13.5] 帶舊 secret（SECRETS_JSON）驗證整條通過', v.ok && v.checked === NN + 3, v);
+  v = await AC.verifyChain(await R.auditStore.chainSource(), AC.getConfig({ AUDIT_CHAIN: '1', AUDIT_CHAIN_SECRET: secret2, AUDIT_CHAIN_KID: 'vfy2' }), {});
+  check('[13.5] 遺失舊 secret → 舊列 UNKNOWN_KID', !v.ok && v.firstBreak && v.firstBreak.reason === 'UNKNOWN_KID' && v.firstBreak.seq === 1, v.firstBreak);
+
+  // [13.6] 清理：只刪本次標記的列
+  const del = await q(`DELETE FROM audit_events WHERE extra->>'verifyChain' = '1' RETURNING id`);
+  check(`[13.6] 刪除本次標記的鏈測試資料（${del.length} 筆）`, del.length >= NN + 3, del.length);
+  const left = Number((await q(`SELECT count(*)::int AS n FROM audit_events WHERE extra->>'verifyChain' = '1' OR operator = $1`, [opc]))[0].n);
+  check('[13.6] 沒有任何殘留', left === 0, left);
+  const chained = Number((await q(`SELECT count(*)::int AS n FROM audit_events WHERE seq IS NOT NULL`))[0].n);
+  check('[13.6] 資料庫內不再有任何鏈資料（鏈欄位保留，這是冪等且無害的 schema 補強）', chained === 0, chained);
+}
 
 /**
  * opts: { env, argv, out(line), ask(prompt)->Promise<string>, pg(模組，測試注入用) }
@@ -171,16 +336,20 @@ async function run(opts) {
   const runId = 'v' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex');
   const op = 'vfy_' + runId;
   say('本次標記 verifyRun=' + runId);
-  const saveEnv = { u: process.env.DATABASE_URL, f: process.env.AUDIT_EVENTS_TABLE };
+  const CHAIN_VARS = ['AUDIT_CHAIN', 'AUDIT_CHAIN_SECRET', 'AUDIT_CHAIN_KID', 'AUDIT_CHAIN_SECRETS_JSON'];
+  const saveEnv = { u: process.env.DATABASE_URL, f: process.env.AUDIT_EVENTS_TABLE, chain: Object.fromEntries(CHAIN_VARS.map((k) => [k, process.env[k]])) };
   const dbFile = path.join(ROOT, 'db', 'postgres.js');
   const storeFile = path.join(ROOT, 'lib', 'auditStore.js');
   const legacyFile = path.join(ROOT, 'lib', 'auditLegacy.js');
   const loaded = [];
   /** 全新載入一份真實的 db/postgres.js（＝一個「實例」：自己的連線池與快取）；flag='1' 走新表，undefined＝旗標關 */
-  const loadRepo = (flag) => {
+  const chainFile = path.join(ROOT, 'lib', 'auditChain.js');
+  const loadRepo = (flag, extraEnv) => {
     process.env.DATABASE_URL = url;
     if (flag === undefined) delete process.env.AUDIT_EVENTS_TABLE; else process.env.AUDIT_EVENTS_TABLE = flag;
-    for (const f of [dbFile, storeFile, legacyFile]) delete require.cache[f];
+    for (const k of CHAIN_VARS) delete process.env[k];          // 預設＝鏈關閉；只有明確傳入的才會設
+    if (extraEnv) for (const k of Object.keys(extraEnv)) process.env[k] = extraEnv[k];
+    for (const f of [dbFile, storeFile, legacyFile, chainFile]) delete require.cache[f];
     const m = require(dbFile);
     loaded.push(m);
     return m;
@@ -188,6 +357,7 @@ async function run(opts) {
   const restoreEnv = () => {
     if (saveEnv.u === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = saveEnv.u;
     if (saveEnv.f === undefined) delete process.env.AUDIT_EVENTS_TABLE; else process.env.AUDIT_EVENTS_TABLE = saveEnv.f;
+    for (const k of CHAIN_VARS) { if (saveEnv.chain[k] === undefined) delete process.env[k]; else process.env[k] = saveEnv.chain[k]; }
   };
   const section = async (name, fn) => {
     say('— ' + name + ' —');
@@ -463,6 +633,13 @@ async function run(opts) {
       check('[12] ROLLBACK 後可 INSERT 與 DELETE（表未被保護、可清理）', (await q(`DELETE FROM audit_events WHERE operator = $1 RETURNING id`, [op + '_p2'])).length === 1);
     });
 
+    if (argv.includes('--chain')) {
+      await section('[13] 防竄改鏈（--chain）', async () => {
+        const ACm = require(chainFile);
+        await chainSection({ pool, q, say, check, skip, loadRepo, runId, op, AS: AS || require(storeFile), AC: ACm });
+      });
+    } else say('（未加 --chain：略過 [13] 防竄改鏈驗證）');
+
     if (argv.includes('--drop')) {
       await section('[--drop] 刪除 audit_events', async () => {
         await q('DROP TABLE IF EXISTS audit_events');
@@ -474,7 +651,7 @@ async function run(opts) {
     say('FAIL 驗證流程中斷 ← ' + redact(e && e.message));
   } finally {
     restoreEnv();
-    for (const f of [dbFile, storeFile, legacyFile]) delete require.cache[f];
+    for (const f of [dbFile, storeFile, legacyFile, chainFile]) delete require.cache[f];
     await pool.end().catch(() => {});
   }
 
@@ -495,7 +672,7 @@ async function main(opts) {
   finally { console.log = orig.log; console.error = orig.error; console.warn = orig.warn; }
 }
 
-module.exports = { main, makeRedactor, NOT_EMPTY_MSG };
+module.exports = { main, makeRedactor, NOT_EMPTY_MSG, chainSection };
 
 if (require.main === module) {
   main().then((r) => {

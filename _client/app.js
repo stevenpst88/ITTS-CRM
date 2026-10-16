@@ -8785,7 +8785,7 @@ function renderNotifList(list) {
     callin_new:'📞', callin_assigned:'📋', callin_overdue:'⏰', callin_responded:'✅',
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
-    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝'
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
@@ -11163,6 +11163,15 @@ async function submitForcePassword() {
     try {
       // 只看 API 回應；clone 避免消費掉 body
       const url = (args[0] && args[0].url) || args[0] || '';
+      // 伺服器端閒置逾時（SESSION_IDLE_MINUTES）／連線失效：留下提示後回登入頁，登入頁會顯示「閒置過久已登出」
+      if (typeof url === 'string' && url.includes('/api/') && res.status === 401 && !url.includes('/api/login')) {
+        const c401 = await res.clone().json().catch(() => null);
+        if (c401 && (c401.code === 'SESSION_IDLE_TIMEOUT' || c401.code === 'SESSION_EXPIRED' || c401.code === 'SESSION_INVALID')) {
+          try { sessionStorage.setItem('loginNotice', c401.code); } catch (_) { /* 無痕模式 */ }
+          _rememberDeepLink(true);
+          window.location.href = '/login.html';
+        }
+      }
       if (typeof url === 'string' && url.includes('/api/') && res.status === 403) {
         const cloned = res.clone();
         const data = await cloned.json().catch(() => null);

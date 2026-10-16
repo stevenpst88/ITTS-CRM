@@ -494,7 +494,7 @@ async function run() {
   { const q0 = mkQuote(); q0.company = 'SECRET-CLIENT'; q0.approval = Object.assign(approvalOf(q0, 'pending'), { steps: [{ tier: 'mgr1', label: 'm', assignee: 'mgr1', status: 'pending' }, { tier: 'board', label: 'b', status: 'waiting' }], cur: 0 });
     const e0 = envOf(q0); e0.auth.users.push({ username: 'sec2', role: 'secretary', active: true, displayName: 'OtherBuSec', bu: ['ERP'] });
     await e0.call('own1', 'PUT', NOTES, { id: 'Q1' }, { items: [{ lid: 'i1', note: SECRET }] });
-    t('9.32 重現：董事會關卡還在 waiting（尚未輪到）→ 秘書（本部門 sec1、其他部門 sec2）完全沒收到通知；收到的人（目前簽核人 mgr1）才有客戶名；沒有任何通知把客戶名送給 ERP 部門的秘書', noteTargets(e0) === 'mgr1' && !textNotes(e0).some((n) => (n.to === 'sec1' || n.to === 'sec2') && /SECRET-CLIENT/.test(J(n))) && (await e0.call('sec2', 'GET', '/api/quotations/:id', { id: 'Q1' })).s !== 200); }
+    t('9.32 重現：董事會關卡還在 waiting（尚未輪到）→ 秘書（本部門 sec1、其他部門 sec2）完全沒收到通知；收到的人（目前簽核人 mgr1）才有客戶名；沒有任何通知把客戶名送給 ERP 部門的秘書（2026-10-14 起秘書可跨 BU 唯讀開單，所以 sec2 GET 單筆為 200；通知內容的限制不變）', noteTargets(e0) === 'mgr1' && !textNotes(e0).some((n) => (n.to === 'sec1' || n.to === 'sec2') && /SECRET-CLIENT/.test(J(n))) && (await e0.call('sec2', 'GET', '/api/quotations/:id', { id: 'Q1' })).s === 200); }
   env = envOf(chain([{ tier: 'mgr1', by: 'mgr1' }, { tier: 'gm', by: 'gm1' }, { tier: 'board', by: 'sec1' }], null));
   env.auth.users.push({ username: 'sec2', role: 'secretary', active: true, displayName: 'OtherBuSec', bu: ['ERP'] });
   await env.call('own1', 'PUT', NOTES, { id: 'Q1' }, { items: [{ lid: 'i1', note: SECRET }] });
