@@ -1981,16 +1981,38 @@ function renderContacts(contacts) {
     return;
   }
 
+  // 自己範圍的客戶直接顯示；純因 Key Account 跨部門共享才看得到的（_kaOnly）收折在最下方
+  const ownList = contacts.filter(c => !c._kaOnly);
+  const kaOnlyList = contacts.filter(c => c._kaOnly);
+  list.className = isSearchMode ? 'contact-list' : 'contact-list grouped';
+  fillContactList(list, ownList);
+  if (kaOnlyList.length) {
+    const det = document.createElement('details');
+    det.className = 'ka-shared-fold';
+    det.open = isSearchMode;   // 搜尋時自動展開，避免找不到
+    const sum = document.createElement('summary');
+    sum.className = 'ka-shared-fold-sum';
+    sum.textContent = '其他部門的 Key Account 客戶（' + kaOnlyList.length + ' 筆，點擊展開）';
+    const wrap = document.createElement('div');
+    wrap.className = isSearchMode ? 'contact-list' : 'contact-list grouped';
+    det.appendChild(sum);
+    det.appendChild(wrap);
+    det.addEventListener('toggle', () => { if (det.open && !wrap.dataset.filled) { wrap.dataset.filled = '1'; fillContactList(wrap, kaOnlyList); } });
+    if (det.open) { wrap.dataset.filled = '1'; fillContactList(wrap, kaOnlyList); }
+    list.appendChild(det);
+  }
+}
+
+// 把一組名片依「搜尋平鋪／集團→公司→聯絡人分組」渲染進 host
+function fillContactList(host, items) {
   if (isSearchMode) {
     // 搜尋模式：平鋪所有結果
-    list.className = 'contact-list';
-    contacts.forEach(c => list.appendChild(buildContactCard(c)));
+    items.forEach(c => host.appendChild(buildContactCard(c)));
   } else {
     // 預設模式：集團卡 → 子公司卡 → 聯絡人卡 三層分組
-    list.className = 'contact-list grouped';
     const withCompany = new Map();
     const noCompany = [];
-    contacts.forEach(c => {
+    items.forEach(c => {
       if (c.company) {
         if (!withCompany.has(c.company)) withCompany.set(c.company, []);
         withCompany.get(c.company).push(c);
@@ -2010,7 +2032,7 @@ function renderContacts(contacts) {
       const hasContacts = group.memberCompanies.some(co => withCompany.has(co));
       if (!hasContacts || renderedGroupIds.has(group.id)) return;
       renderedGroupIds.add(group.id);
-      list.appendChild(buildGroupCard(group, withCompany));
+      host.appendChild(buildGroupCard(group, withCompany));
     });
 
     // 再渲染無集團的公司
@@ -2018,7 +2040,7 @@ function renderContacts(contacts) {
       .filter(([company]) => !groupedCompanyNames.has(company))
       .sort(([a], [b]) => a.localeCompare(b, 'zh-TW'))
       .forEach(([company, members]) => {
-        list.appendChild(buildCompanyGroupEl(company, members));
+        host.appendChild(buildCompanyGroupEl(company, members));
       });
 
     // 無公司的聯絡人放最後
@@ -2028,7 +2050,7 @@ function renderContacts(contacts) {
       section.innerHTML = `<div class="no-company-label">無公司聯絡人</div><div class="no-company-grid"></div>`;
       const grid = section.querySelector('.no-company-grid');
       noCompany.forEach(c => grid.appendChild(buildContactCard(c)));
-      list.appendChild(section);
+      host.appendChild(section);
     }
   }
 }
