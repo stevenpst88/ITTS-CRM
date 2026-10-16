@@ -4708,3 +4708,11 @@ body.dark:not(.glass) .rh-tag { background: #21262d; }
 .rh-card > .rh-vis { display: none; }
 /* 統編↔公司名稱守門：被擋時存檔鈕反灰 */
 #saveBtn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 其他部門共享的 Key Account 客戶：預設收折在「我的客戶」清單最下方 */
+.ka-shared-fold { margin-top: 18px; border: 1px dashed rgba(128,128,128,.45); border-radius: 12px; padding: 0 12px; }
+.ka-shared-fold-sum { cursor: pointer; padding: 12px 4px; font-size: 13px; font-weight: 600; opacity: .8; list-style: none; }
+.ka-shared-fold-sum::-webkit-details-marker { display: none; }
+.ka-shared-fold-sum::before { content: '▸ '; }
+.ka-shared-fold[open] > .ka-shared-fold-sum::before { content: '▾ '; }
+.ka-shared-fold > .contact-list { padding-bottom: 12px; }
