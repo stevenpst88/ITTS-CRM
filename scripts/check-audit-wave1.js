@@ -187,7 +187,7 @@ async function sec1() {
   eq(r.json && r.json.role, 'user', '降權後同一 cookie 的 role 即時變 user（以 DB 為準）');
   r = await http('_s_m1', 'GET', '/api/contacts');
   ok(Array.isArray(r.json) && !r.json.some(c => c.id === 'c1'), '降權後即時看不到下屬聯絡人');
-  await adminPutUser('_s_m1', { role: 'manager1' });
+  await adminPutUser('_s_m1', { role: 'manager1', quoteMode: 'approver' });
   r = await http('_s_m1', 'GET', '/api/contacts');
   ok(Array.isArray(r.json) && r.json.some(c => c.id === 'c1'), '還原角色後立即恢復');
 

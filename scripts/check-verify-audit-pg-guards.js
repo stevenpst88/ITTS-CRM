@@ -167,6 +167,40 @@ const note = (x) => { allText.push(x.text); return x; };
   ok(!/console\.(log|error|warn)\([^)]*\burl\b/.test(code), '沒有直接把 url 印出來的 console 呼叫');
   ok(/if \(!url\) return abort/.test(code) && code.indexOf('abort(2') < code.indexOf('new pgMod.Pool'), '所有字串防護都在建立連線池之前');
   ok(code.indexOf('BEGIN READ ONLY') < code.indexOf('CREATE TABLE') || !/CREATE TABLE/.test(code), '空庫檢查在任何寫入語句之前');
+  // 10 --chain（第三波）不繞過任何防護：旗標只在所有防護通過、連線與空庫檢查之後才被讀取
+  {
+    const Y = '--yes-this-is-test-db', C = '--chain';
+    x = note(await go({}, [C]));
+    ok(x.r.code === 2 && x.st.pools === 0, '--chain：沒設環境變數照樣中止、沒連線');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URLX, DATABASE_URL: URLX }, [Y, C]));
+    ok(x.r.code === 2 && /DATABASE_URL/.test(x.text) && x.st.pools === 0, '--chain：與 DATABASE_URL 相同照樣中止');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URLX, AUDIT_VERIFY_FORBIDDEN_SUBSTR: 'FAKEPROJECT0123' }, [Y, C]));
+    ok(x.r.code === 2 && /FORBIDDEN/.test(x.text) && x.st.pools === 0, '--chain：禁止字串照樣中止');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URLX }, [Y, C], { main: { contacts: 900 } }));
+    ok(x.r.code === 2 && x.text.includes('這看起來不是空的測試資料庫') && x.st.queries.every((q) => !WRITE.test(q)), '--chain：非空資料庫照樣中止且只送唯讀語句');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URLX }, [C], { main: null }, { ask: async () => 'wrongpre' }));
+    ok(x.r.code === 2 && /前綴不符/.test(x.text), '--chain：主機前綴確認照樣要求');
+    x = note(await go({ AUDIT_VERIFY_DATABASE_URL: URLX }, [Y, C], { main: null }));
+    ok(x.r.guardsPassed === true && x.st.queries.every((q) => !WRITE.test(q)), '--chain：防護全通過時（stopAfterGuards）仍沒有任何寫入語句');
+    // 靜態：[13] 區段
+    const src2 = fs.readFileSync(path.join(__dirname, 'verify-audit-pg.js'), 'utf8');
+    const code2 = src2.replace(/^#!.*\n/, '').replace(/\/\*\*[\s\S]*?\*\//, '');
+    const i0 = src2.indexOf('async function chainSection(ctx)');
+    const i1 = src2.indexOf('\n}\n', i0);
+    const body = src2.slice(i0, i1);
+    ok(i0 > 0 && i1 > i0, '找得到 chainSection 函式本體');
+    ok(/crypto\.randomBytes/.test(body) && !/AUDIT_CHAIN_SECRET:\s*'[^']{12,}'/.test(body) && !/AUDIT_CHAIN_SECRET:\s*process\.env/.test(body), '[13] 金鑰是這次執行產生的隨機值（沒有寫死、也不讀環境變數裡的真實金鑰）');
+    ok(!/\b(say|console\.(log|error|warn))\([^)]*\bsecret2?\b/.test(body), '[13] 金鑰不會被印出');
+    ok(!/DROP\s+TABLE|TRUNCATE\s+(TABLE\s+)?audit_events|DROP\s+COLUMN/i.test(body), '[13] 不含 DROP TABLE／TRUNCATE／DROP COLUMN');
+    const dels = body.match(/DELETE\sFROM audit_events[^`]*`/g) || [];
+    ok(dels.length >= 3 && dels.every((d) => /verifyChain/.test(d) || /operator = \$1/.test(d)), '[13] 每一個 DELETE 都限定在本次標記（extra.verifyChain）或測試操作者', dels);
+    ok(!/UPDATE\s+audit_events[^`]*`/.test(body.replace(/UPDATE\saudit_events SET [^`]*`/g, '')), '[13] UPDATE 只出現在交易內的竄改測試');
+    ok(/await cx\.query\('BEGIN'\)/.test(body) && /finally \{\s*await cx\.query\('ROLLBACK'\)/.test(body), '[13] 竄改測試在交易內進行，finally 一定 ROLLBACK');
+    ok(!/writeFileSync|appendFileSync|createWriteStream/.test(body), '[13] 不寫任何檔案');
+    ok(!/DATABASE_URL|AUDIT_VERIFY_DATABASE_URL/.test(body), '[13] 區段本身不碰連線字串');
+    ok(code2.indexOf("argv.includes('--chain')") > code2.indexOf('stopAfterGuards') && code2.indexOf('await chainSection(') > code2.indexOf('stopAfterGuards'), '[13] --chain 只在所有防護通過後才被讀取與執行');
+    ok(/foreign > 0\) \{ skip\(/.test(body) && body.indexOf('foreign > 0') < body.indexOf("loadRepo('1', chainEnv)"), '[13] 資料庫已有非本腳本產生的鏈資料 → 在載入程式、寫入之前就略過');
+  }
   console.log(`verify-audit-pg 防護檢查：PASS ${pass} / FAIL ${fail}`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('例外', e); process.exit(2); });

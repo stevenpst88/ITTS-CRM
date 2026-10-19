@@ -255,13 +255,14 @@ function compareToBase(res, base, assert) {
     const a = res[u], b = base[u];
     const strip = d => { const x = Object.assign({}, d); NEW_KEYS.forEach(k => delete x[k]); return x; };
     const sortId = arr => arr.slice().sort((p, q) => p.id < q.id ? -1 : 1);
-    assert(JSON.stringify(sortId(a.dateChanges.map(strip))) === JSON.stringify(sortId(b.dateChanges)), `[基底比對 ${u}] dateChanges 既有欄位逐欄相同（不含排序）`);
+    assert(JSON.stringify(sortId(a.dateChanges.map(strip))) === JSON.stringify(sortId(b.dateChanges.map(strip))), `[基底比對 ${u}] dateChanges 既有欄位逐欄相同（不含排序）`);
     assert(a.dateChanges.map(d => d.id).sort().join() === b.dateChanges.map(d => d.id).sort().join(), `[基底比對 ${u}] 可視範圍／列出的商機相同`);
     for (const k of ['funnel', 'newDeals', 'lostDeals', 'promoted', 'demoted', 'amountChanges', 'period', 'ownerOptions']) {
       assert(JSON.stringify(a[k]) === JSON.stringify(b[k]), `[基底比對 ${u}] ${k} 不變`);
     }
     const sa = Object.assign({}, a.summary); delete sa.repeatedCount;
-    assert(JSON.stringify(sa) === JSON.stringify(b.summary), `[基底比對 ${u}] summary 既有欄位不變`, [sa, b.summary]);
+    const sb = Object.assign({}, b.summary); delete sb.repeatedCount;   // 基底若已含此功能（merge-base 在功能合併之後），兩邊都要剔除新欄位
+    assert(JSON.stringify(sa) === JSON.stringify(sb), `[基底比對 ${u}] summary 既有欄位不變`, [sa, sb]);
   }
 }
 function baseServerSrc() {

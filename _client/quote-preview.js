@@ -106,6 +106,9 @@ function _qpvStamped(q) {
   return !!(a && a.state === 'approved' && a.valid === true);
 }
 let _qpvSealVer = Date.now();   // 每次開預覽換一個，避免瀏覽器快取到舊章
+// 報價專用章圖（data URL）。章只在「正式發出的 PDF 流程」取得：伺服器 GET /quotations/:id/seal 需要發出憑證（stampToken，單次使用），
+// 所以網頁預覽預設沒有章（空字串）；quote-pdf.js 取得憑證換到圖後暫時設定這個值，產完 PDF 立刻清掉。
+let _qpvSealSrc = '';
 
 /** 預覽上方的簽核警示條：未核准／核准已失效時提醒「下載的 PDF 不會有報價專用章」（Excel 則一律不蓋章） */
 function _qpvApprovalNotice(q) {
@@ -243,7 +246,7 @@ function buildQuotePreviewHtml(q, info) {
     <div class="qpv-remarks"><div>Remarks ：</div>${remarks}</div>
     <div class="qpv-sign">
       <div class="col"><div>Customer Confirme by:</div><div class="sig">&nbsp;</div><div class="ln">請簽回以確認訂單</div></div>
-      <div class="col"><div>Prepared by :</div><div class="sig">${_qpvStamped(q) ? `<img class="qpv-seal" src="${API}/quotations/${encodeURIComponent(q.id)}/seal?v=${_qpvSealVer}" alt="報價專用章" onerror="this.style.display='none'">` : '&nbsp;'}</div><div class="ln">ITTS Corp.</div></div>
+      <div class="col"><div>Prepared by :</div><div class="sig">${_qpvStamped(q) ? (_qpvSealSrc ? `<img class="qpv-seal" src="${_qpvSealSrc}" alt="報價專用章" onerror="this.style.display='none'">` : '<span class="qpv-sealnote" style="font-size:11px;color:#8a94a3">（報價專用章於下載 PDF 時蓋上）</span>') : '&nbsp;'}</div><div class="ln">ITTS Corp.</div></div>
     </div>
   </div>`;
 }
@@ -443,7 +446,7 @@ async function previewQuote(id) {
       </div>
       <div class="modal-body qpv-body">
         <div id="qpvNotice">${_qpvNotice(info, q)}</div>
-        <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；實際成品以下載的檔案為準。報價專用章只會出現在 PDF 與此預覽，Excel 一律不蓋章。</div>
+        <div class="qpv-hint">這是示意預覽，只顯示客戶看得到的內容（不含成本與毛利）。日期為現在送出會蓋的台灣當天日期；實際成品以下載的檔案為準。報價專用章只會出現在下載的 PDF（每次下載都會由伺服器核發發出序號與蓋章憑證；未核准的單一律標示「草稿」且不蓋章），此預覽與 Excel 都不蓋章。</div>
         <div class="qpv-stage" id="qpvStage">${buildQuotePreviewHtml(q, info)}</div>
       </div>
       <div class="modal-footer">

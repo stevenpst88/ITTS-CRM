@@ -868,7 +868,7 @@
       </div>
       <div class="nav-domain" data-domain="people" data-name="人員與權限" data-color="#185FA5" data-icon="👥" style="--dc:#185FA5">
         <div class="nav-domain-header" role="button" tabindex="0" aria-expanded="false">
-          <span class="nav-dot"></span><span class="nav-domain-name">人員與權限</span><span class="nav-domain-count">4</span>
+          <span class="nav-dot"></span><span class="nav-domain-name">人員與權限</span><span class="nav-domain-count">5</span>
           <span class="nav-group-arrow">▼</span>
         </div>
         <div class="nav-domain-items"><div class="nav-domain-inner">
@@ -883,6 +883,9 @@
           </div>
           <div class="admin-nav-item nav-sub" data-sec="transfer">
             <span class="admin-nav-icon">🔄</span> 名單移轉
+          </div>
+          <div class="admin-nav-item nav-sub" data-sec="access-review">
+            <span class="admin-nav-icon">🧾</span> 季度帳號覆核
           </div>
         </div></div>
       </div>
@@ -1040,6 +1043,7 @@
           <div class="admin-card-header">
             <span class="admin-card-title">使用者列表</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn ax-surface-text" id="qmReportBtn" type="button" title="列出報價單權限類型（簽核／唯讀）的設定狀況與目前簽核職責">🔏 報價單權限類型報告</button>
               <button class="btn ax-surface-text" id="emailImportBtn" type="button">📧 批次匯入 Email</button>
               <button class="btn btn-primary" id="addUserBtn">＋ 新增帳號</button>
             </div>
@@ -1947,6 +1951,48 @@
         </div>
       </div>
 
+      <!-- ── 季度帳號與權限覆核 ── -->
+      <div class="admin-section" id="sec-access-review">
+        <div class="section-title">季度帳號覆核</div>
+        <div class="section-sub">列出每個帳號的角色、權限、簽核職責與風險旗標，供管理員每季覆核並簽核留底。報表不含密碼、token 與 email 位址（只標示有無）。簽核紀錄只增不改。</div>
+        <div id="arSummary" class="stat-row" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <span class="admin-card-title">帳號清單 <span id="arCount" style="font-size:12px;color:#888;font-weight:400"></span></span>
+            <span>
+              <button class="btn btn-sm" id="arExportCsv" style="background:#e8f0fe;color:#1a73e8">⬇ 匯出 CSV</button>
+              <button class="btn btn-sm" id="arReload" style="background:#f0f2f5;color:#333">重新整理</button>
+              <button class="btn btn-sm btn-primary" id="arSignoffBtn">✍ 完成本季覆核簽核</button>
+            </span>
+          </div>
+          <div class="admin-card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px;border-bottom:1px solid #f0f0f0">
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">風險旗標</div>
+              <select id="arFlag" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部帳號</option><option value="*">僅有任一旗標</option></select></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">角色</div>
+              <select id="arRole" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部角色</option></select></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">文字搜尋</div>
+              <input id="arQ" placeholder="帳號／名稱" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px"></div>
+            <div style="font-size:12px;color:#888" id="arMeta"></div>
+          </div>
+          <div style="overflow-x:auto;max-height:560px;overflow-y:auto" id="arTable"><div style="text-align:center;color:#bbb;padding:40px">載入中...</div></div>
+        </div>
+        <div class="admin-card" id="arSignoffCard" style="display:none">
+          <div class="admin-card-header"><span class="admin-card-title">完成本季覆核簽核</span></div>
+          <div class="admin-card-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:13px;color:#555;line-height:1.7">簽核會把「目前帳號與權限組態」的雜湊（快照）連同你的意見永久留底，之後不能修改或刪除。請先逐項看過上方旗標。</div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">季別</div><input id="arQuarter" maxlength="6" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:110px"></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">覆核意見（最多 1000 字）</div><textarea id="arComment" rows="3" maxlength="1000" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></textarea></div>
+            <div><div style="font-size:12px;color:#888;margin-bottom:3px">例外帳號（每行一筆：帳號: 說明；明知有旗標但同意保留者）</div><textarea id="arExceptions" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px" placeholder="例：some.user: 專案結束前保留下載權限"></textarea></div>
+            <div id="arSignoffErr" style="color:#c5221f;font-size:13px"></div>
+            <div><button class="btn btn-primary" id="arSignoffSubmit">確認簽核</button> <button class="btn" id="arSignoffCancel" style="background:#f0f2f5;color:#333">取消</button></div>
+          </div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-card-header"><span class="admin-card-title">歷次覆核簽核紀錄</span></div>
+          <div class="admin-card-body" style="padding:12px 16px" id="arHistory"><div style="color:#bbb">載入中...</div></div>
+        </div>
+      </div>
+
       <!-- ── 名片操作紀錄 ── -->
       <div class="admin-section" id="sec-contact-audit">
         <div class="section-title">名片操作紀錄</div>
@@ -2535,6 +2581,7 @@
       <div class="admin-section" id="sec-approval-flow">
         <div class="section-title">⚙️ 簽核流程設定</div>
         <div class="section-sub">設定各 BU 是否啟用二級主管複核步驟，以及個別人員的例外規則（例如跳過一級主管直送總經理）。設定儲存後，新送簽的報價單即採用新流程；已在簽核中的單子不受影響。</div>
+        <div id="afCrHost" style="max-width:900px;margin-bottom:10px"></div>
         <div class="admin-card" style="padding:18px;max-width:900px">
           <div id="afBuSection" style="margin-bottom:24px">
             <div style="font-weight:600;font-size:14px;margin-bottom:12px;color:#374151">各 BU 簽核流程（勾選即時預覽）</div>
@@ -2628,6 +2675,13 @@
         <div class="admin-card" style="margin-bottom:16px">
           <div class="admin-card-header"><span class="admin-card-title">🧾 稽核儲存</span></div>
           <div class="admin-card-body" id="vAuditInfo" style="padding:14px"></div>
+          <div class="admin-card-body" id="vIssueInfo" style="padding:0 14px 14px"></div>
+        </div>
+
+        <!-- 稽核防竄改（hash chain） -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🔗 稽核防竄改</span></div>
+          <div class="admin-card-body" id="vChainInfo" style="padding:14px"></div>
         </div>
 
         <!-- 後端套件 -->
@@ -2898,6 +2952,16 @@
             <option value="groupsales">集團業務（可在集團內編輯）</option>
           </select>
         </div>
+        <div class="form-group" id="quoteModeFieldGroup" style="display:none">
+          <label for="fieldQuoteMode">報價單權限類型 <span style="color:#ef4444;font-size:12px">*</span></label>
+          <select id="fieldQuoteMode" aria-describedby="fieldQuoteModeHint fieldQuoteModeErr" aria-required="true">
+            <option value="">— 請選擇 —</option>
+            <option value="approver">簽核（可被指派為簽核人、收簽核通知）</option>
+            <option value="readonly">唯讀（只能檢視，不能簽核）</option>
+          </select>
+          <div id="fieldQuoteModeHint" style="font-size:11px;color:#9ca3af;margin-top:4px"></div>
+          <div id="fieldQuoteModeErr" role="alert" style="display:none;font-size:12px;color:#c5221f;margin-top:4px"></div>
+        </div>
         <!-- 集團PM 專屬欄位（其他角色隱藏）-->
         <div class="form-group" id="tecopmFieldGroup" style="display:none">
           <label>查看的業務 <span style="color:#ef4444;font-size:12px">*</span></label>
@@ -3079,6 +3143,18 @@
   </div>
 
   <!-- ── 刪除確認 Modal ── -->
+  <div class="modal-overlay" id="qmReportModal">
+    <div class="modal" style="width:min(860px,94vw)">
+      <div class="modal-header">
+        <h3>報價單權限類型報告</h3>
+        <button class="modal-close" id="qmReportClose" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body" id="qmReportBody"></div>
+      <div class="modal-footer">
+        <button class="btn" style="background:#f0f2f5;color:#333" id="qmReportOk">關閉</button>
+      </div>
+    </div>
+  </div>
   <div class="modal-overlay" id="delModal">
     <div class="modal" style="width:360px">
       <div class="modal-header">
@@ -3107,6 +3183,7 @@
 
   <script src="idle-timeout.js" data-ignore-expired="1"></script><!-- 閒置 30 分鐘自動登出（admin 自己有登入畫面，沒登入的 401 不導向，只處理閒置逾時） -->
   <script src="glass-theme.js"></script>
+  <script src="config-review.js"></script>
   <script src="admin-users-view.js"></script>
   <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
@@ -3182,6 +3259,7 @@
         if (this.dataset.sec === 'product-catalog') initProductCatalog();
         if (this.dataset.sec === 'quote-pricebook') initPricebook();
         if (this.dataset.sec === 'approval-flow') initApprovalFlow();
+        if (this.dataset.sec === 'access-review') initAccessReview();
       });
     });
 
@@ -3390,7 +3468,19 @@
     // ── 簽核流程設定（Admin）───────────────────────────────────
     const AF_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const AF_ACTIONS = [{ value: 'skip_mgr1', label: '跳過一級主管' }];
-    let _afInited = false, _afCfg = null, _afUsers = null;
+    let _afInited = false, _afCfg = null, _afUsers = null, _afCr = null;
+
+    // 兩人覆核（_client/config-review.js）用的 API：刻意不走 adminFetch——它把任何 403 都當成 session 過期而跳回登入畫面，
+    // 但「不能覆核自己的申請」就是正常的 403（SELF_REVIEW_FORBIDDEN）。
+    async function _afCrApi(method, path, body) {
+      const opt = { method, headers: {}, credentials: 'same-origin' };
+      if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+      let r;
+      try { r = await fetch(API + path, opt); } catch (e) { return { ok: false, status: 0, data: { error: '網路連線失敗，請稍後再試' } }; }
+      if (r.status === 401) { showLoginScreen(); return { ok: false, status: 401, data: { error: 'Session 已過期，請重新登入' } }; }
+      let d = null; try { d = await r.json(); } catch (e) { d = null; }
+      return { ok: r.ok, status: r.status, data: d || {} };
+    }
 
     async function initApprovalFlow() {
       if (_afInited) return;
@@ -3410,6 +3500,11 @@
         _afRender();
         $('afSaveBtn').addEventListener('click', _afSave);
         $('afAddExBtn').addEventListener('click', _afAddException);
+        if (window.CfgReview) {
+          _afCr = window.CfgReview.create({ api: _afCrApi, onApplied: async () => { try { const c = await adminFetch('/api/admin/quote-approval/flow-config'); if (c.ok) { _afCfg = await c.json(); _afRender(); } } catch (e) { /* 重新整理頁面即可 */ } } });
+          _afCr.paint($('afCrHost'));
+          _afCr.refresh().then(() => { $('afSaveBtn').textContent = _afCr.enabled() ? _afCr.saveLabel('') : '💾 儲存設定'; });
+        }
       } catch (e) {
         st.textContent = '載入失敗：' + e.message;
       }
@@ -3518,7 +3613,16 @@
       _afCfg.buSettings = buSettings;
       try {
         const r = await adminFetch('/api/admin/quote-approval/flow-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ buSettings, exceptions: _afCfg.exceptions || [] }) });
-        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.status); }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (r.status === 202 || d.noChange) {
+          // 兩人覆核啟用：只是「提出」，尚未生效。畫面改回伺服器目前實際生效的設定，避免看起來像已經改了
+          st.textContent = '📨 ' + window.CfgReview.proposalMessage(d);
+          const c = await adminFetch('/api/admin/quote-approval/flow-config');
+          if (c.ok) { _afCfg = await c.json(); _afRender(); }
+          if (_afCr) _afCr.refresh();
+          return;
+        }
         st.textContent = '✅ 儲存成功';
         setTimeout(() => { st.textContent = ''; }, 3000);
       } catch (e) {
@@ -4808,8 +4912,10 @@
     async function adminFetch(url, options = {}) {
       const r = await fetch(url, options);
       if (r.status === 401 || r.status === 403) {
+        let idleMsg = '';
+        if (r.status === 401) { try { const j = await r.clone().json(); if (j && j.code === 'SESSION_IDLE_TIMEOUT') idleMsg = '閒置過久已登出，請重新登入'; } catch (_) { /* 非 JSON 回應 */ } }
         showLoginScreen();
-        $('adminLoginErr').textContent = 'Session 已過期，請重新登入';
+        $('adminLoginErr').textContent = idleMsg || 'Session 已過期，請重新登入';
         $('adminLoginErr').classList.add('show');
         throw new Error('Session expired');
       }
@@ -4888,7 +4994,8 @@
         : '<span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px">✏️ 可編輯</span>';
     }
     function uvRoleBadge(u) { return `<span class="badge badge-${uvCls(u.role)}">${escH(UV.roleLabel(u.role))}</span>`; }
-    function uvStatusBadge(u) { return `<span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span>`; }
+    function uvStatusBadge(u) { return `<span class="badge ${u.active ? 'badge-active' : 'badge-inactive'}">${u.active ? '啟用' : '停用'}</span>` + (u.locked ? ` <span class="badge badge-inactive" data-locked="1" title="連續登入失敗已鎖定${u.lockUntil ? '，至 ' + escH(new Date(u.lockUntil).toLocaleString()) : ''}；鎖定期間連正確密碼也無法登入">🔒 已鎖定</span>` : ''); }
+    function uvUnlockBtn(u, un) { return u.locked ? `<button class="btn btn-sm btn-primary" data-action="unlock" data-username="${un}">解鎖</button>` : ''; }
 
     function uvRowHtml(u, nameCount) {
       const un = escH(u.username);
@@ -4898,7 +5005,7 @@
           <td>${escH(u.displayName)}</td>
           <td>${u.nickname ? '<strong>' + escH(u.nickname) + '</strong>' : '<span style="color:#b0b7c3">—</span>'}${uvDupBadge(u, nameCount)}</td>
           <td>${typeof mailEmailCell === 'function' ? mailEmailCell(u) : ''}</td>
-          <td>${uvRoleBadge(u)}</td>
+          <td>${uvRoleBadge(u)}${uvQmBadge(u)}</td>
           <td>${uvBuHtml(u)}</td>
           <td>${uvStatusBadge(u)}</td>
           <td>${uvAccessHtml(u)}</td>
@@ -4917,7 +5024,7 @@
           <td>
             <div style="display:flex;gap:6px;flex-wrap:nowrap">
               <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
-              <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+              ${uvUnlockBtn(u, un)}<button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
               <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
             </div>
           </td>
@@ -4939,7 +5046,7 @@
               <div class="uv-cuser">${un}${u.displayName && u.nickname ? ' ・ ' + escH(u.displayName) : ''}</div>
             </div>
           </div>
-          <div class="uv-cmeta">${uvRoleBadge(u)}${uvStatusBadge(u)}${uvAccessHtml(u)}</div>
+          <div class="uv-cmeta">${uvRoleBadge(u)}${uvQmBadge(u)}${uvStatusBadge(u)}${uvAccessHtml(u)}</div>
           <div class="uv-cmeta">${uvBuHtml(u)}</div>
           <div class="uv-cmail">${typeof mailEmailCell === 'function' ? mailEmailCell(u) : ''}</div>
           <div class="uv-ctoggles">
@@ -4948,7 +5055,7 @@
           </div>
           <div class="uv-cactions">
             <button class="btn btn-sm btn-primary"  data-action="edit"   data-username="${un}">編輯</button>
-            <button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
+            ${uvUnlockBtn(u, un)}<button class="btn btn-sm btn-warning"  data-action="resetpw" data-username="${un}">重設密碼</button>
             <button class="btn btn-sm btn-danger"   data-action="delete" data-username="${un}">刪除</button>
           </div>
         </article>`;
@@ -5110,7 +5217,19 @@
       if (action === 'edit')    openEditUser(username);
       if (action === 'resetpw') openResetPw(username);
       if (action === 'delete')  openDeleteUser(username);
+      if (action === 'unlock')  unlockUser(username);
     });
+    // 解除登入鎖定（LOGIN_LOCKOUT=1 時才會出現「已鎖定」徽章與此按鈕）
+    async function unlockUser(username) {
+      if (!confirm('確定解除帳號 ' + username + ' 的登入鎖定？（會寫入稽核紀錄 LOGIN_UNLOCK）')) return;
+      try {
+        const r = await adminFetch(`${API}/admin/users/${encodeURIComponent(username)}/unlock`, { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { showToast(d.error || '解鎖失敗'); return; }
+        showToast('✅ 已解除鎖定');
+        loadUsers();
+      } catch (e) { if (e.message !== 'Session expired') showToast('解鎖失敗'); }
+    }
     document.addEventListener('change', function(e) {
       const inp = e.target.closest('input[data-action="toggle"]');
       if (!inp) return;
@@ -5190,6 +5309,84 @@
       } catch { /* ignore */ }
     }
 
+    // ── 報價單權限類型（quoteMode：簽核／唯讀 二擇一）──────────────────────────────
+    // 欄位只在「角色不建立報價單、且該角色已開報價單功能」時出現（資料來自 GET /api/admin/role-permissions 的 matrix 與 nonCreatorQuoteRoles），
+    // 此時必填。建單角色（業務／二級主管等）不適用；若原本有設定值，儲存時送空字串清除。伺服器端才是執法點，這裡只是輔助。
+    let qmCtx = null;     // { nonCreator:Set, matrix:{role:[feature…]} }；抓不到就不顯示欄位（伺服器仍會驗證並回錯誤訊息）
+    let qmOrig = null;    // 編輯中的帳號（新增時 null）
+    async function qmLoadCtx() {
+      try {
+        const r = await adminFetch(`${API}/admin/role-permissions`);
+        if (!r.ok) return;
+        const d = await r.json();
+        qmCtx = { nonCreator: new Set(Array.isArray(d.nonCreatorQuoteRoles) ? d.nonCreatorQuoteRoles : []), matrix: d.matrix || {} };
+      } catch (_) { /* 抓不到就不顯示欄位 */ }
+    }
+    function qmApplicable(role) { return !!(qmCtx && qmCtx.nonCreator.has(role)); }
+    function qmFeatureOn(role) { return !!(qmCtx && Array.isArray(qmCtx.matrix[role]) && qmCtx.matrix[role].indexOf('quotations') >= 0); }
+    function qmShown(role) { return qmApplicable(role) && qmFeatureOn(role); }
+    function qmShowErr(msg) { const el = $('fieldQuoteModeErr'); el.textContent = msg || ''; el.style.display = msg ? '' : 'none'; $('fieldQuoteMode').setAttribute('aria-invalid', msg ? 'true' : 'false'); }
+    function qmRefresh() {
+      const role = $('fieldRole').value;
+      const grp = $('quoteModeFieldGroup'), sel = $('fieldQuoteMode'), hint = $('fieldQuoteModeHint');
+      qmShowErr('');
+      if (qmShown(role)) {
+        grp.style.display = ''; sel.disabled = false;
+        hint.textContent = '職能分工：「簽核」的人可被指派為簽核人、列入簽核名冊並收簽核通知；「唯讀」的人只能檢視、不能簽核也不會被指派。兩者互斥，必須選一個。';
+      } else if (qmCtx && !qmApplicable(role) && qmOrig && qmOrig.quoteMode) {
+        grp.style.display = ''; sel.disabled = true; sel.value = '';
+        hint.textContent = '此角色為建單角色，不適用。儲存時會清除原有的設定（原為「' + (qmOrig.quoteMode === 'approver' ? '簽核' : '唯讀') + '」）。';
+      } else {
+        grp.style.display = 'none';
+      }
+    }
+    $('fieldRole').addEventListener('change', qmRefresh);
+    $('fieldQuoteMode').addEventListener('change', () => qmShowErr(''));
+    // 帳號列表的小徽章：簽核／唯讀／未設定（適用且有報價單功能但沒設）／—（不適用）
+    function uvQmBadge(u) {
+      const st = 'font-size:10.5px;font-weight:600;padding:2px 6px;border-radius:99px;margin-left:4px;white-space:nowrap';
+      if (u.quoteMode === 'approver') return `<span title="報價單權限類型：簽核" style="background:#dcfce7;color:#166534;${st}">簽核</span>`;
+      if (u.quoteMode === 'readonly') return `<span title="報價單權限類型：唯讀" style="background:#e5e7eb;color:#374151;${st}">唯讀</span>`;
+      if (u.quoteModeRequired) return `<span title="尚未設定報價單權限類型（舊帳號維持原行為）；請編輯帳號選擇簽核或唯讀" style="background:#fef3c7;color:#92400e;${st}">未設定</span>`;
+      return `<span title="${u.quoteModeApplicable ? '此角色未開報價單功能' : '建單角色或管理員，不適用'}" style="color:#b0b7c3;margin-left:4px">—</span>`;
+    }
+    // 報價單權限類型報告（唯讀）：列出該設定的帳號與目前是否身負簽核職責
+    const QM_ISSUE_LABEL = {
+      UNSET_WITH_DUTIES: '⚠ 未設定且身負簽核職責（優先處理）', UNSET: '未設定',
+      READONLY_WITH_DUTIES: '⚠ 唯讀但仍在名冊／待簽關卡（需移除名冊或改派）', MODE_NOT_APPLICABLE: '建單角色不適用，設定會被忽略',
+      CREATOR_ROLE_ON_ROSTER: '⚠ 建單角色卻列在總經理／董事長名冊'
+    };
+    async function openQuoteModeReport() {
+      $('qmReportBody').innerHTML = '<div style="padding:16px;color:#9ca3af">載入中…</div>';
+      $('qmReportModal').classList.add('open');
+      try {
+        const r = await adminFetch(`${API}/admin/quote-mode-report`);
+        const d = await r.json();
+        if (!r.ok) { $('qmReportBody').innerHTML = '<div style="padding:16px;color:#c5221f">' + escH(d.error || '載入失敗') + '</div>'; return; }
+        const s = d.summary || {};
+        const dutyText = (x) => {
+          const du = x.duties || {}, parts = [];
+          (du.roster || []).forEach(l => parts.push(l));
+          if (du.mgr1For) parts.push('一級主管（' + du.mgr1For + ' 位業務）');
+          if (du.mgr2For) parts.push('二級主管（' + du.mgr2For + ' 位業務）');
+          if (du.pendingCount) parts.push('待簽 ' + du.pendingCount + ' 張');
+          if (du.costProvider) parts.push('成本填寫人');
+          return parts.length ? parts.map(escH).join('、') : '—';
+        };
+        const stLabel = { approver: '簽核', readonly: '唯讀', unset: '未設定', na: '—', not_applicable: '不適用' };
+        $('qmReportBody').innerHTML =
+          `<div style="font-size:13px;margin-bottom:10px">共 ${Number(s.total) || 0} 個帳號：簽核 ${Number(s.approver) || 0}、唯讀 ${Number(s.readonly) || 0}、<b>未設定 ${Number(s.unset) || 0}</b>（其中身負簽核職責 ${Number(s.unsetWithDuties) || 0}）；唯讀卻仍有職責 ${Number(s.readonlyWithDuties) || 0}</div>` +
+          '<div style="overflow:auto;max-height:55vh"><table class="admin-table"><thead><tr><th>帳號</th><th>角色</th><th>類型</th><th>目前簽核職責</th><th>提醒</th></tr></thead><tbody>' +
+          (d.rows || []).map(x => `<tr><td><strong>${escH(x.username)}</strong>${x.displayName && x.displayName !== x.username ? '<div style="font-size:11px;color:#8a94a3">' + escH(x.displayName) + '</div>' : ''}${x.active === false ? ' <span style="color:#9ca3af;font-size:11px">（停用）</span>' : ''}</td>` +
+            `<td>${escH(x.role)}</td><td>${escH(stLabel[x.status] || x.status)}</td><td style="font-size:12px">${dutyText(x)}</td>` +
+            `<td style="font-size:12px">${(x.issues || []).map(i => escH(QM_ISSUE_LABEL[i] || i)).join('<br>') || '—'}</td></tr>`).join('') +
+          '</tbody></table></div>';
+      } catch (e) { if (e.message !== 'Session expired') $('qmReportBody').innerHTML = '<div style="padding:16px;color:#c5221f">載入失敗</div>'; }
+    }
+    $('qmReportBtn').addEventListener('click', openQuoteModeReport);
+    $('qmReportClose').addEventListener('click', () => $('qmReportModal').classList.remove('open'));
+    $('qmReportOk').addEventListener('click', () => $('qmReportModal').classList.remove('open'));
+
     // ── 新增帳號 ──
     $('addUserBtn').addEventListener('click', async () => {
       $('userModalTitle').textContent = '新增帳號';
@@ -5207,6 +5404,7 @@
       $('fieldCanDownload').checked = false;
       $('fieldCanTargets').checked = false;
       $('fieldPureSupervisor').checked = false;
+      qmOrig = null; $('fieldQuoteMode').value = ''; await qmLoadCtx();
       // Phase 3：accessMode 預設 edit
       const accEdit = document.querySelector('input[name="fieldAccessMode"][value="edit"]');
       if (accEdit) accEdit.checked = true;
@@ -5216,6 +5414,7 @@
       $('fieldViewOwnerScope').value = '';
       $('fieldViewGroupId').value = '';
       onRoleChange();
+      qmRefresh();
       $('userModal').classList.add('open');
     });
 
@@ -5236,6 +5435,7 @@
       $('fieldCanDownload').checked = u.canDownloadContacts;
       $('fieldCanTargets').checked = u.canSetTargets;
       $('fieldPureSupervisor').checked = !!u.pureSupervisor;
+      qmOrig = u; $('fieldQuoteMode').value = u.quoteMode || ''; await qmLoadCtx();
       // Phase 3：載入 accessMode
       const accVal = (u.accessMode === 'view') ? 'view' : 'edit';
       const accRadio = document.querySelector(`input[name="fieldAccessMode"][value="${accVal}"]`);
@@ -5246,6 +5446,7 @@
       $('fieldViewOwnerScope').value = u.viewOwnerScope || '';
       $('fieldViewGroupId').value    = u.viewGroupId    || '';
       onRoleChange();
+      qmRefresh();
       $('userModal').classList.add('open');
     }
 
@@ -5274,6 +5475,14 @@
         if (!viewOwnerScope) { showToast('請選擇查看的業務'); return; }
         if (!viewGroupId)    { showToast('請選擇查看的集團'); return; }
       }
+      // 報價單權限類型：欄位顯示時必填（簽核／唯讀）；建單角色且原本有設定 → 送空字串清除
+      let qmValue; // undefined＝不送
+      if (qmShown(role)) {
+        qmValue = $('fieldQuoteMode').value;
+        if (!qmValue) { qmShowErr('請選擇「報價單權限類型」（簽核或唯讀）'); $('fieldQuoteMode').focus(); return; }
+      } else if (isEdit && qmCtx && !qmApplicable(role) && qmOrig && qmOrig.quoteMode) {
+        qmValue = '';
+      }
       // Phase 3：accessMode（admin 永遠 edit）
       const accessModeRaw = document.querySelector('input[name="fieldAccessMode"]:checked')?.value || 'edit';
       const accessMode = (role === 'admin') ? 'edit' : (accessModeRaw === 'view' ? 'view' : 'edit');
@@ -5288,6 +5497,7 @@
         accessMode,
         supervisor: $('fieldSupervisor').value || '',
         pureSupervisor: $('fieldPureSupervisor').checked,
+        ...(qmValue !== undefined ? { quoteMode: qmValue } : {}),
         ...(isTecoPm ? { viewOwnerScope, viewGroupId } : {})
       };
       const _emailPatch = typeof mailEmailPayload === 'function' ? mailEmailPayload(isEdit) : null;   // 簽核信件 Email：編輯＝有改才送、新增＝有填才送
@@ -5303,8 +5513,8 @@
           r = await adminFetch(`${API}/admin/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: un, password: pw, ...payload }) });
         }
         const data = await r.json();
-        if (!r.ok) { if (typeof mailShowEmailError === 'function') mailShowEmailError(data); showToast(data.error || '儲存失敗'); return; }
-        showToast(isEdit ? '✅ 帳號已更新' : '✅ 帳號已新增');
+        if (!r.ok) { if (typeof mailShowEmailError === 'function') mailShowEmailError(data); if (data.code && String(data.code).indexOf('QUOTE_MODE') === 0) qmShowErr(data.error); showToast(data.error || '儲存失敗'); return; }
+        showToast((isEdit ? '✅ 帳號已更新' : '✅ 帳號已新增') + (data.notice ? '（' + data.notice + '）' : ''));
         closeUserModal();
         loadUsers();
       } catch (e) { if (e.message !== 'Session expired') showToast('操作失敗，請重試'); }
@@ -5356,7 +5566,7 @@
 
     // ── 異動記錄 ──
     const ACTION_LABELS = {
-      CREATE_USER: '新增帳號', UPDATE_USER: '更新帳號',
+      CREATE_USER: '新增帳號', UPDATE_USER: '更新帳號', QUOTE_MODE_CHANGE: '報價單權限類型變更', VIEW_QUOTE_MODE_REPORT: '檢視報價單權限類型報告',
       DELETE_USER: '刪除帳號', RESET_PASSWORD: '重設密碼',
       UPDATE_PERMISSION: '更新權限', LOGIN: '登入',
       CHANGE_PASSWORD: '修改密碼', IMPORT_CONTACTS: '匯入名單',
@@ -5369,7 +5579,7 @@
       SET_TARGET: '設定目標',
       IMPORT_USER_EMAILS: 'Email 批次匯入', REQUEUE_MAIL: '重送簽核信',
       QUOTE_MAIL_FAILED: '簽核信寄送失敗', QUOTE_MAIL_SKIPPED: '簽核信略過',
-      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
+      SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', FEATURE_GUARD_WOULD_DENY: '功能權限（試行：會被擋）', FEATURE_GUARD_DENY: '功能權限（已阻擋）', FEATURE_GUARD_UNCLASSIFIED: '功能權限（路由未歸類）', ACCESS_REVIEW_SIGNOFF: '季度帳號覆核簽核', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
@@ -6107,6 +6317,12 @@
         '<span style="font-size:18px;flex-shrink:0">💡</span><div><strong>' + escH(db.engine || '—') + '</strong><br>' +
         '<span style="color:#555;line-height:1.7">' + escH(db.note || '') + '</span></div></div>';
     }
+    function verIssueHtml(d) {
+      const q = d && d.quoteIssuance;
+      if (!q) return '';
+      const chip = (label, on) => '<span style="font-size:12px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + (on ? '#137333' : '#5f6368') + ';background:' + (on ? '#e6f4ea' : '#f1f3f4') + '">' + escH(label) + '：' + (on ? '開' : '關') + '</span>';
+      return '<div style="font-size:12px;color:#888;margin-bottom:6px">報價文件發出開關（環境變數）</div><div style="display:flex;gap:8px;flex-wrap:wrap">' + chip('未核准可發出草稿', !!q.draftIssueAllowed) + chip('草稿浮水印', !!q.draftWatermark) + '</div>';
+    }
     function verAuditHtml(d) {
       if (!d || !d.auditStore) {
         return '<div style="color:#888;font-size:13px">此伺服器版本未提供稽核儲存資訊</div>';
@@ -6150,6 +6366,254 @@
       return html;
     }
 
+    // ── 稽核防竄改（hash chain）卡：版本資訊頁。全部文字經 escH；按鈕不帶任何資料進屬性 ──
+    const CHAIN_REASON = {
+      SEQ_GAP: '序號不連續（中間缺列、重複或順序被改）', PREV_MISMATCH: '與前一筆的銜接雜湊不符', HASH_MISMATCH: '內容與簽章不符（欄位被改過或金鑰不同）',
+      UNKNOWN_KID: '找不到該金鑰代號的金鑰', TRUNCATED: '錨點記錄的那一筆已不在資料庫（尾端被截掉）', ANCHOR_MISMATCH: '錨點那一筆的雜湊與當時記錄的不同（被改寫或回溯）',
+      ANCHOR_HMAC_INVALID: '錨點本身的簽章不正確',
+      OFF: '尚未啟用', NO_KEY: '沒有可用的金鑰', KEY_TOO_SHORT: '金鑰太短（至少 16 字元）', TABLE_MODE_OFF: '稽核新資料表尚未啟用（AUDIT_EVENTS_TABLE=1）', COLUMNS_NOT_READY: '鏈欄位尚未建立',
+    };
+    function chainReasonText(r) { return CHAIN_REASON[r] || String(r || ''); }
+    function chainFmtTs(ts) { return ts ? String(ts).replace('T', ' ').slice(0, 19) + ' UTC' : '—'; }
+    /** h＝GET /api/admin/audit-chain/head 的回應；vr＝剛按「立即驗證」的結果（或 {error}），沒有就用 h.lastVerify */
+    function verChainHtml(h, vr) {
+      if (!h || typeof h !== 'object') return '<div style="color:#888;font-size:13px">此伺服器版本未提供稽核防竄改資訊</div>';
+      const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const w = h.writes || {};
+      const lv = vr && !vr.error ? { ts: vr.ts, ok: vr.ok, checked: vr.checked, complete: vr.complete, firstBreak: vr.firstBreak, anchorChecked: !!vr.anchor } : (h.lastVerify || null);
+      const risk = num(w.breakRisk);
+      let chip, cc, cb;
+      if (!h.configured && !h.canVerify)      { chip = '未啟用';        cc = '#5f6368'; cb = '#f1f3f4'; }
+      else if (lv && lv.ok === false)         { chip = '驗證失敗';      cc = '#c5221f'; cb = '#fce8e6'; }
+      else if (risk > 0 || (h.configured && !h.enabled)) { chip = h.enabled ? '有事件未上鏈' : '無法啟用'; cc = '#b06000'; cb = '#fef3e0'; }
+      else if (h.enabled)                     { chip = '運作中';        cc = '#137333'; cb = '#e6f4ea'; }
+      else                                    { chip = '已停用（可驗證）'; cc = '#b06000'; cb = '#fef3e0'; }
+      const cells = [
+        { label: '新事件上鏈', value: h.enabled ? '是' : '否', warn: h.configured && !h.enabled },
+        { label: '鏈頭序號', value: h.canVerify ? num(h.headSeq) : '—' },
+        { label: '金鑰代號', value: h.kid || '—' },
+        { label: '未上鏈風險', value: risk, bad: risk > 0 },
+      ];
+      let html = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">' +
+        '<span id="chainChip" style="font-size:11px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + cc + ';background:' + cb + '">' + escH(chip) + '</span>' +
+        '<span style="font-size:14px;font-weight:700;color:#1a2d52">稽核日誌雜湊鏈（HMAC，金鑰只在伺服器環境變數）</span></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">' +
+        cells.map(i => '<div style="background:#f8f9fa;border-radius:10px;padding:12px 14px;border-left:3px solid ' + (i.bad ? '#ea4335' : i.warn ? '#f9ab00' : '#34a853') + '">' +
+          '<div style="font-size:11px;color:#888;margin-bottom:4px">' + escH(i.label) + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:' + (i.bad ? '#c5221f' : '#1a2d52') + '">' + escH(String(i.value)) + '</div></div>').join('') + '</div>';
+      if (vr && vr.error) {
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;color:#c5221f">驗證沒有完成：' + escH(String(vr.error).slice(0, 200)) + '</div>';
+      } else if (lv) {
+        const bk = lv.firstBreak;
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;line-height:1.7;color:' + (lv.ok ? '#137333' : '#c5221f') + '">' +
+          '<strong>' + (lv.ok ? '✓ 驗證通過' : '✗ 驗證失敗') + '</strong>　' + escH(chainFmtTs(lv.ts)) + '　已檢查 ' + escH(String(num(lv.checked))) + ' 筆' +
+          (lv.complete === false ? '（尚未驗完）' : '') + (lv.anchorChecked ? '（含錨點比對）' : '') +
+          (bk ? '<br>第一個斷點：序號 ' + escH(String(num(bk.seq))) + '　原因：' + escH(chainReasonText(bk.reason)) + (bk.detail ? '　<span style="color:#555">' + escH(String(bk.detail).slice(0, 200)) + '</span>' : '') : '') + '</div>';
+        if (vr && !vr.error && (num(vr.legacyUncovered) || num(vr.unchainedAfterStart))) {
+          html += '<div style="margin-top:6px;font-size:12px;color:#b06000">未納入鏈（舊資料）：' + escH(String(num(vr.legacyUncovered))) + ' 筆' +
+            (num(vr.unchainedAfterStart) ? '；鏈啟用後仍有 ' + escH(String(num(vr.unchainedAfterStart))) + ' 筆沒有簽章（關閉期間寫入、寫入失敗改走備援，或有人直接寫入資料庫——請對照稽核日誌）' : '') + '</div>';
+        }
+      } else if (h.canVerify) {
+        html += '<div id="chainVerifyResult" style="margin-top:12px;font-size:13px;color:#555">尚未驗證過。</div>';
+      }
+      const la = h.lastAnchor;
+      const wh = h.webhook || {};
+      html += '<div style="margin-top:10px;font-size:12px;color:#555;line-height:1.8">最近錨點：' + (la ? escH(chainFmtTs(la.ts)) + '（序號 ' + escH(String(num(la.seq))) + '）' : '尚無') +
+        '；已保存 ' + escH(String(num(h.anchorsStored))) + ' 份　｜　外部推送：' + (wh.configured ? (wh.valid ? '已設定（' + escH(String(wh.host || '')) + '）' : '設定無效（' + escH(chainReasonText(wh.reason)) + '）') : '未設定') +
+        '　｜　每日排程密鑰：' + (h.cronSecretConfigured ? '已設定' : '<span style="color:#b06000">未設定（排程不會執行）</span>') + '</div>';
+      if (h.canVerify) {
+        html += '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">' +
+          '<button id="chainVerifyBtn" class="btn btn-sm btn-primary" onclick="chainVerifyNow()">立即驗證</button>' +
+          '<button id="chainAnchorBtn" class="btn btn-sm" style="background:#f0f2f5;color:#333" onclick="chainDownloadAnchor()">下載錨點</button></div>' +
+          '<div style="margin-top:8px;font-size:11px;color:#888">錨點是鏈頭的簽章快照；請定期下載並保存在離線或另一套系統，日後可用來證明日誌沒有被截尾或回溯。</div>';
+      } else {
+        html += '<div style="margin-top:12px;font-size:12px;color:#555;line-height:1.7">' + escH(chainReasonText(h.reason)) +
+          '。要啟用：在環境變數設定 <code>AUDIT_CHAIN_SECRET</code>（長隨機字串）、<code>AUDIT_EVENTS_TABLE=1</code>、<code>AUDIT_CHAIN=1</code> 後重新部署。</div>';
+      }
+      return html;
+    }
+    async function loadChainCard(vr) {
+      const el = $('vChainInfo');
+      if (!el) return;
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/head`);
+        if (!r.ok) { el.innerHTML = verChainHtml(null); return; }
+        el.innerHTML = verChainHtml(await r.json(), vr);
+      } catch (e) { if (e.message !== 'Session expired') el.innerHTML = '<div style="color:#c5221f;font-size:13px">讀取稽核防竄改狀態失敗</div>'; }
+    }
+    async function chainVerifyNow() {
+      const b = $('chainVerifyBtn');
+      if (b) { b.disabled = true; b.textContent = '驗證中…'; }
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/verify`);
+        const j = await r.json();
+        await loadChainCard(r.ok ? j : { error: j.error || ('HTTP ' + r.status) });
+      } catch (e) { if (e.message !== 'Session expired') await loadChainCard({ error: '連線失敗' }); }
+    }
+    async function chainDownloadAnchor() {
+      try {
+        const r = await adminFetch(`${API}/admin/audit-chain/anchor?download=1`);
+        const j = await r.json();
+        if (!r.ok) { showToast(j.error || '取得錨點失敗'); return; }
+        const blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'audit-anchor-' + j.seq + '-' + String(j.ts).slice(0, 10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        showToast('已下載錨點（序號 ' + j.seq + '）');
+      } catch (e) { if (e.message !== 'Session expired') showToast('取得錨點失敗'); }
+    }
+
+    // ── 季度帳號覆核：純渲染函式（值一律 escH；舊版 API 缺欄位時不丟錯）──
+    const AR_FLAG_COLOR = { ADMIN: ['#1a73e8', '#e8f0fe'], VIEW_ALL_ROLE: ['#b06000', '#fef3e0'], DOWNLOAD_PERMISSION: ['#b06000', '#fef3e0'], INACTIVE_90D: ['#c5221f', '#fce8e6'], NEVER_LOGGED_IN: ['#c5221f', '#fce8e6'], PASSWORD_OLD: ['#b06000', '#fef3e0'], ROSTER_BUT_INACTIVE: ['#c5221f', '#fce8e6'], SHARED_NAME_SUSPECT: ['#c5221f', '#fce8e6'], NO_EMAIL: ['#5f6368', '#f1f3f4'], QUOTE_FEATURE_WITHOUT_CLEAR_DUTY: ['#b06000', '#fef3e0'] };
+    function arFlagChip(f, labels) {
+      const c = AR_FLAG_COLOR[f] || ['#5f6368', '#f1f3f4'];
+      return '<span class="badge" data-flag="' + escH(f) + '" title="' + escH(f) + '" style="color:' + c[0] + ';background:' + c[1] + ';margin:1px 3px 1px 0">' + escH((labels && labels[f]) || f) + '</span>';
+    }
+    function arSummaryHtml(r) {
+      const sm = (r && r.summary) || {};
+      const labels = (r && r.flagLabels) || {};
+      const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const card = (label, val, color) => '<div class="stat-card"><div class="stat-label">' + escH(label) + '</div><div class="stat-value" style="font-size:26px;color:' + (color || '#1a2d52') + '">' + escH(String(val)) + '</div></div>';
+      let h = card('帳號總數', n(sm.accounts)) + card('啟用中', n(sm.active), '#137333') + card('有旗標的帳號', n(sm.flaggedAccounts), n(sm.flaggedAccounts) ? '#b06000' : '#137333');
+      const fc = sm.flagCounts || {};
+      Object.keys(fc).forEach(k => { h += card(labels[k] || k, n(fc[k]), n(fc[k]) ? (AR_FLAG_COLOR[k] || ['#1a2d52'])[0] : '#9aa0a6'); });
+      return h;
+    }
+    function arAccountMatches(a, f) {
+      f = f || {};
+      if (f.role && a.role !== f.role) return false;
+      if (f.flag === '*' && !(a.flags || []).length) return false;
+      if (f.flag && f.flag !== '*' && !(a.flags || []).includes(f.flag)) return false;
+      const q = String(f.q || '').trim().toLowerCase();
+      if (q && !(String(a.username).toLowerCase().includes(q) || String(a.displayName).toLowerCase().includes(q))) return false;
+      return true;
+    }
+    function arTableHtml(r, f) {
+      const accs = ((r && r.accounts) || []).filter(a => arAccountMatches(a, f));
+      if (!accs.length) return '<div style="text-align:center;color:#bbb;padding:40px">沒有符合條件的帳號</div>';
+      const labels = (r && r.flagLabels) || {};
+      const showQm = !!(r && r.meta && r.meta.hasQuoteMode);
+      const day = (v) => v ? escH(String(v).slice(0, 10)) : '—';
+      let h = '<table class="admin-table" style="min-width:980px"><thead><tr><th>帳號</th><th>顯示名稱</th><th>角色</th><th>BU</th>' + (showQm ? '<th>報價模式</th>' : '') + '<th>狀態</th><th>下載/目標</th><th>簽核職責</th><th>最後登入</th><th>密碼天數</th><th>旗標</th></tr></thead><tbody>';
+      accs.forEach(a => {
+        const d = a.duties || {};
+        const duty = (d.rosterLabels || []).concat(d.pendingApprovalSteps ? ['待簽 ' + d.pendingApprovalSteps] : [], d.supervisesOthers ? ['主管 ' + d.supervisesOthers + ' 人'] : []);
+        h += '<tr data-user="' + escH(a.username) + '"><td><strong>' + escH(a.username) + '</strong></td><td>' + escH(a.displayName) + '</td><td>' + escH(a.role) + '</td><td>' + escH((a.bu || []).join('、') || '—') + '</td>' +
+          (showQm ? '<td>' + escH(a.quoteMode || '—') + '</td>' : '') +
+          '<td><span class="badge ' + (a.active ? 'badge-active' : 'badge-inactive') + '">' + (a.active ? '啟用' : '停用') + '</span>' + (a.accessMode === 'view' ? ' <span class="badge badge-user">唯讀</span>' : '') + '</td>' +
+          '<td>' + (a.canDownloadContacts ? '下載 ' : '') + (a.canSetTargets ? '目標' : '') + (!a.canDownloadContacts && !a.canSetTargets ? '—' : '') + '</td>' +
+          '<td style="font-size:12px">' + (duty.length ? escH(duty.join('、')) : '—') + '</td>' +
+          '<td>' + day(a.lastLoginAt) + '</td><td>' + (a.passwordAgeDays == null ? '—' : escH(String(a.passwordAgeDays))) + '</td>' +
+          '<td>' + ((a.flags || []).map(x => arFlagChip(x, labels)).join('') || '<span style="color:#9aa0a6">—</span>') + '</td></tr>';
+      });
+      return h + '</tbody></table>';
+    }
+    function arHistoryHtml(hist) {
+      const recs = (hist && hist.records) || [];
+      const chain = (hist && hist.chain) || {};
+      let h = chain.ok === false ? '<div style="background:#fce8e6;color:#c5221f;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px" data-chain="bad">⚠ 簽核紀錄的雜湊鏈驗證失敗（第 ' + escH(String(chain.badAt)) + ' 筆起不一致），紀錄可能被竄改，請立即查明。</div>' : '';
+      if (!recs.length) return h + '<div style="color:#9aa0a6;font-size:13px">尚無簽核紀錄</div>';
+      recs.slice().reverse().forEach(r => {
+        const ex = Array.isArray(r.exceptions) ? r.exceptions : [];
+        h += '<div class="ar-rec" data-seq="' + escH(String(r.seq)) + '" style="border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-bottom:10px">' +
+          '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="color:#1a2d52">' + escH(r.quarter) + '</strong>' +
+          '<span style="font-size:12px;color:#555">簽核人 ' + escH(r.by) + '・' + escH(String(r.at || '').replace('T', ' ').slice(0, 19)) + ' UTC</span>' +
+          (r.matchesCurrent ? '<span class="badge badge-active">現況與簽核時一致</span>' : '<span class="badge" style="color:#b06000;background:#fef3e0">此後帳號／權限組態已有變動</span>') + '</div>' +
+          '<div style="font-size:12px;color:#555;margin-top:6px">帳號數 ' + escH(String(r.accountCount)) + '・例外 ' + escH(String(ex.length)) + ' 筆・快照 <code title="' + escH(r.snapshotHash) + '">' + escH(String(r.snapshotHash || '').slice(0, 16)) + '…</code></div>' +
+          (r.comment ? '<div style="font-size:13px;margin-top:6px;white-space:pre-wrap">' + escH(r.comment) + '</div>' : '') +
+          (ex.length ? '<ul style="margin:6px 0 0 18px;font-size:12px;color:#555">' + ex.map(e => '<li><strong>' + escH(e.username) + '</strong>：' + escH(e.note) + '</li>').join('') + '</ul>' : '') + '</div>';
+      });
+      return h;
+    }
+    /** 例外輸入：每行「帳號: 說明」（全形冒號也可）；回傳 { list, error } */
+    function arParseExceptions(text) {
+      const list = [];
+      for (const raw of String(text || '').split(/\r?\n/)) {
+        const line = raw.trim(); if (!line) continue;
+        const m = line.match(/^([^:：]+)[:：]\s*(.+)$/);
+        if (!m) return { list: [], error: '例外格式需為「帳號: 說明」：' + line.slice(0, 40) };
+        list.push({ username: m[1].trim(), note: m[2].trim() });
+      }
+      return { list, error: '' };
+    }
+    function arCurrentQuarter(d) { d = d || new Date(); return d.getFullYear() + 'Q' + (Math.floor(d.getMonth() / 3) + 1); }
+    let arReport = null, arInited = false;
+    function arRenderTable() {
+      if (!arReport) return;
+      $('arTable').innerHTML = arTableHtml(arReport, { flag: $('arFlag').value, role: $('arRole').value, q: $('arQ').value });
+      const shown = arReport.accounts.filter(a => arAccountMatches(a, { flag: $('arFlag').value, role: $('arRole').value, q: $('arQ').value })).length;
+      $('arCount').textContent = '（顯示 ' + shown + ' / ' + arReport.accounts.length + '）';
+    }
+    async function arLoad() {
+      try {
+        const [r, h] = await Promise.all([adminFetch(`${API}/admin/access-review`), adminFetch(`${API}/admin/access-review/history`)]);
+        if (!r.ok) { showToast('載入覆核報表失敗'); return; }
+        arReport = await r.json();
+        const hist = h.ok ? await h.json() : { records: [], chain: {} };
+        $('arSummary').innerHTML = arSummaryHtml(arReport);
+        const fsel = $('arFlag'); const keep = fsel.value;
+        fsel.innerHTML = '<option value="">全部帳號</option><option value="*">僅有任一旗標</option>' + Object.keys(arReport.summary.flagCounts || {}).map(k => '<option value="' + escH(k) + '">' + escH((arReport.flagLabels || {})[k] || k) + '（' + escH(String(arReport.summary.flagCounts[k])) + '）</option>').join('');
+        fsel.value = keep;
+        const rsel = $('arRole'); const keepR = rsel.value;
+        rsel.innerHTML = '<option value="">全部角色</option>' + Array.from(new Set(arReport.accounts.map(a => a.role))).sort().map(x => '<option value="' + escH(x) + '">' + escH(x) + '</option>').join('');
+        rsel.value = keepR;
+        const m = arReport.meta || {};
+        $('arMeta').textContent = m.lastLoginTrackingSince ? '最後登入追蹤自 ' + String(m.lastLoginTrackingSince).slice(0, 10) + ' 起；此日期前的登入不會記錄' : '尚未開始記錄最後登入時間（帳號首次登入後才有資料，期間「無登入紀錄」旗標會偏多）';
+        arRenderTable();
+        $('arHistory').innerHTML = arHistoryHtml(hist);
+      } catch (e) { if (e.message !== 'Session expired') showToast('載入覆核報表失敗'); }
+    }
+    function initAccessReview() {
+      if (!arInited) {
+        arInited = true;
+        ['arFlag', 'arRole'].forEach(id => $(id).addEventListener('change', arRenderTable));
+        $('arQ').addEventListener('input', arRenderTable);
+        $('arReload').addEventListener('click', arLoad);
+        $('arExportCsv').addEventListener('click', () => { window.location.href = `${API}/admin/access-review?format=csv`; });
+        $('arSignoffBtn').addEventListener('click', () => { $('arQuarter').value = arCurrentQuarter(); $('arSignoffErr').textContent = ''; $('arSignoffCard').style.display = ''; $('arSignoffCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+        $('arSignoffCancel').addEventListener('click', () => { $('arSignoffCard').style.display = 'none'; });
+        $('arSignoffSubmit').addEventListener('click', async () => {
+          const ex = arParseExceptions($('arExceptions').value);
+          if (ex.error) { $('arSignoffErr').textContent = ex.error; return; }
+          if (!confirm('確定簽核 ' + $('arQuarter').value.trim() + ' 季度帳號覆核？簽核紀錄不能修改或刪除。')) return;
+          $('arSignoffSubmit').disabled = true;
+          try {
+            const r = await adminFetch(`${API}/admin/access-review/signoff`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quarter: $('arQuarter').value.trim(), comment: $('arComment').value, exceptions: ex.list }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { $('arSignoffErr').textContent = d.error || '簽核失敗'; return; }
+            showToast('✅ 已完成簽核並留底');
+            $('arSignoffCard').style.display = 'none'; $('arComment').value = ''; $('arExceptions').value = '';
+            arLoad();
+          } catch (e) { if (e.message !== 'Session expired') $('arSignoffErr').textContent = '簽核失敗'; }
+          finally { $('arSignoffSubmit').disabled = false; }
+        });
+      }
+      arLoad();
+    }
+
+    // 安全開關現況（後端功能權限驗證／帳號鎖定／閒置逾時）：舊版 API 缺欄位時回空字串
+    function verGuardHtml(d) {
+      const g = d && d.featureGuard, l = d && d.loginGuard;
+      if (!g && !l) return '';
+      const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const chip = (txt, c, bg) => '<span style="font-size:11px;font-weight:700;padding:3px 12px;border-radius:12px;color:' + c + ';background:' + bg + '">' + escH(txt) + '</span>';
+      let h = '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #eee;display:flex;flex-direction:column;gap:10px">';
+      if (g) {
+        const m = String(g.mode || '');
+        const c = m === 'enforce' ? ['已強制執行', '#137333', '#e6f4ea'] : m === 'off' ? ['已關閉', '#5f6368', '#f1f3f4'] : ['試行中（只記錄不阻擋）', '#b06000', '#fef3e0'];
+        h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" data-guard="feature"><strong style="color:#1a2d52;font-size:13px">後端功能權限驗證</strong>' + chip(c[0], c[1], c[2]) +
+          '<span style="font-size:12px;color:#555">模式 <code>' + escH(m) + '</code>・本次啟動以來「若強制執行會被擋」' + escH(String(n(g.wouldDeny))) + ' 次・已阻擋 ' + escH(String(n(g.denied))) + ' 次</span></div>';
+      }
+      if (l) {
+        h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap" data-guard="login"><strong style="color:#1a2d52;font-size:13px">帳號鎖定／閒置逾時</strong>' +
+          (l.lockout ? chip('鎖定已啟用（連續 ' + n(l.maxFails) + ' 次失敗，首次鎖 ' + n(l.lockMinutes) + ' 分鐘）', '#137333', '#e6f4ea') : chip('帳號鎖定：關閉', '#5f6368', '#f1f3f4')) +
+          (n(l.idleMinutes) > 0 ? chip('閒置逾時 ' + n(l.idleMinutes) + ' 分鐘', '#137333', '#e6f4ea') : chip('閒置逾時：關閉', '#5f6368', '#f1f3f4')) + '</div>';
+      }
+      return h + '</div>';
+    }
+
     async function loadVersionInfo() {
       try {
         const r = await adminFetch(`${API}/admin/version`);
@@ -6186,7 +6650,9 @@
 
         // 資料庫
         $('vDbInfo').innerHTML = verDbHtml(d);
-        $('vAuditInfo').innerHTML = verAuditHtml(d);
+        $('vAuditInfo').innerHTML = verAuditHtml(d) + verGuardHtml(d);
+        loadChainCard();
+        $('vIssueInfo').innerHTML = verIssueHtml(d);
 
         // 後端套件
         $('vBackendPkgs').innerHTML = d.backend.map(p => `

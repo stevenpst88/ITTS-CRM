@@ -27,6 +27,9 @@ const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
 const app = express();
+// 帳號鎖定／閒置逾時（兩個開關預設關閉；見 lib/loginGuard.js）。鎖定狀態存在主資料 blob 的 loginFailures
+const accessReview = require('./lib/accessReview');   // 季度帳號與權限覆核報表（純函式）
+const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) } });
 const PORT = process.env.PORT || 3000;
 
 // ── 信任 Vercel 代理（取得正確的 req.ip / HTTPS 判斷）──
@@ -144,6 +147,7 @@ app.use((req, res, next) => {
   su.role = acct.role || 'user';
   if (acct.displayName) su.displayName = acct.displayName;
   su.bu = normalizeBu(acct.bu);
+  su.quoteMode = QM.modeOf(acct);   // 只進自己的 session（/api/me 回給本人）；他人的 quoteMode 只有 GET /api/admin/users 給管理員
   if (su.role === 'tecopm' || su.role === 'groupsales') {
     su.viewOwnerScope = acct.viewOwnerScope || null;
     su.viewGroupId = acct.viewGroupId || null;
@@ -153,6 +157,24 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ── 閒置逾時（SESSION_IDLE_MINUTES>0 才啟用；預設關閉＝本段什麼都不做）──────────────────────
+// 以簽章過的 session 內 lat（最後活動時間）判斷；一分鐘內最多重簽一次 JWT（無 DB 寫入）。
+// 輪詢端點（poll-bundle／notifications／announcements/active）不算活動。細節見 lib/loginGuard.js。
+const _idleLogAt = new Map();
+app.use(loginGuard.idleMiddleware({
+  isJwt: SESSION_BACKEND !== 'memory',
+  onExpire: (req, username, kind) => {
+    const now = Date.now();
+    if (now - (_idleLogAt.get(username) || 0) < 60000) return;
+    _idleLogAt.set(username, now);
+    if (_idleLogAt.size > 500) { for (const [k, t] of _idleLogAt) if (now - t > 60000) _idleLogAt.delete(k); }
+    flushAuditBeforeEnd(req);
+    writeLog('SESSION_IDLE_TIMEOUT', username, username,
+      kind === 'idle' ? `閒置超過 ${loginGuard.config.idleMinutes} 分鐘，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`
+        : `登入已超過 8 小時，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`, req);
+  },
+}));
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
 app.use(helmet({
@@ -280,7 +302,7 @@ app.use((req, res, next) => {
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return next();
   if (_ACCESS_VIEW_EXEMPT_PATHS.has(req.path)) return next();
   // 報價單 PDF 下載的稽核紀錄：唯讀帳號也能下載 PDF（和 Excel 的 GET 一樣），不能因為是 POST 而漏記
-  if (/^\/api\/quotations\/[^/]+\/export-log$/.test(req.path)) return next();
+  if (/^\/api\/quotations\/[^/]+\/(?:export-log|issue)$/.test(req.path)) return next();   // issue＝正式文件發出（唯讀帳號也能下載，必須留紀錄）
   // 公告「我知道了」：只寫入自己的已讀回條，唯讀帳號也必須能確認，否則一次性公告會永遠彈出
   if (/^\/api\/announcements\/[^/]+\/ack$/.test(req.path)) return next();
   // 顧問成本草稿試算（cost-sync）：用 POST 帶草稿內容，但伺服器端完全不寫入（只回算好的數字／預覽），與 export-log 同理不受唯讀模式影響
@@ -603,6 +625,18 @@ function auditLoginFail(req, attempted, reason) {
       `登入失敗：原因=${reason}${merged ? `；此 IP 對此帳號先前 ${Math.round(LOGIN_FAIL_THROTTLE_MS / 1000)} 秒窗內另有 ${merged} 次相同失敗已合併` : ''}`, req);
   } catch (e) { console.error('[auditLoginFail]', e && e.message); }
 }
+/** 登入失敗：寫稽核（30 秒節流）＋累計鎖定計數（LOGIN_LOCKOUT=1 才有作用）；剛達門檻時另記 LOGIN_LOCKED */
+function loginFailed(req, attempted, reason) {
+  auditLoginFail(req, attempted, reason);
+  try {
+    const r = loginGuard.recordFailure(attempted);
+    if (r && r.justLocked) {
+      const name = sanitizeAttemptName(attempted);
+      writeLog('LOGIN_LOCKED', name || '(空白)', name || '(空白)',
+        `連續登入失敗達 ${loginGuard.config.maxFails} 次，帳號名稱已鎖定至 ${new Date(r.until).toISOString()}（第 ${r.lockCount} 次鎖定；鎖定期間連正確密碼也拒絕，管理員可於後台解鎖）`, req);
+    }
+  } catch (e) { console.error('[loginFailed]', e && e.message); }
+}
 const _loginRateSeen = new Map();   // ip -> t
 function auditLoginRateLimited(req) {
   const ip = req.ip || '';
@@ -655,6 +689,7 @@ const { registerMailRoutes } = require('./lib/mail/routes');
 const { renderJumpPage } = require('./lib/mail/link');
 const { validateUserEmail, maskedAuditDetail } = require('./lib/mail/userEmail');
 const AD = require('./lib/auditDiff');
+const QM = require('./lib/quoteMode');   // 報價單權限類型 quoteMode（簽核／唯讀二擇一）：非建單角色帳號的職能分工
 const mailConfig = getMailConfig();
 let _mailPool = null;
 /** outbox 專用的 pg 連線（沿用 db/postgres.js、lib/apiMonitor.js 的慣例：max 2、ssl、connectionTimeoutMillis 5000）；第一次查詢才建立 */
@@ -1121,6 +1156,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── 後端功能權限驗證（FEATURE_GUARD_MODE=off|log|enforce，預設 log＝只記錄不阻擋；見 lib/featureGuard.js）──
+// 放在「帳號即時比對」「唯讀」「集團角色路徑白名單」之後、所有業務路由之前；角色以 DB 現值（上方已覆寫 session）為準，
+// 功能清單用 getUserFeatures（與前端導覽同一份矩陣），所以矩陣一改立即生效。
+const featureGuardLib = require('./lib/featureGuard');
+const featureGuard = featureGuardLib.create({
+  getFeatures: (role) => getUserFeatures(role),
+  audit: (req, action, operator, target, detail) => { flushAuditBeforeEnd(req); writeLog(action, operator, target, detail, req); },
+});
+app.use('/api/', featureGuard.middleware);
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -1128,9 +1173,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const authData = loadAuth();
     const user = authData.users.find(u => u.username === username);
     const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才生效）：鎖定期間連「正確密碼」也拒絕，且回應與密碼錯完全相同（同訊息、同狀態碼、同成本的 bcrypt 比對）；不存在的帳號名稱也會鎖，行為一致
+    if (loginGuard.checkLocked(username).locked) {
+      await dummyBcryptCompare(password);
+      auditLoginFail(req, username, 'LOCKED');
+      return res.status(401).json(GENERIC_FAIL);
+    }
     if (!user) {
       await dummyBcryptCompare(password);   // 等成本比對，避免用回應時間探測帳號是否存在
-      auditLoginFail(req, username, 'UNKNOWN_USER');
+      loginFailed(req, username, 'UNKNOWN_USER');
       return res.status(401).json(GENERIC_FAIL);
     }
 
@@ -1146,13 +1197,23 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
     // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
     if (user.active === false) {
-      auditLoginFail(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
+      loginFailed(req, username, isValid ? 'INACTIVE_CORRECT_PASSWORD' : 'INACTIVE');
       return res.status(401).json(GENERIC_FAIL);
     }
     if (!isValid) {
-      auditLoginFail(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
+      loginFailed(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
       return res.status(401).json(GENERIC_FAIL);
     }
+    try { loginGuard.recordSuccess(username); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
+    // 最後登入時間（季度帳號覆核用）：寫在帳號紀錄上，同一人 6 小時內最多寫一次，所以一般登入幾乎不增加寫入；失敗不影響登入
+    try {
+      if (accessReview.shouldStampLogin(user, Date.now())) {
+        const iso = new Date().toISOString();
+        user.lastLoginAt = iso;
+        if (!authData.lastLoginTrackingSince) authData.lastLoginTrackingSince = iso;
+        saveAuth(authData);
+      }
+    } catch (e) { console.error('[lastLoginAt]', e && e.message); }
     const userBus = Array.isArray(user.bu) ? user.bu : (user.bu ? [user.bu] : []);
     const pwReason = getPasswordChangeRequired(user);
     const role = user.role || 'user';
@@ -1227,6 +1288,8 @@ app.get(/^\/q\/.*$/i, (req, res) => {
 });
 app.use('/deep-link.js', express.static(path.join(__dirname, '_client', 'deep-link.js'), STATIC_NO_CACHE));
 registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json' });
+// 稽核防竄改（hash chain／錨點／每日排程／簽核歷程鏈檢查）；預設關閉（AUDIT_CHAIN 沒設成 1 時只回報「未啟用」）。放在強制改密碼與角色白名單 middleware 之後。
+require('./lib/auditChainRoutes').register(app, { requireAdmin, writeLog, db });
 
 // ── 受保護路由（需驗證）─────────────────────────────────
 // 伺服器啟動時間戳，用於前端資源版本控制（每次重啟強制瀏覽器重抓）
@@ -1247,6 +1310,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="quote-steps\.js"/g, `src="quote-steps.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pdf\.js"/g,     `src="quote-pdf.js?v=${BUILD_VERSION}"`)
+      .replace(/src="config-review\.js"/g, `src="config-review.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-coststeps\.js"/g, `src="quote-coststeps.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin-users-view\.js"/g, `src="admin-users-view.js?v=${BUILD_VERSION}"`)
@@ -2007,16 +2071,92 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
     active: u.active !== false,
     // Phase 3：存取模式（admin 永遠 edit）
     accessMode: (u.role === 'admin') ? 'edit' : (u.accessMode === 'view' ? 'view' : 'edit'),
+    // 報價單權限類型：'approver'(簽核)｜'readonly'(唯讀)｜''(未設定)；applicable＝此帳號是否適用（非建單角色，或列在總經理／董事長名冊）、required＝適用且角色有報價單功能（新增／改角色時必填）
+    quoteMode: QM.modeOf(u),
+    quoteModeApplicable: QM.isApplicable(u.role || 'user', u.username, quoteRosterOf()),
+    quoteModeRequired: QM.isApplicable(u.role || 'user', u.username, quoteRosterOf()) && quoteFeatureOn(u.role || 'user'),
     // 集團PM 專用欄位（其他角色為 undefined）
     viewOwnerScope: u.viewOwnerScope || null,
     viewGroupId:    u.viewGroupId    || null,
     // 直屬主管（組織階層；空值 = 頂層或未設定）
     supervisor:     u.supervisor     || '',
     // 唯讀掛名主管（業績由部屬彙總，不計本人）——供帳號編輯器勾選框回填
-    pureSupervisor: !!u.pureSupervisor
+    pureSupervisor: !!u.pureSupervisor,
+    // 帳號鎖定（LOGIN_LOCKOUT=1 才會有值）：後台列表顯示「已鎖定」徽章
+    locked: loginGuard.lockoutEnabled ? !!loginGuard.getLock(u.username) : false,
+    lockUntil: loginGuard.lockoutEnabled ? ((loginGuard.getLock(u.username) || {}).lockUntil || null) : null
   }));
   res.json(users);
 });
+
+// ── 報價單權限類型（quoteMode）輔助 ───────────────────────────
+/** 簽核名冊（data.quoteApproval.roster）；用來判斷「列在總經理／董事長名冊的人」也算非建單者 */
+function quoteRosterOf() { try { return ((db.load().quoteApproval) || {}).roster || {}; } catch { return {}; } }
+/** 角色是否開了「報價單」功能（功能權限矩陣） */
+function quoteFeatureOn(role) { return role === 'admin' || getUserFeatures(role).includes('quotations'); }
+/**
+ * 決定這次請求後帳號的 quoteMode。回 { error:{code,message} } 或 { value, prev, notice }。
+ *  · before：既有帳號（新增時為 null）；effRole：套用本次請求後的角色；roleChanged：本次是否改了角色
+ *  · 適用（applicable）＝非建單角色或在總經理／董事長名冊；必填（required）＝適用且該角色有報價單功能
+ *  · 新增帳號、或這次把角色改成「原本不適用→適用」且角色有報價單功能 → 必填（QUOTE_MODE_REQUIRED）；
+ *    舊帳號原樣編輯其他欄位不強迫補（不自動遷移，後台標『未設定』＋報表）；但已設定過的不能清回未設定
+ *  · 建單角色（不適用）送來的值一律不存（notice『此角色為建單角色，不適用』）；
+ *    由『簽核』改成建單角色必須同時明確清除（送空字串），否則 QUOTE_MODE_ROLE_CONFLICT（避免簽核人同時是建單者）；『唯讀』改建單角色則自動清除
+ */
+function resolveQuoteMode({ body, before, username, effRole, roleChanged }) {
+  const pi = QM.parseInput(body && body.quoteMode);
+  if (!pi.ok) return { error: { code: 'BAD_QUOTE_MODE', message: '報價單權限類型只能是「簽核」或「唯讀」' } };
+  const prev = QM.modeOf(before);
+  const roster = quoteRosterOf();
+  const applicable = QM.isApplicable(effRole, username, roster);
+  const wasApplicable = before ? QM.isApplicable(before.role || 'user', username, roster) : false;
+  const required = applicable && quoteFeatureOn(effRole);
+  if (roleChanged && !applicable && prev === 'approver' && !(pi.present && pi.value === '')) {
+    return { error: { code: 'QUOTE_MODE_ROLE_CONFLICT', message: '此帳號目前的報價單權限類型是『簽核』；要改成建單角色（業務／二級主管等）前，請同時清除報價單權限類型（簽核人與建單者不能是同一人）' } };
+  }
+  let value = prev, notice = null;
+  if (pi.present) {
+    if (!pi.value) {
+      if (required && prev) return { error: { code: 'QUOTE_MODE_REQUIRED', message: '報價單權限類型為必填（此角色有報價單功能且不建單），不能清回未設定；請選「簽核」或「唯讀」' } };
+      value = '';
+    } else if (!applicable) {
+      value = ''; notice = '此角色為建單角色，不適用';
+    } else value = pi.value;
+  } else if (roleChanged && !applicable && prev) {
+    value = ''; notice = '此角色為建單角色，不適用；已自動清除原有的報價單權限類型';
+  }
+  if (required && !value && (!before || (roleChanged && !wasApplicable))) {
+    return { error: { code: 'QUOTE_MODE_REQUIRED', message: '請選擇「報價單權限類型」（簽核／唯讀）：此角色有報價單功能且不建立報價單，必須明確指定是否擔任簽核人' } };
+  }
+  return { value, prev, notice };
+}
+/** 稽核 + 通知：quoteMode 有變動才寫 QUOTE_MODE_CHANGE（before→after，走 lib/auditDiff）；改成『簽核』另通知被設定的人 */
+function auditQuoteModeChange(req, username, role, displayName, prev, next) {
+  if (prev === next) return;
+  const fmt = (v) => (v ? QM.MODE_LABEL[v] : '未設定');
+  const diff = AD.fieldDiff({ quoteMode: prev }, { quoteMode: next }, [{ key: 'quoteMode', label: '報價單權限類型', fmt }]);
+  const opName = req.session.user.username;
+  writeLog('QUOTE_MODE_CHANGE', opName, username, `${diff.join('；')}｜帳號 ${username}（${displayName || ''}）角色=${role}`, req);
+  if (next === 'approver') {
+    try {
+      const opLabel = userLabel(loadAuth().users.find(x => x.username === opName), opName);
+      pushNotification(username, 'quote_mode_changed', '🔏 報價單簽核權限已變更', `你的報價單簽核權限已由管理員 ${opLabel} 設為『簽核』`);
+    } catch (e) { console.warn('[quoteMode notify]', e && e.message); }
+  }
+}
+
+/** 角色功能權限變動後：哪些「新開了報價單功能的非建單角色」還有帳號沒設定 quoteMode（只列出、不阻擋） */
+function quoteModeMissingAfterPermChange(before, after) {
+  const out = [];
+  QM.NON_CREATOR_ROLES.forEach((role) => {
+    const gained = !(before[role] || []).includes('quotations') && (after[role] || []).includes('quotations');
+    if (!gained) return;
+    const users = loadAuth().users.filter(x => x.role === role && x.active !== false && !QM.modeOf(x)).map(x => x.username);
+    if (users.length) out.push({ role, users });
+  });
+  return out;
+}
+const quoteModeMissingNote = (m) => (m.length ? '｜新開報價單功能但未設定報價單權限類型的帳號：' + m.map(x => x.role + '(' + x.users.join(',') + ')').join('、') : '');
 
 // 校驗直屬主管：不可指向自己、必須存在、不可形成循環（A→B→A）
 function validateSupervisor(users, username, supervisorInput) {
@@ -2110,6 +2250,8 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 
   const supCheck = validateSupervisor(auth.users, username.trim(), supervisor);
   if (supCheck.error) return res.status(400).json({ error: supCheck.error });
+  const qmRes = resolveQuoteMode({ body: req.body, before: null, username: username.trim(), effRole: finalRole, roleChanged: false });
+  if (qmRes.error) return res.status(400).json({ error: qmRes.error.message, code: qmRes.error.code });
 
   // 集團PM 必須指定 viewOwnerScope + viewGroupId
   if (GROUP_SCOPED_ROLES.includes(finalRole)) {
@@ -2143,14 +2285,16 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
     mustChangePassword: true,   // 第一次登入必須更換密碼
     supervisor: supCheck.supervisor,
     pureSupervisor: !!pureSupervisor,
+    ...(qmRes.value ? { quoteMode: qmRes.value } : {}),
     ...(GROUP_SCOPED_ROLES.includes(finalRole) ? { viewOwnerScope, viewGroupId } : {})
   };
   auth.users.push(newUser);
   saveAuth(auth);
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
   const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
-  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : ''), req);
-  res.json({ success: true });
+  writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : '') + (newUser.quoteMode ? `；報價單權限類型=${QM.MODE_LABEL[newUser.quoteMode]}` : ''), req);
+  auditQuoteModeChange(req, newUser.username, finalRole, newUser.displayName, '', qmRes.value);   // 新增就設定也要有 QUOTE_MODE_CHANGE（未設定→簽核／唯讀）；設為簽核另通知本人
+  res.json({ success: true, quoteMode: qmRes.value, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
 
 // 帳號異動稽核用的欄位快照／欄位清單（不含 password、passwordChangedAt、email 位址等機敏資料）
@@ -2159,6 +2303,7 @@ const USER_AUDIT_FIELDS = [
   { key: 'active', label: '啟用' }, { key: 'accessMode', label: '存取模式' }, { key: 'canDownloadContacts', label: '可下載客戶名單' },
   { key: 'canSetTargets', label: '可設定目標' }, { key: 'pureSupervisor', label: '純主管(唯讀掛名)' }, { key: 'supervisor', label: '直屬主管' },
   { key: 'viewOwnerScope', label: '查看業務範圍' }, { key: 'viewGroupId', label: '查看集團' },
+  { key: 'quoteMode', label: '報價單權限類型', fmt: (v) => (v ? QM.MODE_LABEL[v] : '未設定') },
 ];
 function userAuditSnap(u) {
   const x = u || {};
@@ -2168,6 +2313,7 @@ function userAuditSnap(u) {
     active: x.active !== false, accessMode: role === 'admin' ? 'edit' : (x.accessMode === 'view' ? 'view' : 'edit'),
     canDownloadContacts: !!x.canDownloadContacts, canSetTargets: !!x.canSetTargets, pureSupervisor: !!x.pureSupervisor,
     supervisor: x.supervisor || '', viewOwnerScope: x.viewOwnerScope || '', viewGroupId: x.viewGroupId || '',
+    quoteMode: QM.modeOf(x),
   };
 }
 
@@ -2201,6 +2347,14 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
     if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.error, code: emailCheck.code, ...(emailCheck.conflictUsername ? { conflictUsername: emailCheck.conflictUsername } : {}) });
   }
   const userBefore = userAuditSnap(auth.users[idx]);   // 異動前快照（只含可編輯的非機敏欄位；不含密碼雜湊／Email 位址）
+  // 報價單權限類型（quoteMode）：先驗證再改動。管理員不能改自己的（避免自己給自己簽核權限；也不能自己解除）
+  const qmPi = QM.parseInput(req.body && req.body.quoteMode);
+  if (!qmPi.ok) return res.status(400).json({ error: '報價單權限類型只能是「簽核」或「唯讀」', code: 'BAD_QUOTE_MODE' });
+  if (req.params.username === req.session.user.username && qmPi.present && qmPi.value !== QM.modeOf(auth.users[idx])) {
+    return adminRailBlock(req, res, 403, 'QUOTE_MODE_SELF_CHANGE_FORBIDDEN',
+      '管理員不能變更自己的報價單權限類型（避免自我授權），請由另一位管理員操作',
+      req.params.username, `管理員嘗試把自己的報價單權限類型 ${QM.modeOf(auth.users[idx]) ? QM.MODE_LABEL[QM.modeOf(auth.users[idx])] : '未設定'}→${qmPi.value ? QM.MODE_LABEL[qmPi.value] : '未設定'}`);
+  }
   // ── 管理員安全護欄（內控）：避免自我提權／自我鎖死，且系統永遠至少留一位啟用中的管理員 ──
   {
     const opName0 = req.session.user.username;
@@ -2222,6 +2376,10 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
         req.params.username, `管理員嘗試變更自己的${changes.join('、')}`);
     }
   }
+  // 管理員安全護欄之後才驗證 quoteMode（護欄的 403 優先於 quoteMode 的 400）
+  const qmRes = resolveQuoteMode({ body: req.body, before: auth.users[idx], username: req.params.username,
+    effRole: role !== undefined ? role : userBefore.role, roleChanged: role !== undefined && role !== userBefore.role });
+  if (qmRes.error) return res.status(400).json({ error: qmRes.error.message, code: qmRes.error.code });
   const emailBefore = auth.users[idx].email || '';
   const nickBefore = auth.users[idx].nickname || '';
   const roleBefore = auth.users[idx].role || 'user';
@@ -2247,6 +2405,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (canDownloadContacts !== undefined) u.canDownloadContacts = !!canDownloadContacts;
   if (canSetTargets !== undefined)       u.canSetTargets = !!canSetTargets;
   if (pureSupervisor !== undefined)      u.pureSupervisor = !!pureSupervisor;
+  if (qmRes.value) u.quoteMode = qmRes.value; else delete u.quoteMode;
   if (active !== undefined)             u.active = !!active;
   // Phase 3：存取模式（admin 永遠 edit）
   if (effectiveRole === 'admin') {
@@ -2296,7 +2455,8 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (userBefore.canDownloadContacts !== userAfter.canDownloadContacts) writeLog(userAfter.canDownloadContacts ? 'GRANT_DOWNLOAD_PERMISSION' : 'REVOKE_DOWNLOAD_PERMISSION', opName, req.params.username, `${userAfter.canDownloadContacts ? '開通' : '收回'}客戶名單下載權限：${who}`, req);
   if (userBefore.accessMode !== userAfter.accessMode) writeLog(userAfter.accessMode === 'view' ? 'SET_READONLY' : 'SET_EDITABLE', opName, req.params.username, `存取模式 ${userBefore.accessMode}→${userAfter.accessMode}（${userAfter.accessMode === 'view' ? '改為唯讀' : '改為可編輯'}）：${who}`, req);
   if (userBefore.role !== userAfter.role) writeLog('CHANGE_USER_ROLE', opName, req.params.username, `角色 ${userBefore.role}→${userAfter.role}：${who}`, req);
-  res.json({ success: true });
+  auditQuoteModeChange(req, req.params.username, userAfter.role, u.displayName, userBefore.quoteMode, userAfter.quoteMode);
+  res.json({ success: true, quoteMode: userAfter.quoteMode, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
 
 // ── Admin: reset password ────────────────────────────────
@@ -2312,6 +2472,7 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
   user.passwordChangedAt = new Date().toISOString();
   user.mustChangePassword = true;
   saveAuth(auth);
+  try { loginGuard.unlock(req.params.username); } catch (e) { console.error('[unlock on reset]', e && e.message); }   // 管理員重設密碼＝同時解除登入鎖定
   writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼（強制使用者下次登入更換）`, req);
   res.json({ success: true });
 });
@@ -2331,6 +2492,82 @@ app.delete('/api/admin/users/:username', requireAdmin, (req, res) => {
   saveAuth(auth);
   writeLog('DELETE_USER', req.session.user.username, deleted.username, `刪除帳號 ${deleted.username}`, req);
   res.json({ success: true });
+});
+
+// ── 季度帳號與權限覆核（admin 專用；報表不含密碼雜湊／token／email 位址）────────────────
+function buildAccessReport() {
+  const auth = loadAuth();
+  const matrix = getRolePermissions();
+  return accessReview.buildReport({
+    users: auth.users, data: db.load(), now: Date.now(), trackingSince: auth.lastLoginTrackingSince || null,
+    featuresFor: (role) => role === 'admin' ? ALL_FEATURES.slice() : (matrix[role] || (DEFAULT_ROLE_PERMISSIONS[role] || [])).slice(),
+    userLabel: (u) => userLabel(u, u.username),
+    featureRouteMap: featureGuardLib.describe(FEATURE_REGISTRY),
+  });
+}
+app.get('/api/admin/access-review', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  if (String(req.query.format || 'json').toLowerCase() === 'csv') {
+    auditExport(req, 'EXPORT_ACCESS_REVIEW', report.accounts.length, '季度帳號與權限覆核報表（不含密碼／email 位址）', 'csv');
+    const day = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="access-review-${day}.csv"`, 'Cache-Control': 'no-store' });
+    return res.send(accessReview.toCsv(report));
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({}, report, { snapshotHash: accessReview.snapshotHash(report) }));
+});
+app.get('/api/admin/access-review/history', requireAdmin, (req, res) => {
+  const report = buildAccessReport();
+  res.set('Cache-Control', 'no-store');
+  res.json(Object.assign({ currentHash: accessReview.snapshotHash(report) }, accessReview.historyView(db.load().accessReviews || [], accessReview.snapshotHash(report))));
+});
+// 簽核：只增不改（沒有任何修改／刪除路由）；每筆帶 prevHash／recordHash 鏈，被改動會被 verifyChain 抓到。
+// 目前只需一位管理員；若日後要雙人覆核，比照核決設定的兩人覆核機制加在此處（見 lib/accessReview.js 檔頭備註）。
+app.post('/api/admin/access-review/signoff', requireAdmin, (req, res) => {
+  const auth = loadAuth();
+  const v = accessReview.validateSignoff(req.body, auth.users.map(u => u.username));
+  if (v.error) return res.status(400).json({ error: v.error });
+  const d = db.load();
+  if (!Array.isArray(d.accessReviews)) d.accessReviews = [];
+  if (!accessReview.verifyChain(d.accessReviews).ok) return res.status(409).json({ error: '既有簽核紀錄的雜湊鏈驗證失敗，請先查明原因再簽核', code: 'CHAIN_BROKEN' });
+  const report = buildAccessReport();
+  const rec = accessReview.makeSignoffRecord({ list: d.accessReviews, v, by: req.session.user.username, at: new Date().toISOString(), report });
+  d.accessReviews.push(rec);
+  db.save(d);
+  writeLog('ACCESS_REVIEW_SIGNOFF', req.session.user.username, v.quarter, `完成 ${v.quarter} 季度帳號覆核簽核：${rec.accountCount} 個帳號、例外 ${v.exceptions.length} 筆、快照 ${rec.snapshotHash.slice(0, 12)}`, req);
+  res.json({ success: true, record: rec });
+});
+
+// ── 路由 → 功能對照表（稽核用）：同一份資料也是後端功能權限驗證實際使用的表 ──
+app.get('/api/admin/feature-route-map', requireAdmin, (req, res) => {
+  res.json({
+    mode: featureGuard.mode,
+    counters: featureGuard.snapshot(),
+    kinds: {
+      FEATURES: '需擁有 features 其中之一（ANY-of）', ANY: '需擁有至少一個功能（全域唯讀清單）', ALWAYS: '登入後一律放行',
+      SELF: '由路由自身的角色／名冊／關係檢查把關', ADMIN: 'requireAdmin', UNCLASSIFIED: '尚未歸類：視同放行，每個路由只記錄一次',
+    },
+    features: FEATURE_REGISTRY.map(f => ({ key: f.key, label: f.label })),
+    routes: featureGuardLib.describe(FEATURE_REGISTRY),
+    unmappedRegistered: featureGuardLib.unmappedRegistered(app),   // 已註冊卻不在對照表的非管理員 /api 路由（應為空）
+    observedUnclassified: Array.from(featureGuard.unclassifiedSeen),
+  });
+});
+
+// ── 帳號鎖定：管理員檢視／解鎖（LOGIN_LOCKOUT=1 才有鎖定資料）─────────────────────────────
+app.get('/api/admin/login-locks', requireAdmin, (req, res) => {
+  const known = new Set(loadAuth().users.map(u => String(u.username).toLowerCase()));
+  res.json({
+    enabled: loginGuard.lockoutEnabled,
+    maxFails: loginGuard.config.maxFails,
+    locks: loginGuard.listLocks().map(l => ({ ...l, exists: known.has(l.username) })),
+  });
+});
+app.post('/api/admin/users/:username/unlock', requireAdmin, (req, res) => {
+  const target = String(req.params.username || '');
+  const had = loginGuard.unlock(target);
+  writeLog('LOGIN_UNLOCK', req.session.user.username, target.slice(0, 40), had ? `管理員解除帳號 ${target.slice(0, 40)} 的登入鎖定` : `管理員對 ${target.slice(0, 40)} 執行解鎖（原本沒有鎖定紀錄）`, req);
+  res.json({ success: true, wasLocked: had });
 });
 
 // ── 訂閱方案 API ──────────────────────────────────────────
@@ -2517,6 +2754,7 @@ app.get('/api/me/permissions', requireAuth, (req, res) => {
     canSetTargets: user.canSetTargets || false,
     active: user.active !== false,
     accessMode,                       // Phase 3：View / Edit 模式
+    quoteMode: QM.modeOf(user),       // 報價單權限類型（本人的）：''｜approver｜readonly
     features: getUserFeatures(role)   // Phase 1：依角色功能權限矩陣
   });
 });
@@ -2526,7 +2764,8 @@ app.get('/api/admin/role-permissions', requireAdmin, (req, res) => {
   res.json({
     features: FEATURE_REGISTRY,
     roles: KNOWN_ROLES,
-    matrix: getRolePermissions()
+    matrix: getRolePermissions(),
+    nonCreatorQuoteRoles: QM.NON_CREATOR_ROLES   // 不建立報價單的角色：這些角色的帳號若有報價單功能，必須指定報價單權限類型（簽核／唯讀）。帳號表單用它判斷要不要顯示欄位
   });
 });
 
@@ -2546,8 +2785,9 @@ app.put('/api/admin/role-permissions', requireAdmin, (req, res) => {
     const d = AD.setDiff(permBefore[role] || [], permAfter[role] || []);
     if (d.add.length || d.del.length) permDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(fLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(fLabel).join('、') + ']' : ''}`);
   });
-  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動', req);
-  res.json({ success: true });
+  const qmMissing = quoteModeMissingAfterPermChange(permBefore, permAfter);
+  writeLog('UPDATE_ROLE_PERMISSIONS', req.session.user.username, 'system', (permDiffs.length ? AD.joinCapped(permDiffs, { prefix: '更新角色功能權限矩陣｜異動：' }) : '更新角色功能權限矩陣｜無實際異動') + quoteModeMissingNote(qmMissing), req);
+  res.json({ success: true, ...(qmMissing.length ? { quoteModeMissing: qmMissing, quoteModeNotice: '以下角色新開了報價單功能，但仍有帳號未設定報價單權限類型（簽核／唯讀）；不會被擋，請到使用者管理逐一設定，或看 /api/admin/quote-mode-report' } : {}) });
 });
 
 // 還原為系統預設（刪掉 data.rolePermissions → getRolePermissions 會 fallback 預設）
@@ -2567,8 +2807,9 @@ app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
     const d = AD.setDiff(resetBefore[role] || [], resetAfter[role] || []);
     if (d.add.length || d.del.length) resetDiffs.push(`${role}${d.add.length ? ' 新增[' + d.add.map(resetFLabel).join('、') + ']' : ''}${d.del.length ? ' 移除[' + d.del.map(resetFLabel).join('、') + ']' : ''}`);
   });
-  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動', req);
-  res.json({ success: true });
+  const qmMissingR = quoteModeMissingAfterPermChange(resetBefore, resetAfter);
+  writeLog('RESET_ROLE_PERMISSIONS', req.session.user.username, 'system', (resetDiffs.length ? AD.joinCapped(resetDiffs, { prefix: '重置角色功能權限為系統預設｜異動：' }) : '重置角色功能權限為系統預設｜無實際異動') + quoteModeMissingNote(qmMissingR), req);
+  res.json({ success: true, ...(qmMissingR.length ? { quoteModeMissing: qmMissingR } : {}) });
 });
 
 // ── 名片圖片上傳設定（使用 storage 模組的 engine）─────────
@@ -9624,8 +9865,13 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
 
   const rt = deriveRuntimeInfo(process.env);
   res.json({
+    // 報價文件發出機制的目前開關（只回布林）：未核准可否發出草稿、草稿浮水印是否啟用
+    quoteIssuance: { draftIssueAllowed: require('./lib/quoteIssuance').allowUnapprovedIssue(), draftWatermark: require('./lib/quoteIssuance').draftWatermarkEnabled() },
     auditStore: db.auditStore.mode(),   // 'legacy'（預設，舊路徑）｜'table'（AUDIT_EVENTS_TABLE=1 且自我檢查通過）
+    featureGuard: featureGuard.snapshot(),   // 後端功能權限驗證：{ mode, wouldDeny, denied, unclassified }
+    loginGuard: { lockout: loginGuard.lockoutEnabled, maxFails: loginGuard.config.maxFails, lockMinutes: loginGuard.config.lockMs / 60000, idleMinutes: loginGuard.config.idleMinutes },   // 兩個開關的現況（預設皆關）
     auditWrites: db.auditStore.stats(),   // 稽核寫入統計：failed>0 代表有稽核事件未能寫入資料庫（見 AUDIT_WRITE_FAILED 日誌）
+    approvalConfigDualReview: require('./lib/configReview').isEnabled(process.env),   // 簽核設定變更「兩人覆核」開關（環境變數 APPROVAL_CONFIG_DUAL_REVIEW=1；只讀，畫面不可切換）
     app: {
       name:        pkg.name        || 'business-card-crm',
       version:     pkg.version     || '1.0.0',

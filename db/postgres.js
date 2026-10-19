@@ -21,6 +21,7 @@
 const { Pool } = require('pg');
 const { createAuditStore, pgAdapter, legacyReadAdapter, createAuditFacade } = require('../lib/auditStore');
 const AuditLegacy = require('../lib/auditLegacy');
+const AuditChain = require('../lib/auditChain');   // 防竄改鏈（AUDIT_CHAIN=1 才生效；預設關閉＝完全不影響寫入）
 const path = require('path');
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -225,9 +226,11 @@ function appendAuditLog(entry) {
 // 安全開關 AUDIT_EVENTS_TABLE：沒設成 '1'（預設）＝第二波之前的舊行為（整包 JSONB／contact_audit.json），完全不碰 audit_events；
 // 設成 '1'＝新表（先自我檢查，失敗自動退回舊路徑）。見 lib/auditStore.js createAuditFacade。
 const AUDIT_TABLE_ON = process.env.AUDIT_EVENTS_TABLE === '1';
+const AUDIT_CHAIN_CFG = AUDIT_TABLE_ON ? AuditChain.getConfig(process.env) : null;   // 鏈只存在於新表模式
 const auditStore = createAuditFacade({
   enabled: AUDIT_TABLE_ON,
-  tableStore: createAuditStore(pgAdapter({ query: (sql, params) => getPool().query(sql, params) })),
+  chain: AUDIT_CHAIN_CFG,
+  tableStore: createAuditStore(pgAdapter({ query: (sql, params) => getPool().query(sql, params), connect: () => getPool().connect(), chain: AUDIT_CHAIN_CFG })),
   legacyStore: createAuditStore(legacyReadAdapter({ readLogs: () => loadAuditLog(), legacyContactFile: path.join(__dirname, '..', 'contact_audit.json') })),
   legacyWrite: (ev) => AuditLegacy.writePgMode(ev, appendAuditLog, path.join(__dirname, '..')),
 });

@@ -59,6 +59,7 @@ const QUOTE_CSS = `
 .quote-st-approved{ background:#e6f4ea; color:#188038; }
 .quote-st-void    { background:#fff1e0; color:#b25e00; border:1px solid #f5c98b; }
 .quote-status.q-wrap { white-space:normal; line-height:1.5; display:inline-block; max-width:230px; }
+.q-bu-badge { display:inline-block; margin:0 3px 2px 0; padding:0 6px; border-radius:8px; font-size:11px; line-height:18px; background:#eef2ff; color:#3b4a8a; border:1px solid #cdd5f5; white-space:nowrap; }
 .q-legacy { display:block; font-size:11px; color:#8a94a3; margin-top:2px; }
 /* 列表狀態欄下方的簽核進度條：一關一個小標籤（✔已簽／●輪到／○未到／✕駁回），整條可點開「簽核進度」視窗 */
 .q-pg { display:flex; flex-wrap:wrap; gap:3px 4px; margin-top:5px; max-width:230px; cursor:pointer; }
@@ -110,6 +111,7 @@ body.dark .quote-items-table .qi-drag:hover { color:#58a6ff; background:#14283f;
 body.dark .q-ro-state { background:#161b22; border-color:#30363d; color:#c9d1d9; }
 body.dark .q-ro-state .q-sub { color:#8b949e; }
 body.dark .q-hint, body.dark .q-sec-sub, body.dark .q-legacy { color:#8b949e; }
+body.dark .q-bu-badge { background:#222b45; color:#aab6ee; border-color:#37427a; }
 body.dark .q-infobar { background:#0d2040; border-color:#1c3a5f; color:#8ecfff; }
 body.dark .q-warnbar { background:#2a2000; border-color:#5a4000; color:#d4a84e; }
 body.dark .q-errbar { background:#2a0d0d; border-color:#5a1010; color:#ff8080; }
@@ -667,17 +669,44 @@ function quoteTextEditBadge(q) {
   return t ? '<span class="q-textedit-badge" title="' + escapeHtml(t) + '">⚠ 說明／備註已修改</span>' : '';
 }
 
+/** 這批報價單涵蓋的業務 BU（去重、依固定順序；ownerBu 由伺服器依擁有者帳號算出，舊回應沒有就視為無） */
+const QUOTE_BU_ORDER = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
+function _qBuSet(list) {
+  const set = new Set();
+  (list || []).forEach(q => (Array.isArray(q.ownerBu) ? q.ownerBu : []).forEach(b => { if (b) set.add(b); }));
+  return QUOTE_BU_ORDER.filter(b => set.has(b)).concat([...set].filter(b => !QUOTE_BU_ORDER.includes(b)).sort());
+}
+/** BU 篩選下拉：只在可視範圍涵蓋 2 個以上 BU 時顯示（秘書、跨 BU 主管）；選項固定五個 BU＋資料裡出現的其他值，保留目前選擇 */
+function _qSyncBuFilter() {
+  const sel = $('quoteBuFilter');
+  const present = _qBuSet(allQuotations);
+  const multi = present.length > 1;
+  if (!sel) return multi;
+  const cur = sel.value;
+  const opts = QUOTE_BU_ORDER.concat(present.filter(b => !QUOTE_BU_ORDER.includes(b)));
+  const html = '<option value="">全部 BU</option>' + opts.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+  if (sel._qOpts !== html) { sel.innerHTML = html; sel._qOpts = html; }
+  sel.value = opts.includes(cur) ? cur : '';
+  sel.style.display = multi ? '' : 'none';
+  if (!multi) sel.value = '';   // 隱藏時不可殘留篩選（看不到的條件會讓列表莫名變少）
+  return multi;
+}
+
 function renderQuoteList() {
   const search   = ($('quoteSearchInput')  ? $('quoteSearchInput').value   : '').toLowerCase();
   const stFilter = ($('quoteStatusFilter') ? $('quoteStatusFilter').value  : '');
+  const showBu = _qSyncBuFilter() || !!((quoteCfg().me || {}).isSecretary && _qBuSet(allQuotations).length);   // 業務欄的 BU 徽章
+  const buFilter = ($('quoteBuFilter') ? $('quoteBuFilter').value : '');
   let list = allQuotations;
   if (search)   list = list.filter(q =>
     (q.quoteNo     || '').toLowerCase().includes(search) ||
     (q.company     || '').toLowerCase().includes(search) ||
     (q.contactName || '').toLowerCase().includes(search) ||
     (q.projectName || '').toLowerCase().includes(search) ||
-    (q.ownerName   || '').toLowerCase().includes(search)
+    (q.ownerName   || '').toLowerCase().includes(search) ||
+    (Array.isArray(q.ownerBu) ? q.ownerBu : []).some(b => String(b).toLowerCase().includes(search))
   );
+  if (buFilter)    list = list.filter(q => Array.isArray(q.ownerBu) && q.ownerBu.includes(buFilter));
   if (_qInboxOnly) list = list.filter(_qIsMine);
   if (stFilter)    list = list.filter(q => _qStageMatches(q, stFilter));
 
@@ -704,7 +733,7 @@ function renderQuoteList() {
       <td>${typeof kaCompanyMark === 'function' ? kaCompanyMark(q.company) : ''}${escapeHtml(q.company || '')}</td>
       <td>${escapeHtml(q.contactName || '')}</td>
       <td>${escapeHtml(q.projectName || '')}${qOppListLine(q)}</td>
-      <td>${escapeHtml(q.ownerName || q.owner || '')}</td>
+      <td>${showBu ? quoteBuBadges(q) : ''}${escapeHtml(q.ownerName || q.owner || '')}</td>
       <td>${escapeHtml(q.quoteDate || '')}</td>
       <td style="text-align:right;font-weight:600;font-size:13px">${totalCell}</td>
       <td><span class="quote-status q-wrap ${escapeHtml(st.cls)}"${st.title ? ` title="${escapeHtml(st.title)}"` : ''}>${escapeHtml(st.label)}</span>${legacy}${quoteTextEditBadge(q)}${quoteProgressHtml(q)}</td>
@@ -712,6 +741,13 @@ function renderQuoteList() {
       <td>${_qActionButtons(q)}</td>
     </tr>`;
   }).join('');
+}
+
+/** 業務所屬 BU 徽章（ownerBu 一律跳脫後輸出；沒有 BU 的業務顯示「未設定 BU」） */
+function quoteBuBadges(q) {
+  const bus = Array.isArray(q.ownerBu) ? q.ownerBu.filter(Boolean) : [];
+  if (!bus.length) return '<span class="q-bu-badge" title="這位業務的帳號沒有設定 BU">未設定 BU</span>';
+  return bus.map(b => '<span class="q-bu-badge" title="業務所屬 BU">' + escapeHtml(b) + '</span>').join('');
 }
 
 function bindQuoteListHandlers() {
@@ -725,6 +761,11 @@ function bindQuoteListHandlers() {
     si._qListBound = true;
     let _qSearchTimer = null;   // 筆數多時每個按鍵都重畫整張表會卡，稍微延遲
     si.addEventListener('input', function () { clearTimeout(_qSearchTimer); _qSearchTimer = setTimeout(renderQuoteList, 150); });
+  }
+  const bf = $('quoteBuFilter');
+  if (bf && !bf._qListBound) {
+    bf._qListBound = true;
+    bf.addEventListener('change', renderQuoteList);
   }
   const sf = $('quoteStatusFilter');
   if (sf && !sf._qListBound) {
@@ -809,6 +850,8 @@ async function exportQuote(id, quoteNo, kind) {
       return showToast(e.error || '匯出失敗');
     }
     const approvedFile = r.headers.get('X-Quote-Approval') === 'approved';
+    const issueNo = r.headers.get('X-Issue-No') || '';   // 伺服器核發的發出序號（已印在檔案裡；未核准的 Excel 會標「草稿／未經核准」）
+    const issueTag = issueNo ? `（發出序號 ${issueNo}）` : '';
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -819,8 +862,8 @@ async function exportQuote(id, quoteNo, kind) {
     a.remove();
     URL.revokeObjectURL(url);
     // Excel 一律不蓋報價專用章；已核准的單提醒「正式有章的版本是 PDF」
-    showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶'
-      : (approvedFile ? '報價單 Excel 已下載（Excel 不蓋報價專用章；要給客戶的正式報價單請下載 PDF）' : '報價單 Excel 已下載（未核准，不蓋報價專用章）'));
+    showToast(isPnl ? '毛利分析（內部用）已下載，請勿提供客戶' + issueTag
+      : (approvedFile ? '報價單 Excel 已下載（Excel 不蓋報價專用章；要給客戶的正式報價單請下載 PDF）' + issueTag : '報價單 Excel 已下載（未核准，已標示草稿，不蓋報價專用章）' + issueTag));
   } catch(e) {
     showToast('匯出失敗，請重試');
   }
