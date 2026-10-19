@@ -253,7 +253,7 @@ function ensureStyle() {
   if (document.getElementById('qapStyle')) return;
   const st = document.createElement('style');
   st.id = 'qapStyle';
-  st.textContent = QAP_CSS;
+  st.textContent = QAP_CSS + (typeof QFlowCards !== 'undefined' && QFlowCards.CSS ? '\n' + QFlowCards.CSS : '');
   document.head.appendChild(st);
 }
 
@@ -647,6 +647,12 @@ function buildCostSection(q) {
 }
 
 function buildStepsSection(q) {
+  // 流程設計器 M0：預設用卡片式進度（quote-flow-cards.js）；網址帶 ?cards=0 或該檔未載入時退回下方舊的條列式。
+  if (typeof QFlowCards !== 'undefined' && QFlowCards.enabled()) {
+    const vm = QFlowCards.cardsOf(q.approval, { fmtTime });
+    const html = QFlowCards.render(vm);
+    return html ? sec('簽核進度', html) : '';
+  }
   const ap = q.approval;
   const steps = (ap && Array.isArray(ap.steps)) ? ap.steps : [];
   if (!steps.length) return '';
@@ -835,6 +841,7 @@ function renderApproval(s) {
   html += buildHistorySection(q);
   html += buildIssuancesSection(s);
   s.body.innerHTML = html;
+  if (typeof QFlowCards !== 'undefined') QFlowCards.bind(s.body);
   mountCostDetail(s.body, q);
   s.body.scrollTop = keep;
 
