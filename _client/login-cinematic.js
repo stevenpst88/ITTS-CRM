@@ -101,8 +101,10 @@ function setState(s){
 /* 被伺服器登出時（閒置逾時／連線失效）由 app.js 留下原因，這裡顯示友善提示（只顯示一次；來自 feat/audit3-batch2） */
 function showLoginNotice(){
   let code='';
-  try{code=sessionStorage.getItem('loginNotice')||'';sessionStorage.removeItem('loginNotice')}catch(e){return}
-  const MSG={SESSION_IDLE_TIMEOUT:'閒置過久已登出，請重新登入',SESSION_EXPIRED:'登入已逾時，請重新登入',SESSION_INVALID:'您的連線已失效（帳號停用或已不存在），請重新登入'};
+  try{code=sessionStorage.getItem('loginNotice')||'';sessionStorage.removeItem('loginNotice')}catch(e){}
+  /* 前端閒置計時器（idle-timeout.js，PR #21）導回時帶 ?reason=idle；只認這個固定值，不把網址內容寫進畫面 */
+  if(!code){try{if(new URLSearchParams(location.search).get('reason')==='idle')code='IDLE_30'}catch(e){}}
+  const MSG={IDLE_30:'因閒置超過 30 分鐘，已自動登出，請重新登入。',SESSION_IDLE_TIMEOUT:'閒置過久已登出，請重新登入',SESSION_EXPIRED:'登入已逾時，請重新登入',SESSION_INVALID:'您的連線已失效（帳號停用或已不存在），請重新登入'};
   const el=$('#loginNotice');
   if(el&&MSG[code]){el.textContent=MSG[code];el.classList.add('show')}
 }
