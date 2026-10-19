@@ -20,6 +20,7 @@ const storage = require('./storage');
 const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
 const pushNotify = require('./lib/pushNotify');
+const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動態報表：反覆延後警示／台北月界
 const secretBox = require('./lib/secretBox');
 const productCatalog = require('./lib/productCatalog');
 const createPlanGuard = require('./middleware/planGuard');
@@ -4351,8 +4352,10 @@ const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A�
 app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const { from, to, owner: ownerFilter } = req.query;
   const now = new Date();
-  const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
-  const toDate   = to   ? new Date(to)   : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  // 未帶 from/to 時預設「台北當月」（前端一律帶參數；Vercel 為 UTC，若用 server 本地月界會差 8 小時）
+  const _tpMonth = pipelineDateWarning.taipeiMonthRange(now);
+  const fromDate = from ? new Date(from) : _tpMonth.from;
+  const toDate   = to   ? new Date(to)   : _tpMonth.to;
   const allOwners = getViewableOwners(req, 'opportunities');
   // 若前端指定了特定業務且在可視範圍內，就篩選該業務
   const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
@@ -4468,6 +4471,12 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     if (!dcByDeal[c.dealId]) dcByDeal[c.dealId] = [];
     dcByDeal[c.dealId].push(c);
   });
+  // 全歷史（不受 from/to 限制）依 dealId 分組，供累計延後計算
+  const fullDCByDeal = {};
+  (data.opportunityDateChanges || []).forEach(c => {
+    if (!oppById.has(c.dealId)) return;
+    (fullDCByDeal[c.dealId] = fullDCByDeal[c.dealId] || []).push(c);
+  });
   const dateChanges = [];
   Object.entries(dcByDeal).forEach(([dealId, list]) => {
     list.sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt));
@@ -4485,6 +4494,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     if (oldD && newD) {
       daysDiff = Math.round((new Date(newD) - new Date(oldD)) / 86400000);
     }
+    // 反覆延後警示：用該商機「全歷史」的日期異動（不侷限本期）
+    const warn = pipelineDateWarning.evaluate(opp, fullDCByDeal[dealId], now);
     dateChanges.push({
       id:      dealId,
       company: opp.company,
@@ -4495,17 +4506,17 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       newDate: newD,
       daysDiff,
       changedAt: last.changedAt,
-      owner:    opp.owner
+      owner:    opp.owner,
+      postponeCount: warn.postponeCount,
+      postponeDays:  warn.postponeDays,
+      stageDays:     warn.stageDays,
+      repeated:      warn.repeated
     });
   });
-  // 排序：延後天數大的在前（最需要關注）；同等則最近異動在前
-  dateChanges.sort((a, b) => {
-    const da = a.daysDiff ?? -1;
-    const db = b.daysDiff ?? -1;
-    if (db !== da) return db - da;
-    return (b.changedAt || '').localeCompare(a.changedAt || '');
-  });
+  // 排序：反覆延後優先 → 累計延後天數大 → 本期延後天數大 → 最近異動在前
+  dateChanges.sort(pipelineDateWarning.compareEntries);
   const postponedCount = dateChanges.filter(c => c.daysDiff != null && c.daysDiff > 0).length;
+  const repeatedCount  = dateChanges.filter(c => c.repeated).length;
   const advancedCount  = dateChanges.filter(c => c.daysDiff != null && c.daysDiff < 0).length;
 
   // 獨立「金額調整」：純改金額沒 stage 變動的（已在 promoted/demoted 顯示的不重複）
@@ -4546,6 +4557,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
     dateChanges,
+    repeatRule: pipelineDateWarning.getRules(),
     amountChanges,
     summary: {
       totalPipeline: sum(opps.filter(o=>o.stage!=='Won'&&o.stage!=='D')),
@@ -4555,7 +4567,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       promotedAmount: sum(promoted), promotedCount: promoted.length,
       demotedAmount:  sum(demoted),  demotedCount: demoted.length,
       dateChangeCount: dateChanges.length,
-      postponedCount, advancedCount,
+      postponedCount, advancedCount, repeatedCount,
       amountChangeCount: amountChanges.length,
     }
   });

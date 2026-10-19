@@ -2389,6 +2389,17 @@ body.glass.dark #kanbanResultHint b { color: var(--g-text) !important; }
 body.glass.dark :is(#lostOppTableWrap th, .stage-conv-thead th) { color: var(--g-text-2) !important; border-bottom-color: var(--g-edge) !important; }
 /* 琥珀紅（深色）下 B 階段標籤的橘字壓在深棕色卡片上 4.4:1 */
 body.glass.dark .main .pr-stage-tag[style*="color:#f57c00"] { color: #ffb74d !important; }
+/* 預計簽約日調整（商機動態報表）：改走 class；玻璃主題一律吃主題文字色，不依賴寫死色。
+ * 新日期＝主文字色粗體（最高對比）、舊日期＝次要字色＋刪除線；延後／提前用淺色／深色各一組實測過的色票。 */
+body.glass .pr-dc-new { color: var(--g-text); }
+body.glass .pr-dc-old, body.glass .pr-dc-muted, body.glass .pr-dc-arrow { color: var(--g-text-2); }
+body.glass .pr-dc-meta { color: var(--g-text-2); }
+body.glass:not(.dark) .pr-dc-late { color: #a8200f; }
+body.glass:not(.dark) .pr-dc-early { color: #065f36; }
+body.glass.dark .pr-dc-late { color: #ffb4ab; }
+body.glass.dark .pr-dc-early { color: #86efbd; }
+body.glass .pr-move-toggle { color: var(--g-text-2); border-color: var(--g-edge); }
+body.glass .pr-dc-row.is-repeated { box-shadow: inset 3px 0 0 #ef4444; background: rgba(239, 68, 68, .07); }
 /* ═══ 階段 6 結束 ═══ */
 
 /* ═════════════════════════════════════════════════════════════
