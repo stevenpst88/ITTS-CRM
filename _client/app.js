@@ -7577,7 +7577,8 @@ function getPrDateRange(period) {
     to   = new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59);
   } else if (period === 'custom') {
     const f = $('prFromDate').value, t = $('prToDate').value;
-    from = f ? new Date(f) : new Date(now.getFullYear(), now.getMonth(), 1);
+    // 日期輸入框是 YYYY-MM-DD：new Date('YYYY-MM-DD') 會被當成 UTC 00:00（台北 08:00），漏掉當天 0–8 點的異動 → 一律補本地 T00:00:00（to 已是本地 T23:59:59）
+    from = f ? new Date(f + 'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
     to   = t ? new Date(t + 'T23:59:59') : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   }
   return { from, to };
@@ -7722,10 +7723,11 @@ function renderPrSummary(s) {
     { icon:'✨', label:'本期新增商機', value:`${(s.newAmount||0).toLocaleString()} K`, sub:`${s.newCount} 件`, color:'#34a853', bg:'#e6f4ea' },
     { icon:'⬆️', label:'階段晉升', value:`${(s.promotedAmount||0).toLocaleString()} K`, sub:`${s.promotedCount} 次`, color:'#1e8e3e', bg:'#e6f4ea' },
     { icon:'⬇️', label:'階段退後', value:`${(s.demotedAmount||0).toLocaleString()} K`, sub:`${s.demotedCount} 次`, color:'#f57c00', bg:'#fff3e0' },
+    { key:'date', icon:'📅', label:'日期延後', value:`${s.postponedCount||0} 件`, sub:`其中反覆延後 ${s.repeatedCount||0} 件`, color:'#6d28d9', bg:'#f3e8ff' },
     { icon:'💔', label:'本期流失', value:`${(s.lostAmount||0).toLocaleString()} K`, sub:`${s.lostCount} 件`, color:'#c62828', bg:'#fce8e6' },
   ];
   $('prSummaryCards').innerHTML = cards.map(c => `
-    <div class="pr-summary-card" style="border-top:3px solid ${c.color}">
+    <div class="pr-summary-card"${c.key ? ` data-kpi="${c.key}"` : ''} style="border-top:3px solid ${c.color}">
       <div class="pr-summary-icon" style="background:${c.bg};color:${c.color}">${c.icon}</div>
       <div class="pr-summary-body">
         <div class="pr-summary-label">${c.label}</div>
@@ -7892,7 +7894,7 @@ function renderPrMoves(data) {
       : '<div class="pr-empty-row">本期無金額調整（無 stage 變動的）</div>';
   }
 
-  // 預計簽約日調整
+  // 預計簽約日調整（顏色一律走 .pr-dc-* class，隨主題變數變化；不可再寫死 inline color）
   const dcList = data.dateChanges || [];
   if ($('prDateChangeCount')) $('prDateChangeCount').textContent = dcList.length;
   if ($('prDateChangeList')) {
@@ -7905,34 +7907,57 @@ function renderPrMoves(data) {
           let dateHtml;
           if (!c.oldDate && c.newDate) {
             // 首次設定
-            dateHtml = `<span style="color:#888;font-size:12px">📅 首次設定</span>
-              <span style="color:#1a73e8;font-weight:600">${escapeHtml(c.newDate)}</span>`;
+            dateHtml = `<span class="pr-dc-muted">📅 首次設定</span>
+              <span class="pr-dc-new">${escapeHtml(c.newDate)}</span>`;
           } else if (c.oldDate && !c.newDate) {
             // 取消設定（罕見）
-            dateHtml = `<span style="color:#888;text-decoration:line-through">${escapeHtml(c.oldDate)}</span>
-              <span style="color:#888;font-size:11px">→</span>
-              <span style="color:#888;font-size:12px">未設定</span>`;
+            dateHtml = `<span class="pr-dc-old">${escapeHtml(c.oldDate)}</span>
+              <span class="pr-dc-arrow">→</span>
+              <span class="pr-dc-muted">未設定</span>`;
           } else {
             // 一般變更
             const diff = c.daysDiff;
-            const diffColor = diff > 0 ? '#c62828' : diff < 0 ? '#0a8a4a' : '#888';
+            const diffCls = diff > 0 ? 'pr-dc-late' : diff < 0 ? 'pr-dc-early' : 'pr-dc-muted';
             const diffSign = diff > 0 ? '延後' : diff < 0 ? '提前' : '同日';
             const diffAbs = Math.abs(diff);
-            dateHtml = `<span style="color:#888;text-decoration:line-through;font-size:12px">${escapeHtml(c.oldDate)}</span>
-              <span style="color:#888;font-size:11px">→</span>
-              <span style="color:#1a3c7a;font-weight:600">${escapeHtml(c.newDate)}</span>
-              <span style="color:${diffColor};font-size:11px;font-weight:700">${diff !== 0 ? `▶ ${diffSign} ${diffAbs} 天` : '＝ 同日'}</span>`;
+            dateHtml = `<span class="pr-dc-old">${escapeHtml(c.oldDate)}</span>
+              <span class="pr-dc-arrow">→</span>
+              <span class="pr-dc-new">${escapeHtml(c.newDate)}</span>
+              <span class="${diffCls}">${diff !== 0 ? `▶ ${diffSign} ${diffAbs} 天` : '＝ 同日'}</span>`;
           }
-          return `<div class="pr-deal-row">
+          // 累計延後（全歷史）：第 N 次延後｜累計 +N 天｜停在 B N 天；反覆延後者加徽章
+          let metaHtml = '';
+          if (c.repeated || c.postponeCount > 0) {
+            const parts = [];
+            if (c.postponeCount > 0) parts.push(`第 ${c.postponeCount} 次延後`, `累計 +${c.postponeDays||0} 天`);
+            if (c.stageDays != null) parts.push(`停在 ${escapeHtml(c.stage||'')} ${c.stageDays} 天`);
+            metaHtml = `<div class="pr-dc-meta">${c.repeated ? '<span class="pr-dc-badge" title="B／C 階段、多次或長期延後且停留過久，建議主管關注">⚠ 反覆延後</span>' : ''}<span>${parts.join('｜')}</span></div>`;
+          }
+          return `<div class="pr-deal-row pr-dc-row${c.repeated ? ' is-repeated' : ''}">
             <div class="pr-deal-info">
               <div class="pr-deal-company">${kaCompanyMark(c.company)}${escapeHtml(c.company||'')}</div>
               <div class="pr-deal-product">${escapeHtml(c.product||'')}</div>
-              <div style="margin-top:4px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${dateHtml}</div>
+              <div class="pr-dc-dates">${dateHtml}</div>
+              ${metaHtml}
             </div>
             <div class="pr-deal-right">${stageTag}${amt}</div>
           </div>`;
         }).join('')
       : '<div class="pr-empty-row">本期無預計簽約日調整</div>';
+  }
+  // 超過 5 筆才出現「展開全部」，避免內層捲動區看不到後面的列（預設高度約 5 列，展開後不限）
+  const dcToggle = $('prDateChangeToggle');
+  if (dcToggle) {
+    const list = $('prDateChangeList');
+    list.classList.remove('expanded');
+    dcToggle.textContent = `展開全部 (${dcList.length})`;
+    dcToggle.setAttribute('aria-expanded', 'false');
+    dcToggle.style.display = dcList.length > 5 ? '' : 'none';
+    dcToggle.onclick = () => {
+      const open = list.classList.toggle('expanded');
+      dcToggle.textContent = open ? '收合' : `展開全部 (${dcList.length})`;
+      dcToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
   }
 }
 
@@ -10976,79 +11001,7 @@ function renderExecProduct(data) {
   });
 }
 
-// ════════════════════════════════════════════════════════════
-//  閒置自動登出（Session Timeout）
-//  30 分鐘無互動 → 彈出警告；5 分鐘倒數歸零 → 自動登出
-// ════════════════════════════════════════════════════════════
-(function initIdleTimer() {
-  const IDLE_MS    = 30 * 60 * 1000;  // 30 分鐘無互動觸發警告
-  const WARNING_MS =  5 * 60 * 1000;  // 警告後 5 分鐘倒數
-
-  let idleTimer      = null;
-  let countdownTimer = null;
-  let warningActive  = false;
-
-  const overlay      = document.getElementById('idleTimeoutOverlay');
-  const countdownEl  = document.getElementById('idleCountdown');
-  const stayBtn      = document.getElementById('idleStayBtn');
-  const logoutBtn    = document.getElementById('idleLogoutBtn');
-
-  if (!overlay) return; // 非 CRM 主頁（如 login.html）跳過
-
-  function fmt(ms) {
-    const total = Math.ceil(ms / 1000);
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-
-  async function doLogout() {
-    clearTimeout(idleTimer);
-    clearInterval(countdownTimer);
-    overlay.style.display = 'none';
-    _clearDeepLink();
-    try { await fetch('/api/logout', { method: 'POST' }); } catch {}
-    window.location.href = '/login.html';
-  }
-
-  function showWarning() {
-    warningActive = true;
-    overlay.style.display = 'flex';
-    let remaining = WARNING_MS;
-    countdownEl.textContent = fmt(remaining);
-    countdownTimer = setInterval(() => {
-      remaining -= 1000;
-      countdownEl.textContent = fmt(remaining);
-      if (remaining <= 0) {
-        clearInterval(countdownTimer);
-        doLogout();
-      }
-    }, 1000);
-  }
-
-  function resetIdle() {
-    if (warningActive) return; // 警告顯示中，不重置
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(showWarning, IDLE_MS);
-  }
-
-  function dismissWarning() {
-    warningActive = false;
-    overlay.style.display = 'none';
-    clearInterval(countdownTimer);
-    resetIdle();
-  }
-
-  stayBtn.addEventListener('click', dismissWarning);
-  logoutBtn.addEventListener('click', doLogout);
-
-  // 任何互動都重置計時器
-  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
-    document.addEventListener(evt, resetIdle, { passive: true });
-  });
-
-  resetIdle(); // 啟動
-})();
+// 閒置自動登出：已改由 idle-timeout.js 負責（伺服器端強制 30 分鐘；警告視窗仍是 index.html 的 #idleTimeoutOverlay）
 
 // ── 強制變更密碼 Modal ───────────────────────────────────
 const FORCE_PWD_REASON_TXT = {

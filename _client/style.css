@@ -2686,6 +2686,45 @@ body.dark .card-company { color: #8b949e; }
   padding: 12px 8px; text-align: center; color: #bbb; font-size: 12px;
 }
 
+/* 預計簽約日調整：顏色全走 class + 變數（深淺主題皆由這組變數換色；glass.css 另覆寫玻璃主題）。
+   勿再於 app.js 寫死 inline color——曾因寫死 #1a3c7a 在深色玻璃下幾乎隱形。 */
+body {
+  --prdc-new: #14306b; --prdc-old: #5b6472; --prdc-muted: #5b6472; --prdc-arrow: #5b6472;
+  --prdc-late: #b42318; --prdc-early: #0a6b3b; --prdc-meta: #4b5563;
+  --prdc-badge-bg: #b42318; --prdc-badge-fg: #fff; --prdc-warn-edge: #d92d20;
+}
+body.dark {
+  --prdc-new: #bfd4ff; --prdc-old: #9aa4b2; --prdc-muted: #9aa4b2; --prdc-arrow: #9aa4b2;
+  --prdc-late: #ff9b91; --prdc-early: #6ee7b7; --prdc-meta: #c3cad4;
+}
+/* 頂部「日期延後」統計卡的數字色是 inline（#6d28d9），深色下只有約 2:1 → 深色（含玻璃深色）改淺紫，需 !important 才壓得過 inline */
+body.dark .pr-summary-card[data-kpi="date"] .pr-summary-value { color: #c4b5fd !important; }
+.pr-move-list-date { max-height: 400px; }
+.pr-move-list-date.expanded { max-height: none; overflow-y: visible; }
+.pr-move-toggle {
+  display: block; width: 100%; margin-top: 4px; padding: 6px 8px; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: inherit; background: transparent;
+  border: 1px dashed currentColor; border-radius: 8px; opacity: .85;
+}
+.pr-move-toggle:hover, .pr-move-toggle:focus-visible { opacity: 1; }
+.pr-dc-dates { margin-top: 4px; font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pr-dc-old { color: var(--prdc-old); text-decoration: line-through; font-size: 12px; }
+.pr-dc-new { color: var(--prdc-new); font-weight: 700; }
+.pr-dc-muted { color: var(--prdc-muted); font-size: 12px; }
+.pr-dc-arrow { color: var(--prdc-arrow); font-size: 11px; }
+.pr-dc-late { color: var(--prdc-late); font-size: 11px; font-weight: 700; }
+.pr-dc-early { color: var(--prdc-early); font-size: 11px; font-weight: 700; }
+.pr-dc-meta { margin-top: 3px; font-size: 11px; color: var(--prdc-meta); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pr-dc-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700;
+  background: var(--prdc-badge-bg); color: var(--prdc-badge-fg); white-space: nowrap;
+}
+.pr-dc-row.is-repeated { box-shadow: inset 3px 0 0 var(--prdc-warn-edge); }
+@media (max-width: 600px) {
+  .pr-move-list-date { max-height: 460px; }
+  .pr-dc-row { flex-wrap: wrap; }
+}
+
 /* ════════════════════════════════════════════
    報價單管理 (Quotations)
    ════════════════════════════════════════════ */

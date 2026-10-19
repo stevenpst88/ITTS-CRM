@@ -65,6 +65,17 @@
 
 <!-- 信件深層連結暫存（簽核信 → /q/<id> → 這裡 → 登入後回到該單）。/deep-link.js 是公開路由；載入失敗只是少了這個功能，不影響登入 -->
 <script src="/deep-link.js"></script>
+<!-- 被閒置逾時登出導回來時（/login.html?reason=idle）顯示原因；只認這個固定值，不把網址內容寫進畫面 -->
+<script>
+(function () {
+  try {
+    var r = new URLSearchParams(location.search).get('reason');
+    var msg = r === 'idle' ? '因閒置超過 30 分鐘，已自動登出，請重新登入。' : '';
+    var el = document.getElementById('errorMsg');
+    if (msg && el) { el.textContent = msg; el.classList.add('show'); }
+  } catch (e) { /* 忽略 */ }
+})();
+</script>
 <script src="/login-cinematic.js"></script>
 </body>
 </html>
