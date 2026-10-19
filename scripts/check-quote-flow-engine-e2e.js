@@ -8,6 +8,8 @@
  *   3) on：資料有 approval.flow 快照；任何 API 回應都看不到 flow／defHash；關卡與 off 相同
  *   4) on 送簽後把伺服器改成 off 重開（凍結快照語意）：在途單照原 steps 核准到完成，快照仍在
  *   5) 無法辨識的環境變數值（banana）＝off，狀態端點標示 envValid=false
+ *   7) 模式變化稽核（QUOTE_FLOW_ENGINE_MODE）：off 不記；shadow／on 第一個請求記 off→shadow／off→on；on 改回 off 重開後記 on→off（熔斷器使用留痕）
+ *   8) 商機作廢：on 模式送簽的單，連結的商機被作廢後 approval.flow 一併清掉
  *   6) 後台頁：admin.html 含「流程引擎狀態」區塊與 3 個稽核動作中文名；內嵌 script 語法正確
  */
 'use strict';
@@ -41,7 +43,8 @@ function seed() {
   const mkQ = (id, price, cost) => ({ id, quoteNo: 'SB-' + id, company: '沙盒公司甲', projectName: '沙盒專案', owner: '_s_own', status: 'draft', createdAt: nowIso, updatedAt: nowIso, quoteDate: nowIso.slice(0, 10), validUntil: '2099-12-31', products: ['PS'], items: [{ lid: id + '-l1', desc: '服務', unit: '式', qty: 1, unitPrice: price, cost }], discountType: 'none', discountValue: 0, approval: null });
   const d = {
     contacts: [], companies: [], opportunities: [], visits: [], contracts: [], receivables: [], callins: [], keyAccounts: [],
-    quotations: [mkQ('q1', 800000, 400000), mkQ('q2', 12000000, 6000000)],
+    opportunities: [{ id: 'opp1', owner: '_s_own', stage: 'B', company: '沙盒公司甲', product: '沙盒商品', amount: 800 }],
+    quotations: [mkQ('q1', 800000, 400000), mkQ('q2', 12000000, 6000000), Object.assign(mkQ('q3', 800000, 400000), { oppId: 'opp1' })],
     quoteApproval: { roster: { gm: ['_s_gm'], chairman: ['_s_ch'], boardProxy: [], costProviders: [], sealManagers: [] }, productClasses: { PS: { cls: 'software', costBySales: true } } },
     approvalFlowConfig: { version: 1, buSettings: { ITS: { hasMgr2Step: true } }, exceptions: [] },
   };
@@ -130,6 +133,9 @@ async function approveAll(id, expectTiers) {
       const own = await http('_s_own', 'GET', '/api/admin/quote-flow/engine-status');
       ok((anon.status === 401 || anon.status === 403) && own.status === 403, 'off：未登入／非管理員不可讀狀態端點', anon.status + '/' + own.status);
       ok(!LEAK.test(r.text), 'off：送簽回應不含 flow 相關字樣');
+      const offLogs = await http('_s_admin', 'GET', '/api/admin/logs');
+      ok(Array.isArray(offLogs.json) && !offLogs.json.some((l) => /^QUOTE_FLOW_/.test(l.action)), 'off：稽核日誌沒有任何 QUOTE_FLOW_* 事件（含 ENGINE_MODE）', offLogs.status);
+      ok(!('quoteFlowEngineMode' in readData()), 'off：資料裡沒有 quoteFlowEngineMode（預設行為不變）');
     });
     // 2) shadow
     await phase('shadow', 'shadow', async () => {
@@ -144,7 +150,10 @@ async function approveAll(id, expectTiers) {
       ok(st.json.audit.mismatch === 0 && st.json.audit.error === 0 && st.json.audit.fallback === 0, 'shadow：真實稽核表近 30 天不一致／例外／熔斷＝0', JSON.stringify(st.json.audit));
       ok(!LEAK.test(r1.text + r2.text), 'shadow：回應不含 flow 相關字樣');
       const logs = await http('_s_admin', 'GET', '/api/admin/logs');
-      ok(Array.isArray(logs.json) && !logs.json.some((l) => /^QUOTE_FLOW_/.test(l.action)), 'shadow：稽核日誌沒有任何 QUOTE_FLOW_* 事件');
+      ok(Array.isArray(logs.json) && !logs.json.some((l) => /^QUOTE_FLOW_/.test(l.action) && l.action !== 'QUOTE_FLOW_ENGINE_MODE'), 'shadow：稽核日誌沒有不一致／例外／熔斷事件');
+      const ml = (logs.json || []).filter((l) => l.action === 'QUOTE_FLOW_ENGINE_MODE');
+      ok(ml.length === 1 && /off→shadow/.test(ml[0].detail) && ml[0].target === 'QUOTE_FLOW_ENGINE', 'shadow：第一個請求記一筆 QUOTE_FLOW_ENGINE_MODE（off→shadow），整段只有一筆', JSON.stringify(ml.map((l) => l.detail)).slice(0, 300));
+      ok(readData().quoteFlowEngineMode && readData().quoteFlowEngineMode.mode === 'shadow', 'shadow：資料記下目前模式');
     });
     // 3) on，再 4) 改回 off 重開
     seed();
@@ -153,10 +162,18 @@ async function approveAll(id, expectTiers) {
     try {
       await startServer('on');
       for (const u of ['_s_admin', '_s_own', '_s_m2', '_s_m1', '_s_gm', '_s_ch']) ok(await login(u), 'on：登入 ' + u);
-      const r1 = await submit('q1'), r2 = await submit('q2');
+      const r1 = await submit('q1'), r2 = await submit('q2'), r3 = await submit('q3');
       const d = readData();
       const q1 = d.quotations.find((x) => x.id === 'q1'), q2 = d.quotations.find((x) => x.id === 'q2');
-      ok(r1.status === 200 && r2.status === 200, 'on：兩張單都送簽 200', r1.status + '/' + r2.status);
+      ok(r1.status === 200 && r2.status === 200 && r3.status === 200, 'on：三張單都送簽 200', r1.status + '/' + r2.status + '/' + r3.status);
+      ok(!!d.quotations.find((x) => x.id === 'q3').approval.flow, 'on：q3（連結商機 opp1）送簽後有 flow 快照');
+      const del = await http('_s_own', 'DELETE', '/api/opportunities/opp1', { deleteReason: '價格：沙盒測試' });
+      const q3b = readData().quotations.find((x) => x.id === 'q3');
+      ok(del.status === 200 && q3b.approval.state === 'none' && !('flow' in q3b.approval) && q3b.approval.derived === null && q3b.invalid && q3b.invalid.reason === 'OPP_VOID', 'on：商機作廢 → q3 簽核關閉且 approval.flow 一併清掉（state=none、derived=null、q.invalid=OPP_VOID）', del.status + ' ' + JSON.stringify(q3b.approval).slice(0, 200));
+      const onLogs = await http('_s_admin', 'GET', '/api/admin/logs');
+      // 稽核檔跨階段累積（只有資料檔每階段重置）：這裡只數 off→on
+      const mlOn = (onLogs.json || []).filter((l) => l.action === 'QUOTE_FLOW_ENGINE_MODE' && /off→on/.test(l.detail));
+      ok(mlOn.length === 1, 'on：第一個請求記一筆 QUOTE_FLOW_ENGINE_MODE（off→on），整段只有一筆', JSON.stringify(mlOn.map((l) => l.detail)).slice(0, 300));
       ok(stepTiers(q1) === offTiers && stepTiers(q2) === 'mgr2>mgr1>gm>chairman', 'on：關卡與 off／shadow 相同', stepTiers(q1) + ' | ' + stepTiers(q2));
       ok(q1.approval.flow && q1.approval.flow.engine === 'qfe-1' && q1.approval.flow.origin === 'legacy' && q1.approval.flow.tiers.join('>') === offTiers, 'on：資料有 approval.flow 快照（tiers 與 steps 相同）', JSON.stringify(q1.approval.flow).slice(0, 200));
       ok(q1.approval.history[0].meta && q1.approval.history[0].meta.flow && q1.approval.history[0].meta.flow.defHash === q1.approval.flow.defHash, 'on：SUBMIT 歷程 meta 有 flow 摘要');
@@ -175,6 +192,10 @@ async function approveAll(id, expectTiers) {
       ok(JSON.stringify(q1b.approval.flow) === flowSnap && JSON.stringify(q1b.approval.steps.map((s) => [s.tier, s.assignee])) === stepsAfterSubmit, 'off（重開）：flow 快照與 steps 的關卡／指派人完全不變');
       const st2 = await status();
       ok(st2.json.mode === 'off' && st2.json.stats.runs === 0, 'off（重開）：狀態端點 mode=off、引擎沒跑');
+      const offLogs2 = await http('_s_admin', 'GET', '/api/admin/logs');
+      const mlOff = (offLogs2.json || []).filter((l) => l.action === 'QUOTE_FLOW_ENGINE_MODE');
+      ok(mlOff.filter((l) => /on→off/.test(l.detail)).length === 1 && mlOff.filter((l) => /off→on/.test(l.detail)).length === 1, 'off（重開）：熔斷器使用留痕——改回 off 後第一個請求記一筆 on→off（連同先前的 off→on）', JSON.stringify(mlOff.map((l) => l.detail)).slice(0, 400));
+      ok(readData().quoteFlowEngineMode.mode === 'off', 'off（重開）：資料記下目前模式 off');
     } finally { await stopServer(); cleanup(); }
     // 5) 亂碼環境變數
     await phase('banana', 'banana', async () => {

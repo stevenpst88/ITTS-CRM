@@ -10139,6 +10139,7 @@ require('./lib/quoteRoutes')(app, {
   db, loadAuth, saveAuth, requireAuth, requireAdmin, writeLog, pushNotification, getViewableOwners,
   sanitizeStr, genQuoteNo, taipeiToday, resolveIssuer, buildQuoteWorkbook, buildQuotePnlExcel,
   QUOTE_TEMPLATE, uuidv4, normalizeBu, getUserFeatures,
+  flushAuditBeforeEnd,   // GET 路徑的稽核事件（流程引擎預覽的影子／熔斷）在回應送出前確保寫入
   mail: quoteMail,   // 簽核信件（E1–E6）；MAIL_MODE=off 時 notifyMail 立刻返回
 });
 

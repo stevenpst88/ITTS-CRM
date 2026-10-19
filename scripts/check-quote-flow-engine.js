@@ -11,10 +11,11 @@
  *                   B5 固定種子 100,000 組隨機（種子印在報告）；整批輸出的雜湊與 GOLDEN 比對（回歸快照）
  *   C 路由層        shadow 零差異且不改寫任何資料；on 的結果與 off 逐項相同（僅多 approval.flow）；凍結快照語意（開關事後改變、設定事後改變，在途單照 steps 走）；
  *                   故障注入：引擎例外／結果不一致 → shadow 只稽核、on 自動退回舊路徑；稽核節流；環境變數解析；flow 不外洩
- *   D 條件 AST 安全 惡意輸入、深度／寬度炸彈、循環參照、超大數字、型別錯誤、原型污染、凍結不可變
- *   E 變異測試      把引擎改壞（> ↔ >=、少一個 BU、漏 skip_mgr1、金額用浮點、略過去重…），上面的等價核心必須變紅
+ *   D 條件 AST 安全 惡意輸入、深度／寬度炸彈、循環參照、超大數字、型別錯誤、原型污染、凍結不可變；D14 保留字 id／淺層凍結不可繞過驗證；D15 稽核回報器（預算依階段分桶、寫後才記 seen）；D16 快照內容鎖定
+ *   C15～C19 審查修正輪：快照／SUBMIT meta 鍵集合、GET 預覽稽核落地（帶 req＋flush）、模式變化稽核（QUOTE_FLOW_ENGINE_MODE）、商機作廢清 flow、路由層接線（真實 flowIoOf／flowFactsOf）與舊路徑逐項相同
+ *   E 變異測試      把引擎改壞（> ↔ >=、少一個 BU、漏 skip_mgr1、金額用浮點、略過去重…），上面的等價核心必須變紅；另把 quoteRoutes.js 的接線／稽核落地／快照／模式稽核改壞（22 種）、quoteOppLink 不清 flow，對應探針必須變紅
  *   F off 對基底    QFE_BASE_ROOT=<git archive 出來的基底目錄> 時，同一組請求在基底與本工作樹（off）逐位元比對回應、資料、稽核、通知
- * 環境變數：QFE_QUICK=1（縮小網格，除錯用；不比對 GOLDEN）、QFE_BASE_ROOT（F 區）、QFE_SEED（預設 20261020）
+ * 環境變數：QFE_QUICK=1（縮小網格，除錯用；不比對 GOLDEN）、QFE_BASE_ROOT（F 區）、QFE_SEED（預設 20261020）、QFE_NO_B6=1（略過 B6 指定組合，此時比對 GOLDEN_PRE_B6，證明原有網格輸出不變）
  * 測試資料只用通用字串。
  */
 'use strict';
@@ -35,9 +36,14 @@ const SKIP = new Set((process.env.QFE_SKIP || '').split(',').filter(Boolean));  
 const SEED = parseInt(process.env.QFE_SEED || '20261020', 10);
 const BASE_ROOT = process.env.QFE_BASE_ROOT || '';
 // 回歸快照（QFE_SEED 預設值、非 QUICK 時比對）：整批「引擎輸出」的 sha256。引擎、預設流程或網格定義被改動而結果不同時才會變，變了就必須說明。
-const GOLDEN = '1057d46a143449adb320e008e4cbf99b437f7bd858c13a0674563354dd4efc3c';
+// 2026-10-20 審查修正輪：新增 B6（指定組合 80 筆，失效帳號×被排除者）後重釘。舊值（492,948 筆、不含 B6）保留為 GOLDEN_PRE_B6：QFE_NO_B6=1 時比對它，證明引擎對原有網格的輸出位元級不變。
+const GOLDEN_PRE_B6 = '1057d46a143449adb320e008e4cbf99b437f7bd858c13a0674563354dd4efc3c';
+const GOLDEN = '692781eac6d761d1c66762a7e3fa7c56ec82858a60044b19843d6448ee3a61c8';
 const PINNED_DEFAULT_FLOW_HASH = '520fc5a5d553240ea068eb23bba3ec4712b163d7db76301b342166fb99284194';
 
+// 測試中刻意製造「存檔失敗」會印出模式稽核的警告，屬預期，不顯示
+const _warn = console.warn;
+console.warn = (...a) => { if (/quote-flow mode audit/.test(String(a[0]))) return; _warn.apply(console, a); };
 const res = [];
 const t = (name, ok, extra) => res.push([name, !!ok, extra === undefined ? '' : String(extra)]);
 const J = (x) => JSON.stringify(x);
@@ -62,8 +68,8 @@ if (!nbSrc) { console.error('讀不到 server.js 的 normalizeBu'); process.exit
 const normalizeBu = vm.runInNewContext(nbSrc[0] + '\n;normalizeBu');
 
 // ───────────────────────── 取得 oracle（舊路徑函式）─────────────────────────
-function mkInternal(root) {
-  const reg = require(path.join(root, 'lib/quoteRoutes.js'));
+function mkInternal(root, regOverride) {
+  const reg = regOverride || require(path.join(root, 'lib/quoteRoutes.js'));
   const app = new Proxy({}, { get: () => () => {} });
   const logs = [];
   const deps = {
@@ -123,6 +129,12 @@ const CHK = [[], ['c1'], ['c1', 'c2'], ['o'], ['g1'], ['cons'], ['cI'], ['g1', '
 const BPK = [[], ['b1'], ['s1'], ['gI'], ['g1'], ['o']];
 const SECK = [[], ['s1'], ['s1', 's2'], ['sRO'], ['sI']];
 const CBK = [undefined, 'cons', 'g1', 'c1', 'm1', 'b1', 'o'];
+const B6_SPECS = [
+  { ch: ['cI', 'c1'], costBy: 'c1' }, { ch: ['cI', 'o'] }, { ch: ['cI', 'c1', 'c2'], costBy: 'c1' }, { ch: ['c1', 'cI'], costBy: 'c1' },
+  { gm: ['gI', 'g1'], costBy: 'g1' }, { gm: ['gI', 'o'] }, { gm: ['g1', 'gI'], costBy: 'g1' }, { gm: ['gRO', 'g1'], costBy: 'g1' }, { gm: ['gV', 'g2'], costBy: 'g2' },
+  { bp: ['gI', 'b1'], costBy: 'b1' }, { bp: ['gI', 'o'] }, { bp: [], secs: ['sI', 's1'], costBy: 's1' }, { bp: [], secs: ['sRO', 's1'], costBy: 's1' }, { bp: ['b1'], secs: ['sI'], costBy: 'b1' },
+  { gm: ['gI', 'g1'], ch: ['cI', 'c1'], costBy: 'c1' }, { gm: ['gI', 'g1'], ch: ['cI', 'c1'], costBy: 'g1' },
+];
 const BASE_SPEC = { sup: 'm2ok', m1: 'ok', ownerBu: ['ERP'], bus: ['ERP'], exc: [], gm: ['g1'], ch: ['c1'], bp: ['b1'], secs: ['s1'], costBy: undefined, noFlowCfg: false };
 
 function mkWorld(sp0) {
@@ -195,7 +207,7 @@ function core(QFm, opt) {
     st.total++; const G = grp(g); G.total++;
     let o, e, ek;
     try { o = oracleOf(w, fin); } catch (err) { o = { err: String(err && err.message) }; }
-    try { e = engineOf(QFm, w, fin); ek = keyOf(e); } catch (err) { e = null; ek = 'THROW:' + String(err && err.code || err && err.message).slice(0, 60); st.thrown++; }
+    try { e = opt.engine ? opt.engine(w, fin) : engineOf(QFm, w, fin); ek = keyOf(e); } catch (err) { e = null; ek = 'THROW:' + String(err && err.code || err && err.message).slice(0, 60); st.thrown++; }
     const ok = !o.err && e && ek === keyOf(o);
     st.digest.update(ek + '\n');
     if (!ok) { st.fails++; G.fails++; if (st.first.length < 5) st.first.push(g + ' ' + label + ' fin=' + J(fin) + ' sp=' + J(w.sp) + ' oracle=' + (o.err || keyOf(o)) + ' engine=' + ek); }
@@ -238,6 +250,9 @@ function core(QFm, opt) {
       for (const f of FIN_PATHS) cmp('B4', w, f, 'roster');
     }
   }
+
+  // B6 指定組合（不抽樣、不受 stride 影響）：「失效帳號」與「被排除者（擁有者／成本填寫人）」同時出現在同一份名單——每個關卡側（總經理／董事長／董事會代核人／秘書）各一組
+  if (!process.env.QFE_NO_B6) for (const spec of B6_SPECS) { const w = sp(Object.assign({ sup: 'm2ok', bus: ['ERP'] }, spec)); for (const f of FIN_PATHS) cmp('B6', w, f, 'targeted ' + J(spec)); }
 
   // B5 隨機
   const R = rng(opt.seed);
@@ -459,6 +474,87 @@ function astTests(QFm, tt) {
   tt('D11.2 engineMode：shadow／on（大小寫、空白不拘）', em('shadow') === 'shadow' && em(' ON ') === 'on' && em('Shadow') === 'shadow' && em('on') === 'on');
   tt('D11.3 engineMode：無法辨識的值一律 off（fail-safe）', ['1', 'true', 'yes', 'enable', 'shadow2', 'o n', 'ONN', 0, 1, true, {}].every((v) => em(v) === 'off'));
   tt('D11.4 engineModeInfo：無法辨識的值 valid=false，空值 valid=true', QFm.engineModeInfo('banana').valid === false && QFm.engineModeInfo('').valid === true && QFm.engineModeInfo('on').valid === true);
+
+  // D14 保留字 id（M2 起 id 來自儲存資料；原型鏈上的名字不可當節點／路線／調整的 id）與「淺層凍結」不可繞過驗證
+  {
+    const RESERVED = ['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__defineGetter__'];
+    const mkd = () => JSON.parse(JSON.stringify(QFm.buildLegacyDefault({ buSettings: { ERP: { hasMgr2Step: true } }, exceptions: [{ username: 'm', action: 'skip_mgr1' }] })));
+    const badRes = (d) => { let r; try { r = QFm.validateFlowDef(d); } catch (e) { return 'throw:' + e.message; } return r.ok === false && r.errors.some((e) => /保留字/.test(e.message)) ? '' : 'accepted:' + J(r.errors.slice(0, 2)); };
+    const failN = [], failR = [], failM = [];
+    for (const id of RESERVED) {
+      const d1 = mkd(); d1.nodes[1].id = id; const x1 = badRes(d1); if (x1) failN.push(id + '→' + x1);
+      const d2 = mkd(); d2.routes[0].id = id; const x2 = badRes(d2); if (x2) failR.push(id + '→' + x2);
+      const d3 = mkd(); d3.modifiers[0].id = id; const x3 = badRes(d3); if (x3) failM.push(id + '→' + x3);
+    }
+    tt('D14.1 節點 id 為保留字（' + RESERVED.length + ' 個）一律被拒', failN.length === 0, failN.slice(0, 2).join(';'));
+    tt('D14.2 路線 id 為保留字一律被拒', failR.length === 0, failR.slice(0, 2).join(';'));
+    tt('D14.3 調整 id 為保留字一律被拒', failM.length === 0, failM.slice(0, 2).join(';'));
+    // 以前的崩潰情境：節點 id 叫 __proto__ ＋ resolvable 引用它 → evaluate 必須丟 FlowError（不是 TypeError）
+    const dp = mkd(); dp.nodes.find((n) => n.id === 'n_gm').id = '__proto__'; dp.routes.forEach((r) => { r.path = r.path.map((x) => (x === 'n_gm' ? '__proto__' : x)); }); dp.modifiers[0].when = { resolvable: '__proto__' };
+    let pthrow = null; const ioP = { mgr2: () => 'm2', mgr1: () => 'm1', roster: { gm: ['g'], chairman: ['c'] }, boardProxy: () => ['s'] };
+    try { QFm.evaluate(dp, { owner: 'o', ownerBu: 'ERP', category: 'consult', classKeys: [], revenueCents: 500000000, gpCents: 100000000 }, ioP); } catch (e) { pthrow = e; }
+    tt('D14.4 id＝__proto__ 的定義丟進 evaluate → FlowError(FLOW_INVALID_DEF)，不是 TypeError', !!pthrow && pthrow.name === 'FlowError' && pthrow.code === 'FLOW_INVALID_DEF', pthrow && (pthrow.name + ':' + pthrow.code + ':' + pthrow.message));
+    tt('D14.5 正常 id（n_ 開頭、含 proto 字樣如 n_prototype_x）不被誤殺', (() => { const d = mkd(); d.nodes[1].id = 'n_prototype_x'; d.routes.forEach((r) => { r.path = r.path.map((x) => (x === 'n_mgr1' ? 'n_prototype_x' : x)); }); d.modifiers.forEach((m) => { if (m.target === 'n_mgr1') m.target = 'n_prototype_x'; }); return QFm.validateFlowDef(d).ok; })());
+    // 淺層凍結：頂層 Object.freeze 後內層仍可改；改壞之後再 evaluate 必須重新驗證並拒絕（以前會快取成「已驗證」而吐出 ghost）
+    const facts = { owner: 'o', ownerBu: 'ERP', category: 'consult', classKeys: [], revenueCents: 500000000, gpCents: 200000000 };
+    const sh = mkd(); Object.freeze(sh);
+    let first = null; try { first = QFm.evaluate(sh, facts, ioP).actualTiers.join('>'); } catch (e) { first = 'throw:' + e.message; }
+    sh.nodes.find((n) => n.id === 'n_mgr1').tier = 'ghost';
+    let second = null, sthrow = null; try { second = QFm.evaluate(sh, facts, ioP).actualTiers.join('>'); } catch (e) { sthrow = e; }
+    tt('D14.6 淺層凍結的定義：第一次可評估；內層被改成 tier=ghost 後再評估 → FlowError(FLOW_INVALID_DEF)，不會吐出 ghost', first === 'mgr2>mgr1' && second === null && !!sthrow && sthrow.code === 'FLOW_INVALID_DEF', first + ' | ' + second + ' | ' + (sthrow && sthrow.code));
+    const dfz = (function fz(o) { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.keys(o).forEach((k) => fz(o[k])); } return o; })(mkd());
+    let dfOk = true; try { for (let i = 0; i < 5; i++) QFm.evaluate(dfz, facts, ioP); } catch (e) { dfOk = false; }
+    tt('D14.7 深度凍結的定義可重複評估（快取驗證結果）', dfOk);
+    const gd = mkd(); Object.defineProperty(gd, 'nodes', { get() { return mkd().nodes; }, enumerable: true, configurable: false }); Object.freeze(gd);
+    let gthrow = null; try { QFm.evaluate(gd, facts, ioP); QFm.evaluate(gd, facts, ioP); } catch (e) { gthrow = e; }
+    tt('D14.8 帶 getter 的定義不被當成不可變而快取（每次重新驗證；不丟非 FlowError 的例外）', gthrow === null || gthrow.name === 'FlowError', gthrow && gthrow.message);
+  }
+
+  // D15 稽核回報器：全域預算依階段分桶（preview 洪水不擠掉 submit）、per-key 節流保留、寫入失敗不記入 seen
+  {
+    const mkRep = (extra) => { const w = []; let now = 1000000000000; const R = QFm.createReporter(Object.assign({ writeLog: (...a) => w.push(a), now: () => now }, extra || {})); return { R, w, adv: (ms) => { now += ms; } }; };
+    const cx = (phase, id) => ({ phase, mode: 'shadow', quoteId: id, quoteNo: 'QN' + id, category: 'consult', ownerBu: 'ERP', operator: 'u1' });
+    const P = { actualTiers: ['mgr1'], financialTiers: ['mgr1'], blockers: [] };
+    const N = { actualTiers: ['mgr1', 'gm'], financialTiers: ['mgr1', 'gm'], blockers: [] };
+    const a = mkRep();
+    for (let i = 0; i < 40; i++) { a.R.mismatch(cx('preview', 'p' + i), P, N, ['actualTiers']); a.R.fallback(cx('preview', 'p' + i), null); }   // 40 張 × 2 種事件 ＝ 80 筆 preview 事件
+    const prevWritten = a.w.length;
+    const sm = a.R.mismatch(cx('submit', 's1'), P, N, ['actualTiers']), sf = a.R.fallback(cx('submit', 's1'), null);
+    tt('D15.1 40 張 preview 事件用完預算（上限 60）後，同小時的 submit 事件仍能寫入', prevWritten === 60 && sm === true && sf === true && a.w.length === 62 && a.w.slice(60).map((x) => x[0]).join() === 'QUOTE_FLOW_SHADOW_MISMATCH,QUOTE_FLOW_ENGINE_FALLBACK', 'preview=' + prevWritten + ' total=' + a.w.length + ' sm=' + sm + ' sf=' + sf);
+    tt('D15.2 preview 超出預算的事件只計數（suppressed=20），不寫入', a.R.stats.suppressed === 20 && a.R.stats.written === 62, J(a.R.stats));
+    const sm2 = a.R.mismatch(cx('submit', 's1'), P, N, ['actualTiers']);
+    tt('D15.3 per-key 節流仍在：同一張單同階段 10 分鐘內重複只寫第一筆', sm2 === false && a.w.length === 62);
+    a.adv(10 * 60 * 1000 + 1);
+    tt('D15.4 超過節流視窗後同一個 key 可再寫（submit 桶尚有預算）', a.R.mismatch(cx('submit', 's1'), P, N, ['actualTiers']) === true && a.w.length === 63);
+    a.adv(60 * 60 * 1000);
+    tt('D15.5 超過全域視窗後 preview 預算重置', a.R.mismatch(cx('preview', 'pNew'), P, N, ['actualTiers']) === true);
+    const b = mkRep();
+    for (let i = 0; i < 100; i++) b.R.mismatch(cx('submit', 'x' + i), P, N, ['actualTiers']);
+    tt('D15.6 submit 桶自己也有上限（60）：不是無限制', b.w.length === 60, b.w.length);
+    let calls = 0; const c = mkRep({ writeLog: () => { calls++; if (calls === 1) throw new Error('db down'); } });
+    const r1 = c.R.mismatch(cx('preview', 'z1'), P, N, ['actualTiers']), r2 = c.R.mismatch(cx('preview', 'z1'), P, N, ['actualTiers']), r3 = c.R.mismatch(cx('preview', 'z1'), P, N, ['actualTiers']);
+    tt('D15.7 writeLog 丟例外時不記入 seen：第一次失敗（false）、立刻重試成功（true）、之後才被節流（false）；例外被吞掉', r1 === false && r2 === true && r3 === false && calls === 2, [r1, r2, r3, calls].join());
+    const d0r = mkRep({ writeLog: null });
+    tt('D15.8 沒有 writeLog 時不丟例外也不計寫入', d0r.R.mismatch(cx('preview', 'q'), P, N, ['actualTiers']) === false && d0r.R.stats.written === 0);
+    const e1 = mkRep(); e1.R.error(cx('preview', 'e'), new Error('x')); e1.R.fallback(cx('preview', 'e'), new Error('y'));
+    tt('D15.9 同一單同階段的 error 與 fallback 是不同 kind，各寫一筆', e1.w.length === 2 && e1.w[0][0] === 'QUOTE_FLOW_SHADOW_ERROR' && e1.w[1][0] === 'QUOTE_FLOW_ENGINE_FALLBACK');
+  }
+
+  // D16 快照內容鎖定（approval.flow 的鍵集合固定、不含毛利／成本數值）
+  {
+    const flowCfg = { buSettings: { ERP: { hasMgr2Step: true } }, exceptions: [{ username: 'm', action: 'skip_mgr1' }] };
+    const defS = QFm.legacyDefault(flowCfg);
+    const ioS = { owner: 'o', costBy: undefined, mgr2: () => 'm2', mgr1: () => 'm1', canApprove: () => true, roster: { gm: ['g'], chairman: ['c'] }, boardProxy: () => ['s'] };
+    const factsS = { owner: 'o', ownerBu: 'ERP', category: 'consult', classKeys: [], revenueCents: 123456789, gpCents: 55555555 };
+    const pS = QFm.plan(defS, factsS, ioS);
+    const snap = QFm.buildSnapshot(defS, pS, factsS, flowCfg);
+    tt('D16.1 buildSnapshot 鍵集合固定', J(Object.keys(snap).sort()) === J(['applied', 'defHash', 'defNo', 'engine', 'factsPublic', 'legacyCfg', 'origin', 'path', 'routeId', 'tiers', 'trace', 'v']), J(Object.keys(snap).sort()));
+    tt('D16.2 factsPublic 只有 category／ownerBuPrimary／amountCents', J(Object.keys(snap.factsPublic).sort()) === J(['amountCents', 'category', 'ownerBuPrimary']), J(snap.factsPublic));
+    const sj = J(snap);
+    tt('D16.3 快照不含毛利／成本：沒有 gpCents／margin／cost 字樣，也沒有毛利數值 55555555', !/gpCents|marginPct|marginLevel|margin|cost|55555555/i.test(sj), sj.slice(0, 200));
+    tt('D16.4 trace 每筆只有 rule／matched（調整多一個 applied）', snap.trace.every((x) => Object.keys(x).every((k) => ['rule', 'matched', 'applied'].includes(k))) && snap.trace.length > 0);
+    tt('D16.5 legacyCfg 只有 mgr2Bus／skipUsers', J(Object.keys(snap.legacyCfg).sort()) === J(['mgr2Bus', 'skipUsers']));
+  }
 }
 
 // ───────────────────────── 變異測試 ─────────────────────────
@@ -504,6 +600,41 @@ const MUTATIONS = [
   ['金額用浮點（條件 AST 的毛利率比較改用浮點）', "return cmpOp(op, cmpBig(f.gpCents * 100n * (10n ** BigInt(p.s)), p.n * f.amountCents));", "return cmpOp(op, Math.sign(Number(f.gpCents) / Number(f.amountCents) * 100 - Number(rhs)));"],
   ['金額用浮點（條件 AST 的金額比較改用 parseFloat）', "case 'money': return cmpOp(op, cmpBig(f.amountCents, parseMoneyCents(rhs)));", "case 'money': return cmpOp(op, Math.sign(Number(f.amountCents) - Math.round(parseFloat(rhs) * 100)));"],
   ['路線選擇改成最後一條符合者', "    if (m) { route = r; break; }", "    if (m) { route = r; }"],
+  ['董事長候選人不過濾失效帳號', "else if (t === 'chairman') list = activeOf(io.roster.chairman);", "else if (t === 'chairman') list = io.roster.chairman.slice();"],
+  ['總經理候選人不過濾失效帳號', "else if (t === 'gm') list = activeOf(io.roster.gm);", "else if (t === 'gm') list = io.roster.gm.slice();"],
+  ['董事長名單不過濾失效帳號（早退判斷）', "if (actualTiers.includes('chairman') && !activeOf(io.roster.chairman).length)", "if (actualTiers.includes('chairman') && !io.roster.chairman.length)"],
+  ['稽核預算不依階段分桶（preview 洪水擠掉 submit）', "const bk = String(phase);", "const bk = 'all';"],
+  ['稽核 key 在寫入前就記入 seen（寫入失敗也被節流）', "    if (wrote) {\n      seen.set(k, t);", "    if (true) {\n      seen.set(k, t);"],
+  ['驗證結果只看淺層凍結就快取', "if (isDeepFrozen(def)) VALIDATED.add(def);", "if (Object.isFrozen(def)) VALIDATED.add(def);"],
+  ['保留字 id 不擋', "const reservedId = (id) => typeof id === 'string' && (id in Object.prototype || id === 'prototype');", "const reservedId = (id) => false;"],
+  ['保留字 id 漏掉 prototype', " || id === 'prototype');", ");"],
+  ['快照 factsPublic 洩漏毛利', "amountCents: facts.revenueCents },", "amountCents: facts.revenueCents, gpCents: facts.gpCents },"],
+  ['快照多帶 marginLevel', "legacyCfg: p.origin === 'legacy'", "marginLevel: p.marginLevel, legacyCfg: p.origin === 'legacy'"],
+];
+// 路由層（lib/quoteRoutes.js）變異：wiring＝引擎側接線（用 core 比對）；probe＝路由層行為探針
+const ROUTE_MUTATIONS = [
+  ['wiring', '接線：canApprove 一律 true', "canApprove: (un) => canApproveAct(users[un]),", "canApprove: (un) => true,"],
+  ['wiring', '接線：成本填寫人不傳', "owner: q.owner, costBy: q.costBy,", "owner: q.owner, costBy: undefined,"],
+  ['wiring', '接線：一級主管改用成本填寫人查', "mgr1: () => findManager1(users, q.owner),", "mgr1: () => findManager1(users, q.costBy || q.owner),"],
+  ['wiring', '接線：二級主管改用成本填寫人查', "mgr2: () => findManager2(users, q.owner),", "mgr2: () => findManager2(users, q.costBy || q.owner),"],
+  ['wiring', '接線：董事長名單誤用總經理名單', "roster: { gm: cfg.roster.gm, chairman: cfg.roster.chairman },", "roster: { gm: cfg.roster.gm, chairman: cfg.roster.gm },"],
+  ['wiring', '接線：總經理名單誤用董事長名單', "roster: { gm: cfg.roster.gm, chairman: cfg.roster.chairman },", "roster: { gm: cfg.roster.chairman, chairman: cfg.roster.chairman },"],
+  ['wiring', '接線：董事會代核人傳空', "boardProxy: () => [...boardProxySet(cfg, users)],", "boardProxy: () => [],"],
+  ['wiring', '接線：擁有者傳成登入者', "owner: q.owner, costBy: q.costBy,", "owner: ctx.me, costBy: q.costBy,"],
+  ['wiring', 'facts：主要 BU 預設值改 ITS', "ownerBu: normalizeBu((ctx.users[q.owner] || {}).bu)[0] || 'ERP', category: derived.rowKey,", "ownerBu: normalizeBu((ctx.users[q.owner] || {}).bu)[0] || 'ITS', category: derived.rowKey,"],
+  ['wiring', 'facts：主要 BU 取最後一個', "ownerBu: normalizeBu((ctx.users[q.owner] || {}).bu)[0] || 'ERP', category: derived.rowKey,", "ownerBu: normalizeBu((ctx.users[q.owner] || {}).bu).slice(-1)[0] || 'ERP', category: derived.rowKey,"],
+  ['wiring', 'facts：歸類固定 other', "category: derived.rowKey,", "category: 'other',"],
+  ['wiring', 'facts：營收差 1 分', "revenueCents: derived.revenueCents, gpCents: derived.gpCents,", "revenueCents: derived.revenueCents + 1, gpCents: derived.gpCents,"],
+  ['wiring', 'facts：毛利差 1 分', "revenueCents: derived.revenueCents, gpCents: derived.gpCents,", "revenueCents: derived.revenueCents, gpCents: derived.gpCents - 1,"],
+  ['probe', '預覽路徑不傳 req（稽核事件沒有 ip／ua、無法 flush）', "flowCheck(derived, q, ctx, 'preview', mode, legacy, ctx._req)", "flowCheck(derived, q, ctx, 'preview', mode, legacy)"],
+  ['probe', 'GET 路徑不呼叫 flushAuditBeforeEnd', "&& !['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) flushAuditBeforeEnd(req);", "&& false) flushAuditBeforeEnd(req);"],
+  ['probe', '寫入型請求也包 flush（重複）', "&& !['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) flushAuditBeforeEnd(req);", ") flushAuditBeforeEnd(req);"],
+  ['probe', 'SUBMIT 歷程 meta.flow 夾帶 trace', "routeId: flowSnap.routeId, applied: flowSnap.applied } }", "routeId: flowSnap.routeId, applied: flowSnap.applied, trace: flowSnap.trace } }"],
+  ['probe', 'SUBMIT 歷程 meta.flow 夾帶 factsPublic', "routeId: flowSnap.routeId, applied: flowSnap.applied } }", "routeId: flowSnap.routeId, applied: flowSnap.applied, factsPublic: flowSnap.factsPublic } }"],
+  ['probe', '模式沒變也每次都記', "if (info.mode === prev) return;", "if (false) return;"],
+  ['probe', '模式變化不寫稽核', "writeLog('QUOTE_FLOW_ENGINE_MODE',", "(function () {})('QUOTE_FLOW_ENGINE_MODE',"],
+  ['probe', '模式變化存檔失敗不還原記憶體值', "if (before === undefined) delete ctx.data.quoteFlowEngineMode; else ctx.data.quoteFlowEngineMode = before;", ""],
+  ['probe', '從未啟用過時 off 被當成「有變化」（預設行為被改動）', "? rec.mode : 'off';", "? rec.mode : 'none';"],
 ];
 
 // ───────────────────────── 路由層（假 app＋記憶體資料庫）─────────────────────────
@@ -539,7 +670,7 @@ const RQUOTES = () => [
 ];
 function mkRouteEnv(root, variant, opts) {
   opts = opts || {};
-  const reg = require(path.join(root, 'lib/quoteRoutes.js'));
+  const reg = opts.reg || require(path.join(root, 'lib/quoteRoutes.js'));
   const PNL = require(path.join(root, 'lib/quotePnlExcel.js'));
   const routes = {};
   const app = {};
@@ -547,19 +678,20 @@ function mkRouteEnv(root, variant, opts) {
   const v = RVAR[variant];
   const env = {
     data: { quotations: RQUOTES(), quoteApproval: { roster: Object.assign({ costProviders: [], sealManagers: [] }, JSON.parse(J(v.roster))), productClasses: RCLASSES }, approvalFlowConfig: { version: 1, buSettings: JSON.parse(J(v.buSettings)), exceptions: JSON.parse(J(v.exceptions)) }, contacts: [] },
-    logs: [], notes: [], saves: 0, seq: 0, nseq: 0, rec: [],
+    logs: [], logReqs: [], notes: [], saves: 0, seq: 0, nseq: 0, rec: [], flushes: [], failSave: false,
   };
   env.auth = { users: JSON.parse(J(RUSERS)) };
   const deps = {
-    db: { load: () => JSON.parse(J(env.data)), save: (d) => { env.saves++; env.data = JSON.parse(J(d)); }, flush: async () => {}, auditStore: { total: async (f) => env.logs.filter((l) => l[0] === f.action).length } }, loadAuth: () => env.auth, saveAuth: () => {},
+    db: { load: () => JSON.parse(J(env.data)), save: (d) => { env.saves++; if (env.failSave) throw new Error('save boom'); env.data = JSON.parse(J(d)); }, flush: async () => {}, auditStore: { total: async (f) => env.logs.filter((l) => l[0] === f.action).length } }, loadAuth: () => env.auth, saveAuth: () => {},
     requireAuth: (rq, rs, next) => next(), requireAdmin: function requireAdminStub(rq, rs, next) { next(); },
-    writeLog: (...a) => env.logs.push([a[0], a[1], a[2], a[3]]),
+    writeLog: (...a) => { env.logs.push([a[0], a[1], a[2], a[3]]); env.logReqs.push(a[4]); },
     pushNotification: (to, type, title, body, refId) => { env.notes.push([to, type, title, body, refId]); const d = deps.db.load(); (d.notifications = d.notifications || []).unshift({ id: 'n' + (++env.nseq), to, type, title, body, refId, read: false, createdAt: 'TS' }); deps.db.save(d); },
     getViewableOwners: (rq) => { const rl = rq.session.user.role; if (['admin', 'executive', 'manager1', 'manager2', 'secretary'].includes(rl)) return ['own1', 'own2', 'own3']; return [rq.session.user.username]; },
     sanitizeStr: (s, n) => String(s == null ? '' : s).trim().slice(0, n || 200), genQuoteNo: () => 'QT-NEW', taipeiToday: () => '2026-10-20', resolveIssuer: () => ({}),
     buildQuoteWorkbook: async () => Buffer.from(''), buildQuotePnlExcel: PNL.buildQuotePnlExcel, QUOTE_TEMPLATE: '',
     uuidv4: () => 'u' + (++env.seq), normalizeBu, getUserFeatures: () => ['quotations'],
   };
+  if (opts.flush) deps.flushAuditBeforeEnd = (rq) => { env.flushes.push(rq); };
   const reg_ = reg(app, deps);
   env.internal = reg_._internal;
   env.routeHandlers = (m, pth) => routes[m.toUpperCase() + ' ' + pth];
@@ -567,7 +699,7 @@ function mkRouteEnv(root, variant, opts) {
   env.call = (user, method, p, params, body) => new Promise((resolve, reject) => {
     const h = [].concat(...routes[method.toUpperCase() + ' ' + p]);
     const role = (env.auth.users.find((u) => u.username === user) || {}).role;
-    const req = { session: { user: { username: user, role } }, params: params || {}, query: {}, headers: {}, body: body === undefined ? {} : JSON.parse(J(body)), ip: '127.0.0.1' };
+    const req = { method: method.toUpperCase(), session: { user: { username: user, role } }, params: params || {}, query: {}, headers: {}, body: body === undefined ? {} : JSON.parse(J(body)), ip: '127.0.0.1' };
     const rs = { status(c) { this._s = c; return this; }, json(j) { resolve({ s: this._s || 200, j }); return this; }, send() { resolve({ s: this._s || 200, j: null }); return this; }, setHeader() {}, set() {} };
     let i = 0;
     const next = () => { const f = h[i++]; if (f) { try { const x = f(req, rs, next); if (x && x.catch) x.catch(reject); } catch (e) { reject(e); } } };
@@ -635,7 +767,83 @@ async function withEnvMode(mode, fn) {
 async function runVariant(root, variant, mode) {
   return withEnvMode(mode, async () => { const env = mkRouteEnv(root, variant); await scenario(env); return env; });
 }
-const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes: norm(env.notes), rec: env.rec });
+// 模式變化稽核（QUOTE_FLOW_ENGINE_MODE）會在 shadow／on 第一次請求時多一筆稽核＋一個 data.quoteFlowEngineMode 小欄位；比對「引擎行為」時剔除，另有專門的測試（C15）驗證它。raw＝true 時逐位元不剔除（off 對基底）。
+const MODE_ACT = 'QUOTE_FLOW_ENGINE_MODE';
+const finalState = (env, raw) => {
+  if (raw) return { data: norm(env.data), logs: norm(env.logs), notes: norm(env.notes), rec: env.rec };
+  const d = JSON.parse(J(env.data)); delete d.quoteFlowEngineMode;
+  return { data: norm(d), logs: norm(env.logs.filter((l) => l[0] !== MODE_ACT)), notes: norm(env.notes), rec: env.rec };
+};
+
+// ───────────────────────── 路由層探針（正式碼與變異體共用）─────────────────────────
+const QR_PATH = path.join(ROOT, 'lib/quoteRoutes.js');
+const QR_SRC = fs.readFileSync(QR_PATH, 'utf8');
+const OL_PATH = path.join(ROOT, 'lib/quoteOppLink.js');
+const OL_SRC = fs.readFileSync(OL_PATH, 'utf8');
+function loadAt(file, src) {
+  const m = new Module(file, module); m.filename = file; m.paths = Module._nodeModulePaths(path.dirname(file)); m._compile(src, file); return m.exports;
+}
+const FLOW_KEYS = ['applied', 'defHash', 'defNo', 'engine', 'factsPublic', 'legacyCfg', 'origin', 'path', 'routeId', 'tiers', 'trace', 'v'];
+const META_FLOW_KEYS = ['applied', 'defHash', 'defNo', 'engine', 'origin', 'routeId'];
+/** 引擎與舊路徑的比對，但「引擎側」走 quoteRoutes 真正的接線（flowIoOf／flowFactsOf）——接線被改壞時 core() 會變紅 */
+function wiringEngine(IN) {
+  return (w, fin) => {
+    const flowCfg = IN.getFlowCfg(w.data);
+    const def = QF.legacyDefault(flowCfg);
+    const ctx = { data: w.data, users: w.users, cfg: w.cfg, me: 'viewer1' };   // 操作者刻意不等於擁有者（接線若誤把登入者當 owner 就會被抓到）
+    const derived = { rowKey: fin.cat, revenueCents: fin.rev, gpCents: fin.gp };
+    return QF.plan(def, IN.flowFactsOf(derived, w.q, ctx), IN.flowIoOf(w.q, ctx));
+  };
+}
+/** 各項路由層行為探針；每項 true＝正常。reg 省略＝正式 lib/quoteRoutes.js，給變異體時用它 */
+async function routeProbe(reg) {
+  const out = {};
+  const run = (mode, opts) => withEnvMode(mode, async () => { const e = mkRouteEnv(ROOT, 'V1', Object.assign({ reg }, opts || {})); await scenario(e); return e; });
+  // (a) on：快照鍵集合與 SUBMIT meta 鍵集合固定、不含毛利／成本
+  {
+    const env = await run('on');
+    const withFlow = env.data.quotations.filter((q) => q.approval && q.approval.flow);
+    out.snapKeys = withFlow.length > 0 && withFlow.every((q) => { const f = q.approval.flow; return J(Object.keys(f).sort()) === J(FLOW_KEYS) && J(Object.keys(f.factsPublic).sort()) === J(['amountCents', 'category', 'ownerBuPrimary']) && !/gpCents|marginPct|marginLevel|margin|cost/i.test(J(f)); });
+    out.metaKeys = withFlow.length > 0 && withFlow.every((q) => { const subs = q.approval.history.filter((h) => h.action === 'SUBMIT'); return subs.length > 0 && subs.every((h) => h.meta && h.meta.flow && J(Object.keys(h.meta.flow).sort()) === J(META_FLOW_KEYS) && !/trace|factsPublic|gpCents|margin|cost/i.test(J(h.meta.flow))); });
+  }
+  // (b) shadow＋注入錯誤的預設流程：GET 預覽路徑產生的稽核事件帶 req（ip／ua）並在回應前 flush；POST 不重複包 flush
+  {
+    const realLD = QF.legacyDefault;
+    QF.legacyDefault = (flowCfg) => { const d = JSON.parse(JSON.stringify(realLD(flowCfg))); d.routes.find((r) => r.id === 'r_l2').path = ['n_mgr1']; return d; };
+    try {
+      const env = await run('shadow', { flush: true });
+      const evs = env.logs.map((l, i) => [l, i]).filter(([l]) => /^QUOTE_FLOW_(SHADOW_MISMATCH|SHADOW_ERROR|ENGINE_FALLBACK)$/.test(l[0]));
+      const prev = evs.filter(([l]) => /階段=preview/.test(l[3])), subm = evs.filter(([l]) => /階段=submit/.test(l[3]));
+      out.hasEvents = prev.length > 0 && subm.length > 0;
+      out.previewReq = prev.length > 0 && prev.every(([, i]) => env.logReqs[i] && env.logReqs[i].ip === '127.0.0.1' && env.logReqs[i].method === 'GET');
+      out.previewFlush = prev.length > 0 && prev.every(([, i]) => env.flushes.includes(env.logReqs[i]));
+      out.noPostFlush = env.flushes.length > 0 && env.flushes.every((rq) => rq.method === 'GET') && subm.every(([, i]) => !env.flushes.includes(env.logReqs[i]));
+    } finally { QF.legacyDefault = realLD; }
+  }
+  // (c) 模式變化稽核
+  {
+    const off = await run(undefined, { flush: true });
+    out.modeOff = !('quoteFlowEngineMode' in off.data) && off.logs.filter((l) => l[0] === MODE_ACT).length === 0 && off.flushes.length === 0;
+    const sh = await run('shadow');
+    out.modeShadow = sh.logs.filter((l) => l[0] === MODE_ACT).length === 1 && sh.data.quoteFlowEngineMode && sh.data.quoteFlowEngineMode.mode === 'shadow';
+    const e = mkRouteEnv(ROOT, 'V1', { reg }); e.failSave = true;
+    const ctx = { data: {}, me: 'x' };
+    await withEnvMode('on', async () => e.internal.noteEngineMode(ctx, { method: 'GET' }));
+    out.modeFailRestore = ctx.data.quoteFlowEngineMode === undefined && e.logs.filter((l) => l[0] === MODE_ACT).length === 0 && e.saves === 1;
+  }
+  return out;
+}
+/** 商機作廢：簽核中的單被關閉時，approval.flow 要跟 derived 一起清掉 */
+async function oppVoidProbe(OLm) {
+  const env = mkRouteEnv(ROOT, 'V1');
+  env.data.opportunities = [{ id: 'oppX', owner: 'own2', stage: 'B', company: 'TestCo', product: 'p', amount: 800 }];
+  Q(env, 'a2').oppId = 'oppX';
+  const sub = await withEnvMode('on', () => env.call('own2', 'POST', SUBMIT, { id: 'a2' }, {}));
+  const pre = sub.s === 200 && !!Q(env, 'a2').approval.flow && Q(env, 'a2').approval.state === 'pending';
+  const inv = OLm.invalidateForOpp(env.data, env.data.opportunities[0], 'own2', '2026-10-20T00:00:00.000Z');
+  const ap = Q(env, 'a2').approval;
+  return pre && inv.length === 1 && ap.state === 'none' && ap.derived === null && !('flow' in ap) && !!Q(env, 'a2').invalid && Q(env, 'a2').invalid.reason === 'OPP_VOID';
+}
 
 // ───────────────────────── 主程式 ─────────────────────────
 (async () => {
@@ -661,7 +869,7 @@ const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes
   const grpTxt = Object.keys(st.groups).sort().map((g) => g + ':' + st.groups[g].total).join(' ');
   t('B 等價網格：引擎與舊路徑逐項相同（財務層、實際關卡、mgr2、mgr1、阻擋碼與訊息）— ' + st.total + ' 筆（' + grpTxt + '，隨機種子 ' + SEED + '），不一致 ' + st.fails + '、引擎例外 ' + st.thrown, st.fails === 0 && st.thrown === 0 && st.total > (QUICK ? 1000 : 400000), st.first.join('\n  '));
   for (const g of Object.keys(st.groups).sort()) t('B.' + g + ' 分組：' + st.groups[g].total + ' 筆全相等', st.groups[g].fails === 0 && st.groups[g].total > 0, st.groups[g].fails);
-  if (!QUICK) t('B.golden 回歸快照：整批引擎輸出的 sha256 ＝ GOLDEN（' + st.digestHex.slice(0, 16) + '…）', st.digestHex === GOLDEN, st.digestHex);
+  if (!QUICK) t('B.golden 回歸快照：整批引擎輸出的 sha256 ＝ GOLDEN（' + st.digestHex.slice(0, 16) + '…）', st.digestHex === (process.env.QFE_NO_B6 ? GOLDEN_PRE_B6 : GOLDEN), st.digestHex);
   console.log('[B] ' + st.total + ' 筆，耗時 ' + ((Date.now() - tB0) / 1000).toFixed(1) + 's，digest=' + st.digestHex);
 
   // 邊界點抽查（人讀得懂的）
@@ -713,7 +921,7 @@ const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes
     t('C5.' + v + ' off：資料中完全沒有 flow 鍵（舊單位元級不變）', noFlowOff);
     const leak = [...off.rec, ...on.rec].some((r) => /defHash|"flow"|"trace"|qfe-1|routeId|factsPublic/.test(r[2]));
     t('C6.' + v + ' 任何 API 回應都不含 flow／defHash／trace／routeId（不洩漏）', !leak);
-    const audMis = shadowRuns[v].logs.filter((l) => /^QUOTE_FLOW_/.test(l[0])).length + onRuns[v].logs.filter((l) => /^QUOTE_FLOW_/.test(l[0])).length;
+    const audMis = shadowRuns[v].logs.filter((l) => /^QUOTE_FLOW_/.test(l[0]) && l[0] !== MODE_ACT).length + onRuns[v].logs.filter((l) => /^QUOTE_FLOW_/.test(l[0]) && l[0] !== MODE_ACT).length;
     t('C7.' + v + ' shadow／on 全劇本零稽核事件（零差異、零例外、零熔斷）', audMis === 0, audMis);
     const stats = shadowRuns[v].internal.flowReporter.stats;
     t('C8.' + v + ' shadow 引擎確實有跑（runs>0）且 mismatches=0、errors=0', stats.runs > 0 && stats.mismatches === 0 && stats.errors === 0, J(stats));
@@ -864,6 +1072,39 @@ const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes
     t('C11 QUOTE_FLOW_ENGINE 解析：未設／空／off／亂碼／"1" ＝ off（引擎完全不執行、無 flow）；shadow（大小寫空白不拘）＝只比對；ON＝採用並凍結', allOk, bad.join(';'));
   }
 
+  // ═════ C15～C19 審查修正（ultracode 11 條 low）═════
+  const probe = await routeProbe();
+  t('C15.1 快照 approval.flow 的鍵集合固定（12 個）、factsPublic 只有 3 個鍵、不含 gpCents／margin／cost 字樣', probe.snapKeys === true);
+  t('C15.2 SUBMIT 歷程 meta.flow 的鍵集合固定（6 個），不含 trace／factsPublic／gpCents', probe.metaKeys === true);
+  t('C16.1 shadow＋錯誤預設流程：GET 預覽與 POST 送簽兩個階段都有稽核事件', probe.hasEvents === true);
+  t('C16.2 GET 預覽路徑的稽核事件帶 req（有 ip；以前 undefined → ip／ua 空白）', probe.previewReq === true);
+  t('C16.3 GET 預覽路徑的稽核事件寫入前呼叫 flushAuditBeforeEnd(req)（Vercel 回應送出前確保寫入）', probe.previewFlush === true);
+  t('C16.4 POST／PUT 等寫入型請求不重複包 flush（server.js 中介層已涵蓋）；只有 GET 路徑呼叫', probe.noPostFlush === true);
+  t('C17.1 off：沒有 data.quoteFlowEngineMode、沒有模式稽核、完全沒有呼叫 flush（預設行為不變）', probe.modeOff === true);
+  t('C17.2 shadow：第一個請求記一筆 off→shadow，整個劇本只有這一筆，data 小欄位記下目前模式', probe.modeShadow === true);
+  t('C17.3 存檔失敗：還原記憶體內的值（共用快取不被污染）、不宣稱已記錄、不丟例外', probe.modeFailRestore === true);
+  {
+    const modeLogs = (env) => env.logs.filter((l) => l[0] === MODE_ACT);
+    t('C17.4 off 的 4 個變體：資料沒有 quoteFlowEngineMode、沒有模式稽核（逐位元，未剔除）', VARS_.every((v) => !('quoteFlowEngineMode' in offRuns[v].data) && modeLogs(offRuns[v]).length === 0));
+    t('C17.5 shadow／on 的 4 個變體：各只記一筆（off→shadow／off→on），detail 不含金額', VARS_.every((v) => modeLogs(shadowRuns[v]).length === 1 && /off→shadow/.test(modeLogs(shadowRuns[v])[0][3]) && modeLogs(onRuns[v]).length === 1 && /off→on/.test(modeLogs(onRuns[v])[0][3]) && !/\d{5,}/.test(modeLogs(onRuns[v])[0][3] + modeLogs(shadowRuns[v])[0][3])));
+    const env = mkRouteEnv(ROOT, 'V1', { flush: true });
+    for (const m of ['shadow', 'shadow', 'on', 'on', undefined, undefined, 'banana', 'on', 'banana', 'off']) await withEnvMode(m, () => env.call('own1', 'GET', GET_ONE, { id: 'a1' }));
+    const seq = modeLogs(env).map((l) => (/變更：(\w+→\w+)/.exec(l[3]) || [])[1]);
+    t('C17.6 連續切換 shadow→on→off→（banana 視為 off，不記）→on→banana：只在有效模式改變時各記一筆，共 5 筆', J(seq) === J(['off→shadow', 'shadow→on', 'on→off', 'off→on', 'on→off']), J(seq));
+    t('C17.7 亂碼值（banana）導致 on→off 時，detail 註明「值無法辨識」；operator＝觸發請求的帳號；target＝QUOTE_FLOW_ENGINE', /無法辨識「banana」/.test(modeLogs(env)[4][3]) && modeLogs(env).every((l) => l[1] === 'own1' && l[2] === 'QUOTE_FLOW_ENGINE'));
+    t('C17.8 每筆模式稽核都在 GET 請求內寫入並呼叫 flush（5 筆＝5 次）', env.flushes.length === 5 && env.flushes.every((rq) => rq.method === 'GET'), env.flushes.length);
+    t('C17.9 data.quoteFlowEngineMode 記最後一次有效模式（off），不含帳密／金額', env.data.quoteFlowEngineMode && env.data.quoteFlowEngineMode.mode === 'off' && J(Object.keys(env.data.quoteFlowEngineMode).sort()) === J(['at', 'by', 'mode']));
+    const envF = mkRouteEnv(ROOT, 'V1'); envF.failSave = true;
+    const rr = []; for (let i = 0; i < 3; i++) rr.push(await withEnvMode('on', () => envF.call('own1', 'GET', GET_ONE, { id: 'a1' })));
+    t('C17.10 存檔一直失敗：3 個請求都 200、存檔只嘗試 1 次（30 秒內不狂試）、沒有模式稽核', rr.every((r) => r.s === 200) && envF.saves === 1 && modeLogs(envF).length === 0, rr.map((r) => r.s).join() + ' saves=' + envF.saves);
+  }
+  t('C18 商機作廢：on 模式簽核中的單被關閉時 approval.flow 一併清掉（state=none、derived=null、無 flow、q.invalid=OPP_VOID）', await oppVoidProbe(require(OL_PATH)));
+  {
+    const wIN = mkInternal(ROOT);
+    const wst = core(QF, { strideF: 12, strideG1: 12, strideG2: 3, strideG3: 3, nRandom: 20000, seed: SEED, engine: wiringEngine(wIN) });
+    t('C19 路由層接線（真實 flowIoOf／flowFactsOf：canApprove、costBy、mgr1 查人、名冊、代核人、主要 BU、歸類、金額）與舊路徑逐項相同 — ' + wst.total + ' 筆（' + Object.keys(wst.groups).sort().map((g) => g + ':' + wst.groups[g].total).join(' ') + '）', wst.fails === 0 && wst.thrown === 0 && wst.total > 3000, wst.first.join('\n  '));
+  }
+
   // ═════ E 變異測試 ═════
   const quick = { strideF: 60, strideG1: 90, strideG2: 400, strideG3: 500, nRandom: 4000, seed: SEED };
   if (SKIP.has('E')) MUTATIONS.length = 0;
@@ -898,6 +1139,26 @@ const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes
     }
     t('E.float 等價變異體佐證：' + n + ' 個貼近門檻的點，毛利浮點算法與精確算法的分類不一致 ' + diff + ' 個（0＝在 1e15 分上限內浮點恰好夠用；精確算法是必要的防線而非必然的差異）', diff === 0, diff);
   }
+  // 路由層（quoteRoutes.js）變異：接線被改壞／稽核落地被拿掉／快照多帶東西／模式稽核失效 → 對應測試必須變紅
+  {
+    let killedR = 0; const survR = [];
+    for (const [kind, name, find, repl] of ROUTE_MUTATIONS) {
+      const cnt = QR_SRC.split(find).length - 1;
+      if (cnt !== 1) { t('E.route ' + name + '：變異點在 quoteRoutes.js 中必須唯一（找到 ' + cnt + ' 處）', false); continue; }
+      let killedNow = false, why = '';
+      try {
+        const reg = loadAt(QR_PATH, QR_SRC.replace(find, () => repl));
+        if (kind === 'wiring') { const r = core(QF, Object.assign({}, quick, { engine: wiringEngine(mkInternal(ROOT, reg)) })); killedNow = r.fails > 0 || r.thrown > 0; why = '等價不符 ' + r.fails + '／例外 ' + r.thrown; }
+        else { const pr = await routeProbe(reg); const failed = Object.keys(pr).filter((k) => !pr[k]); killedNow = failed.length > 0; why = '探針紅：' + failed.join(','); }
+      } catch (e) { killedNow = true; why = '執行即例外：' + String(e && e.message).slice(0, 50); }
+      if (killedNow) { killedR++; t('E.route ' + name + ' → 測試變紅（' + why + '）', true); } else { survR.push(name); t('E.route ' + name + ' → 測試變紅', false, '變異體存活'); }
+    }
+    t('E.route 路由層變異：' + ROUTE_MUTATIONS.length + ' 種全部被抓到（存活 ' + survR.length + '）', survR.length === 0 && killedR === ROUTE_MUTATIONS.length, survR.join('；'));
+    const olFind = 'if (ap.flow) delete ap.flow;';
+    t('E.oppLink 變異點唯一', OL_SRC.split(olFind).length === 2);
+    let olKilled = false; try { olKilled = (await oppVoidProbe(loadAt(OL_PATH, OL_SRC.replace(olFind, () => '')))) === false; } catch (e) { olKilled = true; }
+    t('E.oppLink 商機作廢不清 approval.flow → C18 變紅', olKilled);
+  }
   // 路由層變異：diffPlans 失效（永遠回報一致）→ 故障注入測試必須變紅
   {
     const realDiff = QF.diffPlans, realLD = QF.legacyDefault;
@@ -916,9 +1177,9 @@ const finalState = (env) => ({ data: norm(env.data), logs: norm(env.logs), notes
     t('F0 基底目錄是未含引擎的程式（有 quoteRoutes.js、沒有 quoteFlow.js）', baseOk, BASE_ROOT);
     if (baseOk) {
       for (const v of VARS_) {
-        const b = finalState(await runVariant(BASE_ROOT, v, undefined)), w = finalState(offRuns[v]);
+        const b = finalState(await runVariant(BASE_ROOT, v, undefined), true), w = finalState(offRuns[v], true);
         t('F1.' + v + ' off 對基底：' + b.rec.length + ' 個回應、儲存資料、稽核、通知全部逐位元相同', J(b.rec) === J(w.rec) && b.data === w.data && b.logs === w.logs && b.notes === w.notes, J(b.rec.filter((r, i) => J(r) !== J(w.rec[i])).slice(0, 1)).slice(0, 300));
-        const bOn = finalState(await runVariant(BASE_ROOT, v, 'on'));   // 基底不認得這個環境變數：設了也不能有任何差別
+        const bOn = finalState(await runVariant(BASE_ROOT, v, 'on'), true);   // 基底不認得這個環境變數：設了也不能有任何差別
         t('F2.' + v + ' 基底即使設了 QUOTE_FLOW_ENGINE=on 也無差別（確認基底確實沒有引擎）', J(bOn.rec) === J(b.rec) && bOn.data === b.data);
       }
     }
