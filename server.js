@@ -20,6 +20,7 @@ const storage = require('./storage');
 const gemini = require('./ai/gemini');
 const apiMonitor = require('./lib/apiMonitor');
 const pushNotify = require('./lib/pushNotify');
+const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動態報表：反覆延後警示／台北月界
 const secretBox = require('./lib/secretBox');
 const productCatalog = require('./lib/productCatalog');
 const createPlanGuard = require('./middleware/planGuard');
@@ -79,6 +80,8 @@ if (process.env.DB_BACKEND === 'postgres') {
 // Vercel Serverless 無持久記憶體：改用 JWT + httpOnly cookie
 // 本地開發可用舊 express-session（若 SESSION_BACKEND=memory）
 const SESSION_BACKEND = process.env.SESSION_BACKEND || 'jwt';
+// 注意：閒置 30 分鐘自動登出（滑動視窗）只實作在 jwt 模式（middleware/jwtSession.js，正式站與預設本機都用這個）；
+// SESSION_BACKEND=memory 的舊 express-session 路徑只有 8 小時 cookie，前端的 idle-timeout.js 仍會在 30 分鐘後自行登出。
 
 if (SESSION_BACKEND === 'memory') {
   // 本地/傳統伺服器用
@@ -144,6 +147,7 @@ app.use((req, res, next) => {
     _logSessionRejected(req, su.username, bad);
     const finish = () => {
       if (req.path.startsWith('/api/') && req.path !== '/api/login' && req.path !== '/api/logout') {
+        res.set('X-Session-Expired', '1');
         return res.status(401).json({ error: '帳號已停用或不存在，請重新登入', code: 'SESSION_INVALID' });
       }
       next();
@@ -389,9 +393,14 @@ function isValidEmail(val) {
 }
 
 // ── 驗證 Middleware ──────────────────────────────────────
+// 登入失效的 401 一律帶 X-Session-Expired（idle＝因為閒置逾時；1＝其他原因），前端 idle-timeout.js 靠這個標頭
+// 判斷「是登入過期」而不是「舊密碼不正確」之類的業務 401，不必解析回應內容
+function sessionExpiredHeader(req, res) {
+  res.set('X-Session-Expired', req._sessionIdleExpired ? 'idle' : '1');
+}
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) return next();
-  if (req.path.startsWith('/api/')) return res.status(401).json({ error: '請先登入' });
+  if (req.path.startsWith('/api/')) { sessionExpiredHeader(req, res); return res.status(401).json({ error: req._sessionIdleExpired ? '閒置過久，已自動登出，請重新登入' : '請先登入' }); }
   res.redirect('/login.html');
 }
 
@@ -513,7 +522,7 @@ function getUserFeatures(role) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.session || !req.session.user) return res.status(401).json({ error: '請先登入' });
+  if (!req.session || !req.session.user) { sessionExpiredHeader(req, res); return res.status(401).json({ error: req._sessionIdleExpired ? '閒置過久，已自動登出，請重新登入' : '請先登入' }); }
   const authData = loadAuth();
   const user = authData.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false)
@@ -1105,7 +1114,7 @@ app.use('/product-spec.html', express.static(path.join(__dirname, '_client', 'pr
 // admin.html 已移至受保護路由（需登入 + admin 角色）
 
 // ── 強制變更密碼 middleware：使用者 mustChangePassword=true 時，僅放行少數端點 ──
-const PWCHG_ALLOWED_PATHS = new Set(['/api/me', '/api/logout', '/api/user/password', '/api/login']);
+const PWCHG_ALLOWED_PATHS = new Set(['/api/me', '/api/session/touch', '/api/logout', '/api/user/password', '/api/login']);
 app.use((req, res, next) => {
   // 非 API 請求（靜態檔）一律放行；登入相關端點放行
   if (!req.path.startsWith('/api/')) return next();
@@ -1121,7 +1130,7 @@ app.use((req, res, next) => {
 // ── 集團PM（tecopm）唯讀 + 路徑白名單 middleware ────────────
 // tecopm 角色：1) 只能 GET（不可 POST/PUT/DELETE）2) 只能存取以下 API 端點
 const TECOPM_ALLOWED_PATHS = new Set([
-  '/api/me', '/api/me/permissions', '/api/logout',
+  '/api/me', '/api/me/permissions', '/api/session/touch', '/api/logout',
   '/api/opportunities',     // 商機 + 預測表共用
   '/api/contacts',          // 客戶/聯絡人
   '/api/visits',            // 拜訪記錄
@@ -1138,7 +1147,7 @@ const TECOPM_WRITE_EXEMPT_PATHS = new Set(['/api/user/password', '/api/logout'])
 // 刻意不放行 contracts / receivables / targets / poll-bundle 等：
 // 那些路由內部會用 getViewableOwners 取到 viewOwnerScope 那位業務的資料，超出本角色職掌。
 const GROUPSALES_ALLOWED_PREFIXES = [
-  '/api/me', '/api/logout', '/api/user/password',
+  '/api/me', '/api/session/touch', '/api/logout', '/api/user/password',
   '/api/opportunities', '/api/contacts', '/api/visits',
   '/api/groups', '/api/usermap', '/api/company-lookup',
   '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
@@ -1238,6 +1247,9 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       };
     }
 
+    // 重新登入＝新的 8 小時上限起點（即使同一個帳號在登入狀態下又登入一次，也不能繼承舊的登入時間，
+    // 否則會在舊上限到時被突然登出；jwtSession 對「同一人改個人資料重簽」才沿用）
+    if (typeof req.session.lgn !== 'undefined') req.session.lgn = 0;
     req.session.user = {
       username: user.username,
       displayName: user.displayName,
@@ -1262,6 +1274,13 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     console.error('[LOGIN ERROR]', e);
     res.status(500).json({ success: false, message: '登入服務暫時無法使用，請稍後再試' });
   }
+});
+
+// 前端 idle-timeout.js 在使用者有操作時定期呼叫：本身沒有業務邏輯，目的是讓 jwtSession 滑動延長閒置視窗
+// （背景輪詢 /api/poll-bundle 刻意不算活動）。沒登入 → requireAuth 回 401＋X-Session-Expired。
+app.get('/api/session/touch', requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, idleMs: jwtSession.IDLE_MS });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -1299,6 +1318,7 @@ function serveHtmlWithVersion(htmlPath, res) {
     const versioned = html
       .replace(/href="style\.css"/g,    `href="style.css?v=${BUILD_VERSION}"`)
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
+      .replace(/src="idle-timeout\.js"/g, `src="idle-timeout.js?v=${BUILD_VERSION}"`)
       .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
       .replace(/src="taxid-guard\.js"/g, `src="taxid-guard.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pricebook\.js"/g, `src="quote-pricebook.js?v=${BUILD_VERSION}"`)
@@ -4590,8 +4610,10 @@ const STAGE_LABEL = { D:'D｜靜止中', C:'C｜Pipeline', B:'B｜Upside', A:'A�
 app.get('/api/pipeline-report', requireAuth, (req, res) => {
   const { from, to, owner: ownerFilter } = req.query;
   const now = new Date();
-  const fromDate = from ? new Date(from) : new Date(now.getFullYear(), now.getMonth(), 1);
-  const toDate   = to   ? new Date(to)   : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  // 未帶 from/to 時預設「台北當月」（前端一律帶參數；Vercel 為 UTC，若用 server 本地月界會差 8 小時）
+  const _tpMonth = pipelineDateWarning.taipeiMonthRange(now);
+  const fromDate = from ? new Date(from) : _tpMonth.from;
+  const toDate   = to   ? new Date(to)   : _tpMonth.to;
   const allOwners = getViewableOwners(req, 'opportunities');
   // 若前端指定了特定業務且在可視範圍內，就篩選該業務
   const owners = (ownerFilter && allOwners.includes(ownerFilter)) ? [ownerFilter] : allOwners;
@@ -4707,6 +4729,12 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     if (!dcByDeal[c.dealId]) dcByDeal[c.dealId] = [];
     dcByDeal[c.dealId].push(c);
   });
+  // 全歷史（不受 from/to 限制）依 dealId 分組，供累計延後計算
+  const fullDCByDeal = {};
+  (data.opportunityDateChanges || []).forEach(c => {
+    if (!oppById.has(c.dealId)) return;
+    (fullDCByDeal[c.dealId] = fullDCByDeal[c.dealId] || []).push(c);
+  });
   const dateChanges = [];
   Object.entries(dcByDeal).forEach(([dealId, list]) => {
     list.sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt));
@@ -4724,6 +4752,8 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     if (oldD && newD) {
       daysDiff = Math.round((new Date(newD) - new Date(oldD)) / 86400000);
     }
+    // 反覆延後警示：用該商機「全歷史」的日期異動（不侷限本期）
+    const warn = pipelineDateWarning.evaluate(opp, fullDCByDeal[dealId], now);
     dateChanges.push({
       id:      dealId,
       company: opp.company,
@@ -4734,17 +4764,17 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       newDate: newD,
       daysDiff,
       changedAt: last.changedAt,
-      owner:    opp.owner
+      owner:    opp.owner,
+      postponeCount: warn.postponeCount,
+      postponeDays:  warn.postponeDays,
+      stageDays:     warn.stageDays,
+      repeated:      warn.repeated
     });
   });
-  // 排序：延後天數大的在前（最需要關注）；同等則最近異動在前
-  dateChanges.sort((a, b) => {
-    const da = a.daysDiff ?? -1;
-    const db = b.daysDiff ?? -1;
-    if (db !== da) return db - da;
-    return (b.changedAt || '').localeCompare(a.changedAt || '');
-  });
+  // 排序：反覆延後優先 → 累計延後天數大 → 本期延後天數大 → 最近異動在前
+  dateChanges.sort(pipelineDateWarning.compareEntries);
   const postponedCount = dateChanges.filter(c => c.daysDiff != null && c.daysDiff > 0).length;
+  const repeatedCount  = dateChanges.filter(c => c.repeated).length;
   const advancedCount  = dateChanges.filter(c => c.daysDiff != null && c.daysDiff < 0).length;
 
   // 獨立「金額調整」：純改金額沒 stage 變動的（已在 promoted/demoted 顯示的不重複）
@@ -4785,6 +4815,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
     lostDeals:  lostDeals.map(o=>({id:o.id,company:o.company,product:o.product,amount:parseFloat(o.amount)||0,stage:o.stage,deleteReason:o.deleteReason,deletedAt:o.deletedAt,owner:o.owner})),
     promoted, demoted,
     dateChanges,
+    repeatRule: pipelineDateWarning.getRules(),
     amountChanges,
     summary: {
       totalPipeline: sum(opps.filter(o=>o.stage!=='Won'&&o.stage!=='D')),
@@ -4794,7 +4825,7 @@ app.get('/api/pipeline-report', requireAuth, (req, res) => {
       promotedAmount: sum(promoted), promotedCount: promoted.length,
       demotedAmount:  sum(demoted),  demotedCount: demoted.length,
       dateChangeCount: dateChanges.length,
-      postponedCount, advancedCount,
+      postponedCount, advancedCount, repeatedCount,
       amountChangeCount: amountChanges.length,
     }
   });
