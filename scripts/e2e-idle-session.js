@@ -130,7 +130,8 @@ async function login(jar) {
       ok(r.status === 200, '6 取得 ' + f, String(r.status));
     }
     const idx = await (await fetch(BASE + '/login.html')).text();
-    ok(/reason/.test(idx), '6x 登入頁有處理 reason 參數');
+    const lcSrc = await (await fetch(BASE + '/login-cinematic.js')).text();   // 登入頁無 inline script：reason 由 login-cinematic.js 處理
+    ok(/reason/.test(idx + lcSrc), '6x 登入頁有處理 reason 參數');
     // idle-timeout.js 要等登入才看得到 index.html；以靜態檔確認被 index／admin 引用
     const idxSrc = fs.readFileSync(path.join(ROOT, '_client', 'index.html'), 'utf8');
     const admSrc = fs.readFileSync(path.join(ROOT, '_client', 'admin.html'), 'utf8');

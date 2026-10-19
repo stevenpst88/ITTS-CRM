@@ -283,7 +283,7 @@ async function e2eDefaults() {
   let r = await login('_s_u1');
   eq(r.status, 200, '連續 8 次失敗後正確密碼仍可登入（鎖定關閉）');
   const keys = Object.keys(jwtPayload(H.jar._s_u1)).sort();
-  eq(keys, ['exp', 'iat', 'user'], 'JWT 外層欄位不變');
+  eq(keys, ['exp', 'iat', 'lat', 'lgn', 'user'], 'JWT 外層欄位（整併 main 的閒置登出 PR #21 後多了 lat／lgn，其餘不變）');
   const uk = Object.keys(jwtPayload(H.jar._s_u1).user).sort();
   ok(!uk.includes('lat'), '關閉時 session 內沒有 lat 欄位（cookie 內容與先前相同）');
   await loginAll(['_s_admin']);
