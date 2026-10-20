@@ -729,7 +729,7 @@ G.static = async () => {
   ok(!added.some((l) => /<script>(?!<)/.test(l)) && added.filter((l) => /<script/.test(l)).every((l) => /src="/.test(l)), 'static admin.html 只新增外部 script 標籤（沒有 inline script）');
   ok(/data-sec="flow-designer"/.test(adm) && /id="sec-flow-designer"/.test(adm) && /initApprovalFlow|window\.FlowDesigner\.init/.test(adm), 'static admin.html 有側欄項、sec-* 容器、lazy-init 分派');
   const sw = fs.readFileSync(path.join(ROOT, '_client', 'sw.js'), 'utf8');
-  ok(/SW_VERSION = 'itts-crm-v16'/.test(sw), 'static sw.js 版號 +1（v16）');
+  ok(parseInt((sw.match(/SW_VERSION = 'itts-crm-v(\d+)'/) || [])[1] || '0', 10) >= 16, 'static sw.js 版號已提升（至少 v16；之後別的功能提版不應讓此檢查失敗）');
   // 純函式：金額換算與 AST 往返
   const FDm = require(path.join(ROOT, '_client', 'flow-designer.js'));
   const T = FDm._test;
