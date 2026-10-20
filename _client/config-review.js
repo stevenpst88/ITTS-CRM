@@ -27,11 +27,11 @@
   /** st = { enabled, activeAdmins } */
   function chipHtml(st) {
     var on = !!(st && st.enabled);
-    if (!on) return '<span class="cr-chip" data-cr-chip="off" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb">兩人覆核：未啟用</span>';
+    if (!on) return '<span class="cr-chip gc-cr-off" data-cr-chip="off" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：未啟用</span>';
     if ((st.activeAdmins | 0) < 2) {
-      return '<span class="cr-chip" data-cr-chip="blocked" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca">兩人覆核：啟用，但在職管理員不足 2 人，目前無法儲存變更</span>';
+      return '<span class="cr-chip gc-cr-blocked" data-cr-chip="blocked" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：啟用，但在職管理員不足 2 人，目前無法儲存變更</span>';
     }
-    return '<span class="cr-chip" data-cr-chip="on" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0">兩人覆核：啟用</span>';
+    return '<span class="cr-chip gc-cr-on" data-cr-chip="on" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：啟用</span>';
   }
   function saveLabel(enabled, normal) { return enabled ? '提出變更（待覆核）' : normal; }
   function proposalMessage(d) {
@@ -92,18 +92,21 @@
         diffListHtml(r.diffSummary) + historyLinesHtml(r.history) + '</div>';
     }).join('') + '</div>';
   }
-  function modalInnerHtml(list) {
-    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:16px">簽核設定變更覆核</b><button type="button" data-cr="close" aria-label="關閉" style="border:none;background:none;font-size:20px;cursor:pointer">&times;</button></div>' +
+  function modalInnerHtml(list, titleId) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b class="cr-title"' + (titleId ? ' id="' + esc(titleId) + '"' : '') + ' style="font-size:16px">簽核設定變更覆核</b><button type="button" class="cr-close" data-cr="close" aria-label="關閉" style="border:none;background:none;font-size:20px;cursor:pointer">&times;</button></div>' +
       '<div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">核可後才會真正生效；提案人不能覆核自己的變更。申請 3 天內無人處理會自動失效。</div>' +
       '<div data-cr="pending">' + requestsHtml(list) + '</div>' +
       '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;color:#374151">歷史申請</summary><div style="margin-top:8px">' + historyHtml(list) + '</div></details>';
   }
 
+  var instanceSeq = 0;
   function create(opts) {
     var api = opts.api;
     var st = { enabled: false, activeAdmins: 0, pendingCount: 0, requests: [], me: '', loaded: false };
     var host = null;
     var overlay = null;
+    var prevFocus = null;   // 開啟視窗前的焦點（關閉時還原）
+    var uid = 'crTitle' + (++instanceSeq);
 
     function paint(h) {
       if (h && h !== host) {
@@ -126,25 +129,72 @@
       if (overlay) renderModal();
       return st;
     }
+    function focusables() {
+      if (!overlay) return [];
+      return Array.prototype.slice.call(overlay.querySelectorAll('button, input, summary, [href], [tabindex]')).filter(function (e) {
+        return !e.disabled && e.getAttribute('tabindex') !== '-1' && e.offsetParent !== null;
+      });
+    }
     function renderModal() {
       if (!overlay) return;
-      overlay.firstChild.innerHTML = modalInnerHtml(st.requests);
+      // 重畫前記住：各卡片已輸入的「意見」、目前焦點在哪個控制項——重畫後還原（失敗後 refresh() 不能清掉使用者剛打的字）
+      var saved = {};
+      Array.prototype.forEach.call(overlay.querySelectorAll('[data-cr-comment]'), function (i) { if (i.value) saved[i.getAttribute('data-cr-comment')] = i.value; });
+      var a = document.activeElement, fd = null;
+      if (a && overlay.contains(a)) {
+        if (a.hasAttribute('data-cr-comment')) fd = '[data-cr-comment="' + a.getAttribute('data-cr-comment') + '"]';
+        else if (a.getAttribute('data-cr') && a.getAttribute('data-id')) fd = '[data-cr="' + a.getAttribute('data-cr') + '"][data-id="' + a.getAttribute('data-id') + '"]';
+        else if (a.getAttribute('data-cr') === 'close') fd = '[data-cr="close"]';
+      }
+      overlay.firstChild.innerHTML = modalInnerHtml(st.requests, uid);
+      Object.keys(saved).forEach(function (id) {
+        var inp = overlay.querySelector('[data-cr-comment="' + id + '"]');
+        if (inp) inp.value = saved[id];
+      });
+      var re = fd && overlay.querySelector(fd);
+      if (re && !re.disabled) { try { re.focus(); } catch (e) { /* 忽略 */ } }
+      else if (fd) { var c0 = overlay.querySelector('[data-cr="close"]'); if (c0) c0.focus(); }   // 原本的控制項已不存在（例如該筆已處理）：回到關閉鈕，避免焦點掉到頁面後面
+    }
+    function onKey(ev) {
+      if (!overlay) return;
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeModal(); return; }
+      if (ev.key !== 'Tab') return;
+      var f = focusables();
+      if (!f.length) { ev.preventDefault(); return; }
+      var first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (!overlay.contains(a)) { ev.preventDefault(); first.focus(); }
+      else if (ev.shiftKey && a === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && a === last) { ev.preventDefault(); first.focus(); }
     }
     function openModal() {
       if (overlay) return;
+      prevFocus = document.activeElement;
       overlay = document.createElement('div');
+      overlay.className = 'cr-overlay';
       overlay.setAttribute('role', 'dialog');
       overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-labelledby', uid);
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 12px';
       var box = document.createElement('div');
+      box.className = 'cr-modal-box';
       box.style.cssText = 'background:#fff;border-radius:12px;max-width:760px;width:100%;padding:18px 20px;box-sizing:border-box';
       overlay.appendChild(box);
       overlay.addEventListener('click', onClick);
+      document.addEventListener('keydown', onKey, true);
       document.body.appendChild(overlay);
       renderModal();
+      var f0 = focusables()[0]; if (f0) f0.focus();   // 焦點進對話框（第一個可操作的控制項）
       refresh();
     }
-    function closeModal() { if (overlay) { overlay.remove(); overlay = null; } }
+    function closeModal() {
+      if (!overlay) return;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove(); overlay = null;
+      // 還原焦點：原本的「覆核」鈕若已被重畫換掉，就找 host 裡新的那顆
+      var back = prevFocus && prevFocus.isConnected ? prevFocus : (host && host.querySelector('[data-cr="open"]'));
+      prevFocus = null;
+      if (back && typeof back.focus === 'function') { try { back.focus(); } catch (e) { /* 忽略 */ } }
+    }
     function setMsg(id, text) {
       var el = overlay && overlay.querySelector('[data-cr-msg="' + id + '"]');
       if (el) el.textContent = text || '';
@@ -161,15 +211,18 @@
       if (act === 'reject' && Array.from(comment).length < 2) { setMsg(id, '退回必須填寫原因（至少 2 個字）'); return; }
       if (act === 'cancel' && typeof confirm === 'function' && !confirm('確定撤回這筆變更申請？')) return;
       t.disabled = true;
-      var r = await api('POST', '/admin/approval-config-requests/' + encodeURIComponent(id) + '/' + act, { comment: comment });
-      t.disabled = false;
+      var r = null;
+      try { r = await api('POST', '/admin/approval-config-requests/' + encodeURIComponent(id) + '/' + act, { comment: comment }); }
+      catch (e) { r = null; }   // 網路例外：不能讓按鈕卡在 disabled、使用者看不到任何訊息
+      finally { t.disabled = false; }
       if (r && r.ok) {
         await refresh();
         if (act === 'approve' && typeof opts.onApplied === 'function') opts.onApplied();
       } else {
-        setMsg(id, (r && r.data && r.data.error) || '操作失敗');
+        var failMsg = (r && r.data && r.data.error) || (r ? '操作失敗' : '操作失敗（網路異常，請稍後再試）');
+        setMsg(id, failMsg);
         await refresh();
-        setMsg(id, (r && r.data && r.data.error) || '操作失敗');
+        setMsg(id, failMsg);
       }
     }
     return { paint: paint, refresh: refresh, openModal: openModal, closeModal: closeModal, enabled: function () { return st.enabled; }, state: function () { return st; }, saveLabel: function (n) { return saveLabel(st.enabled, n); } };

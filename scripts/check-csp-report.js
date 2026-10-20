@@ -8,11 +8,12 @@
  *
  *   node scripts/check-csp-report.js                 # 全部
  *   CSP_SKIP_E2E=1 node scripts/check-csp-report.js  # 只跑單元＋變異
- *   CSP_BASE_REF=feat/integrate-audit3 ...           # 位元級比對用的基底（預設 HEAD 的上一個非本功能提交：feat/integrate-audit3）
+ *   CSP_BASE_REF=<commit> ...                         # 位元級比對用的基底（預設釘死 1f1eeb0＝CSP 合併前的整併分支尖端）
  * 守門與埠限制見 scripts/_b2-harness.js（工作樹已有 auth/data/audit 檔時拒絕執行）。
  */
 process.env.B2_PORT = process.env.B2_PORT || '3080';
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const Module = require('module');
@@ -278,7 +279,9 @@ function runUnit() {
 
 // ═══════════════════════ Part B：沙盒端對端 ═══════════════════════
 const BASE_PORT = parseInt(process.env.CSP_BASE_PORT || '3081', 10);
-const BASE_REF = process.env.CSP_BASE_REF || 'feat/integrate-audit3';
+// 基底釘死為 commit（原本是會移動的分支 feat/integrate-audit3：分支刪除或換機器沒有該分支就失敗）。
+// 1f1eeb0＝CSP 功能合併之前的整併分支尖端（不含 lib/cspReport.js）。可用 CSP_BASE_REF 覆寫。
+const BASE_REF = process.env.CSP_BASE_REF || '1f1eeb097909ee70fc41310e203c1714e957af1c';
 
 function stripVolatile(h) {
   const o = {};
@@ -430,6 +433,7 @@ async function runE2E() {
         const dir = label === 'base' ? tmp : ROOT;
         // 沙盒資料：與目前工作樹相同（fresh() 已寫好 ROOT 的 auth.json／data.json）
         if (dir !== ROOT) for (const f of ['auth.json', 'data.json']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+        await assertPortFree(port);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
         const child = spawn(process.execPath, [path.join(dir, 'server.js')], { cwd: dir, env: E, stdio: ['ignore', 'pipe', 'pipe'] });
         if (label === 'base') baseChild = child;
         let up = false; for (let i = 0; i < 80 && !up; i++) { await sleep(250); try { up = (await fetch(`http://localhost:${port}/login.html`)).ok; } catch { /* 尚未起來 */ } }

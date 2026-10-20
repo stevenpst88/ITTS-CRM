@@ -2566,3 +2566,94 @@ body.glass.dark .modal .mb-bgt-label { background: color-mix(in srgb, var(--g-te
 body.glass.dark .modal .mb-bgt-input { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge) !important; }
 body.glass:not(.dark) .modal .mb-bgt-label { background: #eef0f4 !important; color: #1f2937 !important; }
 body.glass:not(.dark) .modal .mb-bgt-input { background: #fff !important; color: #111827 !important; }
+
+/* ═══ cr-*：簽核設定「兩人覆核」視窗（config-review.js）的深色玻璃（程式碼審查 A3，PR-1）═══
+ * 視窗外框原本 inline 寫死白底，內文沒指定字色而繼承深色玻璃的白字 → 白字壓白底。
+ * 只有「深色玻璃」改：外框換成與 .modal 相同的玻璃面板，內文的行內灰／深字換成 --g-*／--q4-* token（底色與字色成對）。
+ * 淺色玻璃與非玻璃（?glass=0）完全不動（外框維持 inline 的白底，字色維持原本的繼承）。 */
+body.glass.dark .cr-modal-box {
+  background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); box-shadow: var(--g-ring), var(--g-shadow-lg);
+  -webkit-backdrop-filter: blur(26px) saturate(var(--g-sat)); backdrop-filter: blur(26px) saturate(var(--g-sat));
+  color: var(--g-text);
+}
+body.glass.dark .cr-modal-box .cr-card { background: color-mix(in srgb, var(--g-text) 7%, transparent) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box .cr-hist { border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box .cr-close { color: var(--g-text); }
+body.glass.dark .cr-modal-box :is(span, div, summary, b)[style*="color:#6b7280"] { color: var(--g-text-2) !important; }
+body.glass.dark .cr-modal-box :is(span, div, summary, b)[style*="color:#374151"] { color: var(--g-text) !important; }
+body.glass.dark .cr-modal-box :is(span, div)[style*="color:#b91c1c"] { color: var(--q4-bad) !important; }
+body.glass.dark .cr-modal-box span[style*="color:#b45309"] { color: var(--q4-warn) !important; }
+body.glass.dark .cr-modal-box span[style*="color:#15803d"] { color: var(--q4-ok) !important; }
+body.glass.dark .cr-modal-box input[data-cr-comment] { background: var(--g-input) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box button[data-cr="cancel"] { background: color-mix(in srgb, var(--g-text) 10%, transparent) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box button[data-cr="reject"] { background: var(--q4-bad-bg) !important; color: var(--q4-bad) !important; border-color: var(--q4-bad-bd) !important; }
+body.glass.dark .cr-modal-box button[disabled] { background: color-mix(in srgb, var(--g-text) 8%, transparent) !important; color: var(--g-text-2) !important; border-color: var(--g-edge) !important; opacity: .6; }
+.cr-modal-box button:focus-visible, .cr-modal-box input:focus-visible, .cr-modal-box summary:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+body.glass.dark .cr-modal-box :is(button, input, summary):focus-visible { outline-color: var(--g-accent); }
+
+/* 季度帳號覆核的欄位標題（admin.html 的 <label class="ar-cap">；原本是 inline style 的 div，改 label 才能和控制項關聯）。
+ * 淺色／非玻璃維持原本的 #888；玻璃模式沿用 §15「灰字補強」對 inline #888 的處理（字色換 --g-text-2）。 */
+.ar-cap { display: block; font-size: 12px; color: #888; margin-bottom: 3px; }
+body.glass .admin-main .ar-cap { color: var(--g-text-2) !important; }
+
+/* ═══ gc-*：深色玻璃對比修正（掃描報告 2026-10-20；沿用月度預算視窗 .mb-bgt-* 的作法）═══
+ * 原本 inline 的「淺底＋深字」搬進 class。字色一定與底色成對換：深色玻璃用 --g-*／--q4-* token，
+ * 淺色玻璃與非玻璃維持原本的外觀（下方「淺色」規則只是把原本被行內灰字規則改過的字色原樣補回）。
+ * 前台專用的淺色基礎色在 style.css 檔尾；後台也會用到的（gc-chip-info、gc-cr-*）基礎色放這裡（後台不載入 style.css）。 */
+.gc-chip-info { background: #e8f0fe; color: #1a73e8; }
+.gc-cr-off { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+.gc-cr-blocked { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+.gc-cr-on { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+
+/* 淺色玻璃：維持原外觀（原本 §15／§16 的行內色規則會把這幾個字色改成下列值） */
+body.glass:not(.dark) .gc-chip-info { color: #1243a8; }
+body.glass:not(.dark) .gc-cr-off { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-bu-missing { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-qcell-q { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-neutral-btn { background: #eef0f3; color: #333; }
+
+/* 深色玻璃：底色與字色成對 */
+/* 章框（.qap-seal-img）本身是白底棋盤格：標籤維持白底，字色換成深色（原本只有淺字繼承 → 白字壓白底） */
+body.glass.dark .gc-seal-none { background: #fff; color: #374151; }
+body.glass.dark .gc-bu-missing { background: var(--q4-bad-bg); color: var(--q4-bad); box-shadow: inset 0 0 0 1px var(--q4-bad-bd); }
+body.glass.dark .gc-chip-info { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.dark .gc-chip-navy { background: color-mix(in srgb, var(--g-text) 14%, transparent); color: var(--g-text); }
+body.glass.dark .gc-qcell { background: color-mix(in srgb, var(--g-text) 9%, transparent); }
+body.glass.dark .gc-qcell-q { color: var(--g-text-2); }
+body.glass.dark .gc-qcell-v { color: var(--g-text); }
+body.glass.dark .gc-mb-total { color: var(--q4-info); }
+body.glass.dark .gc-mb-total-gm { color: #c4b5fd; }
+body.glass.dark .gc-cr-off { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); border-color: var(--g-edge); }
+body.glass.dark .gc-cr-blocked { background: var(--q4-bad-bg); color: var(--q4-bad); border-color: var(--q4-bad-bd); }
+body.glass.dark .gc-cr-on { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
+
+/* ═══ 後台深色玻璃對比修正（掃描報告 2026-10-20；後台分支）═══
+ * 後台的 inline 淺底會被 §5 的底色規則轉成深色（或被保留淺色），但 inline 字色規則用 :not([style*="background"]) 排除了帶底色的元素，
+ * 結果出現「深字壓深底」（A′）或「被改淺的字壓淺底」（A）。這裡不逐一改 admin.html，而是用「底色＋字色成對」的窄範圍屬性選擇器：
+ *   · 只在後台深色玻璃（body.glass.admin-page.dark）生效 → 淺色玻璃與非玻璃（?glass=0）外觀完全不變
+ *   · 只比對「同一個 style 屬性裡同時有指定底色與字色」的元素（JS 動態產生的晶片也一併涵蓋）
+ *   · 底色與字色一起換（--q4-* 語意 token），不會再出現只換一邊 */
+/* 藍色資訊配色：按鈕（匯出 CSV…）、角色晶片（管理員）等 */
+body.glass.admin-page.dark :is(button, .btn, .badge, span)[style*="background:#e8f0fe"][style*="color:#1a73e8"] { background: var(--q4-info-bg) !important; color: var(--q4-info) !important; box-shadow: inset 0 0 0 1px var(--q4-info-bd); }
+/* 灰底深字的次要按鈕（重新整理、取消…）：底色已被轉成玻璃深色，字色補成對的淺字 */
+body.glass.admin-page.dark :is(button, .btn)[style*="background:#f0f2f5"][style*="color:#333"] { background: var(--g-input) !important; color: var(--g-text) !important; }
+/* 綠色狀態晶片（版本資訊：未核准可發出草稿：開／草稿浮水印：開） */
+body.glass.admin-page.dark span[style*="background:#e6f4ea"][style*="color:#137333"] { background: var(--q4-ok-bg) !important; color: var(--q4-ok) !important; box-shadow: inset 0 0 0 1px var(--q4-ok-bd); }
+/* 統計卡數字（季度帳號覆核摘要）：行內固定的深色語意字，換成淺色版 */
+body.glass.admin-page.dark .stat-value[style*="color:#137333"] { color: var(--q4-ok) !important; }
+body.glass.admin-page.dark .stat-value[style*="color:#b06000"] { color: var(--q4-warn) !important; }
+body.glass.admin-page.dark .stat-value[style*="color:#c5221f"] { color: var(--q4-bad) !important; }
+body.glass.admin-page.dark .stat-value[style*="color:#9aa0a6"] { color: var(--g-text-2) !important; }
+/* 稽核防竄改卡（#vChainInfo）：「未設定（排程不會執行）」等橘字 */
+body.glass.admin-page.dark #vChainInfo span[style*="color:#b06000"] { color: var(--q4-warn) !important; }
+/* 批次填入官網結果框：底色由 JS 以行內 style 設成淺色 → 深色玻璃改成半透明底，內文與強調字跟著換 */
+body.glass.admin-page.dark #bulkWebsiteResult { background: color-mix(in srgb, var(--g-text) 8%, transparent) !important; border-color: var(--g-edge) !important; color: var(--g-text) !important; }
+body.glass.admin-page.dark #bulkWebsiteResult strong[style*="color:#1a5c2a"] { color: var(--q4-ok) !important; }
+body.glass.admin-page.dark #bulkWebsiteResult strong[style*="color:#c5352a"] { color: var(--q4-bad) !important; }
+body.glass.admin-page.dark #bulkWebsiteResult :is(span, div)[style*="color:#555"], body.glass.admin-page.dark #bulkWebsiteResult :is(span, div)[style*="color:#666"] { color: var(--g-text-2) !important; }
+/* CSP 違規觀察卡（版本資訊頁；全由 class 決定，原本固定深藍字／灰字壓在深色面板上）。注意文字兩種主題都加深到 --g-text-2 */
+body.glass.dark .csp-head, body.glass.dark .csp-grid h4 { color: var(--g-text); }
+body.glass.dark .csp-grid ol { color: var(--g-text-2); }
+body.glass.dark .csp-chip.on { background: var(--q4-warn-bg); color: var(--q4-warn); }
+body.glass.dark .csp-chip.off { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); }
+body.glass .csp-note { color: var(--g-text-2); }

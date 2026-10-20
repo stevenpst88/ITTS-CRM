@@ -16,6 +16,7 @@
  *   QS_SKIP_OFF=1 ...   略過與基底比對（不需要 git）；QS_SKIP_MUT=1 ... 略過變異
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const Module = require('module');
@@ -233,6 +234,7 @@ async function startServer(dir, env) {
   const e = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE }, env || {});
   delete e.DATABASE_URL; delete e.MAIL_MODE;
   if (!env || !('QUOTE_SPLIT_GUARD' in env)) delete e.QUOTE_SPLIT_GUARD;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [path.join(dir, 'server.js')], { cwd: dir, env: e, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';
@@ -611,8 +613,9 @@ function firstDiff(a, b) {
   return '位置 ' + i + ' 新：…' + a.slice(Math.max(0, i - 30), i + 60) + '… 舊：…' + b.slice(Math.max(0, i - 30), i + 60) + '…';
 }
 async function secOff() {
-  sect('[OFF] 預設關閉：與基底（' + (process.env.QS_BASE_REF || 'feat/integrate-audit3') + '）逐位元相同');
-  const ref = process.env.QS_BASE_REF || 'feat/integrate-audit3';
+  // 基底釘死為 commit（原本是會移動的分支 feat/integrate-audit3）。1f1eeb0＝防拆單功能合併之前的整併分支尖端。可用 QS_BASE_REF 覆寫。
+  const ref = process.env.QS_BASE_REF || '1f1eeb097909ee70fc41310e203c1714e957af1c';
+  sect('[OFF] 預設關閉：與基底（' + ref.slice(0, 10) + '）逐位元相同');
   const tmp = path.join(require('os').tmpdir(), 'qs_base_' + crypto.randomBytes(4).toString('hex'));
   fs.mkdirSync(tmp, { recursive: true });
   let baseRes = null;

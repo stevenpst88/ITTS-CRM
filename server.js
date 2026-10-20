@@ -3420,6 +3420,7 @@ function isKaConfirmed(opp, username) {
   return (opp.kaParticipants || []).some(p => p.user === username);
 }
 
+const { buildHealthScorer } = require('./lib/contactHealth');   // 客戶健康分數（索引化，M-02）
 app.get('/api/contacts', requireAuth, (req, res) => {
   const { search } = req.query;
   const data = db.load();
@@ -3448,65 +3449,12 @@ app.get('/api/contacts', requireAuth, (req, res) => {
     );
   }
   // ── 客戶健康分數（rule-based）──
-  const now = Date.now();
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const yearNum  = new Date().getFullYear();
-  const visits90 = (data.visits || []).filter(v => !v.deleted);
-  const opps     = data.opportunities || [];
-  const recvs    = data.receivables   || [];
-  const contracts= data.contracts     || [];
-
+  // M-02：先對 visits／receivables／contracts／opportunities 建一次索引，再逐筆查表（原本每筆名片各掃全表，O(n²)）。
+  // 規則與原版逐筆相同（scripts/check-contacts-health-perf.js 鎖定），細節見 lib/contactHealth.js。
+  const _healthOf = buildHealthScorer(data);
   contacts = contacts.map(c => {
-    let score = 100;
-    const co = (c.company || '').trim();
-    const cId = c.id;
-
-    // 最後拜訪
-    const cVisits = visits90.filter(v =>
-      v.contactId === cId || (co && (v.company || '').trim() === co)
-    );
-    const lastVisitDays = cVisits.length
-      ? Math.floor((now - new Date(cVisits.map(v => v.visitDate).sort().reverse()[0]).getTime()) / 86400000)
-      : Infinity;
-    if (lastVisitDays > 60)      score -= 40;
-    else if (lastVisitDays > 30) score -= 20;
-
-    // 逾期帳款
-    const hasOverdueRecv = recvs.some(r =>
-      r.owner === c.owner &&
-      ((co && (r.company || '').trim() === co) || r.contactName === c.name) &&
-      r.status !== 'paid' && r.dueDate && r.dueDate < todayStr
-    );
-    if (hasOverdueRecv) score -= 30;
-
-    // 合約即將到期（7天內，無 renewDate）
-    const in7 = new Date(); in7.setDate(in7.getDate() + 7);
-    const hasExpiringContract = contracts.some(ct =>
-      ct.owner === c.owner && !ct.deleted && !ct.renewDate &&
-      ct.endDate && ct.endDate >= todayStr && ct.endDate <= in7.toISOString().slice(0, 10) &&
-      ((co && (ct.company || '').trim() === co))
-    );
-    if (hasExpiringContract) score -= 20;
-
-    // 近 90 天有新商機
-    const d90 = new Date(now - 90 * 86400000).toISOString();
-    const hasNewOpp = opps.some(o =>
-      o.owner === c.owner && !o.deleted && o.createdAt >= d90 &&
-      (o.contactId === cId || (co && (o.company || '').trim() === co))
-    );
-    if (hasNewOpp) score += 10;
-
-    // 本年有成交商機
-    const hasWonThis = opps.some(o =>
-      o.owner === c.owner && o.stage === 'Won' &&
-      new Date(o.achievedDate || o.updatedAt || o.createdAt).getFullYear() === yearNum &&
-      (o.contactId === cId || (co && (o.company || '').trim() === co))
-    );
-    if (hasWonThis) score += 20;
-
-    score = Math.max(0, Math.min(120, score));
-    const health = score >= 70 ? '🟢' : score >= 40 ? '🟡' : '🔴';
-    return { ...c, healthScore: score, healthIcon: health, ownerDisplayName: _ownerNameMap[c.owner] || c.owner };
+    const h = _healthOf(c);
+    return { ...c, healthScore: h.score, healthIcon: h.icon, ownerDisplayName: _ownerNameMap[c.owner] || c.owner };
   });
 
   contacts.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));

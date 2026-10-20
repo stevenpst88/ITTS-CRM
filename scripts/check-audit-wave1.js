@@ -13,6 +13,7 @@
  *   AW1_SKIP_MUT=1 ...                             # 略過變異檢查
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -90,6 +91,7 @@ let extraEnv = {};
 async function startServer(serverFile) {
   const env = Object.assign({}, process.env, extraEnv, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';

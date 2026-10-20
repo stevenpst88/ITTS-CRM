@@ -538,9 +538,9 @@ body {
   font-size: 15px; font-weight: 500; letter-spacing: 2px;
 }
 .taxid-top input:focus { border-color: #0d47a1; background: #fff; }
-.taxid-ok { background: #e6f4ea !important; color: #34a853 !important; }
+.taxid-ok { background: #e6f4ea !important; color: #137333 !important; }   /* 對比修正：原 #34a853 壓 #e6f4ea 只有 2.7:1 */
 .auto-tag {
-  display: inline-block; background: #fff3e0; color: #f57c00;
+  display: inline-block; background: #fff3e0; color: #b45309;
   padding: 1px 7px; border-radius: 8px; font-size: 11px; font-weight: 600;
   margin-left: 6px; vertical-align: middle;
 }
@@ -1212,6 +1212,8 @@ body.dark .ft-filter-chip-x { background: #d97706; }
   width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; font-weight: 700; color: #fff;
+  /* 對比修正：行內漸層底色上疊一層暗色並加字影（與 glass.css 的玻璃版一致），白字在橘／青漸層上也 ≥4.5:1 */
+  box-shadow: inset 0 0 0 100px rgba(8, 16, 48, .34); text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
 }
 .company-group-info { flex: 1; min-width: 0; }
 .company-group-name { font-size: 16px; font-weight: 700; color: #111; margin-bottom: 3px; }
@@ -4759,3 +4761,25 @@ body.dark:not(.glass) .rh-tag { background: #21262d; }
 /* 月度預算視窗（openMbBudgetModal）：月份標籤與輸入框改用 class，避免 glass 深色規則只改字色、不改底色造成看不見 */
 .mb-bgt-label { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; text-align: center; background: #f3f4f6; border-radius: 6px; padding: 3px 0; }
 .mb-bgt-input { width: 100%; padding: 8px 4px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; text-align: center; background: #fff; color: #111827; }
+
+/* ═══ 程式碼審查前端修正（PR-1）═══ */
+/* A2：閒置警告視窗不要在矮螢幕（手機直立／橫放）內部再捲動，否則「繼續使用／立即登出」會被擠到框外而倒數照走 */
+#idleTimeoutOverlay .modal-body { max-height: none; overflow-y: visible; }
+/* A7：舊有的無限動畫（脈動／浮動／彈跳）在「減少動態效果」下停止；轉圈圈（載入中）保留，因為它是狀態指示 */
+@media (prefers-reduced-motion: reduce) {
+  .mic-btn.listening, .z-badge-danger, .zombie-alert-icon, .bday-card-icon { animation: none !important; }
+}
+
+/* ═══ gc-*：深色玻璃對比修正（掃描報告 2026-10-20）═══
+ * 原本 inline 的「淺底＋深字」搬進 class：這裡放原樣的淺色版（非玻璃／淺色玻璃外觀不變），
+ * 深色玻璃的成對覆寫在 glass.css 檔尾（字色與底色一起換成 --g-*／--q4-* token）。
+ * 共用於後台與前台的 gc-chip-info／gc-cr-* 基礎色放在 glass.css（後台不載入 style.css）。 */
+.gc-seal-none { background: #fff; padding: 2px 6px; border-radius: 4px; }
+.gc-neutral-btn { background: #eef0f3; color: #333; }
+.gc-bu-missing { background: #fee2e2; color: #b91c1c; }
+.gc-chip-navy { background: #dbe5f7; color: #1a3c7a; }
+.gc-qcell { background: #f5f7fb; }
+.gc-qcell-q { color: #888; }
+.gc-qcell-v { color: #1a3c7a; }
+.gc-mb-total { color: #1a3c7a; }
+.gc-mb-total-gm { color: #7c3aed; }

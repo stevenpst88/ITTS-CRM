@@ -752,8 +752,9 @@ function addIcon(slide, icon, x, y) {
 }
 
 // ── 輸出 ──────────────────────────────────────────────────
-const outDir = process.env.PPT_OUT_DIR || require('path').join(require('os').homedir(), 'Documents');   // 資安審查 L12：不寫死使用者名稱／本機路徑
-const outPath = require('path').join(outDir, 'ITTS_CRM_產品亮點.pptx');
+// 輸出資料夾：預設與本檔同資料夾；可用環境變數 PPT_OUT_DIR 指定（不寫死使用者路徑；*.pptx 已被 .gitignore 忽略）
+const _outDir = process.env.PPT_OUT_DIR || __dirname;
+const outPath = require('path').join(_outDir, 'ITTS_CRM_產品亮點.pptx');
 pptx.writeFile({ fileName: outPath })
   .then(() => console.log('✅ PPT 已儲存至：' + outPath))
   .catch(e => console.error('❌ 錯誤：', e));

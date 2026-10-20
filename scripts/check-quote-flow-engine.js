@@ -1183,7 +1183,7 @@ async function oppVoidProbe(OLm) {
         t('F2.' + v + ' 基底即使設了 QUOTE_FLOW_ENGINE=on 也無差別（確認基底確實沒有引擎）', J(bOn.rec) === J(b.rec) && bOn.data === b.data);
       }
     }
-  } else t('F off 對基底：未指定 QFE_BASE_ROOT（略過；請以 git archive 出基底後再跑）', true, 'SKIP');
+  } else { console.log('⚠ 未驗證：F off 對基底（未指定 QFE_BASE_ROOT；請以 git archive 出基底後再跑）'); t('【未驗證】F off 對基底：未指定 QFE_BASE_ROOT，這一節沒有執行', true, 'SKIP'); }
 
   if (reg0 === undefined) delete process.env.QUOTE_FLOW_ENGINE; else process.env.QUOTE_FLOW_ENGINE = reg0;
   let pass = 0, fail = 0;
