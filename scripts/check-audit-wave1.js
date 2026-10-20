@@ -662,7 +662,7 @@ async function secM() {
   try {
     // 變異 1：拿掉「停用帳號即時拒絕」
     {
-      const f = mkMut('m1', ["const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : null);", 'const bad = null;']);
+      const f = mkMut('m1', ["const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : (pwdStale ? '密碼已變更，舊的登入已失效' : null));", 'const bad = null;']);
       await fresh(f);
       await loginAll(['_s_admin', '_s_off']);
       await adminPutUser('_s_off', { active: false });

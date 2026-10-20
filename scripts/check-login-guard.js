@@ -115,11 +115,59 @@ function unitSuite(mod, T) {
     for (let i = 0; i < mod.MAX_ENTRIES; i++) g.recordFailure('n' + i);
     eq(Object.keys(store.data.loginFailures).length, mod.MAX_ENTRIES, '填滿 MAX_ENTRIES');
     let r = g.recordFailure('overflow-new');
-    eq(r.dropped, true, '全部未過期且表滿 → 新名稱 dropped（不崩潰）');
+    ok(!r.dropped && ('u:overflow-new' in store.data.loginFailures), '表滿且全部未過期 → 淘汰最舊的非鎖定條目，新名稱照樣被追蹤（資安審查 M3）');
+    eq(Object.keys(store.data.loginFailures).length, mod.MAX_ENTRIES, '淘汰一筆、補一筆：條目數維持上限');
+    ok(!('u:n0' in store.data.loginFailures), '被淘汰的是最舊的一筆（n0）');
     clock.adv(20 * MIN);
-    r = g.recordFailure('overflow-new');
-    ok(!r.dropped && ('u:overflow-new' in store.data.loginFailures), '過期後 prune 騰出空間，新名稱可記');
+    r = g.recordFailure('another-new');
+    ok(!r.dropped, '過期後 prune 騰出空間');
     ok(Object.keys(store.data.loginFailures).length < mod.MAX_ENTRIES, 'prune 後條目數下降');
+  }
+  // 表滿且全是『鎖定中』：不淘汰鎖定、新名稱才 dropped
+  {
+    const { g, store } = mk();
+    for (let i = 0; i < mod.MAX_ENTRIES; i++) for (let j = 0; j < 5; j++) g.recordFailure('L' + i);
+    const r = g.recordFailure('fresh');
+    eq(r.dropped, true, '全部是鎖定中條目 → 不淘汰鎖定，新名稱 dropped');
+    eq(Object.keys(store.data.loginFailures).length, mod.MAX_ENTRIES, '鎖定條目一筆都沒被淘汰');
+  }
+  // 資安審查 M3：鎖定鍵含來源 IP
+  {
+    const { g, store } = mk();
+    for (let i = 0; i < 5; i++) g.recordFailure('Admin', '1.1.1.1');
+    eq(g.checkLocked('admin', '1.1.1.1').locked, true, '攻擊者來源 IP 被鎖');
+    eq(g.checkLocked('admin', '2.2.2.2').locked, false, '另一個來源 IP 仍可登入（匿名者無法把別人的帳號鎖死）');
+    eq(g.checkLocked('admin').locked, false, '沒帶 IP 的查詢不受其他 IP 的鎖影響');
+    ok(!JSON.stringify(store.data.loginFailures).includes('1.1.1.1'), '主資料 blob 不存 IP 明文');
+    for (let i = 0; i < 5; i++) g.recordFailure('admin', '2.2.2.2');
+    eq(g.listLocks().map(l => l.username), ['admin'], 'listLocks 同一帳號多個 IP 的鎖合併成一列');
+    eq(Object.keys(g.listLocks()[0]).sort(), ['last', 'lockCount', 'lockUntil', 'username'], 'listLocks 形狀不變');
+    ok(!!g.getLock('admin'), 'getLock 看得到任一 IP 的鎖');
+    eq(g.unlock('admin'), true, '管理員解鎖一次清掉所有 IP 的鎖');
+    eq([g.checkLocked('admin', '1.1.1.1').locked, g.checkLocked('admin', '2.2.2.2').locked, g.listLocks().length], [false, false, 0], '解鎖後各 IP 都解除');
+    // 成功登入只清自己這個 IP 的計數
+    g.recordFailure('bob', '1.1.1.1'); g.recordFailure('bob', '2.2.2.2');
+    eq(g.recordSuccess('bob', '1.1.1.1'), true, '成功登入清掉自己 IP 的計數');
+    eq(Object.keys(store.data.loginFailures).filter(k => k.startsWith('u:bob')).length, 1, '其他 IP 的計數不受影響');
+    // LOGIN_LOCK_SCOPE=name：舊行為（只看帳號名稱）
+    const n = mk({ LOGIN_LOCKOUT: '1', LOGIN_LOCK_SCOPE: 'name' }).g;
+    for (let i = 0; i < 5; i++) n.recordFailure('carol', '1.1.1.1');
+    eq(n.checkLocked('carol', '9.9.9.9').locked, true, 'LOGIN_LOCK_SCOPE=name → 任何來源都被鎖（舊行為）');
+  }
+  // 資安審查 M3：共用快取後端（Postgres）下，未鎖定的失敗計數寫庫節流
+  {
+    const clock = mkClock(); const data = {}; let saves = 0;
+    const store = { load: () => data, save: () => { saves++; } };   // 仿 Postgres：load() 回共用物件
+    const g = mod.create({ env, clock: clock.now, store, sharedStore: true });
+    for (let i = 0; i < 4; i++) g.recordFailure('x', '1.1.1.1');
+    ok(saves <= 1, '共用快取後端：4 次失敗只寫庫 ' + saves + ' 次（不再每次失敗都整包 UPSERT）');
+    g.recordFailure('x', '1.1.1.1');
+    eq(saves, 2, '達鎖定門檻那次一定寫庫（即使在 10 秒節流窗內）'); ok(g.checkLocked('x', '1.1.1.1').locked, '鎖定生效');
+    const before = saves; clock.adv(11 * 1000); g.recordFailure('y', '1.1.1.1');
+    eq(saves, before + 1, '超過 10 秒後下一次失敗會寫庫');
+    const s2 = mkStore(); const g2 = mod.create({ env, clock: clock.now, store: s2 });
+    for (let i = 0; i < 4; i++) g2.recordFailure('z', '1.1.1.1');
+    eq(s2.saves, 4, '非共用快取後端（JSON）：每次都存（load() 回副本，不存會丟）');
   }
   // 解鎖／清單
   {
@@ -232,11 +280,16 @@ const MUTANTS = [
   ['鎖定中仍累計/延長（拿掉鎖定中提早返回）', "if (e && (e.lockUntil || 0) > t) return { locked: true, justLocked: false, until: e.lockUntil, lockCount: e.lockCount || 0 };   // 鎖定中不累計、不延長", "/* mut */"],
   ['不加倍', "Math.pow(2, e.lockCount - 1)", "1"],
   ['拿掉加倍上限', "Math.max(cfg.lockCapMs, cfg.lockMs))", "1e15)"],
-  ['成功登入不重置', "delete c.m[k]; persist(c); return true;\n    },\n\n    /** 管理員解鎖", "return false;\n    },\n\n    /** 管理員解鎖"],
+  ['成功登入不重置', "delete c.m[k]; persist(c, true); return true;\n    },\n\n    /** 管理員解鎖", "return false;\n    },\n\n    /** 管理員解鎖"],
   ['存到別份副本（JSON 後端會失效）', "try { store.save(c.d); }", "try { store.save(store.load()); }"],
-  ['解鎖不持久化', "delete c.m[k]; persist(c); return true;\n    },\n\n    /** 目前鎖定中", "delete c.m[k]; return true;\n    },\n\n    /** 目前鎖定中"],
+  ['解鎖不持久化', "ks.forEach((k) => { delete c.m[k]; }); persist(c, true); return true;\n    },\n\n    /** 目前鎖定中", "ks.forEach((k) => { delete c.m[k]; }); return true;\n    },\n\n    /** 目前鎖定中"],
+  ['鎖定鍵不含來源 IP', "const p = cfg.scope === 'ip' ? normIp(ip) : '';", "const p = '';"],
+  ['解鎖只清單一鍵', "const ks = Object.keys(c.m).filter((k) => belongsTo(k, name));", "const ks = Object.keys(c.m).filter((k) => k === keyOf(name));"],
+  ['表滿仍拒收新名稱', "if (oldest === null) return", "if (true) return"],
+  ['共用後端每次失敗都寫庫', "if (shared && !force) {", "if (false) {"],
+  ['達鎖定門檻不強制寫庫', "persist(c, justLocked);", "persist(c, false);"],
   ['視窗過期不重置', "if (!e.n || t - (e.first || 0) > cfg.windowMs) { e.n = 0; e.first = t; }", "if (!e.n) { e.n = 0; e.first = t; }"],
-  ['不做大小寫正規化', ".trim().toLowerCase().slice(0, 64)", ".trim().slice(0, 64)"],
+  ['不做大小寫正規化', "return s.trim().toLowerCase().slice(0, 64);", "return s.trim().slice(0, 64);"],
   ['鍵拿掉前綴', "const PREFIX = 'u:';", "const PREFIX = '';"],
   ['閒置判斷 > 改 >=', "now - base > cfg.idleMs", "now - base >= cfg.idleMs"],
   ['輪詢也刷新', "if (!counts) return { expired: false, refresh: false };", ""],
@@ -354,7 +407,9 @@ async function e2eLockout() {
   await bad('_s_u3'); await bad('_s_u3'); await bad('_s_u3');
   const raw = fs.readFileSync(path.join(H.ROOT, 'data.json'), 'utf8');
   const lf2 = JSON.parse(raw).loginFailures;
-  ok(lf2 && lf2['u:_s_u3'] && Object.values(lf2['u:_s_u3']).every(v => typeof v === 'number'), 'data.json 的 loginFailures 只存數字');
+  const k3 = Object.keys(lf2 || {}).filter(k => k.startsWith('u:_s_u3'));
+  ok(k3.length >= 1 && k3.every(k => Object.values(lf2[k]).every(v => typeof v === 'number')), 'data.json 的 loginFailures 只存數字（鍵＝u:帳號＋來源 IP 雜湊）');
+  ok(!/127\.0\.0\.1|::1/.test(JSON.stringify(lf2)), 'loginFailures 不含 IP 明文');
   ok(!/\$2[aby]\$/.test(JSON.stringify(lf2)), 'loginFailures 不含雜湊');
   await H.restartKeep({ env: LOCK_ENV });
   r = await login('_s_u3'); eq([r.status, r.json], [401, GEN], '重啟伺服器後仍在鎖定中（狀態已持久化）');
@@ -440,13 +495,13 @@ async function e2eMutation() {
   };
   try {
     // 1. 登入端不檢查鎖定 → 鎖定期間正確密碼會成功
-    let f = mk('m1', ["if (loginGuard.checkLocked(username).locked) {", 'if (false) {']);
+    let f = mk('m1', ["if (loginGuard.checkLocked(username, req.ip).locked) {", 'if (false) {']);
     await H.fresh(USERS(), {}, { env: LOCK_ENV, file: f });
     for (let i = 0; i < 3; i++) await bad('_s_u1');
     let r = await login('_s_u1');
     ok(r.status === 200, '變異1（登入不檢查鎖定）→ 鎖定期間正確密碼竟然成功(' + r.status + ')：B2 的 401 斷言會失敗（抓得到）');
     // 2. 失敗不計數（loginFailed 不呼叫 recordFailure）
-    f = mk('m2', ["const r = loginGuard.recordFailure(attempted);", 'const r = null;']);
+    f = mk('m2', ["const r = loginGuard.recordFailure(attempted, req.ip);", 'const r = null;']);
     await H.fresh(USERS(), {}, { env: LOCK_ENV, file: f });
     for (let i = 0; i < 4; i++) await bad('_s_u1');
     r = await login('_s_u1');

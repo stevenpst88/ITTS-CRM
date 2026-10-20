@@ -227,7 +227,7 @@ function seedFiles() {
 async function startServer(serverFile) {
   const base = Object.assign({}, process.env); delete base.AUDIT_EVENTS_TABLE; delete base.QUOTE_ALLOW_UNAPPROVED_ISSUE; delete base.QUOTE_ISSUE_SECRET;
   srvSecret = crypto.randomBytes(24).toString('hex');
-  const env = Object.assign(base, extraEnv, { PORT: String(PORT), JWT_SECRET: srvSecret, SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
+  const env = Object.assign(base, { QUOTE_ISSUE_REUSE_SEC: '0', QUOTE_ISSUE_RATE_PER_MIN: '0' }, extraEnv, { PORT: String(PORT), JWT_SECRET: srvSecret, SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE;
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
@@ -275,9 +275,14 @@ async function freshServer(serverFile, env) {
   return qs;
 }
 const issue = (who, id, format) => http(who, 'POST', `/api/quotations/${id}/issue`, { format: format || 'pdf' });
-const seal = (who, id, token, viaHeader) => viaHeader
-  ? fetch(BASE + `/api/quotations/${id}/seal`, { headers: { Cookie: jar[who], 'X-Stamp-Token': token } }).then(async r => ({ status: r.status, buf: Buffer.from(await r.arrayBuffer()), ct: r.headers.get('content-type') }))
+const sealRaw = (who, id, token, viaHeader) => viaHeader
+  ? fetch(BASE + `/api/quotations/${id}/seal`, { headers: { Cookie: jar[who], 'X-Stamp-Token': token } }).then(async r => { const buf = Buffer.from(await r.arrayBuffer()); let j = null; try { j = JSON.parse(buf.toString('utf8')); } catch { /* 圖 */ } return { status: r.status, buf, json: j, ct: r.headers.get('content-type') }; })
   : fetch(BASE + `/api/quotations/${id}/seal` + (token === undefined ? '' : '?stampToken=' + encodeURIComponent(token)), { headers: { Cookie: jar[who] } }).then(async r => { const buf = Buffer.from(await r.arrayBuffer()); let j = null; try { j = JSON.parse(buf.toString('utf8')); } catch { /* 圖 */ } return { status: r.status, buf, json: j, ct: r.headers.get('content-type') }; });
+// 憑證預設放 X-Stamp-Token 標頭（token 為 undefined＝完全不帶）；sealQ＝舊式網址 ?stampToken=（現在預設被拒）
+const seal = (who, id, token) => token === undefined
+  ? fetch(BASE + `/api/quotations/${id}/seal`, { headers: { Cookie: jar[who] } }).then(async r => { const buf = Buffer.from(await r.arrayBuffer()); let j = null; try { j = JSON.parse(buf.toString('utf8')); } catch { /* 圖 */ } return { status: r.status, buf, json: j, ct: r.headers.get('content-type') }; })
+  : sealRaw(who, id, token, true);
+const sealQ = (who, id, token) => sealRaw(who, id, token, false);
 function mintToken(payload) {
   const key = crypto.createHash('sha256').update('quote-issuance-stamp-token:v1:' + srvSecret).digest();
   const p = b64u(JSON.stringify(payload));
@@ -311,30 +316,40 @@ async function secB() {
   s = await seal('_s_owner', 'Q1', j.stampToken);
   ok(s.status === 200 && /image\/png/.test(s.ct || '') && s.buf.equals(PNG), '[B2] seal 帶有效憑證 → 200 且就是上傳的章圖');
   s = await seal('_s_owner', 'Q1', j.stampToken);
-  eq([s.status, s.json && s.json.code, s.json && s.json.reason], [403, 'STAMP_TOKEN_INVALID', 'used'], '[B2] 同一憑證第二次 → 403（used）');
+  eq([s.status, s.json && s.json.code, s.json && s.json.reason], [403, 'STAMP_TOKEN_INVALID', undefined], '[B2] 同一憑證第二次 → 403（used），回應不帶 reason（資安審查 L1）');
   ok(!JSON.stringify(s.json).includes(j.stampToken), '[B2] 錯誤回應不回傳憑證');
-  // header 方式
+  // 標頭方式（現在是唯一預設方式）；網址 query 方式被拒且不消耗憑證
   let t2 = (await issue('_s_owner', 'Q1')).json;
-  s = await seal('_s_owner', 'Q1', t2.stampToken, true);
-  ok(s.status === 200 && s.buf.equals(PNG), '[B2] 用 X-Stamp-Token 標頭也可');
+  s = await sealQ('_s_owner', 'Q1', t2.stampToken);
+  eq([s.status, s.json && s.json.code, s.json && s.json.reason], [403, 'STAMP_TOKEN_REQUIRED', undefined], '[B2] 憑證放在網址 ?stampToken= → 403 STAMP_TOKEN_REQUIRED（與沒帶憑證完全相同，不透露原因）');
+  s = await seal('_s_owner', 'Q1', t2.stampToken);
+  ok(s.status === 200 && s.buf.equals(PNG), '[B2] 用 X-Stamp-Token 標頭 → 200 章圖；先前被拒的 query 嘗試沒有消耗憑證');
   // B3 過期／換單／竄改／換人／雜湊
   const t3 = (await issue('_s_owner', 'Q1')).json;
   const pl = decodeToken(t3.stampToken);
   s = await seal('_s_owner', 'Q1', mintToken(Object.assign({}, pl, { e: Date.now() - 1000 })));
-  eq([s.status, s.json && s.json.reason], [403, 'expired'], '[B3] 簽章正確但已過期 → 403 expired');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] 簽章正確但已過期 → 403 expired（回應不帶 reason）');
   s = await seal('_s_owner', 'Q3', t3.stampToken);
-  eq([s.status, s.json && s.json.reason], [403, 'wrong_quote'], '[B3] Q1 的憑證拿去取 Q3 的章 → 403 wrong_quote');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] Q1 的憑證拿去取 Q3 的章 → 403 wrong_quote（回應不帶 reason）');
   const sig = t3.stampToken.split('.');
   s = await seal('_s_owner', 'Q1', sig[0] + '.' + sig[1].slice(0, -3) + (sig[1].endsWith('AAA') ? 'BBB' : 'AAA'));
-  eq([s.status, s.json && s.json.reason], [403, 'bad_signature'], '[B3] 竄改簽章 → 403 bad_signature');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] 竄改簽章 → 403 bad_signature（回應不帶 reason）');
   s = await seal('_s_owner', 'Q1', mintToken(Object.assign({}, pl, { h: 'f'.repeat(64) })));
-  eq([s.status, s.json && s.json.reason], [403, 'hash_mismatch'], '[B3] 簽章正確但雜湊不是目前版本 → 403 hash_mismatch');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] 簽章正確但雜湊不是目前版本 → 403 hash_mismatch（回應不帶 reason）');
   s = await seal('_s_sec', 'Q1', t3.stampToken);
-  eq([s.status, s.json && s.json.reason], [403, 'wrong_user'], '[B3] 別人拿去用 → 403 wrong_user');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] 別人拿去用 → 403 wrong_user（回應不帶 reason）');
   s = await seal('_s_owner', 'Q1', mintToken(Object.assign({}, pl, { j: 'nope' + pl.j })));
-  eq([s.status, s.json && s.json.reason], [403, 'no_issuance'], '[B3] 簽章正確但 jti 對不上發出紀錄 → no_issuance');
+  eq([s.status, s.json && s.json.reason], [403, undefined], '[B3] 簽章正確但 jti 對不上發出紀錄 → no_issuance（回應不帶 reason）');
   s = await seal('_s_owner', 'Q1', t3.stampToken);
   eq(s.status, 200, '[B3] 上述失敗嘗試沒有消耗合法憑證（之後仍可使用一次）');
+  { // 失敗原因只進稽核 STAMP_TOKEN_REJECTED（節流：同人＋同單＋同原因 60 秒一筆）
+    const rej = (await getLogs()).filter(l => l.action === 'STAMP_TOKEN_REJECTED');
+    for (const rs of ['used', 'expired', 'wrong_quote', 'bad_signature', 'hash_mismatch', 'wrong_user', 'no_issuance', 'query_token']) ok(rej.some(l => l.detail.includes('原因=' + rs)), '[B3] 稽核 STAMP_TOKEN_REJECTED 記錄原因 ' + rs);
+    ok(!JSON.stringify(rej).includes(t3.stampToken) && !JSON.stringify(rej).includes(t2.stampToken), '[B3] 拒絕稽核不含任何憑證字串');
+    const nUsed = rej.filter(l => l.detail.includes('原因=used') && l.target === 'QU-202610-001').length;
+    s = await seal('_s_owner', 'Q1', j.stampToken); s = await seal('_s_owner', 'Q1', j.stampToken);
+    eq((await getLogs()).filter(l => l.action === 'STAMP_TOKEN_REJECTED' && l.detail.includes('原因=used') && l.target === 'QU-202610-001').length, nUsed, '[B3] 同一人同一單同一原因 60 秒內重複失敗不再新增稽核（節流）');
+  }
   s = await seal('_s_other', 'Q1', t3.stampToken);
   eq(s.status, 403, '[B3] 無權限者（非擁有者業務）→ 403');
   // B4 未核准：draft、沒有憑證
@@ -595,7 +610,7 @@ function loadClient(opts) {
         if (opts.issueThrows) throw new Error('net down');
         return { ok: opts.issueStatus === undefined, status: opts.issueStatus || 200, json: async () => opts.issueStatus ? { error: opts.issueError || '無權限', code: 'X' } : opts.issueResp };
       }
-      if (/\/seal\?stampToken=/.test(u)) return { ok: !opts.sealFails, status: opts.sealFails ? 403 : 200, blob: async () => ({}) };
+      if (/\/seal$/.test(u)) { state.calls.push('SEALHDR ' + JSON.stringify((init && init.headers) || {})); return { ok: !opts.sealFails, status: opts.sealFails ? 403 : 200, blob: async () => ({}) }; }
       if (/export-log$/.test(u)) return { ok: true, status: 200, json: async () => ({ success: true }) };
       if (/issue-info$/.test(u)) return { ok: true, status: 200, json: async () => ({ issueDate: '2026-10-14', issuer: {}, remarks: ['r1'] }) };
       return { ok: false, status: 404, json: async () => ({}) };
@@ -630,7 +645,8 @@ async function secD() {
   let C = await run({ quote: q, issueResp: issOfficial }); if (process.env.QISS_DEBUG) console.log(C.state.toasts, C.state.calls);
   let S = C.state;
   ok(/POST \/api\/quotations\/Q1\/issue \{"format":"pdf"\}/.test(S.calls[0]), '[D1] 第一個請求就是 POST /issue（先取序號）');
-  ok(/GET \/api\/quotations\/Q1\/seal\?stampToken=TOKEN\.SIG$/.test(S.calls.find(c => /seal/.test(c)) || ''), '[D1] 用 stampToken 取章');
+  ok(/^GET \/api\/quotations\/Q1\/seal$/.test(S.calls.find(c => /seal/.test(c)) || '') && S.calls.some(c => c === 'SEALHDR {"X-Stamp-Token":"TOKEN.SIG"}'), '[D1] 用 X-Stamp-Token 標頭取章（網址不帶 stampToken；資安審查 L1）');
+  ok(!S.calls.some(c => /stampToken=/.test(c)), '[D1] 前端任何請求的網址都不含 stampToken=');
   ok(S.calls.indexOf(S.calls.find(c => /issue$|\/issue /.test(c))) < S.calls.findIndex(c => /seal/.test(c)), '[D1] 取序號在取章之前');
   ok(/<img class="qpv-seal" src="data:image\/png;base64,SEALBYTES"/.test(S.html), '[D1] 預覽 HTML 的章圖用換到的 data URL（不再由 img 直接打 /seal）');
   ok(!/\/seal/.test(S.html), '[D1] 預覽 HTML 沒有直接指向 /seal 的 URL');
@@ -722,6 +738,58 @@ function secE() {
   ok(!/(JWT_SECRET|SESSION_SECRET)[^\n]*stampToken|console\.\w+\([^)]*stampToken/.test(routes + rd('lib/quoteIssuance.js')), '[E10] 程式裡沒有把憑證寫進 log 的呼叫');
 }
 
+// ═════════════ F：資安審查 L1／L3（蓋章憑證 query 寬限開關、發出紀錄重用與限流）═════════════
+async function secF() {
+  console.log('[F] 資安審查：STAMP_TOKEN_QUERY 寬限開關、/issue 重用與限流');
+  // F1 寬限開關開啟：query 憑證可用，但留痕
+  await freshServer(undefined, { STAMP_TOKEN_QUERY: 'allow' });
+  let j = (await issue('_s_owner', 'Q1')).json;
+  let s = await sealQ('_s_owner', 'Q1', j.stampToken);
+  ok(s.status === 200 && s.buf.equals(PNG), '[F1] STAMP_TOKEN_QUERY=allow：網址 query 憑證仍可換章（過渡期）');
+  ok((await getLogs()).some(l => l.action === 'STAMP_TOKEN_REJECTED' && l.detail.includes('原因=query_token_allowed')), '[F1] 過渡期使用 query 憑證會留下稽核（query_token_allowed）');
+  // F2 預設（重用 60 秒、每人每分鐘 20 筆）
+  await freshServer(undefined, { QUOTE_ISSUE_REUSE_SEC: '60', QUOTE_ISSUE_RATE_PER_MIN: '20' });
+  const n0 = (dataNow().quoteIssuances || []).length;
+  const xs = []; for (let i = 0; i < 6; i++) xs.push((await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo);
+  eq(new Set(xs).size, 1, '[F2] 同人同單 60 秒內 6 次要求同樣的草稿 xlsx → 重用同一筆序號');
+  eq((dataNow().quoteIssuances || []).length - n0, 1, '[F2] 主資料只新增 1 筆發出紀錄');
+  const ps = []; for (let i = 0; i < 4; i++) ps.push((await http('_s_owner', 'GET', '/api/quotations/Q2/export')).headers.get('x-issue-no'));
+  eq(new Set(ps).size, 1, '[F2] 匯出路徑 GET /export 同樣重用（草稿 xlsx）');
+  const other = (await issue('_s_sec', 'Q2', 'xlsx')).json.issueNo;
+  ok(other && !xs.includes(other), '[F2] 不同的人要求同一張單 → 另開新紀錄（不跨人重用）');
+  const pdfDraft = [(await issue('_s_owner', 'Q2', 'pdf')).json.issueNo, (await issue('_s_owner', 'Q2', 'pdf')).json.issueNo];
+  eq(pdfDraft[0], pdfDraft[1], '[F2] 草稿 PDF 同樣重用');
+  ok(pdfDraft[0] !== xs[0], '[F2] 不同格式（pdf／xlsx）不互相重用');
+  // 正式 PDF 不重用（每次要新的單次憑證）
+  const o1 = (await issue('_s_owner', 'Q1', 'pdf')).json, o2 = (await issue('_s_owner', 'Q1', 'pdf')).json;
+  ok(o1.issueNo !== o2.issueNo && o1.stampToken && o2.stampToken && o1.stampToken !== o2.stampToken, '[F2] 核准有效的正式 PDF 每次都核發新序號與新憑證（不重用）');
+  // 內容改變 → 不重用
+  const edit = await http('_s_owner', 'PUT', '/api/quotations/Q2', { items: [{ lid: 'L1-Q2', desc: '顧問服務', unit: '式', qty: 3, unitPrice: 5000, cost: 0 }, { lid: 'L2-Q2', desc: '軟體授權', unit: '套', qty: 1, unitPrice: 12000, cost: 0 }] });
+  const x2 = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo;
+  ok(edit.status === 200 && !xs.includes(x2), '[F2] 單的內容改了 → 不重用舊紀錄（新序號）');
+  // F3 限流：迴圈打 100 次正式 PDF（不可重用）→ 每人每分鐘最多 20 筆
+  const before = (dataNow().quoteIssuances || []).filter(x => x.issuedBy === '_s_owner').length;
+  const codes = []; for (let i = 0; i < 100; i++) { const r = await issue('_s_owner', 'Q1', 'pdf'); codes.push(r.status === 200 ? 200 : (r.json && r.json.code)); }
+  const made = (dataNow().quoteIssuances || []).filter(x => x.issuedBy === '_s_owner').length - before;
+  ok(made <= 20, '[F3] 迴圈 100 次 /issue：本分鐘新增紀錄 ' + made + ' 筆（上限 20，加上先前已用的額度只會更少）');
+  ok(codes.includes('ISSUE_RATE_LIMITED') && codes.filter(c => c === 'ISSUE_RATE_LIMITED').length >= 80 - 20, '[F3] 超過上限回 429 ISSUE_RATE_LIMITED（' + codes.filter(c => c === 'ISSUE_RATE_LIMITED').length + ' 次）');
+  eq((await issue('_s_owner', 'Q1', 'pdf')).status, 429, '[F3] 上限內額度用完後仍被擋');
+  r429 = await issue('_s_owner', 'Q1', 'pdf');
+  eq(r429.json && r429.json.code, 'ISSUE_RATE_LIMITED', '[F3] 錯誤碼 ISSUE_RATE_LIMITED');
+  const rl = (await getLogs()).filter(l => l.action === 'ISSUE_RATE_LIMITED');
+  eq(rl.length, 1, '[F3] 限流稽核每人每分鐘只寫 1 筆（不被拿來洗稽核）');
+  eq((await issue('_s_admin', 'Q1', 'pdf')).status, 200, '[F3] 限流以人為單位：另一位使用者不受影響');
+  eq((await http('_s_owner', 'GET', '/api/quotations/Q1/export')).status, 429, '[F3] 匯出路徑同樣受限流（429）');
+  // F4 關閉重用（QUOTE_ISSUE_REUSE_SEC=0）＝與改版前相同
+  await freshServer(undefined, { QUOTE_ISSUE_REUSE_SEC: '0', QUOTE_ISSUE_RATE_PER_MIN: '0' });
+  const y1 = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo, y2 = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo;
+  ok(y1 !== y2, '[F4] QUOTE_ISSUE_REUSE_SEC=0：每次都新增（與改版前相同）');
+  const many = []; for (let i = 0; i < 30; i++) many.push((await issue('_s_owner', 'Q1', 'pdf')).status);
+  ok(many.every(c => c === 200), '[F4] QUOTE_ISSUE_RATE_PER_MIN=0：不限流（與改版前相同）');
+  await freshServer();
+}
+let r429;
+
 // ═════════════ M：變異檢查 ═════════════
 function copyMut(rels, edits) {
   // 把 lib/quoteIssuance.js 或 lib/quoteRoutes.js 等複製成 __mut_ 版本；routes 版指向 issuance 變異版；server 版指向 routes 變異版
@@ -765,6 +833,38 @@ async function secM() {
     const s2 = await seal('_s_owner', 'Q1', j.stampToken);
     ok(s2.status === 403, '（變異探針）第二次使用必須 403');
   });
+  // M0（資安審查）：L1 query 憑證、reason、稽核；L3 重用、限流
+  await mutRun('seal 接受網址 query 憑證', [{ file: 'routes', name: 'qry', from: 'if (!stampQueryAllowed()) {', to: 'if (false) {' }], async () => {
+    const j = (await issue('_s_owner', 'Q1')).json;
+    const s = await sealQ('_s_owner', 'Q1', j.stampToken);
+    ok(s.status === 403, '（變異探針）網址 query 憑證必須 403');
+  });
+  await mutRun('憑證失敗回傳 reason', [{ file: 'routes', name: 'reason', from: "請重新下載 PDF');\n    }", to: "請重新下載 PDF', { reason: used.reason });\n    }" }], async () => {
+    const j = (await issue('_s_owner', 'Q1')).json;
+    await seal('_s_owner', 'Q1', j.stampToken);
+    const s2 = await seal('_s_owner', 'Q1', j.stampToken);
+    ok(s2.status === 403 && s2.json && s2.json.reason === undefined, '（變異探針）失敗回應不得帶 reason');
+  });
+  await mutRun('憑證被拒不寫稽核', [{ file: 'routes', name: 'rejlog', from: "writeLog('STAMP_TOKEN_REJECTED',", to: "void (" }], async () => {
+    await seal('_s_owner', 'Q1', 'garbage.token');
+    ok((await getLogs()).some(l => l.action === 'STAMP_TOKEN_REJECTED'), '（變異探針）被拒的憑證必須留稽核');
+  });
+  await mutRun('發出紀錄不重用', [{ file: 'routes', name: 'reuse', from: 'const hit = QIS.findReusable(ctx.data, { q, format, me: ctx.me, nowMs: Date.now() });', to: 'const hit = null;' }], async () => {
+    const a = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo, b = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo;
+    ok(a === b, '（變異探針）同人同單同內容的草稿 xlsx 必須重用同一筆');
+  }, { QUOTE_ISSUE_REUSE_SEC: '60', QUOTE_ISSUE_RATE_PER_MIN: '0' });
+  await mutRun('重用跨使用者', [{ file: 'issuance', name: 'reuse2', from: 'r.issuedBy === p.me && ', to: '' }], async () => {
+    const a = (await issue('_s_owner', 'Q2', 'xlsx')).json.issueNo, b = (await issue('_s_sec', 'Q2', 'xlsx')).json.issueNo;
+    ok(a !== b, '（變異探針）不同的人不得共用紀錄');
+  }, { QUOTE_ISSUE_REUSE_SEC: '60', QUOTE_ISSUE_RATE_PER_MIN: '0' });
+  await mutRun('正式 PDF 也重用', [{ file: 'issuance', name: 'reuse3', from: "if (!kind || (kind === 'official' && p.format === 'pdf')) return null;", to: 'if (!kind) return null;' }], async () => {
+    const a = (await issue('_s_owner', 'Q1', 'pdf')).json, b = (await issue('_s_owner', 'Q1', 'pdf')).json;
+    ok(a.issueNo !== b.issueNo && a.stampToken !== b.stampToken, '（變異探針）正式 PDF 每次必須新憑證');
+  }, { QUOTE_ISSUE_REUSE_SEC: '60', QUOTE_ISSUE_RATE_PER_MIN: '0' });
+  await mutRun('/issue 不限流', [{ file: 'routes', name: 'rate', from: 'if (arr.length >= lim) {', to: 'if (false) {' }], async () => {
+    const codes = []; for (let i = 0; i < 12; i++) codes.push((await issue('_s_owner', 'Q1', 'pdf')).status);
+    ok(codes.includes(429), '（變異探針）超過每分鐘上限必須 429');
+  }, { QUOTE_ISSUE_REUSE_SEC: '0', QUOTE_ISSUE_RATE_PER_MIN: '5' });
   // M2 核准有效判定：用「核准還在但雜湊不同」的單（seed 時就不符）驗證
   await mutRunSeeded('核准有效不比對內容雜湊（雜湊不符的核准單）', [{ file: 'issuance', name: 'valid2', from: "return !!ap && ap.state === 'approved' && QA.contentHash(q) === ap.hash;", to: "return !!ap && ap.state === 'approved';" }]);
   // M3 先記錄後串流：匯出不留紀錄
@@ -877,6 +977,7 @@ async function mutRunSeeded(name, edits) {
     if (want('C')) await secC();
     if (want('D')) await secD();
     if (want('E')) secE();
+    if (want('F')) await secF();
     if (want('M') && !process.env.QISS_SKIP_MUT) await secM();
   } catch (e) {
     fail++; failures.push('例外：' + (e && e.stack || e)); console.log('✗ 例外', e && e.stack || e);

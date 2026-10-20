@@ -633,7 +633,7 @@ async function serveMode() {
   await http('_s_admin2', 'POST', REQ + '/' + x.json.requestId + '/reject', { comment: '名單與歸類需一併確認' });
   const y = await propose('_s_admin', 'config', cfgBody({ roster: { gm: ['_s_gm2'] } }));
   await http('_s_admin', 'POST', REQ + '/' + y.json.requestId + '/cancel', {});
-  console.log('SERVE_READY pid=' + childPid + ' port=' + PORT + ' pw=' + PW);
+  console.log('SERVE_READY pid=' + childPid + ' port=' + PORT + ' pw=' + (process.env.CDR_SERVE_SHOW_PW === '1' ? PW : '（已隱藏；需要手動登入時設 CDR_SERVE_SHOW_PW=1）'));   // 資安審查 L12：預設不把測試密碼印到終端機
   await new Promise(() => {});
 }
 

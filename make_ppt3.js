@@ -409,6 +409,7 @@ function bigNum(s,num,label,x,y,color=C.blue) {
 }
 
 // ── 輸出 ─────────────────────────────────────────────────
-pptx.writeFile({fileName:'C:/Users/steven.lee/Documents/ITTS_CRM_主管版v3.pptx'})
+const outDir = process.env.PPT_OUT_DIR || require('path').join(require('os').homedir(), 'Documents');   // 資安審查 L12：不寫死使用者名稱／本機路徑
+pptx.writeFile({fileName: require('path').join(outDir, 'ITTS_CRM_主管版v3.pptx')})
   .then(()=>console.log('✅ 完成：ITTS_CRM_主管版v3.pptx'))
   .catch(e=>console.error('❌',e));
