@@ -2560,3 +2560,9 @@ body.glass { zoom: var(--gz, 1); }
 .gt-sz { padding: 6px 2px; border: 1px solid var(--g-edge); border-radius: 10px; background: var(--g-input); color: var(--g-text); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .gt-sz:hover { background: var(--g-surface-hover); }
 .gt-sz:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+
+/* 月度預算視窗：深色玻璃下標籤與輸入框用玻璃 token（字色與底色成對，避免白字壓在淺灰底） */
+body.glass.dark .modal .mb-bgt-label { background: color-mix(in srgb, var(--g-text) 12%, transparent) !important; color: var(--g-text) !important; }
+body.glass.dark .modal .mb-bgt-input { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge) !important; }
+body.glass:not(.dark) .modal .mb-bgt-label { background: #eef0f4 !important; color: #1f2937 !important; }
+body.glass:not(.dark) .modal .mb-bgt-input { background: #fff !important; color: #111827 !important; }
