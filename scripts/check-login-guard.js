@@ -228,24 +228,26 @@ function unitSuite(mod, T) {
       get(t, k) { if (k === 'destroy') return (cb) => { calls.destroy++; t.user = null; cb && cb(); }; return t[k]; },
       set(t, k, v) { t[k] = v; if (k === 'user') calls.resign++; return true; }
     });
-    const res = { code: null, body: null, cleared: 0, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, clearCookie() { this.cleared++; } };
+    const res = { code: null, body: null, cleared: 0, headers: {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, clearCookie() { this.cleared++; }, set(k, v) { this.headers[k] = v; return this; } };
     return { req: { method, path: p, session }, res, calls };
   };
   {
     const T0 = 1_700_000_000_000;
     const clock = mkClock(T0 + 2 * MIN);
     const g = mod.create({ env: { SESSION_IDLE_MINUTES: '5' }, clock: clock.now, store: mkStore() });
-    const expired = []; const mw = g.idleMiddleware({ isJwt: true, onExpire: (rq, u, k) => expired.push([u, k]) });
-    // 活動：重簽 JWT
+    const expired = [];
+    // M-01：JWT 模式的閒置與 8 小時上限由 middleware/jwtSession.js 單一負責；本中介層在 isJwt 時一律放行（不重簽 cookie、不判過期）
+    const mwJ = g.idleMiddleware({ isJwt: true, onExpire: (rq, u, k) => expired.push([u, k]) });
     let { req, res, calls } = mkReq('GET', '/api/contacts', { username: 'u', loginAt: T0, lat: T0 });
-    let n = 0; mw(req, res, () => n++);
-    eq([n, calls.resign, req.session.user.lat], [1, 1, clock.now()], 'JWT：有活動且距上次 > 刷新間隔 → 放行並重簽（lat=現在）');
-    // 輪詢：不重簽
+    let n = 0; mwJ(req, res, () => n++);
+    eq([n, calls.resign, req.session.user.lat, calls.destroy], [1, 0, T0, 0], 'JWT（M-01）：本中介層放行、不重簽、不改 lat（交給 jwtSession）');
+    ({ req, res, calls } = mkReq('GET', '/api/contacts', { username: 'u', loginAt: T0 - 20 * 3600e3, lat: T0 - 3600e3 })); n = 0; mwJ(req, res, () => n++);
+    eq([n, res.code, calls.destroy], [1, null, 0], 'JWT（M-01）：即使 lat／loginAt 已過期也不在這裡判（不重複的 8 小時上限）');
+    // 以下為 memory（express-session）模式的閒置與 8 小時上限
+    const mw = g.idleMiddleware({ isJwt: false, onExpire: (rq, u, k) => expired.push([u, k]) });
+    // 輪詢：不更新 lat
     ({ req, res, calls } = mkReq('GET', '/api/poll-bundle', { username: 'u', loginAt: T0, lat: T0 })); n = 0; mw(req, res, () => n++);
     eq([n, calls.resign, req.session.user.lat], [1, 0, T0], '輪詢請求不重簽、不更新 lat');
-    // 沒有 loginAt 的舊 JWT：不重簽（避免續掉 8 小時上限），但仍放行
-    ({ req, res, calls } = mkReq('GET', '/api/contacts', { username: 'u' })); n = 0; mw(req, res, () => n++);
-    eq([n, calls.resign], [1, 0], '沒有 loginAt 的舊 token：不重簽');
     // express-session 路徑：就地改 lat，不指派 session.user
     const mwS = g.idleMiddleware({ isJwt: false });
     ({ req, res, calls } = mkReq('POST', '/api/visits', { username: 'u', loginAt: T0, lat: T0 })); n = 0; mwS(req, res, () => n++);
@@ -254,6 +256,7 @@ function unitSuite(mod, T) {
     clock.adv(10 * MIN);
     ({ req, res, calls } = mkReq('GET', '/api/contacts', { username: 'u', loginAt: T0, lat: T0 })); n = 0; mw(req, res, () => n++);
     eq([n, res.code, res.body && res.body.code, calls.destroy, res.cleared], [0, 401, 'SESSION_IDLE_TIMEOUT', 1, 1], '閒置過期：401 SESSION_IDLE_TIMEOUT、session 銷毀、cookie 清除、不放行');
+    eq(res.headers['X-Session-Expired'], 'idle', '閒置過期的 401 帶 X-Session-Expired: idle（M-01）');
     eq(expired[expired.length - 1], ['u', 'idle'], 'onExpire 收到 (user, idle)');
     // 輪詢也會被過期擋
     ({ req, res } = mkReq('GET', '/api/poll-bundle', { username: 'u', loginAt: T0, lat: T0 })); n = 0; mw(req, res, () => n++);
@@ -271,6 +274,7 @@ function unitSuite(mod, T) {
     clock.t = T0 + 9 * 3600e3;
     ({ req, res } = mkReq('GET', '/api/contacts', { username: 'u', loginAt: T0, lat: clock.t - 1000 })); n = 0; mw(req, res, () => n++);
     eq([n, res.code, res.body && res.body.code], [0, 401, 'SESSION_EXPIRED'], '登入滿 8 小時：401 SESSION_EXPIRED（續期不延長）');
+    eq(res.headers['X-Session-Expired'], '1', '8 小時上限的 401 帶 X-Session-Expired: 1（非 idle）');
   }
 }
 
@@ -296,8 +300,8 @@ const MUTANTS = [
   ['拿掉 8 小時絕對上限', "if (loginAt && now - loginAt > ABSOLUTE_SESSION_MS) return { expired: 'absolute', refresh: false };", ""],
   ['關閉時仍計數', "if (!cfg.lockout) return { locked: false, justLocked: false };", ""],
   ['衰減拿掉', "if (t - (e.last || 0) > DECAY_MS) e.lockCount = 0;", ""],
-  ['無 loginAt 的 JWT 也重簽', "if (o.isJwt && su.loginAt)", "if (o.isJwt)"],
-  ['輪詢清單拿掉 poll-bundle', "['/api/poll-bundle', '/api/notifications', '/api/announcements/active']", "['/api/notifications', '/api/announcements/active']"],
+  ['JWT 模式也在這裡判閒置（重複機制）', "if (o.isJwt) return next();", ""],
+  ['閒置 401 不帶 X-Session-Expired', "res.set('X-Session-Expired', d.expired === 'idle' ? 'idle' : '1');", ""],
 ];
 
 async function partA() {
@@ -311,7 +315,7 @@ async function partA() {
     MUTANTS.forEach(([name, from, to], i) => {
       if (src.split(from).length !== 2) { ok(false, `變異樣式找不到或重複：${name}`); return; }
       const f = path.join(tmp, `m${i}.js`);
-      fs.writeFileSync(f, src.replace(from, () => to));
+      fs.writeFileSync(f, src.replace(from, () => to).replace("require('./sessionIdle')", () => 'require(' + JSON.stringify(path.join(path.dirname(LG_PATH), 'sessionIdle')) + ')'));
       let bad = 0; let threw = false;
       try { unitSuite(require(f), { ok: (c) => { if (!c) bad++; }, eq: (a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) bad++; } }); } catch (e) { threw = true; }
       ok(bad > 0 || threw, `變異「${name}」被單元測試抓到（失敗數 ${bad}${threw ? '，且拋例外' : ''}）`);
@@ -446,16 +450,16 @@ async function e2eIdle(backend) {
   await loginAll(['_s_u1', '_s_u2', '_s_admin']);
   let r = await http('_s_u1', 'GET', '/api/contacts'); eq(r.status, 200, '剛登入：200');
   if (isJwt) {
-    const p0 = jwtPayload(H.jar._s_u1).user;
-    ok(!p0.lat || p0.lat >= p0.loginAt, 'JWT 內 lat 欄位（簽章保護）');
+    const p0 = jwtPayload(H.jar._s_u1);   // M-01：最後活動時間 lat 在 token 頂層（秒），由 jwtSession 簽發
+    ok(p0 && p0.lat >= Math.floor(p0.user.loginAt / 1000) - 1, 'JWT 內 lat 欄位（簽章保護，jwtSession 簽發）');
   }
   // 持續活動：每 4 秒一次，共 12 秒 > 6 秒上限，仍然有效（滑動視窗）
-  let lastLat = isJwt ? (jwtPayload(H.jar._s_u1).user.lat || 0) : 0;
+  let lastLat = isJwt ? (jwtPayload(H.jar._s_u1).lat || 0) : 0;
   for (let i = 0; i < 3; i++) {
     await sleep(4000);
     r = await http('_s_u1', 'GET', '/api/contacts');
     eq(r.status, 200, `活動第 ${i + 1} 輪（距上次 4 秒 < 上限 6 秒）仍有效`);
-    if (isJwt) { const lat = jwtPayload(H.jar._s_u1).user.lat; ok(lat > lastLat, `第 ${i + 1} 輪 cookie 被重簽且 lat 前進`); lastLat = lat; }
+    if (isJwt) { const lat = jwtPayload(H.jar._s_u1).lat; ok(lat > lastLat, `第 ${i + 1} 輪 cookie 被重簽且 lat 前進`); lastLat = lat; }
   }
   // 只有輪詢：不算活動 → 6 秒後過期
   const pollStatuses = [];
@@ -490,7 +494,7 @@ async function e2eMutation() {
   const mk = (name, edit) => {
     let s = fsx.readFileSync(path.join(H.ROOT, 'server.js'), 'utf8');
     if (!s.includes(edit[0])) throw new Error('變異樣式找不到：' + name);
-    s = s.replace(edit[0], () => edit[1]);
+    s = s.split(edit[0]).join(edit[1]);   // 全部取代（M-01／D-05 後登入端有兩處 checkLocked）
     const f = path.join(H.ROOT, 'server.__mutlg_' + name + '.js'); fsx.writeFileSync(f, s); tmp.push(f); return f;
   };
   try {
@@ -506,9 +510,9 @@ async function e2eMutation() {
     for (let i = 0; i < 4; i++) await bad('_s_u1');
     r = await login('_s_u1');
     ok(r.status === 200, '變異2（失敗不計數）→ 永遠鎖不住(' + r.status + ')：B2 斷言會失敗（抓得到）');
-    // 3. 閒置中介層沒掛
+    // 3. 閒置中介層沒掛（M-01 之後 JWT 模式由 jwtSession 負責；這個變異驗的是 SESSION_BACKEND=memory 路徑）
     f = mk('m3', ["app.use(loginGuard.idleMiddleware({", "app.use((function () { return (q, s, n) => n(); })({"]);
-    await H.fresh(USERS(), {}, { env: { SESSION_IDLE_MINUTES: '0.05' }, file: f });
+    await H.fresh(USERS(), {}, { env: { SESSION_IDLE_MINUTES: '0.05', SESSION_BACKEND: 'memory' }, file: f });
     await login('_s_u1'); await sleep(4000);
     r = await http('_s_u1', 'GET', '/api/contacts');
     ok(r.status === 200, '變異3（沒掛閒置中介層）→ 閒置後仍 200：B3 的 401 斷言會失敗（抓得到）');

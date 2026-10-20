@@ -174,22 +174,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── 閒置逾時（SESSION_IDLE_MINUTES>0 才啟用；預設關閉＝本段什麼都不做）──────────────────────
-// 以簽章過的 session 內 lat（最後活動時間）判斷；一分鐘內最多重簽一次 JWT（無 DB 寫入）。
-// 輪詢端點（poll-bundle／notifications／announcements/active）不算活動。細節見 lib/loginGuard.js。
+// ── 閒置逾時（M-01：單一機制）────────────────────────────────────────────────────────────
+// JWT 模式（正式站與預設本機）：閒置長度與 8 小時上限由 middleware/jwtSession.js 一手負責（SESSION_IDLE_MINUTES 也由它讀，未設定＝30 分鐘）；
+//   它判定逾時時只在 req 上標記，這裡負責補寫 SESSION_IDLE_TIMEOUT 稽核（同一人 60 秒內最多一筆）。
+// SESSION_BACKEND=memory：由 loginGuard.idleMiddleware 執行（SESSION_IDLE_MINUTES>0 才啟用）。
+// 輪詢端點（poll-bundle／notifications／announcements/active 的 GET）兩邊都不算活動，路徑清單共用 lib/sessionIdle.js。
 const _idleLogAt = new Map();
+function idleExpireAudit(req, username, kind) {
+  const now = Date.now();
+  if (!username || now - (_idleLogAt.get(username) || 0) < 60000) return;
+  _idleLogAt.set(username, now);
+  if (_idleLogAt.size > 500) { for (const [k, t] of _idleLogAt) if (now - t > 60000) _idleLogAt.delete(k); }
+  flushAuditBeforeEnd(req);
+  const mins = Math.round((jwtSession.IDLE_MS / 60000) * 100) / 100;
+  writeLog('SESSION_IDLE_TIMEOUT', username, username,
+    kind === 'idle' ? `閒置超過 ${(loginGuard.config.idleMinutes || mins)} 分鐘，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`
+      : `登入已超過 8 小時，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`, req);
+}
+app.use((req, res, next) => {
+  if (req._sessionIdleExpired && req._sessionIdleUser) { try { idleExpireAudit(req, req._sessionIdleUser, 'idle'); } catch (e) { console.error('[idle audit]', e && e.message); } }
+  next();
+});
 app.use(loginGuard.idleMiddleware({
   isJwt: SESSION_BACKEND !== 'memory',
-  onExpire: (req, username, kind) => {
-    const now = Date.now();
-    if (now - (_idleLogAt.get(username) || 0) < 60000) return;
-    _idleLogAt.set(username, now);
-    if (_idleLogAt.size > 500) { for (const [k, t] of _idleLogAt) if (now - t > 60000) _idleLogAt.delete(k); }
-    flushAuditBeforeEnd(req);
-    writeLog('SESSION_IDLE_TIMEOUT', username, username,
-      kind === 'idle' ? `閒置超過 ${loginGuard.config.idleMinutes} 分鐘，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`
-        : `登入已超過 8 小時，連線已強制登出（請求 ${req.method} ${String(req.path).slice(0, 80)}）`, req);
-  },
+  onExpire: (req, username, kind) => idleExpireAudit(req, username, kind),
 }));
 
 // ── 安全 HTTP Headers (helmet) ────────────────────────────
@@ -403,7 +411,7 @@ function sessionExpiredHeader(req, res) {
 }
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) return next();
-  if (req.path.startsWith('/api/')) { sessionExpiredHeader(req, res); return res.status(401).json({ error: req._sessionIdleExpired ? '閒置過久，已自動登出，請重新登入' : '請先登入' }); }
+  if (req.path.startsWith('/api/')) { sessionExpiredHeader(req, res); return res.status(401).json(req._sessionIdleExpired ? { error: '閒置過久，已自動登出，請重新登入', code: 'SESSION_IDLE_TIMEOUT' } : { error: '請先登入' }); }
   res.redirect('/login.html');
 }
 
@@ -525,7 +533,7 @@ function getUserFeatures(role) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.session || !req.session.user) { sessionExpiredHeader(req, res); return res.status(401).json({ error: req._sessionIdleExpired ? '閒置過久，已自動登出，請重新登入' : '請先登入' }); }
+  if (!req.session || !req.session.user) { sessionExpiredHeader(req, res); return res.status(401).json(req._sessionIdleExpired ? { error: '閒置過久，已自動登出，請重新登入', code: 'SESSION_IDLE_TIMEOUT' } : { error: '請先登入' }); }
   const authData = loadAuth();
   const user = authData.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false)
@@ -1214,6 +1222,13 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       await dummyBcryptCompare(password);
     }
     // 若密碼非 bcrypt 格式，視為帳號異常，要求管理員重設
+
+    // D-05：bcrypt 比對要數百毫秒，這段期間同時進來的請求都已通過最前面的 checkLocked。比對完成後（成功分支之前）再檢查一次：
+    // 期間若已被鎖定（別的並發請求把失敗次數推過門檻），就算這個請求猜中密碼也一律當失敗，回應與鎖定時完全相同
+    if (loginGuard.checkLocked(username, req.ip).locked) {
+      auditLoginFail(req, username, 'LOCKED');
+      return res.status(401).json(GENERIC_FAIL);
+    }
 
     // 停用帳號：即使密碼正確也不得登入；稽核區分「停用帳號仍在嘗試登入（密碼對）」與一般失敗，回應與密碼錯完全相同
     if (user.active === false) {

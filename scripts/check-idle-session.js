@@ -13,8 +13,8 @@ const SECRET = process.env.SESSION_SECRET;
 const nowS = () => Math.floor(Date.now() / 1000);
 const HOUR = 3600;
 
-function run(cookieToken, path) {
-  const req = { headers: { cookie: cookieToken ? 'itts_auth=' + encodeURIComponent(cookieToken) : '' }, path: path || '/api/contacts' };
+function run(cookieToken, path, method) {
+  const req = { headers: { cookie: cookieToken ? 'itts_auth=' + encodeURIComponent(cookieToken) : '' }, path: path || '/api/contacts', method: method || 'GET' };
   const cookies = [];
   const cleared = [];
   const res = {
@@ -164,6 +164,33 @@ ok(jwtSession.PASSIVE_PATHS.has('/api/poll-bundle'), '9b poll-bundle 在背景�
   ok(probe('100') === String(30 * 60 * 1000), '9e 小於 5 秒的值退回預設', probe('100'));
   ok(probe('abc') === String(30 * 60 * 1000), '9f 非數字退回預設', probe('abc'));
   ok(probe('8000') === '8000', '9g 合理的測試值生效', probe('8000'));
+}
+
+// ── 10. M-01：單一機制——輪詢清單共用、SESSION_IDLE_MINUTES 由 jwtSession 讀取 ─────────────
+{
+  const lgn = nowS() - HOUR;
+  const t = mk({ user: U, lgn, lat: nowS() - 300, exp: lgn + 8 * HOUR });
+  for (const p of ['/api/notifications', '/api/announcements/active', '/API/Notifications/']) {
+    ok(run(t, p, 'GET').cookies.length === 0, '10a 背景輪詢（GET）不續命：' + p);
+    ok(run(t, p, 'HEAD').cookies.length === 0, '10b 背景輪詢（HEAD）不續命：' + p);
+  }
+  ok(run(t, '/api/notifications', 'POST').cookies.length === 1, '10c 同一路徑的 POST 是使用者操作 → 續命');
+  ok(run(t, '/api/notifications/read-all', 'POST').cookies.length === 1, '10d 其他 notifications 子路徑算活動');
+  ok(['/api/poll-bundle', '/api/notifications', '/api/announcements/active'].every((x) => jwtSession.PASSIVE_PATHS.has(x)), '10e PASSIVE_PATHS 與 loginGuard 共用同一份清單');
+  const LG = require('../lib/loginGuard');
+  ok(JSON.stringify(LG.IDLE_POLL_PATHS) === JSON.stringify(Array.from(jwtSession.PASSIVE_PATHS)), '10f loginGuard.IDLE_POLL_PATHS 與 jwtSession.PASSIVE_PATHS 相同');
+  // 逾時時帶出帳號，server.js 用它寫 SESSION_IDLE_TIMEOUT 稽核
+  const tOld = mk({ user: U, lgn, lat: nowS() - 601, exp: lgn + 8 * HOUR });
+  ok(run(tOld).req._sessionIdleUser === 'u1', '10g 逾時時 req._sessionIdleUser = 帳號');
+  // 一個請求最多一個 Set-Cookie（活動重簽只簽一次）
+  const rr = run(t, '/api/contacts', 'GET');
+  ok(rr.cookies.length <= 1, '10h 一個請求最多簽發一次 cookie', String(rr.cookies.length));
+  const { spawnSync } = require('child_process');
+  const probe2 = (env) => spawnSync(process.execPath, ['-e', "require('./middleware/jwtSession');console.log(require('./middleware/jwtSession').IDLE_MS)"], { cwd: require('path').join(__dirname, '..'), encoding: 'utf8', env: Object.assign({}, process.env, { SESSION_SECRET: 'unit-test-secret-not-for-production-use-0123456789', SESSION_IDLE_MS: '', SESSION_IDLE_MINUTES: '' }, env) }).stdout.trim();
+  ok(probe2({ SESSION_IDLE_MINUTES: '60' }) === String(3600000), '10i SESSION_IDLE_MINUTES=60 生效（jwtSession 的 IDLE_MS = 60 分鐘）', probe2({ SESSION_IDLE_MINUTES: '60' }));
+  ok(probe2({ SESSION_IDLE_MINUTES: '60', SESSION_IDLE_MS: '8000' }) === '8000', '10j SESSION_IDLE_MS（測試）優先於 SESSION_IDLE_MINUTES');
+  ok(probe2({ SESSION_IDLE_MINUTES: '0' }) === String(1800000) && probe2({ SESSION_IDLE_MINUTES: 'abc' }) === String(1800000) && probe2({ SESSION_IDLE_MINUTES: '-5' }) === String(1800000), '10k SESSION_IDLE_MINUTES 為 0／非數字／負數 → 預設 30 分鐘');
+  ok(probe2({ SESSION_IDLE_MINUTES: '0.1' }) === '6000', '10l 小數分鐘（0.1＝6 秒）可用於測試');
 }
 
 console.log('閒置登出 jwtSession 單元檢查：PASS ' + pass + ' / FAIL ' + fail);

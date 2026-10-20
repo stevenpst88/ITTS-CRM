@@ -683,7 +683,7 @@ function secM() {
     ['失效單也計入', "if (x.invalid) s.why = 'INVALID';", "if (false) s.why = 'INVALID';"],
     ['回看邊界改成不含', 'if (Number.isFinite(t) && t < start)', 'if (Number.isFinite(t) && t <= start)'],
     ['金額門檻改成 >=', 'if (c > BigInt(cfg.tier1Yuan) * 100n) return 1;', 'if (c >= BigInt(cfg.tier1Yuan) * 100n) return 1;'],
-    ['權限過濾失效', 'if (!canView(s.q)) { hidden++; return; }', 'if (false) { hidden++; return; }'],
+    ['權限過濾失效', 'if (!canView(s.q)) { if (s.counted) hidden++; return; }', 'if (false) { if (s.counted) hidden++; return; }'],
     ['不同商機也混算', 'OL.linkedQuotes(data, q.oppId).forEach', '(data.quotations || []).forEach'],
     ['環境變數不優先', "if (e.set) return { mode: e.mode || 'off'", "if (false) return { mode: e.mode || 'off'"],
     ['忽略折扣（用小計）', 'const own = QA.computeFinancials(q);', 'const own = (() => { const r = QA.computeFinancials(q); return r && r.ok ? Object.assign({}, r, { revenueCents: r.subtotalCents }) : r; })();'],

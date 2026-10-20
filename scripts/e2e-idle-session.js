@@ -38,6 +38,7 @@ async function call(jar, method, p, body) {
     redirect: 'manual',
   });
   cookieOf(res, jar);
+  res._nSet = (res.headers.getSetCookie ? res.headers.getSetCookie() : []).filter((c) => /^itts_auth=/.test(c)).length;   // M-01：每請求的 itts_auth Set-Cookie 數
   return res;
 }
 async function login(jar) {
@@ -123,6 +124,21 @@ async function login(jar) {
     ok(await login(jar) === 200, '5b-2 帶著有效 cookie 再登入一次（同帳號）');
     const second = JSON.parse(Buffer.from(decodeURIComponent(jar.v).split('.')[1], 'base64url').toString());
     ok(second.lgn >= first.lgn + 2 && second.exp >= first.exp + 2, '5b-3 重新登入 → 登入時間與 8 小時上限都重置', JSON.stringify({ first: [first.lgn, first.exp], second: [second.lgn, second.exp] }));
+
+    // 5c. M-01：單一機制——/api/notifications 與 /api/announcements/active 的 GET 不續命；每個請求最多一個 itts_auth Set-Cookie
+    jar = {};
+    ok(await login(jar) === 200, '5c-1 登入');
+    let maxSet = 0;
+    for (let i = 0; i < 6; i++) { await sleep(700); r = await call(jar, 'GET', '/api/me'); maxSet = Math.max(maxSet, r._nSet); }
+    ok(maxSet <= 1, '5c-2 活動中每個請求最多 1 個 itts_auth Set-Cookie（不重複簽發）', String(maxSet));
+    const t2 = Date.now(); let exp2 = 0, hdr2 = '';
+    while (Date.now() - t2 < IDLE + 5000) {
+      await sleep(2000);
+      r = await call(jar, 'GET', Math.random() < 0.5 ? '/api/notifications' : '/api/announcements/active');
+      if (r.status === 401) { exp2 = Date.now() - t2; hdr2 = r.headers.get('X-Session-Expired'); break; }
+    }
+    ok(exp2 > 0 && exp2 <= IDLE + 4500, '5c-3 只打 notifications／announcements/active（背景輪詢）不續命 → 逾時登出', 'expiredAt=' + exp2);
+    ok(hdr2 === 'idle', '5c-4 該 401 帶 X-Session-Expired: idle', hdr2);
 
     // 6. 前端檔案可取得、頁面有載入
     for (const f of ['/idle-timeout.js', '/login.html?reason=idle']) {
