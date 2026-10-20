@@ -210,7 +210,10 @@ async function approveAll(id, expectTiers) {
     const html = fs.readFileSync(path.join(ROOT, '_client/admin.html'), 'utf8');
     ok(/id="afEngineCard"/.test(html) && /id="afEngineBody"/.test(html) && /loadFlowEngineStatus\(\);/.test(html) && /\/api\/admin\/quote-flow\/engine-status/.test(html), '後台頁：有流程引擎狀態區塊與載入呼叫');
     ok(['QUOTE_FLOW_SHADOW_MISMATCH', 'QUOTE_FLOW_SHADOW_ERROR', 'QUOTE_FLOW_ENGINE_FALLBACK'].every((a) => new RegExp(a + ": '[^']+'").test(html)), '後台頁：3 個稽核動作都有中文名（ACTION_LABELS）');
-    const secStart = html.indexOf('id="afEngineCard"'), secEnd = html.indexOf('</div>\n      </div>', secStart);
+    const secStart = html.indexOf('id="afEngineCard"');
+    // 區塊結束：同頁後面若有其他卡片（例如防拆單 sgCard）就以它為界，否則取原本的結尾標記
+    const nextCard = html.indexOf('id="sgCard"', secStart), closeTag = html.indexOf('</div>\n      </div>', secStart);
+    const secEnd = (nextCard > 0 && nextCard < closeTag) ? nextCard : closeTag;
     ok(secStart > 0 && !/style=/.test(html.slice(secStart, secEnd + 20)), '後台頁：新區塊 HTML 不使用 style= 屬性');
     const fnStart = html.indexOf('async function loadFlowEngineStatus'), fnEnd = html.indexOf('function _afRender()');
     const fnSrc = html.slice(fnStart, fnEnd);
