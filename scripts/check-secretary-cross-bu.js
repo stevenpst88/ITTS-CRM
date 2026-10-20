@@ -13,6 +13,7 @@
  *   XBU_SKIP_MUT=1 node scripts/check-secretary-cross-bu.js   # 略過變異檢查
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const vm = require('vm');
@@ -106,6 +107,7 @@ async function startServer(serverFile) {
   setClockOffsetMs(0);
   const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE, XBU_CLOCK_FILE: CLOCK_FILE });
   delete env.DATABASE_URL; delete env.MAIL_MODE;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, ['-r', PRELOAD, serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';

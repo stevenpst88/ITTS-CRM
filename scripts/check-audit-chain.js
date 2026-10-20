@@ -24,6 +24,7 @@
  *   AC_SKIP_MUT=1 ...                              # 略過變異檢查
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -43,6 +44,7 @@ const HC = require(path.join(ROOT, 'lib', 'historyChain.js'));
 
 let pass = 0, fail = 0, muting = false, mutFail = 0;
 const failures = [];
+const UNVERIFIED = [];   // 被略過、沒有真的驗證到的項目。有項目就 exit 3，不能被當成通過（B-10）
 function ok(cond, name) {
   if (cond) { if (!muting) pass++; return; }
   if (muting) { mutFail++; return; }
@@ -494,7 +496,7 @@ async function secU4() {
   console.log('[U4] 旗標關閉：寫入與第二波（397abc5）位元級相同');
   let oldSrc = null;
   try { oldSrc = execFileSync('git', ['show', '397abc5:lib/auditStore.js'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { oldSrc = null; }
-  if (!oldSrc) { console.log('  （略過：取不到 git 物件 397abc5，未驗證「與舊模組位元級相同」）'); ok(true, 'skip'); return; }
+  if (!oldSrc) { console.log('  ⚠ 未驗證：取不到 git 物件 397abc5（淺層 clone？請 git fetch --unshallow）——「旗標關閉與第二波位元級相同」整段沒有執行'); UNVERIFIED.push('U4 旗標關閉對第二波基底（git 物件 397abc5）'); return; }
   const oldFile = path.join(TMP, 'old-auditStore.js');
   fs.writeFileSync(oldFile, oldSrc);
   const Old = require(oldFile);
@@ -1055,6 +1057,7 @@ async function startServer(extraEnv) {
   const base = Object.assign({}, process.env);
   for (const k of ['AUDIT_EVENTS_TABLE', 'AUDIT_CHAIN', 'AUDIT_CHAIN_SECRET', 'AUDIT_CHAIN_KID', 'AUDIT_CHAIN_SECRETS_JSON', 'AUDIT_ANCHOR_WEBHOOK_URL', 'CRON_SECRET', 'DATABASE_URL', 'MAIL_MODE', 'SESSION_SECRET']) delete base[k];
   const env = Object.assign(base, extraEnv || {}, { PORT: String(PORT), JWT_SECRET: SERVER_SECRETS.jwt, SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid; serverOut = '';
   child.stdout.on('data', d => { serverOut += d; }); child.stderr.on('data', d => { serverOut += d; });
@@ -1292,5 +1295,6 @@ async function secE() {
   }
   console.log(`\n稽核防竄改檢查：PASS ${pass} / FAIL ${fail}`);
   if (fail) { console.log('失敗項目：'); failures.forEach(f => console.log(' -', f)); }
-  process.exit(fail ? 1 : 0);
+  if (UNVERIFIED.length) console.log('未驗證項目（' + UNVERIFIED.length + '，結束碼 3）：' + UNVERIFIED.join('；'));
+  process.exit(fail ? 1 : UNVERIFIED.length ? 3 : 0);
 })();

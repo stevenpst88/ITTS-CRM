@@ -4,6 +4,7 @@
  * 不含任何帳密（密碼隨機只存在記憶體）；工作樹已有 auth.json／data.json／稽核檔時拒絕；結束以 PID 關閉並刪檔，絕不連遠端資料庫。
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -43,6 +44,7 @@ async function startServer(env) {
   const e = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   for (const k of ['DATABASE_URL', 'MAIL_MODE', 'VERCEL', 'AUDIT_EVENTS_TABLE', 'QUOTE_FLOW_ENGINE', 'QUOTE_FLOW_DESIGNER', 'FEATURE_GUARD_MODE']) delete e[k];
   Object.assign(e, env || {});
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env: e, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';

@@ -1,0 +1,25 @@
+# 行尾統一：入庫與工作樹一律 LF。
+# 為什麼：Git for Windows 預設 core.autocrlf=true，clone 後工作樹變 CRLF，
+# scripts/check-quote-issuance.js 的變異測試（樣式含 \n）會因「變異樣式找不到」誤報失敗。
+* text=auto eol=lf
+
+# Windows 專用啟動腳本維持 CRLF（cmd／WSH 對 LF 行尾的 label、多行括號有已知問題）；入庫內容仍是 LF
+*.bat text eol=crlf
+*.vbs text eol=crlf
+
+# 二進位檔：不做任何行尾轉換、不做文字 diff
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.xlsx binary
+*.xls binary
+*.pptx binary
+*.docx binary
+*.pdf binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

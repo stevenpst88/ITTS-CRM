@@ -7,6 +7,7 @@
  *   node scripts/check-version-page.js
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -114,6 +115,7 @@ async function serverPart() {
   try {
     const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
     delete env.DATABASE_URL; delete env.VERCEL; delete env.VERCEL_ENV; delete env.STORAGE_BACKEND; delete env.AUDIT_EVENTS_TABLE; delete env.MAIL_MODE;
+    await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
     child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: 'ignore' }); pid = child.pid;
     let up = false;
     for (let i = 0; i < 80 && !up; i++) { await new Promise(r => setTimeout(r, 250)); try { up = (await fetch(BASE + '/login.html')).ok; } catch { /* 尚未起來 */ } }
