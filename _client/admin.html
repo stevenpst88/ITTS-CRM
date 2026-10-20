@@ -828,6 +828,32 @@
   :is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10):is(#ax-i, .ax-faint-10) { font-size:10px; color:var(--ax-faint, #9ca3af); }
   /* Phase 5d: inline styles of the audit/monitoring sections extracted to classes (same rules as 5-0) */
   :is(#ax-i, .ax-gen-time):is(#ax-i, .ax-gen-time):is(#ax-i, .ax-gen-time) { font-size:11px; color:var(--ax-faint-2, #bbb); margin-right:12px; }
+  /* 簽核流程引擎狀態（唯讀）：不使用 style= 屬性 */
+  .qfe-card { padding:18px; max-width:900px; margin-top:16px; }
+  .qfe-title { font-weight:600; font-size:14px; color:#374151; margin-bottom:4px; }
+  .qfe-sub { font-size:12.5px; color:#6b7280; margin-bottom:12px; }
+  .qfe-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-bottom:10px; font-size:13.5px; color:#374151; }
+  .qfe-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12.5px; font-weight:600; border:1px solid transparent; }
+  .qfe-badge.qfe-off { background:#f3f4f6; color:#374151; border-color:#d1d5db; }
+  .qfe-badge.qfe-shadow { background:#fff7e0; color:#8a5a00; border-color:#f1d28b; }
+  .qfe-badge.qfe-on { background:#e6f4ea; color:#137333; border-color:#a8d5b5; }
+  .qfe-badge.qfe-bad { background:#fdecea; color:#b3261e; border-color:#f3b8b3; }
+  .qfe-badge.qfe-ok { background:#e6f4ea; color:#137333; border-color:#a8d5b5; }
+  .qfe-num { font-weight:700; font-variant-numeric:tabular-nums; }
+  .qfe-num.qfe-warn { color:#b3261e; }
+  .qfe-tbl { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 12px; }
+  .qfe-tbl th, .qfe-tbl td { text-align:left; padding:6px 8px; border-bottom:1px solid #eceff3; vertical-align:top; }
+  .qfe-tbl th { color:#6b7280; font-weight:600; font-size:12px; }
+  .qfe-note { font-size:12.5px; color:#6b7280; line-height:1.6; margin-top:6px; }
+  .qfe-h { font-weight:600; font-size:13px; color:#374151; margin:12px 0 4px; }
+  body.dark .qfe-title, body.dark .qfe-row, body.dark .qfe-h { color:#e6edf3; }
+  body.dark .qfe-sub, body.dark .qfe-note, body.dark .qfe-tbl th { color:#9aa4b0; }
+  body.dark .qfe-tbl th, body.dark .qfe-tbl td { border-bottom-color:#30363d; }
+  body.dark .qfe-badge.qfe-off { background:#21262d; color:#c9d1d9; border-color:#30363d; }
+  body.dark .qfe-badge.qfe-shadow { background:#3a2e10; color:#f0c674; border-color:#6b5420; }
+  body.dark .qfe-badge.qfe-on, body.dark .qfe-badge.qfe-ok { background:#12301c; color:#7ee2a0; border-color:#1f5a33; }
+  body.dark .qfe-badge.qfe-bad { background:#3f1717; color:#ff9b94; border-color:#7a2d28; }
+  body.dark .qfe-num.qfe-warn { color:#ff9b94; }
 </style>
 </head>
 <body class="admin-page">
@@ -2610,6 +2636,11 @@
             <span id="afStatus" class="ax-muted-13"></span>
           </div>
         </div>
+        <div class="admin-card qfe-card" id="afEngineCard">
+          <div class="qfe-title">🧮 流程引擎狀態（唯讀）</div>
+          <div class="qfe-sub">簽核流程引擎目前預設關閉：送簽走原本的程式。影子模式只在旁邊比對、不影響任何簽核。這裡只能檢視，切換請由 IT 設定環境變數 QUOTE_FLOW_ENGINE（off／shadow／on），改回 off 即立即回到原流程。</div>
+          <div id="afEngineBody" role="region" aria-label="流程引擎狀態" aria-live="polite"><span class="ax-muted-13">載入中…</span></div>
+        </div>
         <div class="admin-card" id="sgCard" style="padding:18px;max-width:900px;margin-top:16px">
           <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#374151">🧩 防拆單提醒</div>
           <div style="font-size:12.5px;color:#6b7280;margin-bottom:12px;line-height:1.7">同一商機在回看天數內的報價單（不含已失效者），把「折扣後未稅金額」加總；若累計金額落入的簽核金額級距高於本張單獨的級距（第一級＝須董事長核准、第二級＝須董事會決議），就視為疑似拆單。<b>只提醒與記稽核，不會改變簽核層級、也不會擋建單或送簽。</b>建單與送簽時各評估一次，送簽時為準。</div>
@@ -3537,6 +3568,7 @@
         _afRender();
         $('afSaveBtn').addEventListener('click', _afSave);
         $('afAddExBtn').addEventListener('click', _afAddException);
+        loadFlowEngineStatus();
         if (window.CfgReview) {
           _afCr = window.CfgReview.create({ api: _afCrApi, onApplied: async () => { try { const c = await adminFetch('/api/admin/quote-approval/flow-config'); if (c.ok) { _afCfg = await c.json(); _afRender(); } } catch (e) { /* 重新整理頁面即可 */ } } });
           _afCr.paint($('afCrHost'));
@@ -3548,6 +3580,42 @@
       _sgInit();   // 防拆單提醒卡片（獨立載入，失敗不影響上面的簽核流程設定）
     }
 
+    // 流程引擎狀態（唯讀）：GET /api/admin/quote-flow/engine-status。所有文字經 escH；不使用 style=。
+    async function loadFlowEngineStatus() {
+      const host = $('afEngineBody');
+      if (!host) return;
+      try {
+        const r = await adminFetch('/api/admin/quote-flow/engine-status');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        renderFlowEngineStatus(host, await r.json());
+      } catch (e) {
+        host.innerHTML = '<span class="qfe-badge qfe-bad">讀取失敗</span> <span class="ax-muted-13">' + escH(e.message) + '</span>';
+      }
+    }
+    function renderFlowEngineStatus(host, d) {
+      const MODE_TXT = { off: '關閉（預設）', shadow: '影子模式（舊路徑為準，引擎旁路比對）', on: '引擎為準（例外自動退回舊路徑）' };
+      const num = (n, warnIfPos) => (n === null || n === undefined) ? '<span class="qfe-num">—</span>' : '<span class="qfe-num' + (warnIfPos && n > 0 ? ' qfe-warn' : '') + '">' + escH(String(n)) + '</span>';
+      const a = d.audit || {}, st = d.stats || {}, df = d.defaultFlow || {};
+      const pinOk = df.structureHash && df.structureHash === df.pinnedHash;
+      let h = '<div class="qfe-row"><span>目前模式：</span><span class="qfe-badge qfe-' + escH(d.mode) + '">' + escH(MODE_TXT[d.mode] || d.mode) + '</span><span class="ax-muted-13">來源：環境變數 QUOTE_FLOW_ENGINE</span>';
+      if (d.envValid === false) h += '<span class="qfe-badge qfe-bad">環境變數值「' + escH(d.envRaw) + '」無法辨識，已視為 off</span>';
+      h += '</div>';
+      h += '<div class="qfe-row"><span>近 30 天（自 ' + escH(a.from || '') + '）：</span><span>影子不一致 ' + num(a.mismatch, true) + ' 筆</span><span>引擎例外 ' + num(a.error, true) + ' 筆</span><span>熔斷退回舊路徑 ' + num(a.fallback, true) + ' 筆</span><span class="ax-muted-13">（來源：稽核事件；「—」＝無法讀取）</span></div>';
+      h += '<div class="qfe-row"><span class="ax-muted-13">本實例自啟動（' + escH(st.since || '') + '）：引擎執行 ' + escH(String(st.runs || 0)) + ' 次、不一致 ' + escH(String(st.mismatches || 0)) + '、例外 ' + escH(String(st.errors || 0)) + '、熔斷 ' + escH(String(st.fallbacks || 0)) + '、節流略過 ' + escH(String(st.suppressed || 0)) + '（多實例各自計）</span></div>';
+      h += '<div class="qfe-h">預設流程（由現行核決表、金額門檻、BU 二級主管設定轉出；唯讀）</div>';
+      h += '<div class="qfe-row"><span>結構雜湊：</span><code>' + escH(String(df.structureHash || '').slice(0, 12)) + '…</code> ' + (pinOk ? '<span class="qfe-badge qfe-ok">與釘選值一致</span>' : '<span class="qfe-badge qfe-bad">與釘選值不一致</span>') + '<span>啟用二級主管關的 BU：' + escH((df.mgr2Bus || []).length ? df.mgr2Bus.join('、') : '（無）') + '</span><span>跳過一級主管例外：' + escH(String(df.skipUserCount || 0)) + ' 人</span></div>';
+      h += '<table class="qfe-tbl"><thead><tr><th scope="col">順序</th><th scope="col">路線</th><th scope="col">條件（由上而下，第一條符合者勝出）</th><th scope="col">財務核決關卡</th></tr></thead><tbody>';
+      (df.routes || []).forEach(rt => { h += '<tr><td>' + escH(String(rt.order)) + '</td><td>' + escH(rt.name) + '</td><td>' + escH(rt.when) + '</td><td>' + escH(rt.path) + '</td></tr>'; });
+      h += '</tbody></table>';
+      h += '<table class="qfe-tbl"><thead><tr><th scope="col">調整</th><th scope="col">條件</th></tr></thead><tbody>';
+      (df.modifiers || []).forEach(m => { h += '<tr><td>' + escH(m.name) + '</td><td>' + escH(m.when) + '</td></tr>'; });
+      h += '</tbody></table>';
+      h += '<div class="qfe-h">毛利核決表（各類別：毛利率 ≥ 第一門檻 → 一級主管；≥ 第二門檻 → 總經理；再低 → 董事長；壓線取低層）</div>';
+      h += '<table class="qfe-tbl"><thead><tr><th scope="col">類別</th><th scope="col">一級主管門檻</th><th scope="col">總經理門檻</th><th scope="col">固定層級</th></tr></thead><tbody>';
+      (df.table || []).forEach(r => { h += '<tr><td>' + escH(r.cat) + '</td><td>' + (r.l1 === null ? '—' : escH(String(r.l1)) + '%') + '</td><td>' + (r.l2 === null ? '—' : escH(String(r.l2)) + '%') + '</td><td>' + (r.fixedLevel ? escH(String(r.fixedLevel)) : '—') + '</td></tr>'; });
+      h += '</tbody></table>';
+      host.innerHTML = h;
+    }
     function _afRender() {
       _afRenderBu();
       _afRenderExceptions();
@@ -5690,7 +5758,7 @@
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
       REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', QUOTE_SPLIT_SUSPECT: '疑似拆單', SAVE_QUOTE_SPLIT_GUARD: '儲存防拆單設定', SAVE_INTEGRATION: '儲存整合設定',
-      EXPORT_AUDIT_LOG: '匯出稽核日誌', CSP_VIOLATION: 'CSP 違規回報（觀察）', CSP_REPORT_THROTTLED: 'CSP 回報已達寫入上限', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
+      EXPORT_AUDIT_LOG: '匯出稽核日誌', QUOTE_FLOW_SHADOW_MISMATCH: '流程引擎影子不一致', QUOTE_FLOW_SHADOW_ERROR: '流程引擎影子例外', QUOTE_FLOW_ENGINE_FALLBACK: '流程引擎熔斷退回舊路徑', QUOTE_FLOW_ENGINE_MODE: '流程引擎模式變更', CSP_VIOLATION: 'CSP 違規回報（觀察）', CSP_REPORT_THROTTLED: 'CSP 回報已達寫入上限', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 
     function parseUA(ua) {
