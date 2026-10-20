@@ -27,11 +27,11 @@
   /** st = { enabled, activeAdmins } */
   function chipHtml(st) {
     var on = !!(st && st.enabled);
-    if (!on) return '<span class="cr-chip" data-cr-chip="off" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb">兩人覆核：未啟用</span>';
+    if (!on) return '<span class="cr-chip gc-cr-off" data-cr-chip="off" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：未啟用</span>';
     if ((st.activeAdmins | 0) < 2) {
-      return '<span class="cr-chip" data-cr-chip="blocked" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca">兩人覆核：啟用，但在職管理員不足 2 人，目前無法儲存變更</span>';
+      return '<span class="cr-chip gc-cr-blocked" data-cr-chip="blocked" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：啟用，但在職管理員不足 2 人，目前無法儲存變更</span>';
     }
-    return '<span class="cr-chip" data-cr-chip="on" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0">兩人覆核：啟用</span>';
+    return '<span class="cr-chip gc-cr-on" data-cr-chip="on" style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px">兩人覆核：啟用</span>';
   }
   function saveLabel(enabled, normal) { return enabled ? '提出變更（待覆核）' : normal; }
   function proposalMessage(d) {
