@@ -458,7 +458,7 @@ function partC() {
     let s; try { s = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch { continue; }
     if (/steven[.\-]lee/i.test(s)) hits.push(f);
   }
-  ok(hits.length === 0, '[#11] 公開 repo 的追蹤檔不含本機路徑／使用者名稱（steven.lee）：' + (hits.join(',') || '0 筆'));
+  ok(hits.length === 0, '[#11] 公開 repo 的追蹤檔不含本機路徑／使用者名稱（本機使用者帳號名稱）：' + (hits.join(',') || '0 筆'));
   const vbs = files.find(f => f.endsWith('.vbs'));
   ok(vbs && !/[A-Za-z]:\\Users\\/.test(fs.readFileSync(path.join(ROOT, vbs), 'utf8')) && /GetParentFolderName\(WScript\.ScriptFullName\)/.test(fs.readFileSync(path.join(ROOT, vbs), 'utf8')), '[#11] 啟動伺服器.vbs 改用相對（腳本所在資料夾）');
   for (const f of ['make_ppt.js', 'make_ppt2.js', 'make_ppt3.js']) ok(!/['"][A-Za-z]:[\\/]/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')) && /PPT_OUT_DIR/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), `[#11] ${f} 輸出路徑不寫死（PPT_OUT_DIR 或使用者 Documents）`);
