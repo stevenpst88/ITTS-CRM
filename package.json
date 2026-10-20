@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "名片管理 CRM 系統",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node scripts/check-xss-sinks.js",

@@ -53,7 +53,21 @@ coverage/
 .nyc_output/
 
 # 本地資料目錄
-data/
-storage/
+# 只忽略專案根目錄的 data/（apiMonitor 寫的 data/api-stats.json）。原本寫 `data/` 會連 lib/data/、db/data/ 下的程式碼一起忽略。
+# storage/ 是程式碼資料夾（index.js／local.js／supabase.js），本機上傳檔在 uploads/，所以不再忽略 storage/：
+# 原本的 `storage/` 會讓新增在該資料夾的檔案被 git add 靜默忽略，部署後 MODULE_NOT_FOUND（B-05）。
+/data/
 .mail-preview/
 mail-outbox.json
+
+# 測試／工作殘留（腳本被強制中斷時會留在工作樹，勿被誤 commit 或隨 lib/ 上線）
+_s_*.js
+lib/*__old.js
+lib/*__mut_*.js
+server__mut_*.js
+backup_*.json
+
+# 不入 repo 的本機檔（CLAUDE.md 高風險紅線）
+/docs/
+/_preview_server.js
+*.pptx
