@@ -34,7 +34,7 @@
     mgr1: { short: '一級主管', rank: 2, color: 'blue', locked: false, rule: '沿主管鏈往上第一位一級主管', ruleLong: '從業務往上找，第一位在職的一級主管。找不到人時無法送簽。送簽當下鎖定成具體的人。', timing: '送簽時鎖定指定人' },
     gm: { short: '總經理', rank: 3, color: 'pink', locked: false, rule: '名冊「總經理」的任一位', ruleLong: '名冊「總經理」裡任何一位在職、非唯讀的人都可以簽。核准當下才判斷資格（名冊是活的）。', timing: '核准當下判斷（活名單）' },
     chairman: { short: '董事長', rank: 4, color: 'amber', locked: false, rule: '名冊「董事長」的任一位', ruleLong: '名冊「董事長」裡任何一位在職、非唯讀的人。核准當下才判斷資格。', timing: '核准當下判斷（活名單）' },
-    board: { short: '董事會代核', rank: 5, color: 'violet', locked: true, rule: '董事會決議，由秘書代為登錄', ruleLong: '董事會決議的結果，由名冊「董事會代核人」與秘書角色代為登錄；必填決議日期與文號。', timing: '核准當下判斷（活名單）', lockWhy: '代核／秘書／名冊的語意要等 Steven 與董事長溝通完才決定，所以設計器只能決定「哪些路線含這一關」，不能改它的簽核方式。' },
+    board: { short: '董事會代核', rank: 5, color: 'violet', locked: true, rule: '董事會決議，由秘書代為登錄', ruleLong: '董事會決議的結果，由名冊「董事會代核人」與秘書角色代為登錄；必填決議日期與文號。', timing: '核准當下判斷（活名單）', lockWhy: '代核、秘書與名冊的簽核方式目前為固定規則，設計器只能決定「哪些路線包含這一關」，不能改它的簽核方式。' },
   };
   const COLORS = ['teal', 'blue', 'pink', 'amber', 'violet', 'green', 'slate'];
   const COLOR_ZH = { teal: '青', blue: '藍', pink: '粉', amber: '琥珀', violet: '紫', green: '綠', slate: '灰' };
@@ -314,7 +314,7 @@
     else if (sim) cls = ' dimn';
     return h`<li class="fd-node fd-c-${colorOfTier(def, tier)}${T.locked ? ' locked' : ''}${cls}" tabindex="0" ${ed ? h`data-drag="node:${r.id}:${i}"` : ''} data-lane="${r.id}" data-idx="${i}" data-tier="${tier}" aria-label="路線「${r.name}」第 ${i + 1} 關：${nd.label}${T.locked ? '（鎖定的代核關）' : ''}。${ed ? 'Enter 開屬性；左右方向鍵調整順序，上下方向鍵換路線；Delete 移除' : '唯讀'}">
       ${ord}<div class="fd-top2"><span class="fd-stepno">STEP ${i + 1}</span>${T.locked ? h`<span title="${T.lockWhy}" aria-label="鎖定">🔒</span>` : ''}<button type="button" class="fd-x" data-act="del-node" aria-label="從路線移除「${nd.label}」" tabindex="-1">×</button></div>
-      <div class="fd-nm">${nd.label}</div><div class="fd-rl">${T.rule}</div>${T.locked ? h`<div class="fd-rl">🔒 鎖定：語意待董事長溝通</div>` : ''}</li>`;
+      <div class="fd-nm">${nd.label}</div><div class="fd-rl">${T.rule}</div>${T.locked ? h`<div class="fd-rl">🔒 鎖定：簽核方式固定</div>` : ''}</li>`;
   }
   function renderCanvas() {
     const el = $('#fdCanvas');

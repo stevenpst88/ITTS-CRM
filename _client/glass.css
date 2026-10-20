@@ -2566,3 +2566,32 @@ body.glass.dark .modal .mb-bgt-label { background: color-mix(in srgb, var(--g-te
 body.glass.dark .modal .mb-bgt-input { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge) !important; }
 body.glass:not(.dark) .modal .mb-bgt-label { background: #eef0f4 !important; color: #1f2937 !important; }
 body.glass:not(.dark) .modal .mb-bgt-input { background: #fff !important; color: #111827 !important; }
+
+/* ═══ cr-*：簽核設定「兩人覆核」視窗（config-review.js）的深色玻璃（程式碼審查 A3，PR-1）═══
+ * 視窗外框原本 inline 寫死白底，內文沒指定字色而繼承深色玻璃的白字 → 白字壓白底。
+ * 只有「深色玻璃」改：外框換成與 .modal 相同的玻璃面板，內文的行內灰／深字換成 --g-*／--q4-* token（底色與字色成對）。
+ * 淺色玻璃與非玻璃（?glass=0）完全不動（外框維持 inline 的白底，字色維持原本的繼承）。 */
+body.glass.dark .cr-modal-box {
+  background: var(--g-surface-strong) !important; border: 1px solid var(--g-border); box-shadow: var(--g-ring), var(--g-shadow-lg);
+  -webkit-backdrop-filter: blur(26px) saturate(var(--g-sat)); backdrop-filter: blur(26px) saturate(var(--g-sat));
+  color: var(--g-text);
+}
+body.glass.dark .cr-modal-box .cr-card { background: color-mix(in srgb, var(--g-text) 7%, transparent) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box .cr-hist { border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box .cr-close { color: var(--g-text); }
+body.glass.dark .cr-modal-box :is(span, div, summary, b)[style*="color:#6b7280"] { color: var(--g-text-2) !important; }
+body.glass.dark .cr-modal-box :is(span, div, summary, b)[style*="color:#374151"] { color: var(--g-text) !important; }
+body.glass.dark .cr-modal-box :is(span, div)[style*="color:#b91c1c"] { color: var(--q4-bad) !important; }
+body.glass.dark .cr-modal-box span[style*="color:#b45309"] { color: var(--q4-warn) !important; }
+body.glass.dark .cr-modal-box span[style*="color:#15803d"] { color: var(--q4-ok) !important; }
+body.glass.dark .cr-modal-box input[data-cr-comment] { background: var(--g-input) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box button[data-cr="cancel"] { background: color-mix(in srgb, var(--g-text) 10%, transparent) !important; color: var(--g-text) !important; border-color: var(--g-edge) !important; }
+body.glass.dark .cr-modal-box button[data-cr="reject"] { background: var(--q4-bad-bg) !important; color: var(--q4-bad) !important; border-color: var(--q4-bad-bd) !important; }
+body.glass.dark .cr-modal-box button[disabled] { background: color-mix(in srgb, var(--g-text) 8%, transparent) !important; color: var(--g-text-2) !important; border-color: var(--g-edge) !important; opacity: .6; }
+.cr-modal-box button:focus-visible, .cr-modal-box input:focus-visible, .cr-modal-box summary:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+body.glass.dark .cr-modal-box :is(button, input, summary):focus-visible { outline-color: var(--g-accent); }
+
+/* 季度帳號覆核的欄位標題（admin.html 的 <label class="ar-cap">；原本是 inline style 的 div，改 label 才能和控制項關聯）。
+ * 淺色／非玻璃維持原本的 #888；玻璃模式沿用 §15「灰字補強」對 inline #888 的處理（字色換 --g-text-2）。 */
+.ar-cap { display: block; font-size: 12px; color: #888; margin-bottom: 3px; }
+body.glass .admin-main .ar-cap { color: var(--g-text-2) !important; }
