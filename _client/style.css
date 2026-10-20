@@ -4755,3 +4755,7 @@ body.dark:not(.glass) .rh-tag { background: #21262d; }
 .ka-shared-fold-sum::before { content: '▸ '; }
 .ka-shared-fold[open] > .ka-shared-fold-sum::before { content: '▾ '; }
 .ka-shared-fold > .contact-list { padding-bottom: 12px; }
+
+/* 月度預算視窗（openMbBudgetModal）：月份標籤與輸入框改用 class，避免 glass 深色規則只改字色、不改底色造成看不見 */
+.mb-bgt-label { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; text-align: center; background: #f3f4f6; border-radius: 6px; padding: 3px 0; }
+.mb-bgt-input { width: 100%; padding: 8px 4px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; text-align: center; background: #fff; color: #111827; }

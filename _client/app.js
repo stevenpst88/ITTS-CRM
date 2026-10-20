@@ -6007,9 +6007,8 @@ function openMbBudgetModal(owner, year) {
     g.innerHTML = monthLabels.map((m, i) => {
       const val = data[i] !== null && data[i] !== undefined ? data[i] : '';
       return `<div>
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;text-align:center;background:#f3f4f6;border-radius:6px;padding:3px 0">${m}</div>
-        <input type="number" min="0" step="any" value="${val}" placeholder="0"
-          style="width:100%;padding:8px 4px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;text-align:center;background:#fff"
+        <div class="mb-bgt-label">${m}</div>
+        <input class="mb-bgt-input" type="number" min="0" step="any" value="${val}" placeholder="0"
           oninput="updateMbBudgetTotal()">
       </div>`;
     }).join('');
