@@ -714,6 +714,7 @@
   })();
   </script>
   <link rel="stylesheet" href="glass.css">
+  <link rel="stylesheet" href="flow-designer.css"><!-- 簽核流程設計器（QUOTE_FLOW_DESIGNER=1 才會顯示側欄項） -->
   <style id="ax-classes">
   /* Phase 5-0: inline style -> shared class. Specificity (3,0,0) via :is(#id,.cls) so classes win exactly where the inline style used to win (never !important).
      Theme colors read --ax-* variables; fallback = exact legacy literal. Undefined vars => legacy look. */
@@ -993,6 +994,9 @@
           </div>
           <div class="admin-nav-item nav-sub" data-sec="approval-flow">
             <span class="admin-nav-icon">⚙️</span> 簽核流程設定
+          </div>
+          <div class="admin-nav-item nav-sub fd-nav-hidden" data-sec="flow-designer" id="fdNavItem">
+            <span class="admin-nav-icon">🧭</span> 簽核流程設計器
           </div>
           <div class="admin-nav-item nav-sub" data-sec="mail">
             <span class="admin-nav-icon">✉️</span> 寄信
@@ -2633,6 +2637,12 @@
         </div>
       </div>
 
+      <div class="admin-section" id="sec-flow-designer">
+        <div class="section-title">🧭 簽核流程設計器</div>
+        <div class="section-sub">設計報價單簽核流程的草稿、用模擬器試算、檢視流程總覽。草稿不會影響任何簽核（生效與雙人覆核將於 M3 開放）。</div>
+        <div id="fdHost"></div>
+      </div>
+
       <div class="admin-section" id="sec-quote-pricebook">
         <div class="section-title">💼 報價牌價簿</div>
         <div class="section-sub">依事業單位（ERP／ITS／MDM／CRM／資安 五個分頁）維護顧問角色的「人天牌價」與「人天成本」。業務在報價單用勾選帶入品項；顧問／業務填成本時，品名相符的顧問列會自動帶入成本。只是建議值：選取後即複製進報價單，之後修改牌價簿不影響已存的報價單。</div>
@@ -3215,6 +3225,8 @@
   <script src="idle-timeout.js" data-ignore-expired="1"></script><!-- 閒置 30 分鐘自動登出（admin 自己有登入畫面，沒登入的 401 不導向，只處理閒置逾時） -->
   <script src="glass-theme.js"></script>
   <script src="config-review.js"></script>
+  <script src="flow-overview.js"></script><!-- 簽核流程設計器：唯讀總覽圖 -->
+  <script src="flow-designer.js"></script><!-- 簽核流程設計器：泳道編輯／模擬器／驗證／草稿 -->
   <script src="admin-users-view.js"></script>
   <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
@@ -3291,6 +3303,7 @@
         if (this.dataset.sec === 'quote-pricebook') initPricebook();
         if (this.dataset.sec === 'approval-flow') initApprovalFlow();
         if (this.dataset.sec === 'access-review') initAccessReview();
+        if (this.dataset.sec === 'flow-designer' && window.FlowDesigner) window.FlowDesigner.init();
       });
     });
 
@@ -4999,6 +5012,7 @@
         renderUserStat();
         renderUserTable();
         if (typeof mailAfterUserTable === 'function') mailAfterUserTable();
+        if (window.FlowDesigner && typeof window.FlowDesigner.probe === 'function') window.FlowDesigner.probe();   // 簽核流程設計器：開關開啟時才顯示側欄項
       } catch (e) { if (e.message !== 'Session expired') showToast('載入失敗'); }
     }
 
@@ -5650,7 +5664,7 @@
       SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', FEATURE_GUARD_WOULD_DENY: '功能權限（試行：會被擋）', FEATURE_GUARD_DENY: '功能權限（已阻擋）', FEATURE_GUARD_UNCLASSIFIED: '功能權限（路由未歸類）', ACCESS_REVIEW_SIGNOFF: '季度帳號覆核簽核', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
-      REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', QUOTE_FLOW_SHADOW_MISMATCH: '流程引擎影子不一致', QUOTE_FLOW_SHADOW_ERROR: '流程引擎影子例外', QUOTE_FLOW_ENGINE_FALLBACK: '流程引擎熔斷退回舊路徑', QUOTE_FLOW_ENGINE_MODE: '流程引擎模式變更', SAVE_INTEGRATION: '儲存整合設定',
+      REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', QUOTE_FLOW_SHADOW_MISMATCH: '流程引擎影子不一致', QUOTE_FLOW_SHADOW_ERROR: '流程引擎影子例外', QUOTE_FLOW_ENGINE_FALLBACK: '流程引擎熔斷退回舊路徑', QUOTE_FLOW_ENGINE_MODE: '流程引擎模式變更', SAVE_FLOW_DRAFT: '儲存流程草稿', DELETE_FLOW_DRAFT: '刪除流程草稿', SAVE_INTEGRATION: '儲存整合設定',
       EXPORT_AUDIT_LOG: '匯出稽核日誌', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 
