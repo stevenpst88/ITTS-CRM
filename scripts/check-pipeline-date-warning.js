@@ -22,7 +22,18 @@ const vm = require('vm');
 const { spawn, execFileSync, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = 3095;
+const PORT = parseInt(process.env.PDW_PORT || '3095', 10);
+
+// 守門（B-01）：專案根已有 data.json／auth.json／audit.log.json（可能是真實資料）→ 一律拒絕執行，絕不覆蓋也絕不刪除。
+// 過去這支腳本會略過 API 段卻仍在結尾 cleanFiles()，把真實的 data.json／auth.json 刪掉還顯示通過。
+// 請在乾淨的 git worktree 執行（那裡沒有這些檔案）。
+{
+  const real = ['data.json', 'auth.json', 'audit.log.json'].filter(f => fs.existsSync(path.join(ROOT, f)));
+  if (real.length) {
+    console.log('拒絕執行：專案根已有 ' + real.join('／') + '（可能是真實資料；本腳本會在這裡建立並刪除同名的臨時檔）。請在乾淨的 git worktree 執行。');
+    process.exit(2);
+  }
+}
 const DAY = 86400000;
 const LIB_FILE = path.join(ROOT, 'lib', 'pipelineDateWarning.js');
 const libSrc = fs.readFileSync(LIB_FILE, 'utf8');
@@ -265,10 +276,12 @@ function compareToBase(res, base, assert) {
     assert(JSON.stringify(sa) === JSON.stringify(sb), `[基底比對 ${u}] summary 既有欄位不變`, [sa, sb]);
   }
 }
+// 基底釘死在功能合併之前的 commit（ef1c0ce 的父提交）：原本用 merge-base HEAD origin/main，功能合併進 main 之後
+// merge-base 就是 HEAD 本身，「與基底逐欄比對」變成自己比自己（空檢查）。可用 PDW_BASE_REF 覆寫。
+const BASE_COMMIT = 'd3b6ceb7de938c6a12d7566230d9993215951692';
 function baseServerSrc() {
   try {
-    const mb = execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { cwd: ROOT, encoding: 'utf8' }).trim();
-    return execFileSync('git', ['show', mb + ':server.js'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return execFileSync('git', ['show', (process.env.PDW_BASE_REF || BASE_COMMIT) + ':server.js'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { return null; }
 }
 
@@ -348,9 +361,11 @@ function mutate(src, from, to) {
   staticSuite(mkAsserter(null));
 
   let apiRan = false;
+  const unverified = [];   // 任何「略過」都記在這裡；有項目就 exit 非 0（B-10：靜默跳過不可被當成通過）
   section('2) API（真實 server，埠 ' + PORT + '）');
   if (fs.existsSync(DATA_FILE) || fs.existsSync(AUTH_FILE)) {
-    console.log('  略過：根目錄已有 data.json／auth.json（可能是真實資料，不覆蓋）——未驗證');
+    console.log('  FAIL 根目錄在執行中出現 data.json／auth.json（可能是真實資料，不覆蓋）——API 段未驗證');
+    unverified.push('API 段');
   } else {
     try {
       const a = mkAsserter(null);
@@ -362,7 +377,7 @@ function mutate(src, from, to) {
         const tmp = path.join(ROOT, '_s_base_server.js');
         fs.writeFileSync(tmp, bsrc);
         try { compareToBase(cur, await collect('_s_base_server.js', {}, nowMs), a); } finally { try { fs.unlinkSync(tmp); } catch {} }
-      } else console.log('  略過基底逐欄比對：取不到 merge-base 的 server.js——未驗證');
+      } else { console.log('  未驗證：取不到基底 ' + (process.env.PDW_BASE_REF || BASE_COMMIT) + ' 的 server.js（淺層 clone？請 git fetch --unshallow）——基底逐欄比對未執行'); unverified.push('基底逐欄比對'); }
       // 環境變數覆寫（經由真實 server）
       const ov = await collect('server.js', { PIPELINE_REPEAT_MIN_COUNT: '3', PIPELINE_REPEAT_MIN_DAYS: '1000' }, nowMs);
       const d3 = ov._s_admin.dateChanges.find(d => d.id === 't3'), d1 = ov._s_admin.dateChanges.find(d => d.id === 'r1');
@@ -389,7 +404,7 @@ function mutate(src, from, to) {
   ];
   let mutRed = 0;
   for (const m of muts) {
-    if (m.suite === 'api' && !apiRan) { console.log(`  略過 ${m.name}：API 段未執行——未驗證`); continue; }
+    if (m.suite === 'api' && !apiRan) { console.log(`  未驗證 ${m.name}：API 段未執行`); unverified.push(m.name); continue; }
     const sink = [];
     const assert = mkAsserter(sink);
     try {
@@ -407,6 +422,6 @@ function mutate(src, from, to) {
   }
 
   cleanFiles();
-  console.log(`\n結果：${pass} 通過，${fail} 失敗` + (apiRan ? '' : '（API 段未執行）'));
-  process.exit(fail ? 1 : 0);
+  console.log(`\n結果：${pass} 通過，${fail} 失敗` + (unverified.length ? `，${unverified.length} 項未驗證（${unverified.join('、')}）` : ''));
+  process.exit(fail ? 1 : unverified.length ? 3 : 0);
 })().catch(e => { cleanFiles(); console.error(e); process.exit(1); });
