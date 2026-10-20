@@ -16,6 +16,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const vm = require('vm');
@@ -191,6 +192,7 @@ function seed(nowMs) {
 }
 
 async function startServer(entry, env) {
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   const child = spawn(process.execPath, [entry], { cwd: ROOT, env: Object.assign({}, process.env, { PORT: String(PORT), SESSION_SECRET: crypto.randomBytes(24).toString('hex') }, env || {}), stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   child.stdout.on('data', d => log += d); child.stderr.on('data', d => log += d);

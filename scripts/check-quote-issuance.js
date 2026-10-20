@@ -19,6 +19,7 @@
  *   QISS_SKIP_MUT=1 node scripts/check-quote-issuance.js
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const vm = require('vm');
@@ -229,6 +230,7 @@ async function startServer(serverFile) {
   srvSecret = crypto.randomBytes(24).toString('hex');
   const env = Object.assign(base, extraEnv, { PORT: String(PORT), JWT_SECRET: srvSecret, SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';
@@ -456,8 +458,8 @@ async function secC() {
   console.log('[C] Excel 發出標記');
   await freshServer();
   const TPL = path.join(ROOT, 'templates', 'quotation_template.xlsx');
-  // 舊版模組（origin/main）
-  const oldSrc = execFileSync('git', ['show', 'origin/main:lib/quoteExcel.js'], { cwd: ROOT, encoding: 'utf8' });
+  // 舊版模組（釘死 commit 397abc5＝發出機制 518f461 的父提交；原本用 origin/main，合併後變成自己比自己）。可用 QISS_BASE_REF 覆寫
+  const oldSrc = execFileSync('git', ['show', (process.env.QISS_BASE_REF || '397abc5fbb4299976cb8889be3054f8dfa5c741f') + ':lib/quoteExcel.js'], { cwd: ROOT, encoding: 'utf8' });
   const oldFile = path.join(ROOT, 'lib', 'quoteExcel.__old.js'); fs.writeFileSync(oldFile, oldSrc); tmpFiles.push(oldFile);
   const OLD = require(oldFile), NEW = require(path.join(ROOT, 'lib', 'quoteExcel.js'));
   const q = approve(mkQuote('QX', 'QU-X-001', { contactName: '王小明', company: '甲公司' }));

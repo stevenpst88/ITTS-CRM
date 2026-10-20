@@ -1441,7 +1441,7 @@ section('6 整合', async () => {
   let real = null;
   try { real = load('lib/mail/render.js'); } catch (e) { real = null; }
   if (!real || typeof real.renderMail !== 'function') {
-    t('【略過】lib/mail/render.js 尚未就緒，未跑真 render 整合測試（整合階段補跑）', true);
+    t('lib/mail/render.js 存在且有 renderMail（缺少時真 render 整合測試無法執行，不可當成通過）', false);
     return;
   }
   const mkReal = (over) => {

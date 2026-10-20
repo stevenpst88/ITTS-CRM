@@ -20,6 +20,7 @@
  * 禁用埠：3000 / 3020 / 3030 / 3101–3211（其他 session 使用）。只用 PID 關閉自己啟動的程序。
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -153,6 +154,7 @@ const tmpFiles = [];
 async function startServer(serverFile) {
   const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE; delete env.SUPABASE_URL; delete env.SUPABASE_SERVICE_ROLE_KEY; env.STORAGE_BACKEND = 'local';
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';
@@ -501,7 +503,8 @@ function killEdgeByProfile(prof) {
 }
 async function withBrowser(fn) {
   const edge = findEdge();
-  if (!edge || process.env.XSS_SKIP_DOM) { notes.push('瀏覽器測試略過（無 Edge 或 XSS_SKIP_DOM）：未驗證'); return null; }
+  if (process.env.XSS_SKIP_DOM) { notes.push('瀏覽器測試略過（XSS_SKIP_DOM 明確略過）：未驗證'); return null; }
+  if (!edge) { ok(false, '瀏覽器測試需要 Edge：找不到 msedge.exe（沒有 Edge 的環境請設 XSS_SKIP_DOM=1 明確略過；不可靜默當成通過）'); return null; }
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'xss-edge-'));
   const ep = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-features=msEdgeSidebar,msUndersideButton', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${prof}`, '--window-size=1280,1000', 'about:blank'], { stdio: 'ignore' });
   edgePids.push(ep.pid);

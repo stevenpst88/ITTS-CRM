@@ -722,7 +722,7 @@ G.static = async () => {
   eq(sinks, 2, 'static flow-designer.js 只有 2 個 innerHTML 出口（put() 與 drawerErr 的錯誤框，皆為已跳脫的 Raw）');
   ok(!/[.]innerHTML|[.]outerHTML|insertAdjacentHTML/.test(files[1][1]), 'static flow-overview.js 完全不使用 innerHTML（SVG 以 createElementNS＋textContent）');
   const adm = fs.readFileSync(path.join(ROOT, '_client', 'admin.html'), 'utf8');
-  const gitDiff = require('child_process').spawnSync('git', ['diff', '-U0', 'feat/quote-flow-engine', '--', '_client/admin.html'], { cwd: ROOT, encoding: 'utf8' }).stdout || '';
+  const gitDiff = require('child_process').spawnSync('git', ['diff', '-U0', process.env.FD_BASE_REF || '12a763fc652d973e370bab5637b1fb1b50df7b75', '--', '_client/admin.html'], { cwd: ROOT, encoding: 'utf8' }).stdout || '';
   const added = gitDiff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
   ok(added.length > 5, 'static admin.html 有新增行（可比對）', String(added.length));
   ok(!added.some((l) => /\sstyle\s*=|\son[a-z]+\s*=/i.test(l)), 'static admin.html 新增的行沒有 style= 或 on* 屬性', added.filter((l) => /\sstyle\s*=|\son[a-z]+\s*=/i.test(l)).join('|'));

@@ -8,6 +8,7 @@
  * 禁用埠：3000 / 3020 / 3030 / 3101–3201。
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -53,6 +54,7 @@ async function startServer(opts) {
   const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: JWT_SECRET_FIXED, SESSION_SECRET: SESSION_SECRET_FIXED, SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE }, opts.env || {});
   delete env.DATABASE_URL; delete env.MAIL_MODE;
   for (const k of ['LOGIN_LOCKOUT', 'LOGIN_MAX_FAILS', 'LOGIN_LOCK_MINUTES', 'LOGIN_LOCK_MAX_MINUTES', 'LOGIN_FAIL_WINDOW_MINUTES', 'SESSION_IDLE_MINUTES', 'FEATURE_GUARD_MODE']) if (!(opts.env && k in opts.env)) delete env[k];
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [opts.file || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid; pids.push(childPid);
   let out = '';

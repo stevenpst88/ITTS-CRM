@@ -4,7 +4,7 @@
  * 用法：node scripts/check-quote-flow-designer.js            （全部；預設埠 3130，FD_PORT 可改）
  *       FD_ONLY=unit|api|flagoff   只跑某一區
  *       FD_MUT=1                   另外跑變異測試（把實作改壞，測試必須變紅；較久）
- *       FD_BASE_REF=<git ref>      「基底」分支（預設 feat/quote-flow-engine），用於開關關閉的位元級比對
+ *       FD_BASE_REF=<git ref>      「基底」（預設釘死 commit 12a763f＝設計器合併前的簽核引擎分支尖端），用於開關關閉的位元級比對
  * 沙盒：臨時 _s_* 帳號與資料檔只存在於本次執行，結束以 PID 關閉伺服器並刪檔；不連任何遠端資料庫；工作樹已有 auth.json／data.json／稽核檔時拒絕執行。
  *
  * 單元區
@@ -17,6 +17,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -480,6 +481,7 @@ async function startServer(env, opts) {
   for (const k of ['DATABASE_URL', 'MAIL_MODE', 'VERCEL', 'AUDIT_EVENTS_TABLE', 'QUOTE_FLOW_ENGINE', 'QUOTE_FLOW_DESIGNER', 'FEATURE_GUARD_MODE']) delete e[k];
   Object.assign(e, env || {});
   const cwd = opts.cwd || ROOT;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [opts.file || path.join(cwd, 'server.js')], { cwd, env: e, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid; allPids.push(childPid);
   let out = '';
@@ -820,7 +822,8 @@ async function runApi() {
 function sh(cmd, args, opt) { return spawnSync(cmd, args, Object.assign({ encoding: 'utf8', maxBuffer: 1 << 28 }, opt || {})); }
 async function runFlagOff() {
   console.log('[C 開關關閉 vs 基底]');
-  const ref = process.env.FD_BASE_REF || 'feat/quote-flow-engine';
+  // 基底釘死為 commit（原本是會移動的分支 feat/quote-flow-engine）。12a763f＝設計器合併之前的簽核引擎分支尖端。
+  const ref = process.env.FD_BASE_REF || '12a763fc652d973e370bab5637b1fb1b50df7b75';
   const baseDir = path.join(os.tmpdir(), 'fd_base_' + crypto.randomBytes(4).toString('hex'));
   fs.mkdirSync(baseDir, { recursive: true });
   const ar = spawnSync('git', ['archive', '--format=tar', ref], { cwd: ROOT, maxBuffer: 1 << 29 });
