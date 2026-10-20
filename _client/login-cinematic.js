@@ -504,8 +504,9 @@ function frameLite(t,dt){
   palStep(dt);ptrL.x+=(pointer.nx*20-ptrL.x)*Math.min(1,dt*2);ptrL.y+=(pointer.ny*14-ptrL.y)*Math.min(1,dt*2);
   drawLite(Tabs,dt);
 }
+function showDone(){done.removeAttribute('aria-hidden');done.classList.add('show')}   // 平常 aria-hidden（opacity:0 的訊息不該被螢幕閱讀器讀到）；成功時才開放
 function toStatic(w){if(tier==='static')return;setTier('static',w);if(mainLoop)mainLoop.stop();mainLoop=null;
-  if(succ.t0>=0){fadeEl.style.transition='opacity .5s';fadeEl.style.opacity='1';done.classList.add('show')}}
+  if(succ.t0>=0){fadeEl.style.transition='opacity .5s';fadeEl.style.opacity='1';showDone()}}
 
 /* ── 事件 ── */
 function markSeen(){}
@@ -515,8 +516,8 @@ addEventListener('keydown',e=>{if(!/^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.
 ITTS.onState=s=>{
   if(s==='success'&&succ.t0<0){
     succ.t0=performance.now();
-    if(tier==='static'){fadeEl.style.transition='opacity .5s';fadeEl.style.opacity='1';setTimeout(()=>done.classList.add('show'),500)}
-    setTimeout(()=>done.classList.add('show'),succ.dur*.85);
+    if(tier==='static'){fadeEl.style.transition='opacity .5s';fadeEl.style.opacity='1';setTimeout(showDone,500)}
+    setTimeout(showDone,succ.dur*.85);
   }
 };
 ITTS.onTheme=()=>{if(tier==='static'){PAL=PAL_T;drawLite(T,0);domTL(T)}else if(tier!=='full')domTL(T)};

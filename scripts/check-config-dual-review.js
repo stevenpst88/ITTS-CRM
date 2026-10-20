@@ -550,7 +550,8 @@ function secUi() {
   ok(/兩人覆核：未啟用/.test(C.chipHtml({ enabled: false })), '晶片：未啟用');
   ok(/兩人覆核：啟用</.test(C.chipHtml({ enabled: true, activeAdmins: 2 })) && /data-cr-chip="on"/.test(C.chipHtml({ enabled: true, activeAdmins: 2 })), '晶片：啟用（綠）');
   const red = C.chipHtml({ enabled: true, activeAdmins: 1 });
-  ok(/data-cr-chip="blocked"/.test(red) && /#fee2e2/.test(red) && /不足 2 人/.test(red), '晶片：啟用但管理員不足 2 人 → 紅色');
+  // 紅色改由 class（gc-cr-blocked，glass.css 檔尾定義 #fee2e2 底＋深色玻璃成對版）決定，不再 inline 色碼
+  ok(/data-cr-chip="blocked"/.test(red) && /gc-cr-blocked/.test(red) && /不足 2 人/.test(red), '晶片：啟用但管理員不足 2 人 → 紅色（gc-cr-blocked）');
   eq(C.saveLabel(true, '儲存設定'), '提出變更（待覆核）', '啟用時儲存鈕＝「提出變更（待覆核）」');
   eq(C.saveLabel(false, '儲存設定'), '儲存設定', '未啟用時儲存鈕文字不變');
   ok(C.proposalMessage({ requestId: 'abcdef12-0000', message: '已提出，等待另一位管理員覆核' }).includes('abcdef12'), '202 訊息含單號前 8 碼');

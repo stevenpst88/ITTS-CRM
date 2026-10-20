@@ -725,7 +725,11 @@ G.static = async () => {
   const gitDiff = require('child_process').spawnSync('git', ['diff', '-U0', process.env.FD_BASE_REF || '12a763fc652d973e370bab5637b1fb1b50df7b75', '--', '_client/admin.html'], { cwd: ROOT, encoding: 'utf8' }).stdout || '';
   const added = gitDiff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
   ok(added.length > 5, 'static admin.html 有新增行（可比對）', String(added.length));
-  ok(!added.some((l) => /\sstyle\s*=|\son[a-z]+\s*=/i.test(l)), 'static admin.html 新增的行沒有 style= 或 on* 屬性', added.filter((l) => /\sstyle\s*=|\son[a-z]+\s*=/i.test(l)).join('|'));
+  // 新增的行不得「新增」style=／on*= 屬性。既有行因別的原因被改動而整行重寫（屬性內容原樣出現在被移除的行）不算新增
+  const attrRe = /\s(?:style|on[a-z]+)\s*=\s*"[^"]*"/gi;
+  const removedAttrs = new Set(gitDiff.split('\n').filter((l) => l.startsWith('-') && !l.startsWith('---')).flatMap((l) => l.match(attrRe) || []).map((a) => a.trim()));
+  const newAttrs = added.flatMap((l) => (l.match(attrRe) || []).map((a) => a.trim())).filter((a) => !removedAttrs.has(a));
+  ok(newAttrs.length === 0, 'static admin.html 新增的行沒有新增 style= 或 on* 屬性（原樣重寫既有屬性不算）', newAttrs.join('|'));
   ok(!added.some((l) => /<script>(?!<)/.test(l)) && added.filter((l) => /<script/.test(l)).every((l) => /src="/.test(l)), 'static admin.html 只新增外部 script 標籤（沒有 inline script）');
   ok(/data-sec="flow-designer"/.test(adm) && /id="sec-flow-designer"/.test(adm) && /initApprovalFlow|window\.FlowDesigner\.init/.test(adm), 'static admin.html 有側欄項、sec-* 容器、lazy-init 分派');
   const sw = fs.readFileSync(path.join(ROOT, '_client', 'sw.js'), 'utf8');

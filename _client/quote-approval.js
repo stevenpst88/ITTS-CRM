@@ -2226,7 +2226,7 @@ function renderSealPreview(s) {
   if (!box) return;
   box.innerHTML = s.hasSeal
     ? `<img src="${e(apiBase())}/quote-approval/seal?t=${e(s.sealTs)}" alt="報價專用章" onerror="this.style.display='none'">`
-    : '<span class="qap-muted" style="background:#fff;padding:2px 6px;border-radius:4px">尚未上傳</span>';
+    : '<span class="qap-muted gc-seal-none">尚未上傳</span>';
   const msg = s.ov.querySelector('#qapSealMsg');
   if (msg) msg.textContent = s.hasSeal ? '目前已有報價專用章' : '目前沒有報價專用章';
 }

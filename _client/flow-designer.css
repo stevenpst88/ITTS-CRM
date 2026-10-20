@@ -70,10 +70,11 @@ body.glass .fd-root .fd-panel, body.glass .fd-root .fd-bar, body.glass .fd-root 
 .fd-pill.proxy { color: var(--fd-proxy); border-color: var(--fd-proxy-edge); background: var(--fd-proxy-bg); }
 .fd-pill.gray { color: var(--fd-text2); background: transparent; }
 
-.fd-note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--fd-edge); background: var(--fd-panel2); font-size: 13px; margin-bottom: 10px; color: var(--fd-text); }
+.fd-note { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--fd-edge); background: var(--fd-panel2); font-size: 13px; margin-bottom: 10px; color: var(--fd-text); }
 .fd-note.warn { border-color: var(--fd-warn-edge); background: var(--fd-warn-bg); }
 .fd-note.err { border-color: var(--fd-ret-edge); background: var(--fd-ret-bg); }
 .fd-note b { white-space: nowrap; }
+.fd-note .fd-btn { flex: none; white-space: nowrap; }
 
 .fd-btn { appearance: none; background: var(--fd-accent-bg); border: 1px solid var(--fd-edge2); border-radius: 9px; padding: 5px 12px; min-height: 34px; line-height: 1.2; color: var(--fd-text); transition: background .15s, border-color .15s; }
 .fd-btn:hover:not([disabled]) { border-color: var(--fd-accent); }

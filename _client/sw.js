@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v18';   // v18：只精簡本檔的歷史註解（行為不變），提版號讓使用者端收到更新。各版改了什麼，請看 git log -- _client/sw.js
+const SW_VERSION = 'itts-crm-v21';   // v21：歷史註解精簡為一句（行為不變），並依序併入深色對比修正與程式碼審查前端修正，提版號讓使用者端收到更新。各版改了什麼，請看 git log -- _client/sw.js
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
