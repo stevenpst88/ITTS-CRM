@@ -1328,6 +1328,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="quote-preview\.js"/g, `src="quote-preview.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pdf\.js"/g,     `src="quote-pdf.js?v=${BUILD_VERSION}"`)
       .replace(/src="config-review\.js"/g, `src="config-review.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-flow-cards\.js"/g, `src="quote-flow-cards.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-approval\.js"/g, `src="quote-approval.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-coststeps\.js"/g, `src="quote-coststeps.js?v=${BUILD_VERSION}"`)
       .replace(/src="admin-users-view\.js"/g, `src="admin-users-view.js?v=${BUILD_VERSION}"`)
