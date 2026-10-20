@@ -2566,3 +2566,34 @@ body.glass.dark .modal .mb-bgt-label { background: color-mix(in srgb, var(--g-te
 body.glass.dark .modal .mb-bgt-input { background: var(--g-input) !important; color: var(--g-text) !important; border: 1px solid var(--g-edge) !important; }
 body.glass:not(.dark) .modal .mb-bgt-label { background: #eef0f4 !important; color: #1f2937 !important; }
 body.glass:not(.dark) .modal .mb-bgt-input { background: #fff !important; color: #111827 !important; }
+
+/* ═══ gc-*：深色玻璃對比修正（掃描報告 2026-10-20；沿用月度預算視窗 .mb-bgt-* 的作法）═══
+ * 原本 inline 的「淺底＋深字」搬進 class。字色一定與底色成對換：深色玻璃用 --g-*／--q4-* token，
+ * 淺色玻璃與非玻璃維持原本的外觀（下方「淺色」規則只是把原本被行內灰字規則改過的字色原樣補回）。
+ * 前台專用的淺色基礎色在 style.css 檔尾；後台也會用到的（gc-chip-info、gc-cr-*）基礎色放這裡（後台不載入 style.css）。 */
+.gc-chip-info { background: #e8f0fe; color: #1a73e8; }
+.gc-cr-off { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+.gc-cr-blocked { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+.gc-cr-on { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+
+/* 淺色玻璃：維持原外觀（原本 §15／§16 的行內色規則會把這幾個字色改成下列值） */
+body.glass:not(.dark) .gc-chip-info { color: #1243a8; }
+body.glass:not(.dark) .gc-cr-off { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-bu-missing { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-qcell-q { color: var(--g-text-2); }
+body.glass:not(.dark) .gc-neutral-btn { background: #eef0f3; color: #333; }
+
+/* 深色玻璃：底色與字色成對 */
+/* 章框（.qap-seal-img）本身是白底棋盤格：標籤維持白底，字色換成深色（原本只有淺字繼承 → 白字壓白底） */
+body.glass.dark .gc-seal-none { background: #fff; color: #374151; }
+body.glass.dark .gc-bu-missing { background: var(--q4-bad-bg); color: var(--q4-bad); box-shadow: inset 0 0 0 1px var(--q4-bad-bd); }
+body.glass.dark .gc-chip-info { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass.dark .gc-chip-navy { background: color-mix(in srgb, var(--g-text) 14%, transparent); color: var(--g-text); }
+body.glass.dark .gc-qcell { background: color-mix(in srgb, var(--g-text) 9%, transparent); }
+body.glass.dark .gc-qcell-q { color: var(--g-text-2); }
+body.glass.dark .gc-qcell-v { color: var(--g-text); }
+body.glass.dark .gc-mb-total { color: var(--q4-info); }
+body.glass.dark .gc-mb-total-gm { color: #c4b5fd; }
+body.glass.dark .gc-cr-off { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); border-color: var(--g-edge); }
+body.glass.dark .gc-cr-blocked { background: var(--q4-bad-bg); color: var(--q4-bad); border-color: var(--q4-bad-bd); }
+body.glass.dark .gc-cr-on { background: var(--q4-ok-bg); color: var(--q4-ok); border-color: var(--q4-ok-bd); }
