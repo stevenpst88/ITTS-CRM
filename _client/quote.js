@@ -946,6 +946,7 @@ async function submitQuote(id) {
     `<div class="q-kv"><span class="k">簽核路徑</span><span></span></div>` + _qPathChips(pv) +
     _qListHtml(pv.reasons) +
     ((pv.warnings || []).length ? `<div class="q-warnbar">${(pv.warnings || []).map(escapeHtml).join('<br>')}</div>` : '') +
+    quoteSplitBannerHtml(q) +   // 防拆單提醒（warn 模式才有；送簽以此時為準）
     '<div class="q-hint" style="margin-top:10px">送簽後整張報價單會鎖定；要修改請先「撤回」。</div>';
   const ok = await qDialog({
     title: '確認送簽', bodyHtml: body, wide: true,
@@ -1521,6 +1522,27 @@ function renderCostSyncBanner(q) {
   box.style.display = '';
 }
 
+/**
+ * 防拆單提醒橫幅（伺服器 QUOTE_SPLIT_GUARD=warn 才會帶 q.split；off／log 沒有這個欄位 → 回空字串，畫面與以前完全相同）。
+ * 簽核中／已核准的單顯示「送簽當時」凍結的內容（q.split.atSubmit）；其他情況顯示即時評估（q.split.live.suspect）。
+ * 內容只有單號、金額、張數（沒有成本／毛利）；其他張的單號與金額已由伺服器依檢視者權限過濾，看不到的只給張數。
+ */
+function quoteSplitBannerHtml(q) {
+  const sp = q && q.split;
+  if (!sp) return '';
+  const st = q.approval && q.approval.state;
+  const frozen = (st === 'pending' || st === 'approved') && sp.atSubmit ? sp.atSubmit : null;
+  const v = frozen || (sp.live && sp.live.suspect ? sp.live : null);
+  if (!v) return '';
+  const ntd = function (c) { return 'NT$ ' + Math.round(Number(c) / 100).toLocaleString('en-US'); };
+  const others = (v.siblings || []).filter(function (x) { return x.revenueCents !== null && x.revenueCents !== undefined && (frozen || x.counted); });
+  const list = others.slice(0, 8).map(function (x) { return escapeHtml(x.quoteNo || '') + '（' + escapeHtml(ntd(x.revenueCents)) + '）'; }).join('、');
+  const hid = Number(v.hiddenCount) || 0;
+  return '<div class="q-warnbar q-split-banner" role="status">⚠ <b>疑似拆單提醒</b>：同一商機在 ' + escapeHtml(String(v.windowDays)) + ' 天內的報價累計 <b>' + escapeHtml(ntd(v.cumCents)) + '</b>（本張 ' + escapeHtml(ntd(v.ownCents)) +
+    '，另有 ' + (others.length + hid) + ' 張），超過 ' + escapeHtml(ntd(Number(v.thresholdYuan) * 100)) + ' 的簽核金額門檻，但本張單獨未達該門檻。' +
+    '系統<b>不會</b>因此變更簽核層級，簽核人會看到這則提醒，並留有稽核紀錄。' + (list ? '<div>同商機其他報價單：' + list + (others.length > 8 ? '…' : '') + (hid ? '；另有 ' + hid + ' 張你無權檢視' : '') + '</div>' : (hid ? '<div>另有 ' + hid + ' 張你無權檢視</div>' : '')) + '</div>';
+}
+
 /** 表單上方「簽核狀態」唯讀區 */
 function renderQuoteApprovalState(q) {
   const box = $('qApprovalState');
@@ -1539,6 +1561,7 @@ function renderQuoteApprovalState(q) {
   if (QUOTE_LEGACY_LABEL[q.status]) html += `<span class="q-sub">舊狀態：${escapeHtml(QUOTE_LEGACY_LABEL[q.status])}（簽核功能上線前）</span>`;
   const teText = quoteTextEditText(q);
   if (teText) html += `<span class="q-sub q-textedit" id="qTextEditNote">⚠ ${escapeHtml(teText)}　<a href="#" data-qte="${escapeHtml(q.id || '')}">查看差異</a></span>`;
+  html += quoteSplitBannerHtml(q);   // 防拆單提醒（warn 模式才有）
   box.innerHTML = html;
   if (!box._qteBound) {   // 「查看差異」→ 開簽核面板（歷程有舊→新）
     box._qteBound = true;
@@ -2780,6 +2803,8 @@ async function saveQuote() {
     showToast(msg);
     loadQuotationsView();
     if (typeof loadOpportunities === 'function') loadOpportunities();   // 商機卡上的「已連結報價單」張數
+    // 防拆單提醒（只有伺服器 QUOTE_SPLIT_GUARD=warn 且疑似拆單才有）：新建後跳出提醒（之後編輯時看表單上方橫幅，不重複跳窗）（不擋、不改簽核層級）
+    if (!id && saved && saved.split) { const sb = quoteSplitBannerHtml(saved); if (sb) qDialog({ title: '疑似拆單提醒', bodyHtml: sb, buttons: [{ text: '知道了', value: true, cls: 'btn-primary' }] }); }
   } catch(e) {
     showToast('儲存失敗，請重試');
   } finally {
