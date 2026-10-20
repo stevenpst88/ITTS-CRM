@@ -48,6 +48,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── CSP Report-Only 違規回報端點（CSP_REPORT_ONLY=off 時完全不註冊）──────────────────────
+// 公開（登入頁也會回報）、放在 db.ready／session／全域 apiLimiter 之前：回報洪水不能吃掉使用者的 API 速率額度、
+// 也不能每筆都觸發一次資料庫 stale check。清洗／限流／去重／稽核預算全在 lib/cspReport.js。
+const cspReport = require('./lib/cspReport');
+const cspReportOn = cspReport.reportOnlyEnabled(process.env);
+const cspRep = cspReport.create({
+  env: process.env,
+  writeLog: (action, operator, target, detail, req) => writeLog(action, operator, target, detail, req),
+  holdForFlush: (req) => flushAuditBeforeEnd(req),
+  auditMode: () => db.auditStore.mode(),
+});
+if (cspReportOn) cspRep.register(app, express);
+
 // ── Postgres backend：每個 API 請求前 ready()（會做輕量 stale check 確保跨實例新鮮）──
 // 只套用在 /api/：靜態檔（JS/CSS/圖）不需要 DB，跳過以免每個資產都打一次 DB 拖慢載入。
 if (process.env.DB_BACKEND === 'postgres') {
@@ -214,6 +227,10 @@ app.use((req, res, next) => {
     'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
   next();
 });
+
+// ── CSP Report-Only：目標嚴格政策只「觀察」，不影響上面 helmet 的強制 CSP（CSP_REPORT_ONLY=off 時不加標頭）──
+// 違規回報 → POST /api/csp-report → 稽核 CSP_VIOLATION；摘要見後台版本資訊頁。規劃與分期見 lib/cspReport.js 檔頭。
+{ const cspRo = cspReport.reportOnlyMiddleware(process.env); if (cspRo) app.use(cspRo); }
 
 // ── CORS：限制只允許本機與同網域 ────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
@@ -9913,6 +9930,33 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
     backends: { db: rt.dbBackend, storage: rt.storageBackend, session: rt.sessionBackend },
     generatedAt: new Date().toISOString(),
   });
+});
+
+// ── CSP 違規摘要（唯讀）：近 7 天違規筆數、前 5 名指令／來源／頁面；資料來自稽核 CSP_VIOLATION ──────────
+// 只讀稽核，不寫入。最多取最新 1000 筆做排名（truncated=true 代表超過，排名為近似值）。
+app.get('/api/admin/csp-summary', requireAdmin, async (req, res) => {
+  try {
+    const days = 7;
+    const from = cspReport.taipeiDate(Date.now() - (days - 1) * 86400000);
+    const rows = [];
+    let total = 0;
+    for (const action of [cspReport.ACTION, cspReport.THROTTLE_ACTION]) {
+      const r = await db.auditStore.list({ kind: 'log', action, from }, { limit: 1000, offset: 0, cap: 1000 });
+      rows.push(...r.rows);
+      if (action === cspReport.ACTION) total = r.total;
+    }
+    const sum = cspReport.summarize(rows);
+    res.json({
+      days, since: from,
+      enabled: cspReportOn, styleReport: cspReport.styleReportEnabled(process.env),
+      truncated: total > 1000,
+      ...sum,
+      memory: cspRep.stats(),   // 本實例自啟動以來的處理計數（Vercel 多實例各自計數，只作輔助）
+    });
+  } catch (e) {
+    console.error('[/api/admin/csp-summary]', e);
+    res.status(500).json({ error: '讀取 CSP 違規摘要失敗' });
+  }
 });
 
 // ── 容量空間監控 ──────────────────────────────────────────

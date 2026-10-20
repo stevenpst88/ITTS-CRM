@@ -233,7 +233,17 @@
       { background: #e8f0fe; color: #1a73e8; }
     .log-DELETE_USER,.log-DELETE_VISIT,.log-DELETE_OPP,.log-DELETE_CONTRACT,.log-DELETE_RECEIVABLE
       { background: #fce8e6; color: #c62828; }
-    .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS { background: #fff3e0; color: #e65100; }
+    .log-RESET_PASSWORD,.log-TRANSFER_CONTACTS,.log-CSP_VIOLATION,.log-CSP_REPORT_THROTTLED { background: #fff3e0; color: #e65100; }
+    /* CSP 違規觀察卡（版本資訊頁）：用 class 而非 style=，不增加行內樣式 */
+    .csp-body { padding: 14px; }
+    .csp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #1a2d52; }
+    .csp-chip { font-size: 11px; font-weight: 700; padding: 3px 12px; border-radius: 12px; }
+    .csp-chip.on { color: #b06000; background: #fef3e0; }
+    .csp-chip.off { color: #5f6368; background: #f1f3f4; }
+    .csp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+    .csp-grid h4 { margin: 0 0 6px; font-size: 12px; color: #1a2d52; }
+    .csp-grid ol { margin: 0; padding-left: 18px; font-size: 12px; color: #444; line-height: 1.7; word-break: break-all; }
+    .csp-note { margin-top: 10px; font-size: 11px; color: #888; line-height: 1.6; }
     .log-SESSION_REJECTED_INACTIVE,.log-LOGIN_FAIL,.log-LOGIN_RATE_LIMITED,.log-ADMIN_RAIL_BLOCKED,.log-DISABLE_USER,.log-REVOKE_DOWNLOAD_PERMISSION,.log-SET_READONLY { background: #fce8e6; color: #c62828; }
     .log-EXPORT_CONTACTS,.log-EXPORT_CONTACTS_ADMIN,.log-EXPORT_OPPORTUNITIES,.log-EXPORT_VISITS,.log-EXPORT_CONTRACTS,.log-EXPORT_FORECAST,.log-EXPORT_COMPANY_MASTER,.log-EXPORT_AUDIT_LOG,.log-GRANT_DOWNLOAD_PERMISSION,.log-CHANGE_USER_ROLE,.log-REASSIGN_QUOTATION { background: #fff3e0; color: #e65100; }
     .log-LOGOUT,.log-ENABLE_USER,.log-SET_EDITABLE { background: #e8f0fe; color: #1a73e8; }
@@ -2600,6 +2610,27 @@
             <span id="afStatus" class="ax-muted-13"></span>
           </div>
         </div>
+        <div class="admin-card" id="sgCard" style="padding:18px;max-width:900px;margin-top:16px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:6px;color:#374151">🧩 防拆單提醒</div>
+          <div style="font-size:12.5px;color:#6b7280;margin-bottom:12px;line-height:1.7">同一商機在回看天數內的報價單（不含已失效者），把「折扣後未稅金額」加總；若累計金額落入的簽核金額級距高於本張單獨的級距（第一級＝須董事長核准、第二級＝須董事會決議），就視為疑似拆單。<b>只提醒與記稽核，不會改變簽核層級、也不會擋建單或送簽。</b>建單與送簽時各評估一次，送簽時為準。</div>
+          <div id="sgEnvNote" style="margin-bottom:10px"></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:end">
+            <label style="font-size:12.5px;color:#6b7280">模式<select id="sgMode" style="display:block;width:100%;margin-top:4px;padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13.5px"><option value="off">off（關閉）</option><option value="log">log（只記稽核）</option><option value="warn">warn（提醒＋稽核）</option></select></label>
+            <label style="font-size:12.5px;color:#6b7280">第一級金額門檻（元，須董事長核准）<input id="sgTier1" type="number" min="1" step="1" style="display:block;width:100%;margin-top:4px;padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box"></label>
+            <label style="font-size:12.5px;color:#6b7280">第二級金額門檻（元，須董事會決議）<input id="sgTier2" type="number" min="1" step="1" style="display:block;width:100%;margin-top:4px;padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box"></label>
+            <label style="font-size:12.5px;color:#6b7280">回看天數（1–730）<input id="sgDays" type="number" min="1" max="730" step="1" style="display:block;width:100%;margin-top:4px;padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13.5px;box-sizing:border-box"></label>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">
+            <button id="sgSaveBtn" type="button" style="background:#1a73e8;color:#fff;border:none;padding:8px 18px;font-size:13.5px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存防拆單設定</button>
+            <button id="sgDefaultBtn" type="button" style="background:none;border:1px solid #d1d5db;color:#374151;padding:7px 12px;font-size:13px;border-radius:6px;cursor:pointer">帶入預設值（對齊簽核引擎）</button>
+            <span id="sgStatus" class="ax-muted-13"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px;border-top:1px solid #eee;padding-top:12px">
+            <span style="font-weight:600;font-size:14px;color:#374151">近期疑似拆單（稽核 QUOTE_SPLIT_SUSPECT，近 30 天）</span>
+            <button id="sgReloadBtn" type="button" style="background:none;border:1px solid #d1d5db;color:#374151;padding:4px 10px;font-size:12.5px;border-radius:6px;cursor:pointer">重新整理</button>
+          </div>
+          <div id="sgList" style="overflow-x:auto;font-size:13px"></div>
+        </div>
       </div>
 
       <div class="admin-section" id="sec-quote-pricebook">
@@ -2682,6 +2713,12 @@
         <div class="admin-card" style="margin-bottom:16px">
           <div class="admin-card-header"><span class="admin-card-title">🔗 稽核防竄改</span></div>
           <div class="admin-card-body" id="vChainInfo" style="padding:14px"></div>
+        </div>
+
+        <!-- CSP 違規觀察（Report-Only，唯讀摘要） -->
+        <div class="admin-card" style="margin-bottom:16px">
+          <div class="admin-card-header"><span class="admin-card-title">🛡️ CSP 違規觀察</span></div>
+          <div class="admin-card-body csp-body" id="vCspInfo">載入中…</div>
         </div>
 
         <!-- 後端套件 -->
@@ -3508,6 +3545,7 @@
       } catch (e) {
         st.textContent = '載入失敗：' + e.message;
       }
+      _sgInit();   // 防拆單提醒卡片（獨立載入，失敗不影響上面的簽核流程設定）
     }
 
     function _afRender() {
@@ -3628,6 +3666,75 @@
       } catch (e) {
         st.textContent = '❌ 儲存失敗：' + e.message;
       }
+    }
+
+    // ── 防拆單提醒設定（簽核流程頁下方的卡片）：GET/PUT /api/admin/quote-split-guard、GET /api/admin/quote-split-suspects ──
+    let _sgInited = false, _sgData = null;
+    const _sgEsc = (x) => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const _sgNum = (n) => Number(n).toLocaleString('en-US');
+    function _sgFill(c) { $('sgMode').value = c.mode; $('sgTier1').value = c.tier1Yuan; $('sgTier2').value = c.tier2Yuan; $('sgDays').value = c.lookbackDays; }
+    function _sgPaintEnv() {
+      const e = _sgData && _sgData.effective, box = $('sgEnvNote');
+      if (!e) { box.innerHTML = ''; return; }
+      const modeLabel = { off: '關閉（off）', log: '只記稽核（log）', warn: '提醒＋稽核（warn）' }[e.mode] || e.mode;
+      if (e.source === 'env') {
+        box.innerHTML = '<div style="padding:8px 12px;border-radius:8px;border:1px solid #b6cdf5;border-left:4px solid #1a73e8;font-size:13px">目前生效模式：<b>' + _sgEsc(modeLabel) + '</b>（由環境變數 QUOTE_SPLIT_GUARD=' + _sgEsc(e.envValue) + ' 指定' + (e.envInvalid ? '；值不合法，已視為 off' : '') + '）。環境變數優先，下方「模式」只是備用值；要改請由 IT 調整環境變數並重新部署。</div>';
+      } else {
+        box.innerHTML = '<div style="padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;border-left:4px solid #9ca3af;font-size:13px">目前生效模式：<b>' + _sgEsc(modeLabel) + '</b>（採用此處設定；未設定環境變數 QUOTE_SPLIT_GUARD，預設為 off）。</div>';
+      }
+    }
+    async function _sgLoadList() {
+      const box = $('sgList');
+      box.innerHTML = '<span class="ax-muted-13">載入中…</span>';
+      try {
+        const r = await adminFetch('/api/admin/quote-split-suspects?days=30&limit=100');
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (!d.rows.length) { box.innerHTML = '<span class="ax-muted-13">近 30 天沒有疑似拆單紀錄。</span>'; return; }
+        const tw = (iso) => { const t = Date.parse(iso); return isFinite(t) ? new Date(t).toLocaleString('zh-TW', { hour12: false }) : ''; };
+        const rows = d.rows.map((x) => {
+          const m = x.meta || {};
+          const sibs = (m.siblings || []).map((s) => _sgEsc(s.no) + '(' + _sgNum(Math.round(s.c / 100)) + ')').join('、');
+          return '<tr><td style="padding:4px 12px 4px 0;white-space:nowrap">' + _sgEsc(tw(x.at)) + '</td><td style="padding:4px 12px 4px 0">' + _sgEsc(x.quoteNo) + '</td><td style="padding:4px 12px 4px 0">' + _sgEsc(x.operator) + '</td><td style="padding:4px 12px 4px 0">' + _sgEsc(m.trigger === 'SUBMIT' ? '送簽' : m.trigger === 'CREATE' ? '建單' : (m.trigger || '')) + '</td><td style="padding:4px 12px 4px 0;text-align:right">' + (m.ownCents != null ? _sgNum(Math.round(m.ownCents / 100)) : '') + '</td><td style="padding:4px 12px 4px 0;text-align:right"><b>' + (m.cumCents != null ? _sgNum(Math.round(m.cumCents / 100)) : '') + '</b></td><td style="padding:4px 12px 4px 0">' + sibs + '</td></tr>';
+        }).join('');
+        box.innerHTML = '<table cellpadding="5" style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#6b7280;font-size:12px"><th style="padding:4px 12px 4px 0">時間</th><th style="padding:4px 12px 4px 0">單號</th><th style="padding:4px 12px 4px 0">操作人</th><th style="padding:4px 12px 4px 0">時機</th><th style="padding:4px 12px 4px 0;text-align:right">本張（元）</th><th style="padding:4px 12px 4px 0;text-align:right">累計（元）</th><th style="padding:4px 12px 4px 0">同商機其他單</th></tr></thead><tbody>' + rows + '</tbody></table><div class="ax-muted-13" style="margin-top:6px">共 ' + _sgEsc(d.total) + ' 筆；完整內容請到「異動記錄」以動作代碼 QUOTE_SPLIT_SUSPECT 查詢。</div>';
+      } catch (e) { box.innerHTML = '<span style="color:#b3261e;font-size:13px">讀取失敗：' + _sgEsc(e.message) + '</span>'; }
+    }
+    async function _sgInit() {
+      if (_sgInited) return;
+      _sgInited = true;
+      const st = $('sgStatus');
+      try {
+        const r = await adminFetch('/api/admin/quote-split-guard');
+        if (!r.ok) throw new Error('API ' + r.status);
+        _sgData = await r.json();
+        _sgFill(_sgData.config);
+        _sgPaintEnv();
+        $('sgSaveBtn').addEventListener('click', _sgSave);
+        $('sgDefaultBtn').addEventListener('click', () => { const d = _sgData.defaults; _sgFill({ mode: $('sgMode').value, tier1Yuan: d.tier1Yuan, tier2Yuan: d.tier2Yuan, lookbackDays: d.lookbackDays }); });
+        $('sgReloadBtn').addEventListener('click', _sgLoadList);
+        if (_afCr && _afCr.enabled && _afCr.enabled()) $('sgSaveBtn').textContent = '提出變更（待覆核）';
+        _sgLoadList();
+      } catch (e) { st.textContent = '載入失敗：' + e.message; }
+    }
+    async function _sgSave() {
+      const st = $('sgStatus');
+      st.textContent = '儲存中…';
+      const body = { mode: $('sgMode').value, tier1Yuan: $('sgTier1').value.trim(), tier2Yuan: $('sgTier2').value.trim(), lookbackDays: $('sgDays').value.trim() };
+      try {
+        const r = await adminFetch('/api/admin/quote-split-guard', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (r.status === 202 || d.noChange) {   // 兩人覆核啟用：只是提出，尚未生效
+          st.textContent = '📨 ' + window.CfgReview.proposalMessage(d);
+          if (_afCr) _afCr.refresh();
+          return;
+        }
+        const g = await adminFetch('/api/admin/quote-split-guard');
+        if (g.ok) { _sgData = await g.json(); _sgFill(_sgData.config); _sgPaintEnv(); }
+        st.textContent = '✅ 儲存成功（已寫入稽核）';
+        setTimeout(() => { st.textContent = ''; }, 3000);
+      } catch (e) { st.textContent = '❌ 儲存失敗：' + e.message; }
     }
 
     // ── 銷售商品維護（Admin）───────────────────────────────────
@@ -5582,8 +5689,8 @@
       SESSION_REJECTED_INACTIVE: '停用帳號連線被拒', LOGIN_LOCKED: '帳號鎖定', LOGIN_UNLOCK: '解除鎖定', SESSION_IDLE_TIMEOUT: '閒置逾時登出', FEATURE_GUARD_WOULD_DENY: '功能權限（試行：會被擋）', FEATURE_GUARD_DENY: '功能權限（已阻擋）', FEATURE_GUARD_UNCLASSIFIED: '功能權限（路由未歸類）', ACCESS_REVIEW_SIGNOFF: '季度帳號覆核簽核', LOGIN_FAIL: '登入失敗', LOGOUT: '登出', LOGIN_RATE_LIMITED: '登入被限流', ADMIN_RAIL_BLOCKED: '管理員護欄攔截',
       ENABLE_USER: '啟用帳號', DISABLE_USER: '停用帳號', GRANT_DOWNLOAD_PERMISSION: '開通下載權限', REVOKE_DOWNLOAD_PERMISSION: '收回下載權限', SET_READONLY: '改為唯讀', SET_EDITABLE: '改為可編輯', CHANGE_USER_ROLE: '變更角色',
       EXPORT_CONTACTS: '匯出名單', EXPORT_CONTACTS_ADMIN: '匯出客戶(全量)', EXPORT_OPPORTUNITIES: '匯出商機(全量)', EXPORT_VISITS: '匯出拜訪(全量)', EXPORT_CONTRACTS: '匯出合約(全量)', EXPORT_FORECAST: '匯出預測表', EXPORT_COMPANY_MASTER: '匯出企業主檔',
-      REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', SAVE_INTEGRATION: '儲存整合設定',
-      EXPORT_AUDIT_LOG: '匯出稽核日誌', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
+      REASSIGN_QUOTATION: '改派簽核', UPDATE_ROLE_PERMISSIONS: '更新角色權限', RESET_ROLE_PERMISSIONS: '重置角色權限', UPDATE_QUOTE_APPROVAL_CONFIG: '更新簽核設定', SAVE_APPROVAL_FLOW_CONFIG: '儲存簽核流程', QUOTE_SPLIT_SUSPECT: '疑似拆單', SAVE_QUOTE_SPLIT_GUARD: '儲存防拆單設定', SAVE_INTEGRATION: '儲存整合設定',
+      EXPORT_AUDIT_LOG: '匯出稽核日誌', CSP_VIOLATION: 'CSP 違規回報（觀察）', CSP_REPORT_THROTTLED: 'CSP 回報已達寫入上限', QUOTE_EDIT: '報價單編輯事件', SAVE_QUOTE_PRICEBOOK: '儲存牌價簿', EXPORT_QUOTE_PRICEBOOK: '匯出牌價簿', DOWNLOAD_QUOTE_PRICEBOOK_TEMPLATE: '下載牌價簿範本' 
     };
 
     function parseUA(ua) {
@@ -6441,6 +6548,38 @@
         el.innerHTML = verChainHtml(await r.json(), vr);
       } catch (e) { if (e.message !== 'Session expired') el.innerHTML = '<div style="color:#c5221f;font-size:13px">讀取稽核防竄改狀態失敗</div>'; }
     }
+    // CSP 違規觀察（Report-Only）：唯讀摘要，資料來自稽核 CSP_VIOLATION（近 7 天）。全部用 textContent 組畫面，不經 innerHTML。
+    function cspMk(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+    function cspTop(title, arr) {
+      const box = cspMk('div'); box.appendChild(cspMk('h4', '', title));
+      const ol = cspMk('ol');
+      (arr || []).forEach(x => ol.appendChild(cspMk('li', '', String(x.name) + '（' + Number(x.count) + '）')));
+      if (!ol.children.length) ol.appendChild(cspMk('li', '', '—'));
+      box.appendChild(ol); return box;
+    }
+    async function loadCspCard() {
+      const el = $('vCspInfo');
+      if (!el) return;
+      try {
+        const r = await adminFetch(`${API}/admin/csp-summary`);
+        if (!r.ok) { el.textContent = '讀取 CSP 違規摘要失敗'; return; }
+        const d = await r.json();
+        const head = cspMk('div', 'csp-head');
+        head.appendChild(cspMk('strong', '', 'Report-Only 觀察'));
+        head.appendChild(cspMk('span', 'csp-chip ' + (d.enabled ? 'on' : 'off'), d.enabled ? '觀察中（不阻擋）' : '已關閉'));
+        head.appendChild(cspMk('span', '', '近 ' + Number(d.days) + ' 天違規 ' + Number(d.total) + ' 次（不同事件 ' + Number(d.events) + ' 筆＋10 分鐘窗內合併 ' + Number(d.merged) + ' 次）'));
+        const grid = cspMk('div', 'csp-grid');
+        grid.appendChild(cspTop('前 5 名違反的指令', d.topDirectives));
+        grid.appendChild(cspTop('前 5 名來源（blocked）', d.topSources));
+        grid.appendChild(cspTop('前 5 名頁面', d.topPages));
+        const note = cspMk('div', 'csp-note',
+          '這是「若改成嚴格 CSP 會被擋」的演練數據，現行強制政策照舊、使用者無感。' +
+          (d.truncated ? '筆數超過 1000，排名為近似值。' : '') +
+          (d.throttled ? '期間有 ' + Number(d.throttled) + ' 次因寫入上限而節流，實際次數可能更多。' : '') +
+          (d.styleReport ? '（已開啟 style 嚴格觀察，行內樣式回報會很多）' : ''));
+        el.replaceChildren(head, grid, note);
+      } catch (e) { if (e.message !== 'Session expired') el.textContent = '讀取 CSP 違規摘要失敗'; }
+    }
     async function chainVerifyNow() {
       const b = $('chainVerifyBtn');
       if (b) { b.disabled = true; b.textContent = '驗證中…'; }
@@ -6652,6 +6791,7 @@
         $('vDbInfo').innerHTML = verDbHtml(d);
         $('vAuditInfo').innerHTML = verAuditHtml(d) + verGuardHtml(d);
         loadChainCard();
+        loadCspCard();
         $('vIssueInfo').innerHTML = verIssueHtml(d);
 
         // 後端套件
