@@ -799,7 +799,19 @@ const CARD_IMAGE_ERR = '名片圖片網址格式不正確（僅接受系統上�
 const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
 const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
-const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded'];
+const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded','dealId'];
+// ── 商機 Deal ID（商品目錄標記「需要 Deal ID」的商品，商機必填；規則在 lib/productCatalog.js）──
+// 回 { error?, status?, code?, dealId? }：呼叫端 res.status(r.status).json({ error, code })。
+// effProduct／effDealId 為「這次寫入後」的有效值；只有呼叫端判斷「這次請求動到 product 或 dealId」才會呼叫（偏更新 {stage} 不呼叫）。
+function checkOppDealId(data, effProduct, rawDealId) {
+  const n = productCatalog.normalizeDealId(rawDealId);
+  if (!n.ok) return { status: 400, code: n.code, error: n.error };
+  const rule = productCatalog.resolveDealIdRule(data.productCatalog, effProduct);
+  if (rule.requires && !n.value) {
+    return { status: 400, code: 'DEAL_ID_REQUIRED', error: '此商品需要填寫 Deal ID（請先到外部網站註冊商機，再把商機代碼貼到 Deal ID 欄位）' };
+  }
+  return { dealId: n.value, rule };
+}
 const CONTRACT_FIELDS  = ['contractNo','company','contactName','product','startDate','endDate','renewDate','amount','yearAmounts','tcv','salesPerson','note','type'];
 const RECEIVABLE_FIELDS= ['company','contactName','invoiceNo','invoiceDate','dueDate','amount','paidAmount','currency','note','status'];
 
@@ -4398,6 +4410,8 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   }
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
+  const _dl = checkOppDealId(data, req.body.product, req.body.dealId);   // 商品要求 Deal ID 卻沒填 → 400（前端另有檢查，這裡是強制）
+  if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
   const opp = {
     id: uuidv4(),
     owner,
@@ -4413,6 +4427,7 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
     grossMarginRate: req.body.grossMarginRate || '',
     stage:           'C',
     visitId:         req.body.visitId         || '',
+    ...(_dl.dealId ? { dealId: _dl.dealId } : {}),   // 沒有值就不多一個鍵（舊資料外形不變）
     createdAt:       new Date().toISOString()
   };
   data.opportunities.push(opp);
@@ -4426,7 +4441,7 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   }
   db.save(data);
   writeLog('CREATE_OPP', owner, opp.company || opp.contactName,
-    `${opp.product} 階段:C 金額:${opp.amount}`, req);
+    `${opp.product} 階段:C 金額:${opp.amount}${opp.dealId ? ' DealID:' + opp.dealId : ''}`, req);
   // ⭐ KA 公司 + 跨部門商機（類別部門≠建立者部門）→ 通知該類別部門的業務+主管（pushNotification 自帶 load/save，於 db.save 後呼叫）
   const _kaNotified = notifyKaCrossDeptOpp(req, data, opp, owner);
   res.status(201).json({ ...opp, kaNotified: _kaNotified });
@@ -4504,7 +4519,18 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     const effStage = req.body.stage !== undefined ? req.body.stage : data.opportunities[idx].stage;
     if (effStage !== 'Won') return res.status(400).json({ error: '請填寫預計簽約日' });
   }
+  // Deal ID：只有這次請求帶了 product 或 dealId（＝表單送出）才檢查；看板拖曳／階段快速變更只送 {stage}，不受影響。
+  // 舊商機沒有 dealId 不追溯——只在「表單編輯且商品需要」時要求補填。
+  const oldDealId = data.opportunities[idx].dealId || '';
+  if (req.body.product !== undefined || req.body.dealId !== undefined) {
+    const _dl = checkOppDealId(data,
+      req.body.product !== undefined ? req.body.product : data.opportunities[idx].product,
+      req.body.dealId !== undefined ? req.body.dealId : oldDealId);
+    if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
+    if (req.body.dealId !== undefined) req.body.dealId = _dl.dealId;   // 存正規化後的值（去控制字元／前後空白）
+  }
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
+  if (data.opportunities[idx].dealId === '') delete data.opportunities[idx].dealId;   // 清空＝移除鍵
   const newStage = data.opportunities[idx].stage;
   // 記錄預計簽約日變動歷史
   const newExpectedDate = data.opportunities[idx].expectedDate || null;
@@ -4539,8 +4565,10 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   }
   db.save(data);
   const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
+  const newDealId = data.opportunities[idx].dealId || '';
+  const dealDetail = oldDealId !== newDealId ? ` DealID:${oldDealId || '（空）'}→${newDealId || '（空）'}` : '';   // Deal ID 變更要留稽核
   writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
-    `${data.opportunities[idx].product}${stageDetail}`, req);
+    `${data.opportunities[idx].product}${stageDetail}${dealDetail}`, req);
   res.json(data.opportunities[idx]);
 });
 
@@ -5140,7 +5168,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
     '合約金額(K)', '預估毛利率(%)', '備註(description)',
     '建立日期', '成交日期', '歷史紀錄(Y/N)',
-    '商機ID'
+    '商機ID', 'Deal ID'
   ];
 
   const rows = (data.opportunities || []).map(o => [
@@ -5158,7 +5186,8 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
     o.createdAt    ? o.createdAt.slice(0, 10) : '',
     o.achievedDate || '',
     o.kpiExcluded  ? 'Y' : '',
-    o.id           || ''
+    o.id           || '',
+    o.dealId       || ''
   ]);
 
   const wb = XLSX.utils.book_new();
@@ -5168,7 +5197,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
     { wch: 14 }, { wch: 12 }, { wch: 18 },
     { wch: 14 }, { wch: 14 }, { wch: 30 },
     { wch: 12 }, { wch: 12 }, { wch: 14 },
-    { wch: 36 }
+    { wch: 36 }, { wch: 22 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, '商機資料');
 
@@ -5382,6 +5411,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       createdAt:    header.findIndex(h => h.includes('建立日期') || h.includes('建立時間')),
       achievedDate: header.findIndex(h => h.includes('成交日期')),
       kpiExcluded:  header.findIndex(h => h.includes('歷史紀錄')),
+      dealId:       header.findIndex(h => h.replace(/\s+/g, '').toLowerCase() === 'dealid'),   // 選填欄；匯入不強制（避免批次被擋）
     };
 
     const auth = loadAuth();
@@ -5423,6 +5453,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
     const dryRun = String(req.body?.dryRun || '') === '1';   // 預檢模式：只驗證不寫入
     let created = 0, linkedContacts = 0, createdPoolContacts = 0;
+    let missingDealId = 0, invalidDealId = 0;   // 商品要求 Deal ID 但匯入列沒填（只統計，不擋）／Deal ID 欄位值不合格（丟棄該欄值）
     const errors = [];
     const unmatchedCompanies = new Map();   // 預檢：真實業務 + 公司名對不到既有名片（可能名稱不一致）
     const fieldErrors = [];                 // 欄位異常（如缺預計簽約日）→ 略過該列
@@ -5561,6 +5592,9 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       const kpiRaw = COL.kpiExcluded >= 0 ? String(row[COL.kpiExcluded] ?? '').trim() : '';
       const isHistorical = /^(Y|y|Yes|yes|YES|TRUE|true|True|1|是)$/.test(kpiRaw);
 
+      const _dlN = COL.dealId >= 0 ? productCatalog.normalizeDealId(row[COL.dealId]) : { ok: true, value: '' };
+      if (!_dlN.ok) invalidDealId++;
+      const _dealId = _dlN.ok ? _dlN.value : '';
       const opp = {
         id:             uuidv4(),
         owner,
@@ -5579,7 +5613,9 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         importedAt:     new Date().toISOString(),
         ...(parsedAchievedDate ? { achievedDate: parsedAchievedDate } : {}),
         ...(isHistorical ? { kpiExcluded: true } : {}),
+        ...(_dealId ? { dealId: _dealId } : {}),
       };
+      if (!_dealId && productCatalog.resolveDealIdRule(data.productCatalog, opp.product).requires) missingDealId++;
       if (!dryRun) data.opportunities.push(opp);
       created++;
     });
@@ -5588,6 +5624,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       return res.json({
         dryRun: true,
         wouldCreate: created,                        // 可匯入筆數
+        missingDealId, invalidDealId,                // 商品要求 Deal ID 卻沒填的筆數（提醒用，不擋匯入）／Deal ID 欄位值不合格被丟棄的筆數
         skipped: errors.length + fieldErrors.length, // 會被略過（業務對不到 / 欄位異常）
         ownerErrors: errors,                         // 業務對不到的詳細列
         fieldErrors,                                 // 欄位異常（如缺預計簽約日）
@@ -5599,7 +5636,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
     if (created > 0 || createdPoolContacts > 0) db.save(data);
 
-    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors, fieldErrors });
+    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors, fieldErrors, missingDealId, invalidDealId });
   } catch (err) {
     console.error('[import opp]', err);
     res.status(500).json({ error: '匯入失敗：' + err.message });
@@ -7594,9 +7631,17 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   }
 
   // 驗證目錄形狀後寫入
+  let dealDiff = [];
   if (b.catalog && b.catalog.bus && typeof b.catalog.bus === 'object' && !Array.isArray(b.catalog.bus)) {
+    // Deal ID 設定（requiresDealId／dealRegisterUrl）：網址只收 http/https，驗證失敗整份不寫入
+    const norm = productCatalog.normalizeCatalogDealSettings(b.catalog.bus);
+    if (norm.errors.length) {
+      const e0 = norm.errors[0];
+      return res.status(400).json({ error: `商品「${e0.name}」：${e0.error}`, code: 'DEAL_URL_INVALID', details: norm.errors.slice(0, 20) });
+    }
+    dealDiff = productCatalog.diffDealSettings(data.productCatalog, norm.bus);
     data.productCatalog = {
-      bus: b.catalog.bus,
+      bus: norm.bus,
       updatedAt: new Date().toISOString(),
       updatedBy: operator,
     };
@@ -7608,7 +7653,8 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   const impact = productCatalog.applyCatalogRenames(data, renames, { dryRun: false });
   db.save(data);
   writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
-    `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆`, req);
+    `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆` +
+    (dealDiff.length ? `；Deal ID 設定異動：${dealDiff.slice(0, 10).join('、')}${dealDiff.length > 10 ? ' 等 ' + dealDiff.length + ' 項' : ''}` : ''), req);
   res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
 });
 

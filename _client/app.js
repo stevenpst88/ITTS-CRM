@@ -2447,13 +2447,16 @@ $('cOppSaveBtn').addEventListener('click', async () => {
     description:    $('cOppDescription').value.trim(),
     bu:             ($('cOppBu') && $('cOppBu').value) || undefined,
   };
+  if (!dealIdValidate('cOpp')) return;
+  const _dlC = dealIdValue('cOpp'); if (_dlC) payload.dealId = _dlC;
 
   try {
-    await fetch(`${API}/opportunities`, {
+    const _rC = await fetch(`${API}/opportunities`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (!_rC.ok) { const _eC = await _rC.json().catch(() => ({})); showToast(_eC.error || '新增失敗，請重試'); return; }
     showToast('✅ 商機已新增');
     // 重置表單
     $('cOppCategory').value    = '';
@@ -2465,6 +2468,7 @@ $('cOppSaveBtn').addEventListener('click', async () => {
     $('cOppGrossMargin').value = '';
     $('cOppExpectedDate').value= '';
     $('cOppDescription').value = '';
+    dealIdSet('cOpp', '');
     await loadOpportunities();
     updateStatCards();
   } catch { showToast('新增失敗，請重試'); }
@@ -2480,6 +2484,7 @@ function resetContactOppTab() {
   $('cOppGrossMargin').value = '';
   $('cOppExpectedDate').value= '';
   $('cOppDescription').value = '';
+  dealIdSet('cOpp', '');
   $('saveBtn').style.display    = '';
   $('cOppSaveBtn').style.display = 'none';
   // 切回第一個 tab
@@ -4150,6 +4155,8 @@ setupCompanySearch();
 // ── 商機類別 → 商品選單 ──────────────────────────────────
 // 註：以下為「預設 fallback」。app 啟動時 loadProductCatalog() 會從 /api/product-catalog
 //     取回 Admin 維護的目錄並覆寫這兩個變數；API 失敗則沿用此處寫死值，不會壞。
+// Deal ID 規則：商品名稱 → { requires, url }（含已停用的商品，與伺服器 resolveDealIdRule 一致；由 loadProductCatalog 填入）
+let DEAL_ID_RULES = {};
 let OPP_PRODUCTS = {
   ERP: {
     '一般商品': [
@@ -4216,6 +4223,18 @@ async function loadProductCatalog() {
     }
     OPP_PRODUCTS = opp;
     PRODUCT_SUBSELS = subs;
+    const rules = Object.create(null);   // 商品名稱是管理員輸入：用無原型物件，避免名稱撞到 constructor／__proto__ 等
+    for (const bu of Object.keys(bus)) {
+      for (const g of (Array.isArray(bus[bu]) ? bus[bu] : [])) {
+        for (const it of ((g && g.items) || [])) {
+          if (!it || typeof it.name !== 'string' || !it.name) continue;
+          const r = rules[it.name] || (rules[it.name] = { requires: false, url: '' });
+          if (it.requiresDealId === true) { r.requires = true; if (!r.url && typeof it.dealRegisterUrl === 'string') r.url = it.dealRegisterUrl; }
+        }
+      }
+    }
+    DEAL_ID_RULES = rules;
+    ['opp', 'cOpp', 'oppEdit'].forEach(k => { try { dealIdRefresh(k); } catch (e) { /* 表單尚未就緒 */ } });
   } catch (e) { /* 保留 fallback */ }
 }
 
@@ -4273,6 +4292,7 @@ function resetVisitModalTabs() {
   $v('oppAmount').value = '';
   $v('oppExpectedDate').value = '';
   $v('oppDescription').value = '';
+  dealIdSet('opp', '');
 }
 
 // 開啟新增/編輯 Modal
@@ -4318,6 +4338,8 @@ $v('visitSaveBtn').addEventListener('click', async () => {
   if (!_visitOppId && $v('oppCategory').value && !$v('oppExpectedDate').value) {
     showToast('填了商機類別就必須填預計成交日期'); return;
   }
+  // Deal ID：在儲存拜訪之前先檢查（拜訪與商機是兩次請求，先存拜訪再發現商機被擋會留下半套資料）
+  if (!_visitOppId && $v('oppCategory').value && !dealIdValidate('opp')) return;
 
   const contact = allContacts.find(c => c.id === contactId);
   const visitPayload = {
@@ -4359,7 +4381,13 @@ $v('visitSaveBtn').addEventListener('click', async () => {
         visitId,
         bu: ($v('oppBu') && $v('oppBu').value) || undefined,
       };
-      await fetch(`${API}/opportunities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oppPayload) });
+      const _dlV = dealIdValue('opp'); if (_dlV) oppPayload.dealId = _dlV;
+      const _rV = await fetch(`${API}/opportunities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oppPayload) });
+      if (!_rV.ok) {   // 拜訪已存、商機被伺服器擋下：明講，避免使用者以為商機也建好了
+        const _eV = await _rV.json().catch(() => ({}));
+        showToast('拜訪記錄已儲存，但商機未建立：' + (_eV.error || '請重試'));
+        closeVisitModal(); loadVisits(); return;
+      }
       await loadOpportunities();
       updateStatCards();
       showToast(id ? '已更新拜訪記錄' : '已新增拜訪記錄 及 商機（Pipeline）');
@@ -4786,6 +4814,15 @@ function buildKanbanCard(o) {
     card.insertBefore(qn, card.querySelector('.kanban-card-edit-hint'));
   }
 
+  // Deal ID（有值才顯示；textContent 寫入，不經 HTML）
+  if (o.dealId) {
+    const di = document.createElement('div');
+    di.className = 'kanban-card-dealid';
+    di.title = 'Deal ID：' + o.dealId;
+    di.textContent = 'Deal ID：' + o.dealId;
+    card.insertBefore(di, card.querySelector('.kanban-card-edit-hint'));
+  }
+
   if (!isWon) {
     card.addEventListener('dragstart', () => {
       dragOppId = o.id;
@@ -4864,6 +4901,7 @@ function openOppCreate(company) {
   if ($('oppEditBusinessType')) $('oppEditBusinessType').value = '';
   $('oppEditDescription').value  = '';
   populateOppEditProduct('', '');                  // 清空商品下拉
+  dealIdSet('oppEdit', '');
 
   $('oppEditOverlay').classList.add('open');
 }
@@ -4874,6 +4912,7 @@ async function _createOppFromModal() {
   const category = $('oppEditCategory').value;
   if (!category) { showToast('請選擇商機類別'); return; }
   if (!$('oppEditExpectedDate').value) { showToast('請填寫預定簽約日期'); return; }
+  if (!dealIdValidate('oppEdit')) return;
   const sel       = $('oppEditContactSelect');
   const contactId = sel ? sel.value : '';
   const contact   = contactId ? allContacts.find(c => c.id === contactId) : null;
@@ -4890,6 +4929,7 @@ async function _createOppFromModal() {
     description:     $('oppEditDescription').value.trim(),
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
   };
+  const _dlN = dealIdValue('oppEdit'); if (_dlN) payload.dealId = _dlN;
   // 防連點：送出期間禁用儲存鈕（disabled 的按鈕不觸發 click），避免重複建立商機
   const saveBtn = $('oppEditSave');
   if (saveBtn) saveBtn.disabled = true;
@@ -4948,6 +4988,8 @@ function openOppEdit(id) {
 
   // 商品選單
   populateOppEditProduct(o.category, o.product);
+  // Deal ID：商品需要卻沒填（舊商機不追溯，但編輯存檔時要補）→ 立刻提示；已有值則一律顯示
+  dealIdSet('oppEdit', o.dealId || '', { nag: !o._kaShared });
 
   // 重置 AI 贏率面板
   const _panel = $('oppWinRatePanel');
@@ -5028,6 +5070,126 @@ $('oppEditCategory').addEventListener('change', function () {
   const subEl = $('oppEditProductSub');
   if (subEl) { subEl.style.display = 'none'; subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
   populateOppEditProduct(this.value);
+});
+
+// ── Deal ID（商品目錄標記「需要 Deal ID」的商品必填；規則與伺服器 lib/productCatalog.js 一致，伺服器仍會強制檢查）──
+// 三個建立／編輯表單共用：opp＝拜訪視窗的商機頁籤、cOpp＝名片視窗的商機頁籤、oppEdit＝商機視窗（新增／編輯）。
+// 所有使用者輸入（Deal ID、網址）只經 value／textContent／href 屬性寫入，不拼 HTML。
+const DEAL_ID_MAX = 64;
+const DEAL_FORMS = {
+  opp:     { sel: 'oppProduct',     custom: 'oppProductCustom',     sub: 'oppProductSub' },
+  cOpp:    { sel: 'cOppProduct',    custom: 'cOppProductCustom',    sub: 'cOppProductSub' },
+  oppEdit: { sel: 'oppEditProduct', custom: 'oppEditProductCustom', sub: 'oppEditProductSub' },
+};
+const DEAL_CTRL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+function dealIdClean(v) { return String(v == null ? '' : v).replace(DEAL_CTRL_RE, '').trim(); }
+// 依商品文字查規則：先完全相符，否則取「名稱 + 空白」前綴最長者（明細組合值如 'SAP CCFLEX C&S'）；不在目錄＝不需要
+function dealIdRuleFor(product) {
+  const p = String(product == null ? '' : product).trim();
+  if (!p) return { requires: false, url: '' };
+  let best = null;
+  for (const name of Object.keys(DEAL_ID_RULES)) {
+    const exact = p === name;
+    if (!exact && !p.startsWith(name + ' ')) continue;
+    const rank = exact ? Infinity : name.length;
+    if (!best || rank > best.rank) best = { rank, rule: DEAL_ID_RULES[name] };
+  }
+  return best ? { requires: !!best.rule.requires, url: best.rule.url || '' } : { requires: false, url: '' };
+}
+// 註冊網址只接受 http/https（伺服器存檔時已驗證；這裡再擋一次，避免被竄改的資料變成 javascript: 連結）
+function dealIdSafeUrl(u) {
+  try { const x = new URL(String(u || '')); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : ''; } catch (e) { return ''; }
+}
+function dealIdEls(k) {
+  return { grp: $(k + 'DealIdGroup'), inp: $(k + 'DealId'), link: $(k + 'DealIdLink'), hint: $(k + 'DealIdHint'), err: $(k + 'DealIdErr'), star: $(k + 'DealIdStar') };
+}
+function dealIdProduct(k) { const f = DEAL_FORMS[k]; return getProductValue(f.sel, f.custom, f.sub); }
+function dealIdSetError(k, msg) {
+  const e = dealIdEls(k); if (!e.err) return;
+  e.err.textContent = msg || '';
+  if (msg) e.inp.setAttribute('aria-invalid', 'true'); else e.inp.removeAttribute('aria-invalid');
+  e.inp.classList.toggle('deal-id-invalid', !!msg);
+}
+// 依目前選的商品更新欄位：需要→顯示＋必填標示＋連結／提示；不需要→隱藏（編輯既有商機且已有 Deal ID 時保留顯示為選填）。
+// opts.nag：編輯既有商機時，需要但還沒填 → 立刻顯示「請補填」提示
+function dealIdRefresh(k, opts) {
+  const e = dealIdEls(k); if (!e.grp) return;
+  const rule = dealIdRuleFor(dealIdProduct(k));
+  const keep = e.grp.dataset.keep === '1';
+  const show = rule.requires || keep;
+  e.grp.hidden = !show;
+  e.inp.setAttribute('aria-required', rule.requires ? 'true' : 'false');
+  if (e.star) e.star.hidden = !rule.requires;
+  const href = rule.requires ? dealIdSafeUrl(rule.url) : '';
+  if (href) { e.link.href = href; e.link.hidden = false; } else { e.link.removeAttribute('href'); e.link.hidden = true; }
+  e.grp.classList.toggle('deal-id-has-link', !!href);
+  if (rule.requires) {
+    e.hint.dataset.base = href ? '請先到外部網站註冊商機，再把取得的商機代碼貼到這裡' : '請洽管理員設定註冊網址（此商品需要 Deal ID，可先向管理員取得註冊網站）';
+  } else {
+    e.hint.dataset.base = show ? '此商品不強制填寫 Deal ID（可留空或清除）' : '';
+  }
+  dealIdPaintHint(k);
+  if (!rule.requires || dealIdClean(e.inp.value)) dealIdSetError(k, dealIdClean(e.inp.value).length > DEAL_ID_MAX ? ('Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + dealIdClean(e.inp.value).length + ' 字）') : '');
+  else if (opts && opts.nag) dealIdSetError(k, '此商機的商品需要 Deal ID，請補填後才能儲存');
+}
+// 軟性重複提醒（不擋存檔）：同一個 Deal ID 已出現在其他商機（只比對目前載入、看得到的商機；不分大小寫）
+function dealIdDuplicateOf(k) {
+  const e = dealIdEls(k), v = dealIdClean(e.inp.value).toLowerCase();
+  if (!v || typeof allOpportunities === 'undefined') return null;
+  const curId = k === 'oppEdit' ? ($('oppEditId').value || '') : '';
+  return allOpportunities.find(o => o.id !== curId && o.dealId && String(o.dealId).trim().toLowerCase() === v) || null;
+}
+function dealIdPaintHint(k) {
+  const e = dealIdEls(k); if (!e.hint) return;
+  const dup = dealIdDuplicateOf(k);
+  e.hint.textContent = (e.hint.dataset.base || '') + (dup ? (e.hint.dataset.base ? ' ' : '') + '⚠ 提醒：此 Deal ID 已用於「' + (dup.company || '（未填公司）') + '／' + (dup.product || '（未填商品）') + '」，仍可儲存。' : '');
+}
+function dealIdOnInput(k) {
+  const e = dealIdEls(k), v = dealIdClean(e.inp.value);
+  dealIdPaintHint(k);
+  const rule = dealIdRuleFor(dealIdProduct(k));
+  if (v.length > DEAL_ID_MAX) dealIdSetError(k, 'Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + v.length + ' 字）');
+  else if (!v && rule.requires && e.err.textContent) dealIdSetError(k, '請填寫 Deal ID');
+  else dealIdSetError(k, '');
+}
+// 送出前檢查：回 true＝可送出。失敗時在欄位旁顯示錯誤、聚焦、並跳 toast。
+function dealIdValidate(k) {
+  const e = dealIdEls(k); if (!e.grp) return true;
+  const rule = dealIdRuleFor(dealIdProduct(k));
+  const v = dealIdClean(e.inp.value);
+  let msg = '';
+  if (rule.requires && !v) msg = '請填寫 Deal ID（此商品必填）';
+  else if (v.length > DEAL_ID_MAX) msg = 'Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + v.length + ' 字）';
+  if (!msg) { dealIdSetError(k, ''); return true; }
+  e.grp.hidden = false;
+  dealIdSetError(k, msg);
+  try { e.inp.focus(); } catch (x) { /* ignore */ }
+  showToast(msg);
+  return false;
+}
+// 欄位目前可見才送值；不可見（商品不需要）時回 undefined → 不放進 payload（編輯時不動既有值）
+function dealIdValue(k) {
+  const e = dealIdEls(k);
+  return (e.grp && !e.grp.hidden) ? dealIdClean(e.inp.value) : undefined;
+}
+// 開啟／重設表單時填值：value=既有 Deal ID（沒有就空）；keep=已有值時，即使商品不需要也顯示
+function dealIdSet(k, value, opts) {
+  const e = dealIdEls(k); if (!e.grp) return;
+  const v = dealIdClean(value);
+  e.inp.value = v;
+  e.grp.dataset.keep = v ? '1' : '';
+  dealIdSetError(k, '');
+  dealIdRefresh(k, opts);
+}
+Object.keys(DEAL_FORMS).forEach(k => {
+  const f = DEAL_FORMS[k], e = dealIdEls(k);
+  [f.sel, f.sub].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => dealIdRefresh(k)); });
+  const c = $(f.custom); if (c) c.addEventListener('input', () => dealIdRefresh(k));
+  if (e.inp) e.inp.addEventListener('input', () => dealIdOnInput(k));
+});
+// 類別一變商品下拉會被清空（程式改值不會觸發 change）→ 另外聽類別
+[['opp', 'oppCategory'], ['cOpp', 'cOppCategory'], ['oppEdit', 'oppEditCategory']].forEach(([k, id]) => {
+  const el = $(id); if (el) el.addEventListener('change', () => dealIdRefresh(k));
 });
 
 function closeOppEdit() { $('oppEditOverlay').classList.remove('open'); }
@@ -5144,6 +5306,7 @@ $('oppEditSave').addEventListener('click', async () => {
   if (!id) { await _createOppFromModal(); return; }   // ⭐ 新增模式（從 KA 頁建立商機）
   const newStage = $('oppEditStage').value;
   if (newStage !== 'Won' && !$('oppEditExpectedDate').value) { showToast('請填寫預定簽約日期'); return; }
+  if (!dealIdValidate('oppEdit')) return;
   const gmRaw = $('oppEditGrossMargin').value;
   const payload = {
     category:        $('oppEditCategory').value,
@@ -5157,16 +5320,23 @@ $('oppEditSave').addEventListener('click', async () => {
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
     businessType:    ($('oppEditBusinessType') && $('oppEditBusinessType').value) || '',
   };
+  const _dlE = dealIdValue('oppEdit'); if (_dlE !== undefined) payload.dealId = _dlE;   // 欄位可見才送（可清空）；隱藏＝商品不需要且本來沒有值
   // 若標記為 Won 但使用者沒填成交日期，預設今天
   if (newStage === 'Won' && !payload.achievedDate) {
     payload.achievedDate = new Date().toISOString().slice(0, 10);
   }
   try {
-    await fetch(`${API}/opportunities/${id}`, {
+    const _rE = await fetch(`${API}/opportunities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (!_rE.ok) {   // 伺服器擋下（例如 Deal ID 必填）：留在視窗內、顯示原因，不要假裝已更新
+      const _eE = await _rE.json().catch(() => ({}));
+      if (_eE.code === 'DEAL_ID_REQUIRED' || _eE.code === 'DEAL_ID_TOO_LONG' || _eE.code === 'DEAL_ID_INVALID') { const _g = $('oppEditDealIdGroup'); if (_g) _g.hidden = false; dealIdSetError('oppEdit', _eE.error); }
+      showToast(_eE.error || '儲存失敗，請重試');
+      return;
+    }
     await loadOpportunities();
     renderKanban();
     updateStatCards();
@@ -6649,7 +6819,7 @@ function renderOppTable() {
       <td data-label="客戶公司">${zombieBadge}${kaCompanyMark(o.company)}${escapeHtml(o.company||'-')}</td>
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
-      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product||'-')}</td>
+      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product||'-')}${o.dealId ? `<div class="opp-dealid-line" title="Deal ID：${escapeHtml(o.dealId)}">Deal ID：${escapeHtml(o.dealId)}</div>` : ''}</td>
       <td data-label="預估金額（K）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${escapeHtml(o.expectedDate || '-')}</td>
       <td data-label="狀態">

@@ -296,6 +296,29 @@ body {
 .product-custom-input:focus {
   border-color: #f57f17; outline: none; background: #fff8e1;
 }
+
+/* ── Deal ID 欄位（商機表單）：連結放在輸入框內右側；顏色與底色成對（淺色／深色／玻璃見 glass.css） ── */
+.deal-id-group[hidden], .deal-id-group [hidden] { display: none !important; }
+.deal-id-box { position: relative; display: flex; }
+.deal-id-box .deal-id-input { flex: 1; width: 100%; padding-right: 138px; }
+.deal-id-link {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; text-decoration: none;
+  padding: 6px 9px; border-radius: 6px; color: #0b57d0; background: #e8f0fe;
+}
+.deal-id-link:hover { background: #d2e3fc; text-decoration: underline; }
+.deal-id-link:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
+.deal-id-hint { font-size: 12px; color: #555; line-height: 1.5; }
+.deal-id-err { font-size: 12px; font-weight: 600; color: #c5221f; line-height: 1.5; }
+.deal-id-err:empty { display: none; }
+.form-group .deal-id-input.deal-id-invalid { border-color: #c5221f; }
+@media (max-width: 480px) {
+  .deal-id-box { flex-direction: column; gap: 6px; }
+  .deal-id-box .deal-id-input { padding-right: 12px; }
+  .deal-id-link { position: static; transform: none; align-self: flex-start; padding: 8px 10px; }
+}
+.kanban-card-dealid { margin-top: 4px; font-size: 11px; line-height: 1.4; color: #4b5563; word-break: break-all; }
+.opp-dealid-line { font-size: 11px; line-height: 1.4; color: #4b5563; overflow: hidden; text-overflow: ellipsis; }
 .btn-danger { background: #ea4335; color: #fff; }
 .btn-danger:hover { background: #c5352a; }
 .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; }
@@ -3946,6 +3969,12 @@ body.dark .form-group textarea:focus { border-color: #58a6ff; }
 body.dark .form-group select { background: #0d1117; border-color: #30363d; color: #c9d1d9; }
 body.dark .form-group select:focus { border-color: #58a6ff; }
 body.dark .product-custom-input { background: #1e1a00; border-color: #4a3f00; color: #c9d1d9; }
+body.dark .deal-id-link { color: #9ec5ff; background: #1d2b45; }
+body.dark .deal-id-link:hover { background: #26395c; }
+body.dark .deal-id-hint { color: #8b949e; }
+body.dark .deal-id-err { color: #ff9b94; }
+body.dark .form-group .deal-id-input.deal-id-invalid { border-color: #ff7b72; }
+body.dark .kanban-card-dealid, body.dark .opp-dealid-line { color: #9aa4b2; }
 body.dark .year-amount-row input { background: #0d1117; border-color: #1c3a5f; color: #c9d1d9; }
 body.dark .card-image-preview { background: #21262d; border-color: #30363d; }
 
