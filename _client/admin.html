@@ -9309,6 +9309,10 @@
       if (d.industriesAdded && d.industriesAdded.length) {
         html += `<div class="ax-muted-13">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeAttr).join('、')}</div>`;
       }
+      if (d.responsible) {
+        html += `<div class="ax-muted-13">🧑‍💼 服務業務欄 → 責任業務：已指定 ${d.responsible.assigned} 家（公司已有責任業務者沿用 ${d.responsible.kept} 家，不覆蓋）`
+          + (d.responsible.notFound ? `；找不到名稱 ${d.responsible.notFound} 個：${(d.responsible.notFoundNames || []).map(escapeAttr).join('、')}` : '') + '</div>';
+      }
       document.getElementById('companyImportPreviewBody').innerHTML = html;
       const btn = document.getElementById('companyImportPreviewConfirm');
       btn.textContent = d.duplicates > 0 ? `仍要寫入（含 ${d.duplicates} 筆疑似重複）` : '✅ 確認寫入';
@@ -9329,7 +9333,8 @@
           + (d.duplicates ? `、疑似重複 <b>${d.duplicates}</b>` : '')
           + `、略過 ${d.skipped}`
           + (d.poolCreated ? `、📋 客戶池待補名片 <b>${d.poolCreated}</b>` : '')
-          + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '') + `</div>`;
+          + (d.industriesAdded && d.industriesAdded.length ? `、新產業 ${d.industriesAdded.length} 個` : '')
+          + (d.responsible ? `、🧑‍💼 責任業務指定 <b>${d.responsible.assigned}</b> 家` + (d.responsible.notFound ? `（找不到名稱 ${d.responsible.notFound} 個）` : '') : '') + `</div>`;
         loadCompaniesView();
       } catch (err) {
         resultEl.innerHTML = `<div class="ax-alert-bad">❌ ${escapeAttr(err.message)}</div>`;

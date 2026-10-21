@@ -23,6 +23,7 @@ const pushNotify = require('./lib/pushNotify');
 const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動態報表：反覆延後警示／台北月界
 const secretBox = require('./lib/secretBox');
 const productCatalog = require('./lib/productCatalog');
+const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
 
@@ -960,6 +961,11 @@ function runCompanyImport(working, rows, COL, ctx) {
   const addedInd = new Set();
   const dupList = [], updateList = [], noTaxIdList = [];
   const touchedById = new Map(); // 本次處理到的主檔（去重，供客戶池 placeholder 候選判斷）
+  // 責任業務統計（COMPANY_CARD_TASKS=off 或呼叫端沒給 ctx.responsible 時為 null → 完全不碰責任業務）
+  const RS = (ctx && ctx.responsible && ctx.responsible.on) ? {
+    overwrite: !!ctx.responsible.overwrite, nowIso: ctx.responsible.nowIso || new Date().toISOString(),
+    assigned: 0, kept: 0, unchanged: 0, notFoundCount: 0, notFoundNames: [], ineligible: [], addedByUser: {}, samples: [],
+  } : null;
 
   rows.forEach((r, idx) => {
     const rowNum = idx + 2; // 檔案第 1 列為標頭
@@ -1025,18 +1031,42 @@ function runCompanyImport(working, rows, COL, ctx) {
     // 服務業務欄 → 對應到該業務帳號的 BU，累加進 buImport（可多位，逗號/頓號/斜線分隔）
     if (serviceOwnerRaw && ctx && ctx.usersByName) {
       const bus = new Set(Array.isArray(m.buImport) ? m.buImport : []);
+      const resolvedUsers = [];
       serviceOwnerRaw.split(/[,，、/;；]+/).map(s => s.trim()).filter(Boolean).forEach(nm => {
         const un = ctx.usersByName[nm] ? nm : (ctx.displayToUser && ctx.displayToUser[nm]);
         const u = un ? ctx.usersByName[un] : null;
-        if (u) normalizeBu(u.bu).forEach(b => { if (VALID_BUS.includes(b)) bus.add(b); });
+        if (u) {
+          normalizeBu(u.bu).forEach(b => { if (VALID_BUS.includes(b)) bus.add(b); });
+          if (!resolvedUsers.includes(u.username)) resolvedUsers.push(u.username);
+        } else if (RS) {
+          RS.notFoundCount++;
+          if (RS.notFoundNames.length < 50 && !RS.notFoundNames.includes(nm)) RS.notFoundNames.push(nm);
+        }
       });
       m.buImport = VALID_BUS.filter(b => bus.has(b));
+      // 同時寫入「責任業務」（既有的 BU 累加行為不變）：只收可擁有名片的帳號；公司已有責任業務時預設不覆蓋
+      if (RS && resolvedUsers.length) {
+        const elig = resolvedUsers.filter(un => cardTasks.eligibleOwner(ctx.usersByName[un]));
+        resolvedUsers.filter(un => !elig.includes(un)).forEach(un => { if (RS.ineligible.length < 50 && !RS.ineligible.includes(un)) RS.ineligible.push(un); });
+        if (elig.length) {
+          const hasExisting = Array.isArray(m.responsibleSales) && m.responsibleSales.length > 0;
+          if (hasExisting && !RS.overwrite) RS.kept++;
+          else {
+            const diff = cardTasks.applyResponsibleSales(m, elig, RS.nowIso, []);
+            if (diff.changed) {
+              RS.assigned++;
+              diff.added.forEach(un => { (RS.addedByUser[un] = RS.addedByUser[un] || []).push(m.id); });
+              if (RS.samples.length < 20) RS.samples.push({ company: m.name || name, from: diff.before, to: diff.after });
+            } else RS.unchanged++;
+          }
+        }
+      }
     }
     m.updatedAt = new Date().toISOString();
   });
 
   const touched = [...touchedById.values()].map(m => ({ id: m.id, name: m.name, taxId: m.taxId || '' }));
-  return { created, updated, duplicates, skipped, noTaxId, industriesAdded: [...addedInd], dupList, updateList, noTaxIdList, touched };
+  return { created, updated, duplicates, skipped, noTaxId, industriesAdded: [...addedInd], dupList, updateList, noTaxIdList, touched, responsible: RS };
 }
 
 // 建立「客戶池待補名片」placeholder（企業主檔匯入用）：owner=_pool，待 Manager 分配給業務。
@@ -1175,6 +1205,7 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/groups', '/api/usermap', '/api/company-lookup',
   '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
   '/api/announcements',     // 公告彈窗：GET active、POST :id/ack（只寫自己的已讀）
+  '/api/my-tasks',          // 我的待辦（待補名片）：GET、POST dismiss——只讀寫呼叫者自己的待辦，集團業務是可擁有名片的角色
 ];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
@@ -6769,6 +6800,8 @@ function notificationUrlFor(type, refId) {
       return refId ? `/index.html#receivable:${refId}` : '/index.html#receivables';
     case 'birthday':
       return refId ? `/index.html#contact:${refId}` : '/index.html#birthdays';
+    case 'company_card_task':
+      return '/index.html#cardtasks';   // 前端 company-card-tasks.js 處理：開「待補名片」彙總視窗
     default:
       return '/';
   }
@@ -8454,8 +8487,9 @@ app.get('/api/admin/companies', requireAdmin, (req, res) => {
       }
     }
   });
+  const RC = respCtx({ session: { user: { role: 'admin' } } }, data, usersByName);
   const list = (data.companies || [])
-    .map(c => ({ ...c, contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])], bu: companyBuUnion([...(ownerUserById[c.id] || [])], c.buImport, usersByName), region: c.region || '', customerCode: c.customerCode || '' }))
+    .map(c => ({ ...respStrip(c, RC), ...(RC ? respFields(c, RC) : {}), contactCount: countById[c.id] || 0, isNewImport: !realCompanyIds.has(c.id), owners: [...(ownersById[c.id] || [])], bu: companyBuUnion([...(ownerUserById[c.id] || [])], c.buImport, usersByName), region: c.region || '', customerCode: c.customerCode || '' }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(list);
 });
@@ -8607,6 +8641,7 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
   (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
 
+  const RC = respCtx({ session: { user: { role: 'admin' } } }, data, usersByName);   // 管理員全可見
   // 掛在此主檔的名片
   const contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id);
   const contactIds = new Set(contacts.map(c => c.id));
@@ -8624,7 +8659,7 @@ app.get('/api/admin/companies/:id/detail', requireAdmin, (req, res) => {
   const receivables = (data.receivables || []).filter(r => names.has((r.company || '').trim()));
 
   res.json({
-    company: { ...company, bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName) },
+    company: { ...respStrip(company, RC), ...(RC ? respFields(company, RC) : {}), bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName) },
     contacts: contacts.map(c => ({
       id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
       ownerDisplay: od(c), isPrimary: !!c.isPrimary,
@@ -8679,9 +8714,11 @@ app.get('/api/companies', requireAuth, (req, res) => {
   // 行銷/admin 是企業主檔的維護者 → 連「尚無名片」的主檔（如剛匯入）也要看得到，
   // 數字才會與後台一致；一般業務維持只看「自己客戶所屬」的公司（有名片者）。
   const seeAll = isAdminOrMarketing(req);
+  const RC = respCtx(req, data, usersByName);   // 責任業務欄位（COMPANY_CARD_TASKS=off 時為 null＝不多帶任何欄位）
   const companies = (data.companies || [])
     .filter(m => seeAll || countById[m.id])
     .map(m => ({
+      ...(RC ? respFields(m, RC) : {}),
       id: m.id, name: m.name, taxId: m.taxId || '', capital: m.capital,
       industry: m.industry || '', address: m.address || '', website: m.website || '',
       representative: m.representative || '', gcisEnriched: !!m.gcisEnriched,
@@ -8854,7 +8891,17 @@ app.post('/api/companies/import', requireAuth,
     const _usersByName = {}; const _displayToUser = {};
     (_authImp.users || []).forEach(u => { _usersByName[u.username] = u; _displayToUser[u.displayName || u.username] = u.username; });
     (_authImp.users || []).forEach(u => { if (u.nickname) _displayToUser[u.nickname] = u.username; });
-    const out = runCompanyImport(working, dataRows, COL, { usersByName: _usersByName, displayToUser: _displayToUser });
+    const _respNow = new Date().toISOString();
+    const out = runCompanyImport(working, dataRows, COL, {
+      usersByName: _usersByName, displayToUser: _displayToUser,
+      // 服務業務欄同時寫入「責任業務」（預設只在公司尚無責任業務時填入；?overwriteResponsible=1 才覆蓋）。COMPANY_CARD_TASKS=off 時 null＝完全不碰
+      responsible: cardTasks.enabled() ? { on: true, overwrite: req.query.overwriteResponsible === '1', nowIso: _respNow } : null,
+    });
+    const _respOut = out.responsible ? {
+      assigned: out.responsible.assigned, kept: out.responsible.kept, unchanged: out.responsible.unchanged,
+      notFound: out.responsible.notFoundCount, notFoundNames: out.responsible.notFoundNames,
+      ineligible: out.responsible.ineligible, overwrite: out.responsible.overwrite,
+    } : null;
 
     // 客戶池候選：本次處理到、但「目前沒有任何名片」的主檔（用真實 data.contacts 判斷；
     // 已含上次建的 placeholder，重匯不會重複）。dryRun/commit 一致。
@@ -8873,6 +8920,7 @@ app.post('/api/companies/import', requireAuth,
         updateSamples: out.updateList.slice(0, 50),
         noTaxIdSamples: out.noTaxIdList.slice(0, 50),
         poolPlaceholders: poolCandidates.length,   // 勾選放入池時，將建立的待補名片數
+        ...(_respOut ? { responsible: _respOut } : {}),   // 責任業務：已指定／沿用既有（未覆蓋）／找不到的名稱
       });
     }
 
@@ -8887,8 +8935,17 @@ app.post('/api/companies/import', requireAuth,
     db.save(data);
     writeLog('IMPORT_COMPANIES', req.session.user.username, 'system',
       `企業主檔匯入：新增 ${out.created}、更新 ${out.updated}、疑似重複 ${out.duplicates}、略過 ${out.skipped}、新產業 ${out.industriesAdded.length}` +
-      (toPool ? `、客戶池待補名片 ${poolCreated}` : ''), req);
-    res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded, poolCreated });
+      (toPool ? `、客戶池待補名片 ${poolCreated}` : '') +
+      (_respOut ? `、責任業務指定 ${_respOut.assigned} 家（沿用既有 ${_respOut.kept}、找不到名稱 ${_respOut.notFound}）` : ''), req);
+    let _respNotified = 0;
+    if (out.responsible && out.responsible.assigned) {
+      const smp = out.responsible.samples.map(x => `${x.company}：${(x.from || []).join('、') || '(空)'} → ${(x.to || []).join('、')}`).join('；');
+      writeLog('SET_COMPANY_RESPONSIBLE', req.session.user.username, 'import',
+        `企業主檔匯入指定責任業務 ${out.responsible.assigned} 家${out.responsible.overwrite ? '（覆蓋模式）' : ''}${smp ? '｜例：' + smp : ''}`, req);
+      _respNotified = respNotifyAssigned(out.responsible.addedByUser);
+    }
+    res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded, poolCreated,
+      ...(_respOut ? { responsible: Object.assign({}, _respOut, { notifiedUsers: _respNotified }) } : {}) });
   });
 
 // ── 企業主檔匯入範本下載（admin + 行銷）──
@@ -8907,8 +8964,13 @@ app.get('/api/companies/import-template', requireAuth, (req, res) => {
     ['公司名稱', '與統一編號擇一', '公司正式名稱。有統編時以統編比對既有主檔，沒有統編才以公司名稱比對。'],
     ['統一編號', '與公司名稱擇一', '同統編的公司會「更新」而不是重複新增；既有主檔已有統編時不會被覆蓋。無統編（如國外客戶）仍可匯入，但只能用公司名稱去重。'],
     ['產業', '否', '填了就覆蓋既有產業。產業清單中沒有的名稱會被自動新增為新產業，請留意不要打錯字。'],
-    ['服務業務', '否', '填業務的「帳號」或「顯示名稱」，多位用「、」「,」「/」分隔。系統會依該業務所屬的 BU，把 BU 標到這家公司（只增加、不移除）。' +
-      '注意：這不是指定名片擁有者——列表上「服務業務」欄的人名，是由該公司名下名片的擁有者自動帶出。名字在系統中找不到時會被忽略，不會報錯。'],
+    ['服務業務', '否', cardTasks.enabled()
+      ? '填業務的「帳號」或「顯示名稱」，多位用「、」「,」「/」分隔。系統會做兩件事：①依該業務所屬的 BU，把 BU 標到這家公司（只增加、不移除）；' +
+        '②把找到的業務指定為這家公司的「責任業務」——該業務名下若還沒有這家公司的名片，登入時會收到「請補名片」待辦，補上名片後自動消失。' +
+        '公司已經有責任業務時預設不覆蓋（匯入畫面可勾「覆蓋既有責任業務」）。注意：這不是指定名片擁有者——列表上「服務業務」欄的人名，仍由該公司名下名片的擁有者自動帶出。' +
+        '名字在系統中找不到、或該帳號不能擁有名片（例如行銷、停用帳號）時，不會指定責任業務，預覽與結果會列出。'
+      : '填業務的「帳號」或「顯示名稱」，多位用「、」「,」「/」分隔。系統會依該業務所屬的 BU，把 BU 標到這家公司（只增加、不移除）。' +
+        '注意：這不是指定名片擁有者——列表上「服務業務」欄的人名，是由該公司名下名片的擁有者自動帶出。名字在系統中找不到時會被忽略，不會報錯。'],
     ['區域', '否', '自由文字（例：北區、新竹）。'],
     ['客戶代號', '否', 'ERP／客戶端的代號，自由文字。'],
     ['通用規則', '', '格子留空＝不變更既有資料（不會清空）。「範例」兩列請先刪除再匯入。'],
@@ -9275,6 +9337,302 @@ app.post('/api/companies/:id/set-customer-code', requireAuth, (req, res) => {
   res.json({ success: true, customerCode: m.customerCode });
 });
 
+// ════════════════════════════════════════════════════════════
+// 🧑‍💼 企業主檔「責任業務」＋「待補名片」待辦（lib/companyCardTasks.js；COMPANY_CARD_TASKS=off 整個關閉）
+//   - 責任業務是「儲存欄位」（company.responsibleSales／responsibleAssignedAt）；列表上的「服務業務」仍是名片擁有者推導，兩者互不影響
+//   - 待辦由名片資料即時推導（不另存任務）：責任業務名下對該公司的真實名片為零 → 有待辦；補一張真實名片就自動消失
+//   - 只儲存「手動解除」紀錄（data.companyCardDismissals）；行銷重新指定 → 指定時間更新 → 舊解除自動失效
+// ════════════════════════════════════════════════════════════
+function cardTasksOff(res) { return res.status(404).json({ error: '待補名片待辦功能未啟用', code: 'CARD_TASKS_OFF' }); }
+function respAuthIndex() {
+  const auth = loadAuth();
+  const usersByName = {};
+  (auth.users || []).forEach(u => { usersByName[u.username] = u; });
+  return { auth, usersByName };
+}
+// 列表／明細要帶責任業務欄位時用的共用脈絡（功能關閉回 null）：看得到的帳號集合＋名片索引＋解除紀錄
+function respCtx(req, data, usersByName) {
+  if (!cardTasks.enabled()) return null;
+  return {
+    visible: new Set(getViewableOwners(req, 'contacts')),
+    usersByName,
+    cardIdx: cardTasks.buildRealCardIndex(data.contacts || []),
+    dismissals: data.companyCardDismissals || [],
+  };
+}
+// 功能關閉時，把主檔上殘留的責任業務原始欄位也從輸出拿掉（確保關閉＝與沒有此功能時的輸出一致）
+function respStrip(c, RC) {
+  if (RC) return c;
+  if (!c || (!('responsibleSales' in c) && !('responsibleAssignedAt' in c))) return c;
+  const { responsibleSales, responsibleAssignedAt, ...rest } = c;   // eslint-disable-line no-unused-vars
+  return rest;
+}
+// 單一公司的責任業務欄位：只輸出「呼叫者可視範圍內」的帳號（跨 BU 不外洩）
+//   responsibleStatus：pending＝待補名片、dismissed＝業務已手動解除（回報給行銷）、ok＝已有名片、inactive＝帳號已停用／不能擁有名片
+function respFields(m, RC) {
+  const rs = Array.isArray(m.responsibleSales) ? m.responsibleSales : [];
+  const vis = rs.filter(u => RC.visible.has(u));
+  const at = {}, status = {};
+  vis.forEach(un => {
+    const a = cardTasks.assignedAtOf(m, un);
+    at[un] = a;
+    if (!cardTasks.eligibleOwner(RC.usersByName[un])) status[un] = 'inactive';
+    else if (cardTasks.hasRealCard(RC.cardIdx, m, un)) status[un] = 'ok';
+    else status[un] = cardTasks.activeDismissal(RC.dismissals, m.id, un, a) ? 'dismissed' : 'pending';
+  });
+  return {
+    responsibleSales: vis,
+    responsibleAssignedAt: at,
+    responsibleStatus: status,
+    responsibleSalesDisplay: vis.map(un => ({ username: un, label: userLabel(RC.usersByName[un], un), bu: normalizeBu(RC.usersByName[un] && RC.usersByName[un].bu) })),
+  };
+}
+const respLabel = (usersByName, un) => `${userLabel(usersByName[un], un)}(${un})`;
+
+// 被指定當下的彙總通知：每位業務「一則」（一次匯入／批次指定多家公司也只發一則）。
+//   addedByUser：{ username: [companyId…] }；只通知「名下對該公司沒有真實名片」的（有名片就沒有待辦，不必吵）。回傳通知人數。
+function respNotifyAssigned(addedByUser) {
+  if (!cardTasks.enabled()) return 0;
+  let n = 0;
+  try {
+    const data = db.load();
+    const { usersByName } = respAuthIndex();
+    const idx = cardTasks.buildRealCardIndex(data.contacts || []);
+    const byId = {};
+    (data.companies || []).forEach(m => { byId[m.id] = m; });
+    Object.keys(addedByUser || {}).forEach(un => {
+      if (!cardTasks.eligibleOwner(usersByName[un])) return;
+      const names = [];
+      new Set(addedByUser[un]).forEach(cid => {
+        const m = byId[cid];
+        if (m && Array.isArray(m.responsibleSales) && m.responsibleSales.includes(un) && !cardTasks.hasRealCard(idx, m, un)) names.push(m.name || '(未命名公司)');
+      });
+      if (!names.length) return;
+      const shown = names.slice(0, 5).map(x => `「${x}」`).join('');
+      const title = `🗂️ 請補名片：${names.length} 家公司指定你為責任業務`;
+      const body = `你被指定為${shown}${names.length > 5 ? `等 ${names.length} 家` : ''}公司的責任業務，但你名下還沒有這些公司的名片。請到首頁「待辦事項」補上名片；補上後待辦會自動消失。`;
+      try { pushNotification(un, 'company_card_task', title, body, null); n++; } catch { /* 通知失敗不影響指定 */ }
+    });
+  } catch (e) { console.error('[respNotifyAssigned]', e && e.message); }
+  return n;
+}
+
+// 呼叫者能不能動這家公司的責任業務：行銷／管理員全部；主管與董總只限「自己看得到名片」的公司（與 GET /api/companies/:id 同一道閘門）
+function respCanTouchCompany(req, data, company) {
+  const role = req.session.user.role;
+  if (role === 'admin' || role === 'marketing') return true;
+  const owners = new Set(getViewableOwners(req, 'contacts'));
+  let contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id && owners.has(c.owner));
+  contacts = filterByBu(req, contacts);
+  return contacts.length > 0;
+}
+
+// 把「呼叫者送來的名單」套到一家公司上。mode: 'replace'（預設，只取代呼叫者可視範圍內的帳號）｜'add'（只增不減）
+// 回傳 { error, status } 或 { diff }
+function respApplyForActor(req, usersByName, company, submitted, mode, nowIso) {
+  const sub = cardTasks.normList(submitted);
+  const cur = Array.isArray(company.responsibleSales) ? company.responsibleSales : [];
+  const v = cardTasks.validateNewOwners(sub.filter(u => !cur.includes(u)), usersByName);
+  if (!v.ok) return { status: 400, error: v.error };
+  const viewable = new Set(getViewableOwners(req, 'contacts'));
+  const outside = sub.find(u => !viewable.has(u));
+  if (outside) return { status: 403, error: `帳號「${outside}」超出您的可視範圍，不能指定` };
+  let finalList;
+  if (mode === 'add') finalList = cur.concat(sub.filter(u => !cur.includes(u)));
+  else {
+    const keepOutside = cur.filter(u => !viewable.has(u));   // 看不到的人不能被我移除
+    finalList = keepOutside.concat(sub.filter(u => !keepOutside.includes(u)));
+  }
+  if (finalList.length > cardTasks.MAX_RESPONSIBLE) return { status: 400, error: `責任業務最多 ${cardTasks.MAX_RESPONSIBLE} 位` };
+  const diff = cardTasks.applyResponsibleSales(company, finalList, nowIso, []);
+  if (diff.changed) company.updatedAt = nowIso;
+  return { diff };
+}
+function respLogChange(req, usersByName, company, diff, extra) {
+  const f = (arr) => (arr.length ? arr.map(u => respLabel(usersByName, u)).join('、') : '(空)');
+  writeLog('SET_COMPANY_RESPONSIBLE', req.session.user.username, company.name || company.id,
+    `責任業務：${f(diff.before)} → ${f(diff.after)}` + (diff.added.length ? `｜新增 ${diff.added.length} 位` : '') + (diff.removed.length ? `｜移除 ${diff.removed.length} 位` : '') + (extra ? `｜${extra}` : ''), req);
+}
+
+// 可被選為責任業務的帳號（呼叫者可視範圍內、可擁有名片、啟用中）——企業主檔編輯／批次指定的選單來源
+app.get('/api/company-responsible/candidates', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return res.json({ enabled: false, users: [] });
+  if (!cardTasks.WRITE_ROLES.includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限行銷／管理員／主管）' });
+  const { auth } = respAuthIndex();
+  const viewable = new Set(getViewableOwners(req, 'contacts'));
+  const users = (auth.users || []).filter(u => viewable.has(u.username) && cardTasks.eligibleOwner(u))
+    .map(u => ({ username: u.username, label: userLabel(u, u.username), role: u.role, bu: normalizeBu(u.bu) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-TW'));
+  res.json({ enabled: true, users });
+});
+
+// 設定單一公司的責任業務（行銷／管理員／主管；主管只能動自己看得到的公司與帳號）
+app.post('/api/companies/:id/set-responsible-sales', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return cardTasksOff(res);
+  if (!cardTasks.WRITE_ROLES.includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限行銷／管理員／主管）' });
+  if (!req.body || !Array.isArray(req.body.responsibleSales)) return res.status(400).json({ error: '請提供 responsibleSales 陣列' });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.id === req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+  if (!respCanTouchCompany(req, data, m)) return res.status(403).json({ error: '無權限（此公司不在您的可視範圍）' });
+  const { usersByName } = respAuthIndex();
+  const nowIso = new Date().toISOString();
+  const r = respApplyForActor(req, usersByName, m, req.body.responsibleSales, 'replace', nowIso);
+  if (r.error) return res.status(r.status).json({ error: r.error });
+  if (r.diff.changed) {
+    db.save(data);
+    respLogChange(req, usersByName, m, r.diff);
+  }
+  const notified = r.diff.added.length ? respNotifyAssigned(Object.fromEntries(r.diff.added.map(u => [u, [m.id]]))) : 0;
+  res.json({ success: true, changed: r.diff.changed, added: r.diff.added, removed: r.diff.removed, notifiedUsers: notified,
+    ...respFields(m, respCtx(req, data, usersByName)) });
+});
+
+// 批次指定（選多家公司 → 指定責任業務）：mode=add（預設，只加）｜replace
+app.post('/api/companies/responsible-sales-batch', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return cardTasksOff(res);
+  if (!cardTasks.WRITE_ROLES.includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限行銷／管理員／主管）' });
+  const b = req.body || {};
+  if (!Array.isArray(b.companyIds) || !b.companyIds.length) return res.status(400).json({ error: '請選擇要指定的公司' });
+  if (b.companyIds.length > 500) return res.status(400).json({ error: '一次最多 500 家公司' });
+  if (!Array.isArray(b.usernames) || !b.usernames.length) return res.status(400).json({ error: '請選擇責任業務' });
+  const mode = b.mode === 'replace' ? 'replace' : 'add';
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const nowIso = new Date().toISOString();
+  const byId = {};
+  (data.companies || []).forEach(m => { byId[m.id] = m; });
+  const addedByUser = {};
+  const denied = [];
+  let updated = 0, unchanged = 0;
+  const logs = [];
+  const seen = new Set();
+  for (const id of b.companyIds) {
+    if (typeof id !== 'string' || seen.has(id)) continue;
+    seen.add(id);
+    const m = byId[id];
+    if (!m) { denied.push({ id, error: '找不到此企業主檔' }); continue; }
+    if (!respCanTouchCompany(req, data, m)) { denied.push({ id, name: m.name || '', error: '此公司不在您的可視範圍' }); continue; }
+    const r = respApplyForActor(req, usersByName, m, b.usernames, mode, nowIso);
+    if (r.error) {
+      // 帳號本身不合法／超出可視範圍（所有公司都一樣）→ 整批直接拒絕，不做半套
+      return res.status(r.status).json({ error: r.error });
+    }
+    if (r.diff.changed) {
+      updated++;
+      logs.push([m, r.diff]);
+      r.diff.added.forEach(u => { (addedByUser[u] = addedByUser[u] || []).push(m.id); });
+    } else unchanged++;
+  }
+  if (updated) {
+    db.save(data);
+    logs.slice(0, 200).forEach(([m, diff]) => respLogChange(req, usersByName, m, diff, `批次指定（${mode === 'add' ? '加入' : '取代'}）`));
+  }
+  const notified = respNotifyAssigned(addedByUser);
+  res.json({ success: true, updated, unchanged, denied, notifiedUsers: notified });
+});
+
+// ── 待辦：登入者自己的「請補名片」──
+app.get('/api/my-tasks/company-cards', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return res.json({ enabled: false, items: [], total: 0, dismissed: 0, overdueDays: cardTasks.OVERDUE_DAYS });
+  const me = req.session.user.username;
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const mine = cardTasks.deriveTasks(data, usersByName, new Date()).filter(t => t.username === me);
+  const items = mine.filter(t => !t.dismissal)
+    .sort((a, b) => (b.days - a.days) || a.name.localeCompare(b.name, 'zh-TW'))
+    .map(t => ({ companyId: t.companyId, name: t.name, taxId: t.taxId, industry: t.industry, address: t.address, website: t.website,
+      assignedAt: t.assignedAt, days: t.days, overdue: t.days > cardTasks.OVERDUE_DAYS }));
+  res.json({ enabled: true, items, total: items.length, dismissed: mine.length - items.length, overdueDays: cardTasks.OVERDUE_DAYS,
+    reasons: Object.entries(cardTasks.DISMISS_REASONS).map(([key, label]) => ({ key, label })) });
+});
+
+// 手動解除（只能解除自己的；原因必選，「其他」必填說明）→ 回報給行銷與主管
+app.post('/api/my-tasks/company-cards/dismiss', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return cardTasksOff(res);
+  const me = req.session.user.username;
+  const b = req.body || {};
+  if (typeof b.companyId !== 'string' || !b.companyId) return res.status(400).json({ error: '缺少 companyId' });
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const r = cardTasks.dismissTask(data, usersByName, { companyId: b.companyId, username: me, reason: b.reason, note: b.note }, new Date());
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+  db.save(data);
+  writeLog('DISMISS_COMPANY_CARD_TASK', me, r.task.name || b.companyId,
+    `手動解除待補名片待辦｜原因：${r.dismissal.reasonLabel}${r.dismissal.note ? '｜說明：' + r.dismissal.note : ''}｜責任業務 ${respLabel(usersByName, me)}｜已回報行銷與主管`, req);
+  res.json({ success: true });
+});
+
+// ── 行銷：業務回報待修清單 ──
+function respFeedbackView(items, usersByName, data) {
+  const byId = {};
+  ((data && data.companies) || []).forEach(m => { byId[m.id] = m; });
+  return items.map(f => ({ ...f, responsibleSales: ((byId[f.companyId] || {}).responsibleSales || []).slice(), userLabel: userLabel(usersByName[f.username], f.username), bu: normalizeBu(usersByName[f.username] && usersByName[f.username].bu) }));
+}
+app.get('/api/marketing/responsibility-feedback', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return res.json({ enabled: false, items: [], count: 0 });
+  if (!['marketing', 'admin'].includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限行銷／管理員）' });
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const items = respFeedbackView(cardTasks.feedbackItems(data, usersByName, new Date(), 'open'), usersByName, data);
+  res.json({ enabled: true, items, count: items.length });
+});
+// action: 'handled'（標示已處理，解除維持有效）｜'reassign'（重新指定責任業務＝重置該業務的解除，並更新指定時間）
+app.post('/api/marketing/responsibility-feedback/:id/resolve', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return cardTasksOff(res);
+  const actor = req.session.user.username;
+  if (!['marketing', 'admin'].includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限行銷／管理員）' });
+  const b = req.body || {};
+  const action = b.action === 'reassign' ? 'reassign' : (b.action === 'handled' ? 'handled' : '');
+  if (!action) return res.status(400).json({ error: 'action 必須是 handled 或 reassign' });
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const d = (data.companyCardDismissals || []).find(x => x && x.id === req.params.id);
+  if (!d) return res.status(404).json({ error: '找不到這筆回報' });
+  if (d.status !== 'open') return res.status(409).json({ error: '這筆回報已經處理過了' });
+  const nowIso = new Date().toISOString();
+  let notified = 0;
+  if (action === 'reassign') {
+    const m = (data.companies || []).find(c => c.id === d.companyId);
+    if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+    const list = cardTasks.normList(b.responsibleSales);
+    if (!list.length) return res.status(400).json({ error: '重新指定時請至少選一位責任業務' });
+    if (list.length > cardTasks.MAX_RESPONSIBLE) return res.status(400).json({ error: `責任業務最多 ${cardTasks.MAX_RESPONSIBLE} 位` });
+    const v = cardTasks.validateNewOwners(list, usersByName);   // 重新指定＝全部重驗（含原本就在名單上的人）
+    if (!v.ok) return res.status(400).json({ error: v.error });
+    const diff = cardTasks.applyResponsibleSales(m, list, nowIso, list);   // 全部重蓋指定時間 → 舊的解除自動失效
+    m.updatedAt = nowIso;
+    cardTasks.resolveFeedback(data, d.id, actor, 'reassign', b.note, nowIso);
+    db.save(data);
+    respLogChange(req, usersByName, m, diff, `處理業務回報（${respLabel(usersByName, d.username)}：${d.reasonLabel}）→ 重新指定`);
+    notified = respNotifyAssigned(Object.fromEntries(list.map(u => [u, [m.id]])));
+  } else {
+    cardTasks.resolveFeedback(data, d.id, actor, 'handled', b.note, nowIso);
+    db.save(data);
+  }
+  writeLog('RESOLVE_COMPANY_CARD_FEEDBACK', actor, d.companyName || d.companyId,
+    `業務回報已處理（${action === 'reassign' ? '重新指定責任業務' : '標示已處理'}）｜回報人 ${respLabel(usersByName, d.username)}｜原因：${d.reasonLabel}${d.note ? '｜說明：' + d.note : ''}`, req);
+  res.json({ success: true, action, notifiedUsers: notified });
+});
+
+// ── 主管首頁：責任業務被指定超過 14 天仍未處理 ＋ 業務已回報待行銷處理（依可視範圍）──
+app.get('/api/manager/company-card-overdue', requireAuth, (req, res) => {
+  if (!cardTasks.enabled()) return res.json({ enabled: false, overdue: [], dismissed: [], overdueDays: cardTasks.OVERDUE_DAYS });
+  if (!['admin', 'executive', 'manager1', 'manager2'].includes(req.session.user.role)) return res.status(403).json({ error: '無權限（限主管）' });
+  const data = db.load();
+  const { usersByName } = respAuthIndex();
+  const visible = new Set(getViewableOwners(req, 'contacts'));
+  const now = new Date();
+  const lab = (un) => ({ userLabel: userLabel(usersByName[un], un), bu: normalizeBu(usersByName[un] && usersByName[un].bu) });
+  const overdue = cardTasks.deriveTasks(data, usersByName, now)
+    .filter(t => visible.has(t.username) && !t.dismissal && t.days > cardTasks.OVERDUE_DAYS)
+    .sort((a, b) => b.days - a.days)
+    .map(t => ({ companyId: t.companyId, name: t.name, taxId: t.taxId, username: t.username, assignedAt: t.assignedAt, days: t.days, ...lab(t.username) }));
+  const dismissed = respFeedbackView(cardTasks.feedbackItems(data, usersByName, now, 'open').filter(f => visible.has(f.username)), usersByName, data)
+    .map(({ responsibleSales, ...rest }) => rest);   // 主管看不到完整責任業務名單（可能含可視範圍外的人）
+  res.json({ enabled: true, overdue, dismissed, overdueDays: cardTasks.OVERDUE_DAYS });
+});
+
 // ── 刪除企業主檔（admin + 行銷）──
 // 主檔是衍生參照層：底下尚有「真實名片」時一律擋下（會在「建立/更新」時依名片重建，硬刪無意義且危險）。
 // 只剩「待補名片」(客戶池 placeholder) 或完全無名片時才可刪，並連帶軟刪除那些待補名片。
@@ -9323,6 +9681,7 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
   const usersByName = {};
   (auth.users || []).forEach(u => { userMap[u.username] = userLabel(u); usersByName[u.username] = u; });
   const od = o => userMap[o.owner] || o.owner || '';
+  const RC = respCtx(req, data, usersByName);
 
   // 可見名片（依擁有者 + BU）
   let contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id && owners.has(c.owner));
@@ -9352,6 +9711,7 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
       bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName),
       region: company.region || '',
       customerCode: company.customerCode || '',
+      ...(RC ? respFields(company, RC) : {}),
     },
     contacts: contacts.map(c => ({
       id: c.id, name: c.name, title: c.title, phone: c.phone, mobile: c.mobile, email: c.email,
@@ -10971,4 +11331,4 @@ if (require.main === module) {
 
 module.exports = app;
 // 測試掛鉤（僅供單元測試 require，不經 HTTP 暴露）
-module.exports._test = { normalizeCompanyName, companyMatchKey, ensureCompanyMaster, runCompanyImport };
+module.exports._test = { normalizeCompanyName, companyMatchKey, ensureCompanyMaster, runCompanyImport, notificationUrlFor };

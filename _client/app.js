@@ -820,7 +820,10 @@ function showDashboard() {
   });
   loadBirthdayReminders();
   loadZombieAlertCard();
+  _cardTasksRefresh();
 }
+// 待補名片待辦：回到任何首頁／補完名片後重新查（失敗靜默）
+function _cardTasksRefresh() { try { if (window.ITTSCardTasks) window.ITTSCardTasks.refreshSoon(); } catch (_) { /* ignore */ } }
 
 // 唯讀掛名主管（pureSupervisor）名單：供 dashboard/execDash 各彙總統一排除鏡射記錄
 function _isPureSup(u) { return !!(window._pureSupervisorSet && window._pureSupervisorSet.has(u)); }
@@ -897,8 +900,8 @@ function showSection(section) {
   if (section === 'forecast')    loadForecastView();
   if (section === 'execDash')    loadExecDash();
   if (section === 'yoy')         loadYoyView();
-  if (section === 'managerHome') loadManagerHome();
-  if (section === 'marketingHome' && window.RoleHomes) window.RoleHomes.loadMarketing();
+  if (section === 'managerHome') { loadManagerHome(); _cardTasksRefresh(); }
+  if (section === 'marketingHome' && window.RoleHomes) { window.RoleHomes.loadMarketing(); _cardTasksRefresh(); }
   if (section === 'consultHome' && window.RoleHomes) window.RoleHomes.loadConsult();
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
@@ -919,6 +922,34 @@ function showSection(section) {
 let _cmData = [];
 let _cmFilter = '';
 let _cmIndustryFilter = '';   // '' = 全部；'__none__' = 未分類；其餘 = 指定產業
+let _cmRespOn = false;         // 後端是否帶了責任業務欄位（COMPANY_CARD_TASKS=off 時沒有）
+const _cmSel = new Set();      // 批次指定：勾選的公司 id
+let _cmVisibleIds = [];        // 目前列表（含篩選）顯示的公司 id，供「全選」
+function cmCanAssign() { return !!(_cmRespOn && window.ITTSCardTasks && window.ITTSCardTasks.canAssign(userPermissions.role)); }
+// 責任業務欄：名稱＋BU，後面接狀態標記（待補名片／業務已回報／帳號停用）；有權限者多一個 ✎ 編輯鈕
+function cmRespCell(c) {
+  const disp = c.responsibleSalesDisplay || [];
+  let h = disp.map(u => {
+    const st = (c.responsibleStatus || {})[u.username];
+    const mark = st === 'pending' ? '<span class="cct-badge cct-badge-pending">待補名片</span>'
+      : st === 'dismissed' ? '<span class="cct-badge cct-badge-dismissed">業務已回報</span>'
+      : st === 'inactive' ? '<span class="cct-badge cct-badge-off">帳號停用</span>' : '';
+    return `<span class="cct-resp-chip">${escapeHtml(u.label)}${(u.bu && u.bu.length) ? `<small>${escapeHtml(u.bu.join('/'))}</small>` : ''}${mark}</span>`;
+  }).join('');
+  if (!disp.length) h = '<span class="cm-label">-</span>';
+  if (cmCanAssign()) h += ` <button type="button" class="cct-resp-edit" data-id="${escapeHtml(c.id)}" aria-label="設定「${escapeHtml(c.name)}」的責任業務" title="設定責任業務">✎</button>`;
+  return h;
+}
+function cmUpdateBatchBar() {
+  const bar = $('cmBatchBar');
+  if (!bar) return;
+  bar.hidden = !cmCanAssign();
+  const n = _cmSel.size;
+  const cnt = $('cmBatchCount'); if (cnt) cnt.textContent = '已選 ' + n + ' 家';
+  const b = $('cmBatchBtn'); if (b) b.disabled = n === 0;
+  const all = $('cmSelAll');
+  if (all) all.checked = _cmVisibleIds.length > 0 && _cmVisibleIds.every(id => _cmSel.has(id));
+}
 // 填充使用者端企業主檔的「產業」篩選下拉（含各產業家數 + 未分類）
 function cmPopulateIndustryFilter() {
   const sel = $('cmIndustryFilter');
@@ -963,6 +994,8 @@ async function loadCompanyMasterView() {
     const r = await fetch(`${API}/companies`);
     if (!r.ok) throw new Error('載入失敗 (' + r.status + ')');
     _cmData = await r.json();
+    _cmRespOn = _cmData.length > 0 && Array.isArray(_cmData[0].responsibleSalesDisplay);
+    _cmSel.clear();
     cmPopulateIndustryFilter();
     renderCompanyMasterList();
   } catch (e) {
@@ -985,17 +1018,23 @@ function renderCompanyMasterList() {
   if (countEl) countEl.textContent = `共 ${_cmData.length} 家` + (hasFilter ? `（顯示 ${list.length}）` : '');
   if (!tbody) return;
   const canManage = cmCanManage();
+  const respTh = $('cmRespTh'); if (respTh) respTh.hidden = !_cmRespOn;
+  const owTog = document.querySelector('.cct-import-ow'); if (owTog) owTog.hidden = !_cmRespOn;
+  const colspan = 6 + (canManage ? 1 : 0) + (_cmRespOn ? 1 : 0);
+  _cmVisibleIds = list.map(c => c.id);
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="${canManage ? 7 : 6}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
+    cmUpdateBatchBar();
     return;
   }
-  const colspan = canManage ? 7 : 6;
+  const canAssign = cmCanAssign();
   const rowHtml = (c, isNew) => `
     <tr class="cm-row" data-id="${escapeHtml(c.id)}"${isNew ? ' style="background:rgba(59,130,246,0.07)"' : ''}>
-      <td><strong>${escapeHtml(c.name)}</strong>${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
+      <td>${canAssign ? `<input type="checkbox" class="cm-sel" data-id="${escapeHtml(c.id)}" aria-label="選取「${escapeHtml(c.name)}」"${_cmSel.has(c.id) ? ' checked' : ''}> ` : ''}<strong>${escapeHtml(c.name)}</strong>${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
       <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
       <td>${c.contactCount || 0}</td>
       <td>${(c.owners && c.owners.length) ? `<span style="font-size:12px">${c.owners.map(escapeHtml).join('、')}</span>` : '<span class="cm-label">-</span>'}</td>
+      ${_cmRespOn ? `<td class="cct-resp-td">${cmRespCell(c)}</td>` : ''}
       <td>${cmFmtCap(c.capital)}</td>
       <td>${cmIndustryCell(c)}</td>
       ${canManage ? `<td><button class="cm-del" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️</button></td>` : ''}
@@ -1016,6 +1055,18 @@ function renderCompanyMasterList() {
   tbody.innerHTML = html;
   tbody.querySelectorAll('.cm-row').forEach(tr =>
     tr.addEventListener('click', () => openCompanyMasterDetail(tr.dataset.id)));
+  // 責任業務：✎ 編輯（不觸發開明細）、勾選批次指定
+  tbody.querySelectorAll('.cct-resp-edit').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const comp = _cmData.find(x => x.id === b.dataset.id);
+    if (!comp || !window.ITTSCardTasks) return;
+    window.ITTSCardTasks.openCompanyPicker(comp, resp => { Object.assign(comp, resp); renderCompanyMasterList(); });
+  }));
+  tbody.querySelectorAll('.cm-sel').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
+    cb.addEventListener('change', () => { if (cb.checked) _cmSel.add(cb.dataset.id); else _cmSel.delete(cb.dataset.id); cmUpdateBatchBar(); });
+  });
+  cmUpdateBatchBar();
   // 刪除主檔（admin/行銷；阻止冒泡，不觸發開明細）
   tbody.querySelectorAll('.cm-del').forEach(btn => {
     btn.addEventListener('click', async e => {
@@ -1077,7 +1128,11 @@ async function openCompanyMasterDetail(id) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '載入失敗');
     if (seq !== _cmDetailSeq) return;   // 期間已切換到別家公司 → 丟棄
+    _cmRespOn = Array.isArray(d.company.responsibleSalesDisplay);
     wrap.innerHTML = renderCompanyMasterDetail(d);
+    wrap.querySelectorAll('.cct-resp-edit').forEach(b => b.addEventListener('click', () => {
+      if (window.ITTSCardTasks) window.ITTSCardTasks.openCompanyPicker(d.company, () => openCompanyMasterDetail(id));
+    }));
     appendCompanyYoyCard(id, wrap, seq); // 有 YoY 檢視權限且命中才會附上「歷史 YoY 營收」卡
   } catch (e) {
     if (seq !== _cmDetailSeq) return;
@@ -1100,6 +1155,7 @@ function renderCompanyMasterDetail(d) {
     ['負責人', escapeHtml(c.representative || '—')],
     ['地址', escapeHtml(c.address || '—')],
     ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],
+    ...(Array.isArray(c.responsibleSalesDisplay) ? [['責任業務', cmRespCell(c)]] : []),
   ].map(([k, v]) => `<div style="min-width:190px"><span class="cm-label">${k}</span><br><span style="font-size:14px">${v}</span></div>`).join('');
 
   const tbl = (title, headers, rows) => card(`
@@ -1236,6 +1292,22 @@ function cmChangeText(c) {
   if (c.field === 'industry') return `產業：「${c.from || '(空)'}」→「${c.to}」`;
   return '';
 }
+// 「覆蓋既有責任業務」勾選 → 查詢參數（預設只在公司尚無責任業務時填入）
+function cmImportOverwriteQS(first) {
+  const cb = document.getElementById('cmImportOverwriteResp');
+  return (cb && cb.checked) ? (first ? '?' : '&') + 'overwriteResponsible=1' : '';
+}
+// 匯入「服務業務」欄 → 責任業務的說明區塊（預覽與結果共用）；名稱一律 escapeHtml
+function cmRespImportHtml(r) {
+  if (!r) return '';
+  const nf = (r.notFoundNames || []).map(escapeHtml).join('、');
+  const inel = (r.ineligible || []).map(escapeHtml).join('、');
+  return `<div class="cct-import-note">🧑‍💼 服務業務欄 → 責任業務：${r.overwrite ? '（覆蓋模式）' : ''}已指定 <b>${r.assigned}</b> 家`
+    + (r.kept ? `、沿用既有 <b>${r.kept}</b> 家（不覆蓋）` : '')
+    + (r.notFound ? `、<span class="cct-warn">找不到名稱 <b>${r.notFound}</b> 個</span>（${nf}）` : '')
+    + (inel ? `、<span class="cct-warn">不能擁有名片（未指定）</span>：${inel}` : '')
+    + `</div>`;
+}
 async function cmImportPreview(file) {
   const resEl = document.getElementById('cmImportResult');
   const toPoolEl = document.getElementById('cmImportToPool');
@@ -1244,7 +1316,7 @@ async function cmImportPreview(file) {
   let d;
   try {
     const fd = new FormData(); fd.append('file', file);
-    const r = await fetch(`${API}/companies/import?dryRun=1${_cmImportToPool ? '&toPool=1' : ''}`, { method: 'POST', body: fd });
+    const r = await fetch(`${API}/companies/import?dryRun=1${_cmImportToPool ? '&toPool=1' : ''}${cmImportOverwriteQS()}`, { method: 'POST', body: fd });
     d = await r.json();
     if (!r.ok) throw new Error(d.error || '分析失敗');
   } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; return; }
@@ -1294,6 +1366,7 @@ function cmShowImportPreview(d) {
     }
   }
 
+  html += cmRespImportHtml(d.responsible);
   if (d.industriesAdded && d.industriesAdded.length) {
     html += `<div style="font-size:13px;color:#6b7280">將新增產業分類 ${d.industriesAdded.length} 個：${d.industriesAdded.map(escapeHtml).join('、')}</div>`;
   }
@@ -1311,7 +1384,7 @@ async function cmCommitImport() {
   resEl.style.color = '#1a73e8'; resEl.textContent = '寫入中…';
   try {
     const fd = new FormData(); fd.append('file', file);
-    const r = await fetch(`${API}/companies/import${_cmImportToPool ? '?toPool=1' : ''}`, { method: 'POST', body: fd });
+    const r = await fetch(`${API}/companies/import${_cmImportToPool ? '?toPool=1' : ''}${cmImportOverwriteQS(!_cmImportToPool)}`, { method: 'POST', body: fd });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '匯入失敗');
     resEl.style.color = '#1e8e3e';
@@ -1319,7 +1392,8 @@ async function cmCommitImport() {
       + (d.duplicates ? `、<span style="color:#d97706">疑似重複 <b>${d.duplicates}</b></span>` : '')
       + `、略過 ${d.skipped}`
       + (d.poolCreated ? `、<span style="color:#7c3aed">📋 客戶池待補名片 <b>${d.poolCreated}</b></span>` : '')
-      + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個` : '');
+      + (d.industriesAdded && d.industriesAdded.length ? `、新產業分類 ${d.industriesAdded.length} 個` : '')
+      + (d.responsible ? `、🧑‍💼 責任業務指定 <b>${d.responsible.assigned}</b> 家${d.responsible.notFound ? `（<span class="cct-warn">找不到名稱 ${d.responsible.notFound} 個</span>）` : ''}${d.responsible.notifiedUsers ? `，已通知 ${d.responsible.notifiedUsers} 位業務` : ''}` : '');
     await loadIndustryOptions();
     loadCompanyMasterView();
   } catch (err) { resEl.style.color = '#c62828'; resEl.textContent = '❌ ' + err.message; }
@@ -1331,6 +1405,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cmSearch) cmSearch.addEventListener('input', e => { _cmFilter = e.target.value.trim(); renderCompanyMasterList(); });
   const cmIndFilter = document.getElementById('cmIndustryFilter');
   if (cmIndFilter) cmIndFilter.addEventListener('change', e => { _cmIndustryFilter = e.target.value; renderCompanyMasterList(); });
+  // 批次指定責任業務
+  const selAll = document.getElementById('cmSelAll');
+  if (selAll) selAll.addEventListener('change', () => {
+    _cmVisibleIds.forEach(id => { if (selAll.checked) _cmSel.add(id); else _cmSel.delete(id); });
+    renderCompanyMasterList();
+  });
+  const batchBtn = document.getElementById('cmBatchBtn');
+  if (batchBtn) batchBtn.addEventListener('click', () => {
+    if (!_cmSel.size || !window.ITTSCardTasks) return;
+    window.ITTSCardTasks.openBatchPicker([..._cmSel], () => { _cmSel.clear(); loadCompanyMasterView(); });
+  });
+  const batchClr = document.getElementById('cmBatchClear');
+  if (batchClr) batchClr.addEventListener('click', () => { _cmSel.clear(); renderCompanyMasterList(); });
 
   // 下載匯入範本
   const tplBtn = document.getElementById('cmTemplateBtn');
@@ -3214,6 +3301,7 @@ function applyContactFormReadonly(contact) {
 
 function closeModal() {
   $('modalOverlay').classList.remove('open');
+  _cardTasksRefresh();   // 新增名片後，待補名片待辦若已滿足會自動消失
   if (typeof resetContactOppTab === 'function') resetContactOppTab();
 }
 
@@ -3816,6 +3904,8 @@ async function initUser() {
     }
     // 公告彈窗（announcements.js）：不 await、自帶 try/catch，失敗絕不影響登入與載入
     try { if (window.ITTSAnnounce) window.ITTSAnnounce.start(user); } catch (_) { /* ignore */ }
+    // 待補名片待辦（company-card-tasks.js）：不 await、自帶錯誤處理；isFirstLoad＝剛登入的第一次載入才跳彙總視窗
+    try { if (window.ITTSCardTasks) window.ITTSCardTasks.start(user, { login: isFirstLoad }); } catch (_) { /* ignore */ }
   } catch { window.location.href = '/login.html'; }
 }
 
@@ -9056,7 +9146,8 @@ function renderNotifList(list) {
     callin_new:'📞', callin_assigned:'📋', callin_overdue:'⏰', callin_responded:'✅',
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
-    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️'
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
+    company_card_task:'🗂️'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
@@ -9137,6 +9228,10 @@ function renderNotifList(list) {
         _pollBundleEtag = null; // server 狀態已改，強制下次取最新
         pollNotifications();
         if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
+        if (item.dataset.type === 'company_card_task' && window.ITTSCardTasks) {
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSCardTasks.openFromNotification();
+        }
       }
     });
   });

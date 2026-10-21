@@ -332,6 +332,9 @@
             </div>
           </div>
 
+          <!-- 待補名片待辦（company-card-tasks.js 填入；沒有待辦時整塊隱藏） -->
+          <div id="cctHostDash" class="cct-host" data-cct-host="dash" hidden></div>
+
           <!-- 殭屍商機警示卡 -->
           <div id="zombieAlertCard" style="display:none">
             <div class="zombie-alert-card">
@@ -546,10 +549,19 @@
                 <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#666;cursor:pointer" title="勾選後，匯入的無名片公司會建成『待補名片』放入客戶池，供 Manager 分配給業務">
                   <input type="checkbox" id="cmImportToPool" checked> 匯入後放入客戶池
                 </label>
+                <label class="cct-import-ow" title="匯入檔的「服務業務」會同時指定為責任業務；預設只在公司尚無責任業務時填入，勾選後改為覆蓋">
+                  <input type="checkbox" id="cmImportOverwriteResp"> 覆蓋既有責任業務
+                </label>
                 <input type="file" id="cmImportFile" accept=".xlsx,.xls" style="display:none">
               </span>
             </div>
             <div id="cmImportResult" style="font-size:13px;margin-bottom:8px"></div>
+            <div id="cmBatchBar" class="cct-batchbar" hidden>
+              <label class="cct-batch-all"><input type="checkbox" id="cmSelAll"> 全選目前列表</label>
+              <span id="cmBatchCount" class="cct-batch-count" aria-live="polite">已選 0 家</span>
+              <button type="button" id="cmBatchBtn" class="cct-btn cct-btn-primary cct-btn-sm" disabled>批次指定責任業務…</button>
+              <button type="button" id="cmBatchClear" class="cct-btn cct-btn-ghost cct-btn-sm">清除選取</button>
+            </div>
             <div class="cm-hint" id="cmHint">只顯示你（及轄下業務）名下客戶所屬的公司。點任一列查看該公司彙整。</div>
             <div class="cm-table-wrap">
               <table class="cm-table" id="cmTable">
@@ -559,6 +571,7 @@
                     <th>統一編號</th>
                     <th>名片數</th>
                     <th>服務業務</th>
+                    <th id="cmRespTh" hidden>責任業務</th>
                     <th>資本額</th>
                     <th>產業</th>
                     <th id="cmActionTh" style="display:none">操作</th>
@@ -1392,11 +1405,12 @@
         </div>
 
         <!-- ── 行銷首頁／顧問首頁（內容由 role-homes.js 填入）── -->
-        <div id="marketingHomeView" style="display:none"></div>
+        <div id="marketingHomeView" style="display:none"><div id="cctHostMkt" class="cct-host" data-cct-host="mkt" hidden></div></div>
         <div id="consultHomeView" style="display:none"></div>
 
         <!-- ── 主管首頁 ── -->
         <div id="managerHomeView" style="display:none">
+          <div id="cctHostMgr" class="cct-host" data-cct-host="mgr" hidden></div>
           <div class="mgr-filter-bar">
             <select id="mgrYearSel" class="forecast-year-sel"></select>
             <div id="mgrOwnerWrap" style="display:none;align-items:center;gap:6px">
@@ -3215,6 +3229,7 @@
   <script src="glass-theme.js"></script>
   <script src="taxid-guard.js"></script>
   <script src="announcements.js"></script><!-- 公告彈窗：須在 app.js 之前載入（initUser 於非同步後即呼叫 ITTSAnnounce.start） -->
+  <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
