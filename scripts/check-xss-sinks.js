@@ -14,12 +14,13 @@
  *               已稽核過的常數／內部標記放 scripts/xss-sinks-allowlist.json（每筆要寫 why；新增前請先確認真的不是使用者資料）
  *   [B] server  cardImage 驗證矩陣、帳號／顯示名稱規則、違規清單端點（自行啟動 server.js，埠 XSS_PORT 預設 3221）
  *   [C] dom     以 headless Edge（CDP）載入真實頁面，餵 XSS payload 給各個渲染函式，斷言「沒有執行、沒有跳出屬性、顯示成文字」
- *   [D] red     紅燈證明：把頁面的 app.js／admin.html 換成 origin/main（修補前）版本，同一組斷言必須失敗
+ *   [D] red     紅燈證明：把頁面的 app.js／admin.html 換成修補前版本（釘死 commit 397abc5），同一組斷言必須失敗
  *   [E] mut     變異檢查（三條規則）：拿掉規則 → 對應測試必須失敗
  * 守門：工作樹若已有 auth.json / data.json / audit.log.json*（可能是真實資料）一律拒絕執行。
  * 禁用埠：3000 / 3020 / 3030 / 3101–3211（其他 session 使用）。只用 PID 關閉自己啟動的程序。
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -43,6 +44,11 @@ function ok(cond, name, extra) { if (cond) pass++; else { fail++; failures.push(
 const sleep = (n) => new Promise(r => setTimeout(r, n));
 // 變異檢查用：執行 fn，回傳其中「失敗」的斷言數，並把計數還原（這些失敗是預期中的）
 async function captureFailures(fn) { const s = { pass, fail, failures: failures.slice() }; quiet = true; try { await fn(); } finally { quiet = false; } const d = fail - s.fail; pass = s.pass; fail = s.fail; failures.length = 0; failures.push(...s.failures); return d; }
+// 「修補前」基準釘死在 XSS 修補（08cb196）之前的 commit（其父提交，397abc5）。
+// 原本用會移動的 origin/main：修補併入 main 之後「修補前」版本就不再有漏洞，13 項紅燈斷言全部失敗、npm test 永遠紅。
+// 可用 XSS_BASE_REF 覆寫；取不到該 commit（淺層 clone）會直接報錯，不會靜默略過。
+const XSS_BASE_COMMIT = '397abc5fbb4299976cb8889be3054f8dfa5c741f';
+const XSS_BASE = process.env.XSS_BASE_REF || XSS_BASE_COMMIT;
 const git = (args) => { const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); if (r.status !== 0) throw new Error('git ' + args.join(' ') + ' 失敗：' + r.stderr); return r.stdout; };
 
 // ═════════════ [A] 靜態掃描 ═════════════
@@ -148,6 +154,7 @@ const tmpFiles = [];
 async function startServer(serverFile) {
   const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
   delete env.DATABASE_URL; delete env.MAIL_MODE; delete env.SUPABASE_URL; delete env.SUPABASE_SERVICE_ROLE_KEY; env.STORAGE_BACKEND = 'local';
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [serverFile || path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
   let out = '';
@@ -496,7 +503,8 @@ function killEdgeByProfile(prof) {
 }
 async function withBrowser(fn) {
   const edge = findEdge();
-  if (!edge || process.env.XSS_SKIP_DOM) { notes.push('瀏覽器測試略過（無 Edge 或 XSS_SKIP_DOM）：未驗證'); return null; }
+  if (process.env.XSS_SKIP_DOM) { notes.push('瀏覽器測試略過（XSS_SKIP_DOM 明確略過）：未驗證'); return null; }
+  if (!edge) { ok(false, '瀏覽器測試需要 Edge：找不到 msedge.exe（沒有 Edge 的環境請設 XSS_SKIP_DOM=1 明確略過；不可靜默當成通過）'); return null; }
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'xss-edge-'));
   const ep = spawn(edge, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-features=msEdgeSidebar,msUndersideButton', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${prof}`, '--window-size=1280,1000', 'about:blank'], { stdio: 'ignore' });
   edgePids.push(ep.pid);
@@ -512,7 +520,7 @@ async function withBrowser(fn) {
     const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (!r.result) throw new Error('CDP 錯誤：' + JSON.stringify(r.error || r).slice(0, 300)); if (r.result.exceptionDetails) throw new Error('eval: ' + JSON.stringify(r.result.exceptionDetails).slice(0, 500)); return r.result.result.value; };
     const waitFor = async (expr, ms) => { const end = Date.now() + (ms || 8000); while (Date.now() < end) { try { if (await ev(expr)) return true; } catch { /* 頁面切換中 */ } await sleep(150); } return false; };
     const nav = async (url) => { await send('Page.enable'); await send('Page.navigate', { url }); await sleep(800); await waitFor('document.readyState==="complete"', 20000); };
-    // 以 replace[urlRegex] = 內容 攔截並替換頁面資源（紅燈：換成 origin/main；變異：換成改壞的版本）
+    // 以 replace[urlRegex] = 內容 攔截並替換頁面資源（紅燈：換成修補前版本；變異：換成改壞的版本）
     const replace = {};
     handlers.push((d) => { if (process.env.XSS_DEBUG && d.method === 'Page.frameNavigated') console.log('[nav]', d.params.frame.url); });
     handlers.push(async (d) => {
@@ -573,8 +581,8 @@ async function secDom() {
   return r;
 }
 async function secRed() {
-  console.log('[D] 紅燈：同一組斷言對 origin/main（修補前）程式碼');
-  const base = process.env.XSS_BASE_REF || 'origin/main';
+  console.log('[D] 紅燈：同一組斷言對修補前程式碼（' + XSS_BASE.slice(0, 10) + '）');
+  const base = XSS_BASE;
   const oldApp = git(['show', `${base}:_client/app.js`]), oldAdmin = git(['show', `${base}:_client/admin.html`]);
   await freshServer();
   const r = await withBrowser((b) => { b.replace['app\\.js$'] = oldApp; b.replace['admin\\.html$'] = oldAdmin; return runDomCases(b, '修補前'); });
@@ -631,7 +639,7 @@ async function secShots() {
   const dir = process.env.XSS_SHOTS; if (!dir) return;
   console.log('[S] 截圖 →', dir);
   fs.mkdirSync(dir, { recursive: true });
-  const oldApp = git(['show', `${process.env.XSS_BASE_REF || 'origin/main'}:_client/app.js`]);
+  const oldApp = git(['show', `${XSS_BASE}:_client/app.js`]);
   const MP = { img: MARK, brk: MARK, js: MARK, card: 'x" onerror="window.__x=1;this.style.outline=\'3px solid #d32f2f\'" a="' };
   for (const mode of ['before', 'after']) {
     await freshServer();
@@ -643,7 +651,7 @@ async function secShots() {
         await b.ev(`(async function(P,mode){
           window.__x=0; document.querySelectorAll('#__xssShot').forEach(e=>e.remove());
           const ov=document.createElement('div'); ov.id='__xssShot'; ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#fff;padding:18px;overflow:auto;font:14px sans-serif';
-          const h=document.createElement('div'); h.style.cssText='font-weight:700;font-size:16px;margin-bottom:10px;padding:6px 10px;color:#fff;background:'+(mode==='before'?'#b71c1c':'#1b5e20'); h.textContent=(mode==='before'?'修補前（origin/main）':'修補後')+'：同一份含 XSS payload 的資料'; ov.appendChild(h);
+          const h=document.createElement('div'); h.style.cssText='font-weight:700;font-size:16px;margin-bottom:10px;padding:6px 10px;color:#fff;background:'+(mode==='before'?'#b71c1c':'#1b5e20'); h.textContent=(mode==='before'?'修補前（釘死 commit）':'修補後')+'：同一份含 XSS payload 的資料'; ov.appendChild(h);
           document.body.appendChild(ov); window.__ov=ov;
         })(${JSON.stringify(MP)}, ${JSON.stringify(mode)})`);
         await b.ev(`(async function(P){${setup}})(${JSON.stringify(MP)})`);

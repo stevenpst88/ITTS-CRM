@@ -7,7 +7,7 @@
  *  - 在「本工作樹」建立臨時 auth.json / data.json（假資料 + _s_* 臨時帳號），自行以 PORT=DR_PORT（預設 3191）啟動 server.js，
  *    依情境用環境變數開關 APPROVAL_CONFIG_DUAL_REVIEW 重啟；跑完只用 PID 關閉並刪除臨時檔。
  *  - 守門：工作樹若已有 auth.json / data.json / audit.log.json*（可能是真實資料）一律拒絕執行。禁用埠：3000/3020/3030/3101~3185。
- *  - 「關閉＝逐位元相同」：把 origin/main（DR_BASE_REF，預設 origin/main）用 git archive 解到暫存資料夾（不是真實資料），
+ *  - 「關閉＝逐位元相同」：把基底 commit（DR_BASE_REF，預設釘死 397abc5）用 git archive 解到暫存資料夾（不是真實資料），
  *    以同一組請求打「舊程式」與「新程式（開關關）」，逐一比對回應、儲存結果與稽核紀錄。
  *  - 單元：lib/configReview.js 以假的 db / app 直接驅動（原子性、重新驗證失敗、逾期、擴充點），並做變異檢查。
  *  - 前端：_client/config-review.js 以 vm 載入（無 DOM），檢查晶片／橫幅／覆核卡片文字與跳脫（XSS）。
@@ -18,6 +18,7 @@
  *   DR_SERVE=1 ...                                       # 截圖用：起一台已塞好待覆核資料的伺服器並留著（印出 PID 與測試密碼，Ctrl+C 或依 PID 關閉）
  */
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const vm = require('vm');
 const Module = require('module');
@@ -70,6 +71,7 @@ async function startServer(dir, env) {
   const e = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE }, env || {});
   delete e.DATABASE_URL; delete e.MAIL_MODE;
   if (!env || env.APPROVAL_CONFIG_DUAL_REVIEW === undefined) delete e.APPROVAL_CONFIG_DUAL_REVIEW;
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   child = spawn(process.execPath, [path.join(dir || ROOT, 'server.js')], { cwd: dir || ROOT, env: e, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid; pids.push(childPid);
   let out = '';
@@ -119,7 +121,7 @@ const FLOW = '/api/admin/quote-approval/flow-config';
 const REQ = '/api/admin/approval-config-requests';
 const cfgBody = (o) => Object.assign({ roster: { gm: [], chairman: [], boardProxy: [], costProviders: [], sealManagers: [] }, productClasses: {} }, o || {});
 
-// ═════════════ 第 OFF 項：開關關閉＝行為與 origin/main 逐位元相同 ═════════════
+// ═════════════ 第 OFF 項：開關關閉＝行為與基底 逐位元相同 ═════════════
 const normStore = (d) => ({
   quoteApproval: d.quoteApproval ? Object.assign({}, d.quoteApproval, { updatedAt: '<t>' }) : null,
   approvalFlowConfig: d.approvalFlowConfig ? Object.assign({}, d.approvalFlowConfig, { updatedAt: '<t>' }) : null,
@@ -149,8 +151,10 @@ async function offScenario(dir, quick) {
   return { out, store: normStore(await readData(dir)), logs };
 }
 async function secOff() {
-  sect('[OFF] 開關關閉：與 origin/main 逐位元相同');
-  const ref = process.env.DR_BASE_REF || 'origin/main';
+  // 基底釘死為 commit（原本是 origin/main：兩人覆核合併進 main 之後變成自己比自己，檢查形同空殼）。
+  // 397abc5＝兩人覆核功能（698c2e8）的父提交。可用 DR_BASE_REF 覆寫。
+  const ref = process.env.DR_BASE_REF || '397abc5fbb4299976cb8889be3054f8dfa5c741f';
+  sect('[OFF] 開關關閉：與修補前基底（' + ref.slice(0, 10) + '）逐位元相同');
   const tmp = path.join(process.env.DR_TMP || path.join(require('os').tmpdir(), 'dr_base_' + crypto.randomBytes(4).toString('hex')));
   fs.mkdirSync(tmp, { recursive: true });
   let baseRes = null;
@@ -176,9 +180,9 @@ async function secOff() {
   await fresh(undefined);
   const mine = await offScenario(ROOT);
   eq(mine.out.length, baseRes.out.length, 'OFF：步驟數相同');
-  mine.out.forEach((m, i) => eq(m, baseRes.out[i], `OFF：步驟 ${m.name} 的 HTTP 狀態與回應與 origin/main 逐位元相同`));
-  eq(mine.store, baseRes.store, 'OFF：儲存結果（quoteApproval／approvalFlowConfig）與 origin/main 相同，且沒有建立 approvalChangeRequests');
-  eq(mine.logs, baseRes.logs, 'OFF：稽核紀錄（action／operator／target／detail）與 origin/main 逐字相同');
+  mine.out.forEach((m, i) => eq(m, baseRes.out[i], `OFF：步驟 ${m.name} 的 HTTP 狀態與回應與基底 逐位元相同`));
+  eq(mine.store, baseRes.store, 'OFF：儲存結果（quoteApproval／approvalFlowConfig）與基底 相同，且沒有建立 approvalChangeRequests');
+  eq(mine.logs, baseRes.logs, 'OFF：稽核紀錄（action／operator／target／detail）與基底 逐字相同');
   ok(mine.logs.length >= 5 && mine.out.filter(o => o.status === 400).length === 3, 'OFF：情境有效（至少 5 筆稽核、3 個 400 驗證失敗）');
   // 具體回應形狀
   eq(mine.out[0], { name: 'c1', status: 200, body: { success: true } }, 'OFF：PUT config 回 200 {success:true}（不是 202）');
@@ -634,7 +638,7 @@ async function serveMode() {
   await http('_s_admin2', 'POST', REQ + '/' + x.json.requestId + '/reject', { comment: '名單與歸類需一併確認' });
   const y = await propose('_s_admin', 'config', cfgBody({ roster: { gm: ['_s_gm2'] } }));
   await http('_s_admin', 'POST', REQ + '/' + y.json.requestId + '/cancel', {});
-  console.log('SERVE_READY pid=' + childPid + ' port=' + PORT + ' pw=' + PW);
+  console.log('SERVE_READY pid=' + childPid + ' port=' + PORT + ' pw=' + (process.env.DR_SHOW_PW ? PW : '(設 DR_SHOW_PW=1 才印；預設不把密碼寫進輸出)'));
   await new Promise(() => {});
 }
 

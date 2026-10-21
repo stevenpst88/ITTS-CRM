@@ -409,6 +409,8 @@ function bigNum(s,num,label,x,y,color=C.blue) {
 }
 
 // ── 輸出 ─────────────────────────────────────────────────
-pptx.writeFile({fileName:'C:/Users/steven.lee/Documents/ITTS_CRM_主管版v3.pptx'})
+// 輸出資料夾：預設與本檔同資料夾；可用環境變數 PPT_OUT_DIR 指定（不寫死使用者路徑；*.pptx 已被 .gitignore 忽略）
+const _outDir = process.env.PPT_OUT_DIR || __dirname;
+pptx.writeFile({fileName: require('path').join(_outDir, 'ITTS_CRM_主管版v3.pptx')})
   .then(()=>console.log('✅ 完成：ITTS_CRM_主管版v3.pptx'))
   .catch(e=>console.error('❌',e));

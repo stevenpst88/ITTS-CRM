@@ -29,6 +29,7 @@ const QA = require(path.join(ROOT, 'lib/quoteApproval.js'));
 const CL = require(path.join(ROOT, 'lib/quoteCostLines.js'));
 
 const res = [];
+const UNVERIFIED = [];   // 被略過、沒有真的驗證到的項目；有項目就 exit 3，不能被當成通過（B-10）
 const t = (name, ok, extra) => res.push([name, !!ok, extra === undefined ? '' : String(extra)]);
 const J = (x) => JSON.stringify(x);
 function lcg(seed) { let s = seed >>> 0; return () => ((s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff); }
@@ -571,7 +572,8 @@ const sv = (lines, revenueCents) => CL.outsourcedStats({ costLines: lines }, rev
     else baseSrc = require('child_process').execFileSync('git', ['show', '50fe748:_client/quote-costlines.js'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 26 });
   } catch (e) { baseSrc = null; }
   if (!baseSrc) {
-    console.log('SKIP 13（找不到改版前的 quote-costlines.js：沒有 git 歷史 50fe748，也沒設 COSTSYNC_QCL_BASE）——這一節不計入');
+    console.log('未驗證 13（找不到改版前的 quote-costlines.js：沒有 git 歷史 50fe748，也沒設 COSTSYNC_QCL_BASE）——「舊行為不退步」整節沒有執行，結束碼 3');
+    UNVERIFIED.push('13 舊行為不退步（git 50fe748）');
   } else {
     const bctx = {}; vm.createContext(bctx); vm.runInContext(baseSrc.replace(/\r\n/g, '\n'), bctx);
     const O = bctx.QCL;
@@ -650,4 +652,5 @@ const sv = (lines, revenueCents) => CL.outsourcedStats({ costLines: lines }, rev
 let pass = 0, fail = 0;
 res.forEach(([n, ok, x]) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (!ok && x ? '  <- ' + x : '')); ok ? pass++ : fail++; });
 console.log(`\ncost-sync 前端單元檢查：PASS ${pass} / FAIL ${fail}`);
-process.exit(fail ? 1 : 0);
+if (UNVERIFIED.length) console.log('未驗證項目（' + UNVERIFIED.length + '）：' + UNVERIFIED.join('；'));
+process.exit(fail ? 1 : UNVERIFIED.length ? 3 : 0);

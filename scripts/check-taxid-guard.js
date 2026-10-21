@@ -15,6 +15,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const os = require('os');
 const vm = require('vm');
@@ -146,6 +147,7 @@ function seedFiles() {
 async function startServer() {
   const logFile = path.join(os.tmpdir(), 'taxid-guard-server.log');
   const out = fs.openSync(logFile, 'w');
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   const p = spawn(process.execPath, ['server.js'], { cwd: ROOT, stdio: ['ignore', out, out], env: Object.assign({}, process.env, { PORT: String(PORT), DB_BACKEND: 'json', SESSION_SECRET: 'taxid-guard-sandbox-secret', NODE_ENV: 'development', ALLOWED_ORIGINS: 'http://localhost:' + PORT }) });
   pids.push(p.pid);
   for (let i = 0; i < 60; i++) {
@@ -214,7 +216,8 @@ function findEdge() {
 }
 async function runDom(pw) {
   const edge = findEdge();
-  if (!edge || process.env.TG_SKIP_DOM) { t('DOM：略過（無 Edge 或 TG_SKIP_DOM）', true, '未驗證'); return; }
+  if (process.env.TG_SKIP_DOM) { console.log('⚠ 未驗證：DOM 區段（TG_SKIP_DOM 明確略過）'); t('【未驗證】DOM：TG_SKIP_DOM 明確略過，這一節沒有執行', true, '未驗證'); return; }
+  if (!edge) { t('DOM 需要 Edge：找不到 msedge.exe（沒有 Edge 的環境請設 TG_SKIP_DOM=1 明確略過；不可靜默當成通過）', false); return; }
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'taxid-edge-'));
   const ep = spawn(edge, ['--headless=new', '--disable-gpu', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${prof}`, '--window-size=1280,1100', 'about:blank'], { stdio: 'ignore' });
   pids.push(ep.pid);

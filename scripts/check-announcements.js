@@ -498,7 +498,7 @@ async function e2e() {
 (async () => {
   unitLib();
   await unitClient();
-  if (process.env.ANN_BASE) await e2e(); else console.log('(未設 ANN_BASE，略過端對端)');
-  console.log(`\n結果：通過 ${pass}，失敗 ${fail}`);
+  if (process.env.ANN_BASE) await e2e(); else console.log('⚠ 未驗證：未設 ANN_BASE，端對端（路由／權限／稽核）沒有執行；請自行起伺服器並設 ANN_BASE、ANN_PW');
+  console.log(`\n結果：通過 ${pass}，失敗 ${fail}` + (process.env.ANN_BASE ? '' : '（端對端未執行＝未驗證）'));
   if (fail) { console.log('失敗項目：\n - ' + failures.join('\n - ')); process.exit(1); }
 })().catch(e => { console.error('腳本錯誤：', e); process.exit(1); });

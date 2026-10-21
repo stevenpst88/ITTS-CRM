@@ -4,6 +4,7 @@
 // 會用 3961 埠、SESSION_IDLE_MS=8000（8 秒）啟動一個全新資料的伺服器，臨時帳號 _s_idle。不碰真實資料檔。
 const { spawn } = require('child_process');
 const fs = require('fs');
+const { assertPortFree } = require('./_port-free');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
@@ -51,6 +52,7 @@ async function login(jar) {
     username: '_s_idle', password: hash, displayName: '閒置測試', role: 'user', active: true,
     passwordChangedAt: new Date().toISOString(),
   }] }));
+  await assertPortFree(PORT);   // B-03：埠被別人佔用時明確報錯，不誤連別人的 server
   const srv = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: Object.assign({}, process.env, { SESSION_SECRET: 'e2e-idle-secret-not-real-0123456789abcdef', DB_BACKEND: 'json', PORT: String(PORT), SESSION_IDLE_MS: String(IDLE), MAIL_MODE: 'off', ALLOWED_ORIGINS: BASE }),

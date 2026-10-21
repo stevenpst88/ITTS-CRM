@@ -21,13 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v20';   // v20：併入深色對比修正（前台＋後台）與程式碼審查前端修正（PR-1 原 v18：閒置警告、兩人覆核視窗、名單效能等）。 v19：深色玻璃對比修正（後台）：glass.css 檔尾新增後台深色成對規則與 .csp-* 覆寫（admin.html 無變動）。v18：深色玻璃對比修正（前台）：新增 gc-* class（style.css／glass.css）、app.js／index.html／quote-approval.js／config-review.js 把 inline 淺底深字改 class。v17：併入 main（M1 流程引擎狀態 v16）後，後台新增「簽核流程設計器」（flow-designer.js／flow-designer.css／flow-overview.js，QUOTE_FLOW_DESIGNER=1 才顯示）。以下為各版歷史——
-//   M2（原 v16）：v16：後台新增「簽核流程設計器」（flow-designer.js／flow-designer.css／flow-overview.js，QUOTE_FLOW_DESIGNER=1 才顯示）。v15：後台「簽核流程設定」頁新增唯讀的流程引擎狀態區塊（admin.html）。以下為各版歷史——
-//   main：v16：併入 main（簽核進度卡片 v15）後，M1 流程引擎的後台唯讀狀態區塊。以下為各版歷史——
-// M1（原 v15）：v15：後台「簽核流程設定」頁新增唯讀的流程引擎狀態區塊（admin.html）。以下為各版歷史——
-// main：v15：簽核進度卡片（新增 quote-flow-cards.js、quote-approval.js 改用卡片）。v14：整併 audit3 與 main（閒置自動登出 idle-timeout.js 已在 main）。以下為各版歷史——
-//   audit3 整併（原 v13）：v13：整併 audit3（機制：稽核鏈／兩人覆核／帳號鎖定／發出機制／quoteMode／秘書跨 BU 等，新增 config-review.js 與其他前端檔）＋ main；發出機制：正式文件發出機制（quote-pdf／quote-preview／quote-approval／quote.js 改版，蓋章需 stampToken）；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取；v12：登入頁改電影感開場（login.html 重寫，新增 login-cinematic.css／login-cinematic.js／login-boot.js）；v11：併入 main XSS 跳脫修補；v10：併入 main 稽核第一/二波與版本頁；v9：併入 main（商機報價／公告／統編守門／資安BU／毛利預覽）並玻璃化；v8：行銷／顧問首頁（role-homes.js 新檔、glass-dash.js 匯出 GlassKit、app.js／style.css 小改）；v7：glass 首頁（glass-dash.js 新檔、glass.css、app.js 的 _countUp/loadManagerHome 小改）；v6：glass 色彩主題＋側欄分組（glass-theme.js、glass.css、app.js 變動）；v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
-//   main：v13：閒置自動登出（新增 idle-timeout.js，index／admin／login 變動）；v12：登入頁改電影感開場（login.html 重寫，新增 login-cinematic.css／login-cinematic.js／login-boot.js）；v11：併入 main XSS 跳脫修補；v10：併入 main 稽核第一/二波與版本頁；v9：併入 main（商機報價／公告／統編守門／資安BU／毛利預覽）並玻璃化；v8：行銷／顧問首頁（role-homes.js 新檔、glass-dash.js 匯出 GlassKit、app.js／style.css 小改）；v7：glass 首頁（glass-dash.js 新檔、glass.css、app.js 的 _countUp/loadManagerHome 小改）；v6：glass 色彩主題＋側欄分組（glass-theme.js、glass.css、app.js 變動）；v5：glass.css 玻璃化外觀層；v4：app.js 深層連結（deep-link.js）、/q/ 跳板頁不快取
+const SW_VERSION = 'itts-crm-v21';   // v21：歷史註解精簡為一句（行為不變），並依序併入深色對比修正與程式碼審查前端修正，提版號讓使用者端收到更新。各版改了什麼，請看 git log -- _client/sw.js
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
