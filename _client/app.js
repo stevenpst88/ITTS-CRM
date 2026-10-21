@@ -858,6 +858,14 @@ function _countUp(el, to, opts) {
   })(start);
 }
 
+// 文件仍在解析（script 尚未全部執行）時，把 fn 延後到 DOMContentLoaded；期間若已切到別區段就放棄。
+function _whenScriptsReady(section, fn) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { if (currentSection === section) fn(); }, { once: true });
+  } else {
+    fn();
+  }
+}
 function showSection(section) {
   currentSection = section;
   localStorage.setItem('lastSection', section);
@@ -901,12 +909,14 @@ function showSection(section) {
   if (section === 'execDash')    loadExecDash();
   if (section === 'yoy')         loadYoyView();
   if (section === 'managerHome') { loadManagerHome(); _cardTasksRefresh(); }
-  if (section === 'marketingHome' && window.RoleHomes) { window.RoleHomes.loadMarketing(); _cardTasksRefresh(); }
-  if (section === 'consultHome' && window.RoleHomes) window.RoleHomes.loadConsult();
+  // 後載 script（role-homes.js／quote.js）定義的 loader：app.js 解析期的 restoreLastSection（F5 還原）時尚未存在，
+  // 文件仍在載入就延後到 DOMContentLoaded（此時 classic script 都已執行完）再呼叫；其餘時機行為不變。
+  if (section === 'marketingHome') _whenScriptsReady(section, () => { if (window.RoleHomes) { window.RoleHomes.loadMarketing(); _cardTasksRefresh(); } });
+  if (section === 'consultHome') _whenScriptsReady(section, () => { if (window.RoleHomes) window.RoleHomes.loadConsult(); });
   if (section === 'campaigns')   loadCampaignsView();
   if (section === 'leads')       loadLeadsView();
   if (section === 'lostOpp')         loadLostOppView();
-  if (section === 'quotations')      loadQuotationsView();
+  if (section === 'quotations')      _whenScriptsReady(section, () => loadQuotationsView());
   if (section === 'pipelineReport')      { loadPipelineReport(); if ($('pdcSection') && $('pdcSection').style.display !== 'none') loadPipelineDateChange(); }
   if (section === 'bizAnalysis')         loadBizAnalysisView();
   if (section === 'erp-ma')      loadErpMaView();
