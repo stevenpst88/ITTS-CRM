@@ -1994,6 +1994,25 @@ function renderContactsImpl(contacts) {
 
   if (contacts.length === 0) {
     list.className = 'contact-list';
+    // 有輸入搜尋或套用 Key Account 篩選而沒有結果時，不要顯示「尚無客戶」（會讓人誤以為資料不見了）
+    const kaFiltered = !isProspects && contactsKaFilterMode !== 'all';
+    if (isSearchMode || kaFiltered) {
+      const box = document.createElement('div'); box.className = 'empty-state';
+      const ic = document.createElement('div'); ic.className = 'empty-icon'; ic.textContent = '\u{1F50D}';
+      const p1 = document.createElement('p');
+      const term = ($('searchInput') && $('searchInput').value || '').trim();
+      p1.textContent = isSearchMode ? ('找不到符合「' + term + '」的' + (isProspects ? '潛在客戶' : '客戶')) : '此篩選條件下沒有客戶';
+      const p2 = document.createElement('p'); p2.className = 'empty-sub';
+      p2.textContent = isSearchMode ? '請確認關鍵字，或清除搜尋後再試' : '請調整右上角的客戶篩選';
+      box.appendChild(ic); box.appendChild(p1); box.appendChild(p2);
+      if (isSearchMode) {
+        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn btn-outline'; btn.textContent = '清除搜尋';
+        btn.addEventListener('click', () => { const c = $('clearSearch'); if (c) c.click(); });
+        box.appendChild(btn);
+      }
+      list.appendChild(box);
+      return;
+    }
     list.innerHTML = isProspects
       ? `<div class="empty-state"><div class="empty-icon">&#128270;</div><p>尚無潛在客戶</p><p class="empty-sub">點擊右上角「新增潛在客戶」開始建立</p></div>`
       : `<div class="empty-state"><div class="empty-icon">&#127942;</div><p>尚無成交客戶</p><p class="empty-sub">商機成交後客戶將自動移入此處</p></div>`;
