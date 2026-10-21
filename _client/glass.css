@@ -2802,3 +2802,10 @@ body.glass.admin-page.dark .btn:hover:not(:disabled):not(.btn-primary) { opacity
 body.glass.admin-page.dark .home-chip:focus-visible { outline-color: #fff; }   /* 強調色框在深色晶片上只有 2.7 */
 body.glass:not(.dark) { --q4-info: #124a98; }   /* 淺色資訊藍字再深一階：淡藍晶片上 4.45→≥4.9 */
 body.glass.dark .ovt-date { background: color-mix(in srgb, var(--g-text) 10%, transparent); }   /* 深色字 #8b949e 原本壓在 #f5f5f5 上 */
+/* 前台淺色玻璃：表單控制項邊框同樣只有約 1.3～1.4:1 → 與後台一致加深到約 2.2:1（有自己外框的搜尋框內層 input 是 border:none，不受影響；聚焦時沿用原本的強調色框） */
+body.glass:not(.dark) :is(.main, .modal) :is(select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea):not(:focus) { --g-edge: rgba(15, 27, 53, .36); border-color: rgba(15, 27, 53, .36); }
+/* 報價單合計區「優惠折扣（議價）」行內 #e65100：淺色 3.3、深色 4.19 → 同色系加深／提亮（上輪中度遺留，本輪最後一次掃描才在報價單視窗實際重現） */
+body.glass:not(.dark) :is(#qDiscountRowLabel, #qDiscountAmt)[style*="color:#e65100"] { color: #9a3d00 !important; }
+body.glass.dark :is(#qDiscountRowLabel, #qDiscountAmt)[style*="color:#e65100"] { color: #ffb74d !important; }
+/* 前台行內 border:1px solid #d1d5db／#ddd 的表單控制項（看板年度／負責人下拉、聯絡人篩選等）：淺色玻璃邊框同樣加深 */
+body.glass:not(.dark) :is(.main, .modal) :is(input, select, textarea)[style*="border:1px solid #d1d5db"], body.glass:not(.dark) :is(.main, .modal) :is(input, select, textarea)[style*="border:1px solid #ddd"] { border-color: rgba(15, 27, 53, .36) !important; }
