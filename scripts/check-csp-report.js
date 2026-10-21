@@ -165,27 +165,44 @@ function unitSuite(M, T) {
   // ── 每小時寫入預算 ──
   {
     const { rep, clock, logs } = mk({ CSP_REPORT_MAX_WRITES_PER_HOUR: '3' });
-    for (let i = 0; i < 3; i++) eq(rep._process({}, N({ doc: `https://h/p${i}.html` })), 'written', `預算內第 ${i + 1} 筆`);
-    eq(rep._process({}, N({ doc: 'https://h/p3.html' })), 'budget', '超過預算不寫');
-    eq(rep._process({}, N({ doc: 'https://h/p4.html' })), 'budget', '仍不寫');
+    for (let i = 0; i < 3; i++) eq(rep._process({}, N({ blocked: `https://h${i}.example` })), 'written', `預算內第 ${i + 1} 筆`);
+    eq(rep._process({}, N({ blocked: 'https://h3.example' })), 'budget', '超過預算不寫');
+    eq(rep._process({}, N({ blocked: 'https://h4.example' })), 'budget', '仍不寫');
     eq(logs.filter(l => l.a === 'CSP_VIOLATION').length, 3, '只有 3 筆 CSP_VIOLATION');
     eq(logs.filter(l => l.a === 'CSP_REPORT_THROTTLED').length, 1, '節流標記每小時最多 1 筆');
     ok(/上限 3 筆/.test(logs[logs.length - 1].d), '標記說明上限');
     clock.adv(60 * 60 * 1000 + 1000);
-    eq(rep._process({}, N({ doc: 'https://h/p3.html' })), 'written', '一小時後預算重置');
+    eq(rep._process({}, N({ blocked: 'https://h3.example' })), 'written', '一小時後預算重置');
     ok(/前一窗合併=1/.test(logs[logs.length - 1].d), '被預算吃掉的次數帶到下一個視窗');
     eq(rep.stats().budgetDropped, 2, '丟棄計數');
     // 預設值依稽核模式
-    eq(mk({}, 'table').rep.stats().maxWritesPerHour, 120, '新表模式預設 120/小時'); eq(mk({}, 'legacy').rep.stats().maxWritesPerHour, 24, '舊路徑預設 24/小時');
+    eq(mk({}, 'table').rep.stats().maxWritesPerHour, 120, '新表模式預設 120/小時'); eq(mk({}, 'legacy').rep.stats().maxWritesPerHour, 4, '舊路徑預設 4/小時（資安審查 M4：24 → 4）');
     eq(mk({ CSP_REPORT_MAX_WRITES_PER_HOUR: '0' }).rep.stats().maxWritesPerHour, 0, '可設 0（完全不寫稽核）');
     const z = mk({ CSP_REPORT_MAX_WRITES_PER_HOUR: '0' }); z.rep._process({}, N()); eq(z.logs.filter(l => l.a === 'CSP_VIOLATION').length, 0, '預算 0 → 不寫任何違規列');
+  }
+
+  // ── 資安審查 M4：來源頁面白名單、去重鍵不含 srcPath ──
+  {
+    const { rep, logs } = mk({ CSP_REPORT_MAX_WRITES_PER_HOUR: '100000' });
+    eq(rep._process({}, N({ doc: 'https://h/evil-page-1.html' })), 'unknown-doc', '來源頁面不在已知清單 → 只計數');
+    eq(rep._process({}, N({ doc: 'https://h/' + 'x'.repeat(60) + '.html' })), 'unknown-doc', '任意變造的頁面路徑 → 只計數');
+    eq(rep._process({}, N({ doc: 'about:blank' })), 'unknown-doc', '非 http(s) 文件 → 只計數');
+    eq(logs.length, 0, '未知頁面不寫稽核'); eq(rep.stats().unknownDoc, 3, 'unknownDoc 計數'); eq(rep.stats().dedupKeys, 0, '未知頁面不佔去重表');
+    for (const p of ['/', '/index.html', '/login.html', '/admin.html', '/help.html']) eq(rep._process({}, N({ doc: 'https://crm.example' + p, blocked: 'https://k' + p.length + '.example' })), 'written', '已知頁面入帳：' + p);
+    eq(rep._process({}, N({ src: 'https://crm.example/a1.js' })), 'written', '首次');
+    eq(rep._process({}, N({ src: 'https://crm.example/a2.js' })), 'deduped', '只有 srcPath 不同 → 同一去重鍵（攻擊者無法用 source-file 灌出新事件）');
+    // 攻擊情境：60 筆內容各異（頁面、檔案、行號皆變造）→ 舊路徑預設預算內最多 4 筆
+    const a = mk({}, 'legacy');
+    for (let i = 0; i < 60; i++) a.rep._process({}, N({ doc: 'https://h/p' + i + '.html', src: 'https://h/s' + i + '.js', line: i, blocked: 'https://h' + i + '.example' }));
+    for (let i = 0; i < 60; i++) a.rep._process({}, N({ src: 'https://h/s' + i + '.js', line: i, blocked: 'https://h' + i + '.example' }));
+    eq(a.logs.filter(l => l.a === 'CSP_VIOLATION').length, 4, '舊路徑預設：60 筆變造頁面＋60 筆已知頁面不同來源 → 稽核至多 4 筆');
   }
 
   // ── 鍵上限 ──
   {
     const { rep, logs } = mk({ CSP_REPORT_MAX_WRITES_PER_HOUR: '100000' });
-    for (let i = 0; i < 1000; i++) rep._process({}, N({ doc: `https://h/p${i}.html` }));
-    eq(rep._process({}, N({ doc: 'https://h/overflow.html' })), 'map-full', '去重表滿 1000 鍵 → 丟棄新鍵');
+    for (let i = 0; i < 1000; i++) rep._process({}, N({ blocked: `https://h${i}.example` }));
+    eq(rep._process({}, N({ blocked: 'https://overflow.example' })), 'map-full', '去重表滿 1000 鍵 → 丟棄新鍵');
     eq(logs.length, 1000, '前 1000 鍵各一筆'); eq(rep.stats().mapFullDropped, 1, '計數');
   }
 
@@ -240,6 +257,9 @@ function runUnit() {
     ['pathOf 不去查詢字串', () => mutate(src, "return cleanPath(new URL(s).pathname);", "return cleanPath(new URL(s).pathname + new URL(s).search);", 'path-query')],
     ['blocked 保留完整網址', () => mutate(src, "return { v: `${sc}://${u.hostname.toLowerCase()}${u.port ? ':' + /^\\d{1,5}$/.exec(u.port)[0] : ''}`, ext: false };", "return { v: s, ext: false };", 'blocked-full')],
     ['去重失效', () => mutate(src, "if (e && t - e.t < DEDUP_WINDOW_MS) {", "if (false) {", 'dedup')],
+    ['移除來源頁面白名單', () => mutate(src, "if (!KNOWN_DOC_PATHS.has(r.docPath)) {", "if (false) {", 'known-doc')],
+    ['去重鍵含 srcPath', () => mutate(src, "const key = [r.directive, r.blocked, r.docPath].join('|');", "const key = [r.directive, r.blocked, r.docPath, r.srcPath].join('|');", 'dedup-src')],
+    ['舊路徑預算回到 24', () => mutate(src, 'const LEGACY_MAX_WRITES = 4;', 'const LEGACY_MAX_WRITES = 24;', 'legacy-budget')],
     ['預算失效', () => mutate(src, "if (budget.used >= maxWrites()) return false;", "if (false) return false;", 'budget')],
     ['單 IP 限流失效', () => mutate(src, "if (e.n >= (parseInt(env.CSP_REPORT_IP_PER_MIN, 10) || IP_LIMIT_PER_MIN)) return false;", "", 'ip-limit')],
     ['不忽略擴充套件', () => mutate(src, "if (r.ext) { stats.ignoredExtension++; return 'extension'; }", "", 'ext')],
@@ -377,7 +397,7 @@ async function runE2E() {
     // ── 預算 ──
     await fresh(users(), {}, { env: { CSP_REPORT_ONLY: 'on', CSP_REPORT_MAX_WRITES_PER_HOUR: '3' } });
     await loginAll(['_s_admin']);
-    for (let i = 0; i < 7; i++) await raw('POST', '/api/csp-report', { headers: LEGACY, body: leg({ 'document-uri': BASE + `/p${i}.html` }) });
+    for (let i = 0; i < 7; i++) await raw('POST', '/api/csp-report', { headers: LEGACY, body: leg({ 'blocked-uri': `https://h${i}.example/x.js` }) });
     const ev = (await http('_s_admin', 'GET', '/api/admin/logs?limit=200&paged=1')).json.rows;
     eq(ev.filter(x => x.action === 'CSP_VIOLATION').length, 3, '預算 3 → 只寫 3 筆違規');
     eq(ev.filter(x => x.action === 'CSP_REPORT_THROTTLED').length, 1, '另有 1 筆節流標記');

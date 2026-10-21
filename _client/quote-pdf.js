@@ -233,7 +233,7 @@ async function _qpdfIssue(id) {
 /** 用蓋章憑證向伺服器換章圖，回 data URL；換不到（沒上傳章、憑證失效…）回 null（不蓋章，呼叫端提示） */
 async function _qpdfFetchSeal(id, token) {
   try {
-    const r = await fetch(API + '/quotations/' + encodeURIComponent(id) + '/seal?stampToken=' + encodeURIComponent(token));
+    const r = await fetch(API + '/quotations/' + encodeURIComponent(id) + '/seal', { headers: { 'X-Stamp-Token': token } });   // 資安審查 L1：憑證放標頭，不放網址（網址會進伺服器日誌與 Referer）
     if (!r.ok) return null;
     const blob = await r.blob();
     return await new Promise(function (resolve) {

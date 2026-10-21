@@ -130,8 +130,8 @@ async function fresh(serverFile) { await stopServer(); cleanupFiles(); seedFiles
 
 // ───────── HTTP ─────────
 let jar = {};
-async function http(who, method, url, body) {
-  const h = { 'Content-Type': 'application/json' };
+async function http(who, method, url, body, hdrs) {
+  const h = Object.assign({ 'Content-Type': 'application/json' }, hdrs || {});
   if (who && jar[who]) h.Cookie = jar[who];
   const res = await fetch(BASE + url, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'manual' });
   const buf = Buffer.from(await res.arrayBuffer());
@@ -274,9 +274,9 @@ async function sec3() {
   }
   let r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/export');
   ok(r.buf.slice(0, 2).toString() === 'PK', '3.1 秘書跨 BU 下載 Excel 為有效 xlsx（PK 檔頭）');
-  r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/seal?stampToken=x');   // 整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
+  r = await http('_s_sec_erp', 'GET', '/api/quotations/q-QI/seal', undefined, { 'X-Stamp-Token': 'x' });   // 資安審查 L1：憑證改放 X-Stamp-Token 標頭（網址 query 預設被拒）。整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
   ok(r.status === 404 && r.json && r.json.code === 'NO_SEAL', '3.2 seal 端點對秘書走同一判斷：到達「未核准無章」404 而非 403');
-  r = await http('_s_u_erp', 'GET', '/api/quotations/q-QI/seal?stampToken=x');   // 整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
+  r = await http('_s_u_erp', 'GET', '/api/quotations/q-QI/seal', undefined, { 'X-Stamp-Token': 'x' });   // 資安審查 L1：憑證改放 X-Stamp-Token 標頭（網址 query 預設被拒）。整併 audit3-document-issuance 後 seal 端點先要求憑證（無憑證一律 403），帶任意憑證才會走到範圍／核准判斷
   eq(r.status, 403, '3.3 無關業務 seal 403');
   // 稽核：匯出與 PDF 記錄
   const lg = await logsOf('EXPORT_QUOTATION');
@@ -318,6 +318,12 @@ async function sec5() {
   await http('_s_sec_erp', 'GET', '/api/quotations/inbox');
   let lg = await logsOf('VIEW_QUOTE_CROSS_BU');
   eq(lg.length, 0, '5.1 只看清單／收件匣：不記 VIEW_QUOTE_CROSS_BU');
+  // 資安審查 M2：清單一次回傳全公司含成本的單，不逐張記，但要留一筆彙總（VIEW_QUOTE_CROSS_BU_LIST，10 分鐘節流）
+  { const ll = await logsOf('VIEW_QUOTE_CROSS_BU_LIST');
+    eq(ll.length, 1, '5.1b 秘書打清單 → 記 1 筆彙總稽核 VIEW_QUOTE_CROSS_BU_LIST（資安審查 M2）');
+    ok(ll[0] && ll[0].operator === '_s_sec_erp' && /跨 BU 張數 \d+/.test(ll[0].detail) && !/成本\s*\d/.test(ll[0].detail), '5.1c 彙總稽核有操作者與跨 BU 張數、不含任何成本數字（' + (ll[0] && ll[0].detail) + '）');
+    await http('_s_sec_erp', 'GET', '/api/quotations');
+    eq((await logsOf('VIEW_QUOTE_CROSS_BU_LIST')).length, 1, '5.1d 10 分鐘內再打清單不重複記'); }
   // 自己 BU 的單不記
   await http('_s_sec_erp', 'GET', '/api/quotations/q-QE');
   lg = await logsOf('VIEW_QUOTE_CROSS_BU');
@@ -435,6 +441,15 @@ async function secM() {
       await http('_s_sec_erp', 'GET', '/api/quotations/q-QI');
       const n = (await logsOf('VIEW_QUOTE_CROSS_BU')).length;
       ok(n === 2, '變異2（拿掉節流）→ 同一張單重複記了 ' + n + ' 筆：sec5 的 5.3 斷言會失敗（抓得到）');
+    }
+    // 變異 2b（資安審查 M2）：清單不記彙總稽核
+    {
+      const f = mkMut('m2b', ['    auditCrossBuList(visible, ctx, req);', '']);
+      await fresh(f);
+      await loginAll(['_s_adm', '_s_sec_erp']);
+      await http('_s_sec_erp', 'GET', '/api/quotations');
+      const n = (await logsOf('VIEW_QUOTE_CROSS_BU_LIST')).length;
+      ok(n === 0, '變異2b（清單不記彙總稽核）→ 秘書打清單沒有留痕（' + n + ' 筆）：5.1b 斷言會失敗（抓得到）');
     }
     // 變異 3：讓秘書可編輯（permOf 的 canEdit 納入秘書）
     {

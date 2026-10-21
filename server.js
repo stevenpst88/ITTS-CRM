@@ -29,7 +29,7 @@ const createAiCreditsMiddleware = require('./middleware/aiCredits');
 const app = express();
 // 帳號鎖定／閒置逾時（兩個開關預設關閉；見 lib/loginGuard.js）。鎖定狀態存在主資料 blob 的 loginFailures
 const accessReview = require('./lib/accessReview');   // 季度帳號與權限覆核報表（純函式）
-const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) } });
+const loginGuard = require('./lib/loginGuard').create({ store: { load: () => db.load(), save: (d) => db.save(d) }, sharedStore: process.env.DB_BACKEND === 'postgres' });
 const PORT = process.env.PORT || 3000;
 
 // ── 信任 Vercel 代理（取得正確的 req.ip / HTTPS 判斷）──
@@ -107,6 +107,7 @@ if (SESSION_BACKEND === 'memory') {
 // session 內的 role / displayName / bu / viewOwnerScope / viewGroupId（就地修改，不重簽 cookie，不信任 cookie 副本）。
 // 成本：Postgres 模式 db.load() 為記憶體快照（stale check 已在上方 ready 中介層）；JSON 模式以 auth.json 的
 // mtime+size 判斷變動、並有 5 秒 TTL 後備，saveAuth() 也會主動作廢，所以不會每次請求都讀檔。
+const SESSION_PWD_BINDING = !/^(off|0|false|no)$/i.test(String(process.env.SESSION_PWD_BINDING || '').trim());   // 預設開
 const SESSION_ACCT_TTL_MS = 5000;
 let _sessAcctCache = null; // { t, key, map }
 function invalidateSessionAcctCache() { _sessAcctCache = null; }
@@ -142,7 +143,9 @@ app.use((req, res, next) => {
   if (!su || !su.username) return next();
   let acct;
   try { acct = lookupAccountForSession(su.username); } catch (e) { console.error('[session-refresh]', e); return next(); }
-  const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : null);
+  // 資安審查 M6：登入憑證綁密碼版本。舊 token（部署前簽發、沒有 pwa 欄位）一律放行（寬限，最長 8 小時自然汰換）；SESSION_PWD_BINDING=off 可整個關掉
+  const pwdStale = !!acct && acct.active !== false && SESSION_PWD_BINDING && typeof su.pwa === 'string' && su.pwa !== (acct.passwordChangedAt || '');
+  const bad = !acct ? '帳號已不存在' : (acct.active === false ? '帳號已停用' : (pwdStale ? '密碼已變更，舊的登入已失效' : null));
   if (bad) {
     _logSessionRejected(req, su.username, bad);
     const finish = () => {
@@ -646,7 +649,7 @@ function auditLoginFail(req, attempted, reason) {
 function loginFailed(req, attempted, reason) {
   auditLoginFail(req, attempted, reason);
   try {
-    const r = loginGuard.recordFailure(attempted);
+    const r = loginGuard.recordFailure(attempted, req.ip);
     if (r && r.justLocked) {
       const name = sanitizeAttemptName(attempted);
       writeLog('LOGIN_LOCKED', name || '(空白)', name || '(空白)',
@@ -1191,7 +1194,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const user = authData.users.find(u => u.username === username);
     const GENERIC_FAIL = { success: false, message: '帳號或密碼錯誤' };   // 不存在／停用／密碼錯：同一句、同一狀態碼
     // 帳號鎖定（LOGIN_LOCKOUT=1 才生效）：鎖定期間連「正確密碼」也拒絕，且回應與密碼錯完全相同（同訊息、同狀態碼、同成本的 bcrypt 比對）；不存在的帳號名稱也會鎖，行為一致
-    if (loginGuard.checkLocked(username).locked) {
+    if (loginGuard.checkLocked(username, req.ip).locked) {
       await dummyBcryptCompare(password);
       auditLoginFail(req, username, 'LOCKED');
       return res.status(401).json(GENERIC_FAIL);
@@ -1221,7 +1224,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       loginFailed(req, username, hashOk ? 'BAD_PASSWORD' : 'NO_VALID_HASH');
       return res.status(401).json(GENERIC_FAIL);
     }
-    try { loginGuard.recordSuccess(username); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
+    try { loginGuard.recordSuccess(username, req.ip); } catch (e) { console.error('[loginGuard success]', e && e.message); }   // 成功登入清掉失敗計數（沒有紀錄就不寫入）
     // 最後登入時間（季度帳號覆核用）：寫在帳號紀錄上，同一人 6 小時內最多寫一次，所以一般登入幾乎不增加寫入；失敗不影響登入
     try {
       if (accessReview.shouldStampLogin(user, Date.now())) {
@@ -1258,6 +1261,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       mustChangePassword: !!pwReason,
       passwordChangeReason: pwReason,
       loginAt: Date.now(),   // 公告「每次登入」判斷用：每次真正登入都換新值，F5/還原 session 不變
+      pwa: user.passwordChangedAt || '',   // 資安審查 M6：登入當下的密碼版本；之後密碼被改（自己改或管理員重設）→ 這張舊登入憑證失效
       ...tecopmExtra
     };
     writeLog('LOGIN', username, username, `登入成功${pwReason ? `（需更換密碼:${pwReason}）` : ''}`, req);
@@ -1370,7 +1374,8 @@ app.get('/api/me', requireAuth, (req, res) => {
   // 補上 bu 資訊（session 內可能沒有，從 auth.json 即時讀取最新）
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === req.session.user.username);
-  res.json({ ...req.session.user, bu: normalizeBu(me?.bu) });
+  const { pwa: _pwa, ...pub } = req.session.user;   // pwa（密碼版本）只給伺服器比對用，不回前端
+  res.json({ ...pub, bu: normalizeBu(me?.bu) });
 });
 
 // ── Web Push 推播訂閱 ────────────────────────────────────
@@ -1541,7 +1546,8 @@ app.put('/api/user/password', requireAuth, async (req, res) => {
       req.session.user = {
         ...req.session.user,
         mustChangePassword: false,
-        passwordChangeReason: null
+        passwordChangeReason: null,
+        pwa: user.passwordChangedAt   // 自己改密碼：本機換發新版本；其他裝置／被竊的舊 cookie 因版本不符失效
       };
     }
     writeLog('CHANGE_PASSWORD', req.session.user.username, req.session.user.username, '自行更改密碼', req);
@@ -2311,6 +2317,7 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   const buLabel = buCheck.bu ? buCheck.bu.join('+') : '全公司';
   const scopeLabel = GROUP_SCOPED_ROLES.includes(finalRole) ? `；只看 ${viewOwnerScope} 的集團 ${viewGroupId.slice(0,8)}` : '';
   writeLog('CREATE_USER', req.session.user.username, username, `新增帳號 ${username}（${newUser.displayName}${newUser.nickname ? '／暱稱 ' + newUser.nickname : ''}）角色=${finalRole} BU=${buLabel}${scopeLabel}` + (newUser.email ? '；' + maskedAuditDetail('', newUser.email) : '') + (newUser.quoteMode ? `；報價單權限類型=${QM.MODE_LABEL[newUser.quoteMode]}` : ''), req);
+  if (finalRole === 'admin') adminAccountChange(req, 'CREATE_ADMIN', newUser.username, '');   // 資安審查 H1：通知其他管理員
   auditQuoteModeChange(req, newUser.username, finalRole, newUser.displayName, '', qmRes.value);   // 新增就設定也要有 QUOTE_MODE_CHANGE（未設定→簽核／唯讀）；設為簽核另通知本人
   res.json({ success: true, quoteMode: qmRes.value, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
@@ -2473,6 +2480,7 @@ app.put('/api/admin/users/:username', requireAdmin, (req, res) => {
   if (userBefore.canDownloadContacts !== userAfter.canDownloadContacts) writeLog(userAfter.canDownloadContacts ? 'GRANT_DOWNLOAD_PERMISSION' : 'REVOKE_DOWNLOAD_PERMISSION', opName, req.params.username, `${userAfter.canDownloadContacts ? '開通' : '收回'}客戶名單下載權限：${who}`, req);
   if (userBefore.accessMode !== userAfter.accessMode) writeLog(userAfter.accessMode === 'view' ? 'SET_READONLY' : 'SET_EDITABLE', opName, req.params.username, `存取模式 ${userBefore.accessMode}→${userAfter.accessMode}（${userAfter.accessMode === 'view' ? '改為唯讀' : '改為可編輯'}）：${who}`, req);
   if (userBefore.role !== userAfter.role) writeLog('CHANGE_USER_ROLE', opName, req.params.username, `角色 ${userBefore.role}→${userAfter.role}：${who}`, req);
+  if (userBefore.role !== userAfter.role && userAfter.role === 'admin') adminAccountChange(req, 'PROMOTE_ADMIN', req.params.username, `角色 ${userBefore.role}→admin`);   // 資安審查 H1：升格為管理員也通知其他管理員
   auditQuoteModeChange(req, req.params.username, userAfter.role, u.displayName, userBefore.quoteMode, userAfter.quoteMode);
   res.json({ success: true, quoteMode: userAfter.quoteMode, ...(qmRes.notice ? { notice: qmRes.notice } : {}) });
 });
@@ -2491,7 +2499,10 @@ app.put('/api/admin/users/:username/password', requireAdmin, async (req, res) =>
   user.mustChangePassword = true;
   saveAuth(auth);
   try { loginGuard.unlock(req.params.username); } catch (e) { console.error('[unlock on reset]', e && e.message); }   // 管理員重設密碼＝同時解除登入鎖定
+  // 管理員重設的是自己的密碼：本機換發新版本，避免把自己登出（重設別人的密碼 → 對方所有舊登入失效）
+  if (req.session.user && req.session.user.username === user.username) req.session.user = { ...req.session.user, pwa: user.passwordChangedAt };
   writeLog('RESET_PASSWORD', req.session.user.username, req.params.username, `重設密碼（強制使用者下次登入更換）`, req);
+  if (user.role === 'admin') adminAccountChange(req, 'RESET_ADMIN_PASSWORD', req.params.username, '');   // 資安審查 H1：重設管理員密碼通知其他管理員（含被重設的本人）
   res.json({ success: true });
 });
 
@@ -6656,6 +6667,22 @@ app.get('/api/usermap', requireAuth, (req, res) => {
 
 // ── 通知輔助 ─────────────────────────────────────────────
 // 站內通知（寫入 data.notifications）+ Web Push（瀏覽器/手機背景）雙軌
+/**
+ * 資安審查 H1（最低限度）：建立／升格系統管理員、重設管理員密碼 → 稽核 ADMIN_ACCOUNT_CHANGE ＋ 站內通知「其他現任管理員」（含被重設密碼的那位本人）。
+ * 一位管理員可以用「新增另一個管理員帳號」或「重設另一位管理員密碼」自己充當第二位覆核人；這裡不阻擋（完整解法需使用者決策），
+ * 但保證其他管理員第一時間知道。通知只有帳號名稱與動作，不含任何密碼。任何錯誤都吞掉，不影響主流程。
+ */
+function adminAccountChange(req, kind, targetUsername, detail) {
+  const KIND_LABEL = { CREATE_ADMIN: '新增管理員帳號', PROMOTE_ADMIN: '升格為管理員', RESET_ADMIN_PASSWORD: '重設管理員密碼' };
+  const actor = (req.session && req.session.user && req.session.user.username) || '?';
+  try { writeLog('ADMIN_ACCOUNT_CHANGE', actor, targetUsername, `${KIND_LABEL[kind] || kind}｜操作者 ${actor}｜對象 ${targetUsername}${detail ? '｜' + detail : ''}`, req); } catch (e) { console.error('[adminAccountChange log]', e && e.message); }
+  try {
+    const others = loadAuth().users.filter(u => u.role === 'admin' && u.active !== false && u.username !== actor);
+    others.forEach(u => pushNotification(u.username, 'admin_account_change', '管理員帳號異動：' + (KIND_LABEL[kind] || kind),
+      `${actor} ${KIND_LABEL[kind] || kind}（對象：${targetUsername}）。若這不是你們事先同意的操作，請立即到「稽核紀錄」查看 ADMIN_ACCOUNT_CHANGE。`, targetUsername));
+  } catch (e) { console.error('[adminAccountChange notify]', e && e.message); }
+}
+
 function pushNotification(toUsername, type, title, body, refId) {
   const data = db.load();
   if (!data.notifications) data.notifications = [];
