@@ -17,17 +17,15 @@ const COOKIE_NAME = 'itts_auth';
 const MAX_AGE_MS  = 8 * 60 * 60 * 1000; // 登入後的絕對上限 8 小時（不管有沒有一直在用）
 
 // 閒置逾時（2026-10-16 起）：最後一次「使用者操作」後超過這段時間沒有操作，登入失效。
-// 預設 30 分鐘；SESSION_IDLE_MS 只給測試縮短用（下限 5 秒，避免設成 0 把全站鎖死）。
-function resolveIdleMs() {
-  const n = Number(process.env.SESSION_IDLE_MS);
-  return Number.isFinite(n) && n >= 5000 ? Math.floor(n) : 30 * 60 * 1000;
-}
-const IDLE_MS = resolveIdleMs();
-// 背景輪詢不算「使用者操作」：畫面開著沒人碰，鈴鐺每隔一陣子還是會打 poll-bundle，
-// 若算活動，閒置登出就永遠不會發生。其他請求（頁面載入、API 操作、/api/session/touch）都算。
-const PASSIVE_PATHS = new Set(['/api/poll-bundle']);
-// Express 預設不分大小寫、容許結尾斜線：/API/Poll-Bundle/ 一樣會進同一支路由，所以比對前先正規化
-function isPassivePath(p) { return PASSIVE_PATHS.has(String(p || '').replace(/\/+$/, '').toLowerCase()); }
+// M-01（2026-10 審查）：閒置長度與背景輪詢路徑的單一來源在 lib/sessionIdle.js——
+//   SESSION_IDLE_MS（測試用，下限 5 秒）‖ SESSION_IDLE_MINUTES*60000 ‖ 預設 30 分鐘。
+// 背景輪詢（poll-bundle／notifications／announcements/active 的 GET）不算「使用者操作」：畫面開著沒人碰，
+// 鈴鐺每隔一陣子還是會打這些，若算活動，閒置登出就永遠不會發生。其他請求（頁面載入、API 操作、/api/session/touch）都算。
+const SI = require('../lib/sessionIdle');
+const IDLE_MS = SI.resolveIdleMs();
+const PASSIVE_PATHS = new Set(SI.IDLE_POLL_PATHS);
+// 僅比對路徑（相容舊測試）；中介層內用 SI.isPollingRequest(method, path)（GET／HEAD 才算輪詢）
+function isPassivePath(p) { return SI.isPollingRequest('GET', p); }
 // cookie 比閒置視窗多活一小段：讓伺服器能「看到」過期的 token 並回報是閒置（訊息才會寫「閒置逾時」，
 // 而不是 cookie 被瀏覽器悄悄刪掉後變成含糊的「請先登入」）。逾時與否仍以 token 內的最後活動時間為準，與這段寬限無關。
 const COOKIE_GRACE_MS = 5 * 60 * 1000;
@@ -103,12 +101,13 @@ module.exports = function jwtSession(req, res, next) {
       if (decoded.user && lat && (Date.now() - lat * 1000) > IDLE_MS) {
         // 閒置逾時：視為未登入，清掉 cookie；標記起來讓 requireAuth 回應「是因為閒置」
         req._sessionIdleExpired = true;
+        req._sessionIdleUser = (decoded.user && decoded.user.username) || '';   // server.js 用來寫 SESSION_IDLE_TIMEOUT 稽核
         lgn = 0;   // 之後重新登入要以新的時間當 8 小時上限的起點
         clearCookieOnRes(res);
       } else {
         currentUser = decoded.user || null;
         // 使用者操作（非背景輪詢）→ 滑動延長閒置視窗
-        if (currentUser && !isPassivePath(req.path) && (Date.now() - lat * 1000) >= REFRESH_AFTER_MS) {
+        if (currentUser && !SI.isPollingRequest(req.method, req.path) && (Date.now() - lat * 1000) >= REFRESH_AFTER_MS) {
           setCookieOnRes(res, issueToken(currentUser, { lgn, lat: Math.floor(Date.now() / 1000) }), lgn);
         }
       }

@@ -96,9 +96,10 @@ function makeChainPg(shared, opt) {
       return { rows: [] };
     }
     if (/^ROLLBACK$/i.test(s)) { c.inTx = false; c.pend = []; release(c); return { rows: [] }; }
-    if (/^CREATE TABLE IF NOT EXISTS audit_events/i.test(s) || /^CREATE INDEX IF NOT EXISTS audit_events_/i.test(s)) { S.ddl.push(s); return { rows: [] }; }
+    if (/^CREATE TABLE IF NOT EXISTS audit_events/i.test(s) || /^CREATE INDEX IF NOT EXISTS audit_events_/i.test(s)) { S.ddl.push(s); const mi = /INDEX IF NOT EXISTS (w+)/i.exec(s); if (mi) (S.idx = S.idx || new Set()).add(mi[1]); return { rows: [] }; }
     if (/^ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS seq BIGINT/i.test(s)) { if (opt.failAlter) throw new Error('must be owner of table audit_events'); S.chainCols = true; S.ddl.push(s); return { rows: [] }; }
-    if (/^CREATE UNIQUE INDEX IF NOT EXISTS audit_events_seq_uidx/i.test(s)) { S.ddl.push(s); return { rows: [] }; }
+    if (/^CREATE UNIQUE INDEX IF NOT EXISTS audit_events_seq_uidx/i.test(s)) { S.ddl.push(s); (S.idx = S.idx || new Set()).add('audit_events_seq_uidx'); return { rows: [] }; }
+    if (/^SELECT indexname FROM pg_indexes WHERE tablename = 'audit_events'$/i.test(s)) return { rows: Array.from(S.idx || []).map((n) => ({ indexname: n })) };
     if (/^SELECT 1 FROM audit_events LIMIT 1$/i.test(s)) return { rows: [] };
     if (/^SELECT count\(\*\)::int AS n FROM information_schema\.columns/i.test(s)) return { rows: [{ n: S.chainCols ? 4 : 0 }] };
     if (/^SELECT seq, row_hash FROM audit_events WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1$/i.test(s) || /^SELECT seq, row_hash, kid FROM audit_events WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1$/i.test(s)) {
@@ -231,7 +232,7 @@ async function secU2() {
     const be = pgBackend();
     await be.ad.insert(Store.normalizeEvent(EVENTS[0]));
     const log = be.fake.log;
-    const i = log.findIndex(s => /^BEGIN$/.test(s));
+    const i = log.findIndex((s, k) => /^BEGIN$/.test(s) && /^SET LOCAL lock_timeout = 4000$/.test(log[k + 1] || ''));   // 跳過補欄位 DDL 那個交易（D-02：DDL 交易的 lock_timeout 是 AUDIT_DDL_LOCK_TIMEOUT_MS）
     const seqSql = log.slice(i, i + 6).map(s => s.replace(/\(.*$/, '').slice(0, 40));
     eq(seqSql[0], 'BEGIN', '[2.1] 第 1 句 BEGIN');
     ok(/^SET LOCAL lock_timeout = 4000$/.test(log[i + 1]), '[2.1] 第 2 句 SET LOCAL lock_timeout（鎖等待有上限）');
@@ -258,7 +259,12 @@ async function secU2() {
     ok(byId.every((r, i) => r.prev_hash === (i ? byId[i - 1].row_hash : AC.GENESIS)), '[2.2] 每一筆 prev_hash 都接上一筆 row_hash');
     const v = await AC.verifyChain(bes[0].ad, CFG, {});
     ok(v.ok && v.checked === 90 && v.headSeq === 90, '[2.2] 驗證通過：90 筆、鏈頭 90');
-    const perTx = bes.every(b => { const l = b.fake.log; return l.filter(s => /^BEGIN$/.test(s)).length === l.filter(s => /^COMMIT$/.test(s)).length && l.filter(s => /pg_advisory_xact_lock/.test(s)).length === l.filter(s => /^BEGIN$/.test(s)).length; });
+    // D-02：補欄位 DDL 也在交易內（lock_timeout 非 4000、沒有 advisory lock），不計入「每個鏈寫入交易都有鎖」
+    const perTx = bes.every(b => {
+      const l = b.fake.log;
+      const ddlTx = l.filter(s => /^SET LOCAL lock_timeout = \d+$/.test(s) && !/= 4000$/.test(s)).length;
+      return l.filter(s => /^BEGIN$/.test(s)).length === l.filter(s => /^COMMIT$/.test(s)).length && l.filter(s => /pg_advisory_xact_lock/.test(s)).length === l.filter(s => /^BEGIN$/.test(s)).length - ddlTx;
+    });
     ok(perTx, '[2.2] 每個交易都有 advisory lock，BEGIN／COMMIT 成對');
   }
   // 2.3 兩實例強制交錯（無延遲，純靠鎖排序）
@@ -1125,7 +1131,7 @@ async function secE() {
   ok(lines0.slice(0, 3).every(l => l.action === 'PRE_CHAIN' && l.cseq === undefined), '[E1.3] 啟用前的 3 筆舊事件維持原樣（沒有鏈欄位）');
   ok(lines0.slice(3).every(l => Number.isInteger(l.cseq)) && lines0.slice(3).map(l => l.cseq).join() === lines0.slice(3).map((_, i) => i + 1).join(), '[E1.3] 啟用後的事件 cseq 為 1..N 連續');
   // verify
-  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify');
+  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify?storedAnchor=0');   // 95 份是假造的舊錨點（簽章無效），本案例不比對已存錨點（D-14 預設會比對）
   const v1 = r.json || {};
   ok(r.status === 200 && v1.ok === true && v1.checked >= lines0.length - 3 && v1.legacyUncovered === 3 && v1.unchainedAfterStart === 0 && v1.firstBreak === null && /^[0-9a-f]{64}$/.test(v1.headHash), '[E1.4] verify：通過、舊資料 3 筆報告為未納入鏈' + J(v1).slice(0, 250));
   await sleep(400);
@@ -1134,7 +1140,7 @@ async function secE() {
   r = await http('_s_admin', 'GET', '/api/admin/audit-chain/head');
   ok(r.json.lastVerify && r.json.lastVerify.ok === true && r.json.lastVerify.by === '_s_admin', '[E1.5] head 之後帶出上次驗證結果');
   // 區間
-  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify?from=2&to=4');
+  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify?storedAnchor=0&from=2&to=4');
   ok(r.json.ok && r.json.checked === 3, '[E1.6] 區間 2..4 驗 3 筆');
   // anchor
   r = await http('_s_admin', 'GET', '/api/admin/audit-chain/anchor');
@@ -1178,7 +1184,7 @@ async function secE() {
   r = await http('_s_admin', 'POST', '/api/admin/audit-chain/verify', { anchor: anchorT });
   ok(r.json.ok === false && r.json.anchor.reason === 'TRUNCATED', '[E1.11] 截掉最後 2 行後用先前下載的錨點驗證 → TRUNCATED');
   fs.writeFileSync(path.join(ROOT, 'audit.log.jsonl'), orig2);
-  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify');
+  r = await http('_s_admin', 'GET', '/api/admin/audit-chain/verify?storedAnchor=0');
   ok(r.json.ok === true, '[E1.12] 還原檔案後再次通過');
   // Cron
   r = await http(null, 'GET', '/api/cron/audit-anchor');

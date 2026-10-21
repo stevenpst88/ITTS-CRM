@@ -765,7 +765,7 @@
       ${sc.rows.map((r) => h`<tr class="${r.floorBad ? 'bad' : r.loose ? 'loose' : r.same === false ? 'diff' : ''}"><td>${r.amountText}</td><td>${r.route}</td><td>${r.stepsText}</td><td>${r.activeStepsText == null ? '—' : r.activeStepsText}</td><td>${r.floorBad ? '⛔ 違反底線' : r.same == null ? '—' : r.same ? '✓ 相同' : r.loose ? '▲ 放寬' : '△ 不同'}</td></tr>`)}
       </tbody></table></div>
       <p class="fd-mini">全取樣統計（${comma(sm.samples)} 組${sm.truncated ? '，已達上限被截斷' : ''}${sm.sampledEvery > 1 ? '；「不同／無法解析」每 ' + sm.sampledEvery + ' 組抽 1 組統計' : ''}）：各路線被選中次數——${wins}。${sm.unreachableRoutes.length ? h`⚠ 永遠不會被選中的路線：${sm.unreachableRoutes.map((x) => x.name).join('、')}。` : '✓ 沒有永遠不會生效的路線。'} ${sm.unreachableMods.length ? h`⚠ 從未套用的調整規則：${sm.unreachableMods.map((x) => x.name).join('、')}。` : ''}
-        ${sm.differing != null ? h`與目前生效版不同 ${comma(sm.differing)} 組、其中放寬 ${comma(sm.loosened)} 組。` : ''} 違反底線 ${sm.floorViolations} 組；無法解析簽核人 ${sm.blockedSamples} 組${Object.keys(sm.blockCodes || {}).length ? '（' + Object.keys(sm.blockCodes).join('、') + '）' : ''}。</p>
+        ${sm.differing != null ? h`與目前生效版不同 ${comma(sm.differing)} 組、其中放寬 ${comma(sm.loosened)} 組。` : ''} 違反底線 ${sm.floorViolations} 組${sm.floorProven === false ? '（取樣被截斷，無法證明底線成立，不能視為通過）' : ''}；無法解析簽核人 ${sm.blockedSamples} 組${Object.keys(sm.blockCodes || {}).length ? '（' + Object.keys(sm.blockCodes).join('、') + '）' : ''}。</p>
       <div class="fd-row"><button type="button" class="fd-btn sm" id="fdScanCsv">下載 CSV</button></div>`;
   }
   function csvCell(v) { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }

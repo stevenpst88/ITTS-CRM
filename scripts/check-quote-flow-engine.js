@@ -19,6 +19,7 @@
  * 測試資料只用通用字串。
  */
 'use strict';
+process.env.QUOTE_FLOW_MODE_THROTTLE_MS = '0';   // C-04：模式變更紀錄預設同行程 10 分鐘節流；本腳本在同一行程內反覆切換模式，要關掉節流
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');

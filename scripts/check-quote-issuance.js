@@ -870,7 +870,7 @@ async function secM() {
   // M2 核准有效判定：用「核准還在但雜湊不同」的單（seed 時就不符）驗證
   await mutRunSeeded('核准有效不比對內容雜湊（雜湊不符的核准單）', [{ file: 'issuance', name: 'valid2', from: "return !!ap && ap.state === 'approved' && QA.contentHash(q) === ap.hash;", to: "return !!ap && ap.state === 'approved';" }]);
   // M3 先記錄後串流：匯出不留紀錄
-  await mutRun('匯出沒有先留紀錄', [{ file: 'routes', name: 'norec', from: "const iss = recordIssuance(ctx, req, live, q, 'xlsx');\n    if (!iss.ok)", to: "const iss = { ok: true, rec: { issueNo: 'ISS-FAKE-000', kind: valid ? 'official' : 'draft' }, shortHash: '000000000000' };\n    if (!iss.ok)" }], async () => {
+  await mutRun('匯出沒有先留紀錄', [{ file: 'routes', name: 'norec', from: "const iss = await recordIssuance(ctx, req, live, q, 'xlsx');\n    if (!iss.ok)", to: "const iss = { ok: true, rec: { issueNo: 'ISS-FAKE-000', kind: valid ? 'official' : 'draft' }, shortHash: '000000000000' };\n    if (!iss.ok)" }], async () => {
     const r = await http('_s_owner', 'GET', '/api/quotations/Q1/export');
     const recs = (dataNow().quoteIssuances || []).filter(x => x.quoteId === 'Q1' && x.format === 'xlsx');
     ok(r.status === 200 && recs.length === 1 && recs[0].issueNo === r.headers.get('x-issue-no'), '（變異探針）回應前資料庫必須已有該序號的紀錄');
@@ -898,7 +898,7 @@ async function secM() {
     ok(r.json.watermark === false, '（變異探針）預設 /issue 必須回 watermark:false');
   });
   // M6 kind 信任前端
-  await mutRun('kind 信任前端', [{ file: 'routes', name: 'trustkind', from: "const iss = recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();", to: "if (req.body && req.body.kind === 'official') { q.approval = live.approval = Object.assign({}, live.approval || {}, { state: 'approved', hash: QA.contentHash(q) }); }\n    const iss = recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();" }], async () => {
+  await mutRun('kind 信任前端', [{ file: 'routes', name: 'trustkind', from: "const iss = await recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();", to: "if (req.body && req.body.kind === 'official') { q.approval = live.approval = Object.assign({}, live.approval || {}, { state: 'approved', hash: QA.contentHash(q) }); }\n    const iss = await recordIssuance(ctx, req, live, q, format);\n    if (!iss.ok) return fail(res, iss.status, iss.code, iss.message);\n    await flushAuditWrites();" }], async () => {
     const r = await http('_s_owner', 'POST', '/api/quotations/Q5/issue', { format: 'pdf', kind: 'official' });
     ok(r.json.kind === 'draft', '（變異探針）未核准單傳 kind=official 必須仍是 draft');
   });

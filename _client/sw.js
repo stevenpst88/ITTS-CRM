@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v22';   // v22：資安審查快修（蓋章憑證改帶 X-Stamp-Token 標頭的 quote-pdf.js、通知圖示 app.js、後台動作標籤 admin.html）。歷史請看 git log -- _client/sw.js
+const SW_VERSION = 'itts-crm-v23';   // v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 
