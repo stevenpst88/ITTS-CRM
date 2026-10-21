@@ -2006,11 +2006,11 @@
             </span>
           </div>
           <div class="admin-card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px;border-bottom:1px solid #f0f0f0">
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">風險旗標</div>
+            <div><label for="arFlag" class="ar-cap">風險旗標</label>
               <select id="arFlag" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部帳號</option><option value="*">僅有任一旗標</option></select></div>
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">角色</div>
+            <div><label for="arRole" class="ar-cap">角色</label>
               <select id="arRole" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部角色</option></select></div>
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">文字搜尋</div>
+            <div><label for="arQ" class="ar-cap">文字搜尋</label>
               <input id="arQ" placeholder="帳號／名稱" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px"></div>
             <div style="font-size:12px;color:#888" id="arMeta"></div>
           </div>
@@ -2020,9 +2020,9 @@
           <div class="admin-card-header"><span class="admin-card-title">完成本季覆核簽核</span></div>
           <div class="admin-card-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
             <div style="font-size:13px;color:#555;line-height:1.7">簽核會把「目前帳號與權限組態」的雜湊（快照）連同你的意見永久留底，之後不能修改或刪除。請先逐項看過上方旗標。</div>
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">季別</div><input id="arQuarter" maxlength="6" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:110px"></div>
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">覆核意見（最多 1000 字）</div><textarea id="arComment" rows="3" maxlength="1000" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></textarea></div>
-            <div><div style="font-size:12px;color:#888;margin-bottom:3px">例外帳號（每行一筆：帳號: 說明；明知有旗標但同意保留者）</div><textarea id="arExceptions" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px" placeholder="例：some.user: 專案結束前保留下載權限"></textarea></div>
+            <div><label for="arQuarter" class="ar-cap">季別</label><input id="arQuarter" maxlength="6" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:110px"></div>
+            <div><label for="arComment" class="ar-cap">覆核意見（最多 1000 字）</label><textarea id="arComment" rows="3" maxlength="1000" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></textarea></div>
+            <div><label for="arExceptions" class="ar-cap">例外帳號（每行一筆：帳號: 說明；明知有旗標但同意保留者）</label><textarea id="arExceptions" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px" placeholder="例：some.user: 專案結束前保留下載權限"></textarea></div>
             <div id="arSignoffErr" style="color:#c5221f;font-size:13px"></div>
             <div><button class="btn btn-primary" id="arSignoffSubmit">確認簽核</button> <button class="btn" id="arSignoffCancel" style="background:#f0f2f5;color:#333">取消</button></div>
           </div>

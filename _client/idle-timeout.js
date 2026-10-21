@@ -116,11 +116,24 @@
     try { var n = Number(global.localStorage.getItem(SHARED_KEY)); return n > 0 && n <= now() + 60000 ? n : 0; } catch (e) { return 0; }
   }
 
-  function onActivity() {
+  function inWarn(target) {
+    // 事件目標在警告視窗（#idleTimeoutOverlay 或簡易提示）內：這是在操作警告本身，不算「使用者回來了」——
+    // 否則 pointerdown 會先把視窗收掉，「立即登出」的 click 永遠發生不了（也不該因此悄悄續命）。
+    try {
+      var ov = overlayEl();
+      return !!(target && ((ov && ov.contains(target)) || (warnEl && warnEl.contains(target))));
+    } catch (e) { return false; }
+  }
+
+  function onActivity(ev) {
+    if (warnShown) {
+      if (ev && ev.type === 'keydown' && ev.key === 'Escape') { stay(); return; }   // Esc＝繼續使用
+      if (inWarn(ev && ev.target)) return;   // 在警告視窗內操作（Tab、捲動、按鈕）：不續命、不收視窗；「繼續使用」靠自己的 click
+    }
     var t = now();
     lastActivity = t;
     publishActivity(t);
-    if (warnShown) hideWarn();   // 有操作就收起提醒（操作本身就會續期；按「立即登出」的點擊會在 logoutNow 接手）
+    if (warnShown) hideWarn();   // 在視窗外的操作（滑鼠、鍵盤、捲動）＝使用者回來了：收起提醒，操作本身就會續期
     if (t - lastTouch >= TOUCH_EVERY_MS) touchServer();
   }
 
@@ -143,13 +156,35 @@
     if (ov) ov.style.display = 'none';
     if (warnEl && warnEl.parentNode) warnEl.parentNode.removeChild(warnEl);
     warnEl = null;
+    var wasShown = warnShown;
     warnShown = false;
+    // 還原顯示警告前的焦點（正在填的表單欄位）
+    if (wasShown && prevFocus) {
+      try { if (prevFocus.isConnected && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch (e) { /* 忽略 */ }
+    }
+    prevFocus = null;
+  }
+  var prevFocus = null;
+
+  // 焦點陷阱：警告視窗只有兩顆按鈕，Tab／Shift+Tab 在兩者之間循環
+  function trapTab(ev) {
+    if (!warnShown || ev.key !== 'Tab') return;
+    var ov = overlayEl(), box = ov || warnEl;
+    if (!box) return;
+    var btns = Array.prototype.slice.call(box.querySelectorAll('button')).filter(function (b) { return !b.disabled; });
+    if (!btns.length) return;
+    var first = btns[0], last = btns[btns.length - 1], a = global.document.activeElement;
+    if (!box.contains(a)) { ev.preventDefault(); first.focus(); }
+    else if (ev.shiftKey && a === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && a === last) { ev.preventDefault(); first.focus(); }
   }
   var warnShown = false;
 
   function showWarn(secondsLeft) {
     if (!global.document || !global.document.body) return;
+    var firstShow = !warnShown;
     warnShown = true;
+    if (firstShow) { try { prevFocus = global.document.activeElement; } catch (e) { prevFocus = null; } }
     var ov = overlayEl();
     if (ov) {
       // 沿用既有的警告視窗（倒數＋繼續使用／立即登出）
@@ -162,12 +197,14 @@
       var cd = global.document.getElementById('idleCountdown');
       if (cd) cd.textContent = fmtLeft(secondsLeft);
       if (ov.style.display !== 'flex') ov.style.display = 'flex';
+      if (firstShow) { var sb2 = global.document.getElementById('idleStayBtn'); if (sb2) { try { sb2.focus(); } catch (e) { /* 忽略 */ } } }   // 焦點進對話框（預設＝繼續使用）
       return;
     }
     // 沒有警告視窗的頁面（admin.html）：簡易提示
     if (!warnEl) {
       warnEl = global.document.createElement('div');
       warnEl.setAttribute('role', 'alertdialog');
+      warnEl.setAttribute('aria-label', '閒置逾時警告');
       warnEl.setAttribute('aria-live', 'assertive');
       warnEl.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483000;' +
         'background:#1f2937;color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35);' +
@@ -182,6 +219,7 @@
       warnEl.appendChild(msg);
       warnEl.appendChild(btn);
       global.document.body.appendChild(warnEl);
+      try { btn.focus(); } catch (e) { /* 忽略 */ }
     }
     var m = warnEl.querySelector('#ittsIdleMsg');
     if (m) m.textContent = '您已閒置一段時間，系統將在 ' + fmtLeft(secondsLeft) + ' 後自動登出。';
@@ -208,6 +246,7 @@
       ['mousedown', 'keydown', 'touchstart', 'wheel', 'scroll', 'pointerdown'].forEach(function (ev) {
         global.addEventListener(ev, onActivity, { passive: true, capture: true });
       });
+      global.addEventListener('keydown', trapTab, true);
       // 分頁從背景切回來：只重新判斷時間（可能已逾時 → 登出）。不替「沒有操作的人」續期——
       // 否則螢幕喚醒、切換分頁都會讓伺服器的最後活動時間往後挪，無人看管的電腦會多開一段時間
       global.document.addEventListener('visibilitychange', function () {

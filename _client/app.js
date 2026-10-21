@@ -319,7 +319,8 @@ function showToast(msg, duration = 2500) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), duration);
+  clearTimeout(showToast._t);   // 連續呼叫時，前一個 toast 的計時器不能把後一個提早收掉
+  showToast._t = setTimeout(() => t.classList.remove('show'), duration);
 }
 
 function getInitial(name) {
@@ -1491,15 +1492,29 @@ async function loadKeyAccounts() {
   } catch { allKeyAccounts = []; }
 }
 
+// 渲染名單期間（renderContacts／fillContactList）才存在的 公司名 → KA 紀錄 索引：名單有數百～上千張卡，
+// 每張卡都 .some／.find 掃一遍 allKeyAccounts 是 O(卡數×KA數)。只在「一次渲染」內有效、結束就丟，不會有過期問題。
+let _kaBatch = null;
+function _kaBatchStart() {
+  if (_kaBatch) return false;   // 外層已建立（巢狀呼叫）：由外層負責結束
+  const m = new Map();
+  allKeyAccounts.forEach(ka => { if (!m.has(ka.company)) m.set(ka.company, ka); });   // 與 .find 一致：同公司取第一筆
+  _kaBatch = m;
+  return true;
+}
+function _kaBatchEnd(started) { if (started) _kaBatch = null; }
+
 // 該公司是否為 KA（任何人標的都算）
 function isKeyAccount(companyName) {
   if (!companyName) return false;
+  if (_kaBatch) return _kaBatch.has(companyName);
   return allKeyAccounts.some(ka => ka.company === companyName);
 }
 
 // 取得該公司的 KA 紀錄（dedupe by company，由 server 端保證唯一）
 function getKaRecord(companyName) {
   if (!companyName) return null;
+  if (_kaBatch) return _kaBatch.get(companyName) || null;
   return allKeyAccounts.find(ka => ka.company === companyName) || null;
 }
 
@@ -1961,6 +1976,10 @@ async function setCustomerType(contactId, customerType, productLine) {
 
 // ── 渲染名片列表 ─────────────────────────────────────────
 function renderContacts(contacts) {
+  const kaStarted = _kaBatchStart();
+  try { return renderContactsImpl(contacts); } finally { _kaBatchEnd(kaStarted); }
+}
+function renderContactsImpl(contacts) {
   const isProspects = currentSection === 'prospects';
   const list = $(isProspects ? 'prospectList' : 'contactList');
   list.innerHTML = '';
@@ -2005,6 +2024,28 @@ function renderContacts(contacts) {
 
 // 把一組名片依「搜尋平鋪／集團→公司→聯絡人分組」渲染進 host
 function fillContactList(host, items) {
+  const kaStarted = _kaBatchStart();
+  try { fillContactListImpl(host, items); } finally { _kaBatchEnd(kaStarted); }
+}
+// 一次建立「聯絡人 → 拜訪」「公司 → 商機」索引（保留 allVisits／allOpportunities 的原始順序，供每間公司取最近一筆）。
+// 之前 buildCompanyGroupEl 對每間公司各掃＋排序一次全部拜訪與商機（O(公司數×資料量)）
+function buildRecentIndex() {
+  const visitsByContact = new Map();
+  allVisits.forEach((v, i) => {
+    let a = visitsByContact.get(v.contactId);
+    if (!a) { a = []; visitsByContact.set(v.contactId, a); }
+    a.push([i, v]);
+  });
+  const oppsByCompany = new Map();
+  allOpportunities.forEach(o => {
+    const k = o.company || '';
+    let a = oppsByCompany.get(k);
+    if (!a) { a = []; oppsByCompany.set(k, a); }
+    a.push(o);
+  });
+  return { visitsByContact, oppsByCompany };
+}
+function fillContactListImpl(host, items) {
   if (isSearchMode) {
     // 搜尋模式：平鋪所有結果
     items.forEach(c => host.appendChild(buildContactCard(c)));
@@ -2026,13 +2067,14 @@ function fillContactList(host, items) {
     allGroups.forEach(g => g.memberCompanies.forEach(co => companyToGroup.set(co, g)));
     const groupedCompanyNames = new Set(companyToGroup.keys());
     const renderedGroupIds = new Set();
+    const recentIdx = buildRecentIndex();
 
     // 先渲染集團卡（只渲染有聯絡人的集團）
     allGroups.forEach(group => {
       const hasContacts = group.memberCompanies.some(co => withCompany.has(co));
       if (!hasContacts || renderedGroupIds.has(group.id)) return;
       renderedGroupIds.add(group.id);
-      host.appendChild(buildGroupCard(group, withCompany));
+      host.appendChild(buildGroupCard(group, withCompany, recentIdx));
     });
 
     // 再渲染無集團的公司
@@ -2040,7 +2082,7 @@ function fillContactList(host, items) {
       .filter(([company]) => !groupedCompanyNames.has(company))
       .sort(([a], [b]) => a.localeCompare(b, 'zh-TW'))
       .forEach(([company, members]) => {
-        host.appendChild(buildCompanyGroupEl(company, members));
+        host.appendChild(buildCompanyGroupEl(company, members, recentIdx));
       });
 
     // 無公司的聯絡人放最後
@@ -2056,7 +2098,7 @@ function fillContactList(host, items) {
 }
 
 // ── 子公司卡（可獨立使用於集團展開區，或直接放在頂層） ──────────
-function buildCompanyGroupEl(company, members) {
+function buildCompanyGroupEl(company, members, recentIdx) {
   const primary = members.find(c => c.isPrimary) || members[0];
   const opp = members.find(c => c.opportunityStage)?.opportunityStage;
   const industry = members.find(c => c.industry)?.industry;
@@ -2065,15 +2107,31 @@ function buildCompanyGroupEl(company, members) {
     ? `<span class="opp-badge opp-card ${OPPORTUNITY_LABELS[opp]?.cls || ''}">${escapeHtml(opp)}｜${OPPORTUNITY_LABELS[opp]?.label.split('｜')[1] || ''}</span>` : '';
   const industryBadge = industry ? `<span class="industry-badge">${escapeHtml(industry)}</span>` : '';
 
-  const memberIds = new Set(members.map(c => c.id));
-  const recentVisit = [...allVisits]
-    .filter(v => memberIds.has(v.contactId))
-    .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
-    [0];
-  const recentOpp = [...allOpportunities]
-    .filter(o => (o.company || '') === company && o.stage !== 'Won')
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    [0];
+  let recentVisit, recentOpp;
+  if (recentIdx) {
+    // 走索引：只取「這間公司成員的拜訪」「這間公司的商機」再排序（集合很小）；先還原成 allVisits 的原始順序，
+    // 讓同日期（排序相等）時取到的仍是同一筆（與下方原本的全掃寫法結果一致）
+    const mv = [];
+    new Set(members.map(c => c.id)).forEach(id => { const a = recentIdx.visitsByContact.get(id); if (a) a.forEach(p => mv.push(p)); });
+    mv.sort((x, y) => x[0] - y[0]);
+    recentVisit = mv.map(p => p[1])
+      .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
+      [0];
+    recentOpp = (recentIdx.oppsByCompany.get(company) || [])
+      .filter(o => o.stage !== 'Won')
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      [0];
+  } else {
+    const memberIds = new Set(members.map(c => c.id));
+    recentVisit = [...allVisits]
+      .filter(v => memberIds.has(v.contactId))
+      .sort((a, b) => (b.visitDate || '').localeCompare(a.visitDate || ''))
+      [0];
+    recentOpp = [...allOpportunities]
+      .filter(o => (o.company || '') === company && o.stage !== 'Won')
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      [0];
+  }
 
   const recentVisitHtml = recentVisit
     ? `<div class="cg-recent-row">
@@ -2131,7 +2189,7 @@ function buildCompanyGroupEl(company, members) {
 }
 
 // ── 集團卡（三層：集團 → 子公司 → 聯絡人） ──────────────────────
-function buildGroupCard(group, withCompany) {
+function buildGroupCard(group, withCompany, recentIdx) {
   const memberCompanies = group.memberCompanies.filter(co => withCompany.has(co));
   const totalContacts = memberCompanies.reduce((s, co) => s + (withCompany.get(co)?.length || 0), 0);
 
@@ -2156,7 +2214,7 @@ function buildGroupCard(group, withCompany) {
   const body = wrap.querySelector('.group-card-body');
   memberCompanies
     .sort((a, b) => a.localeCompare(b, 'zh-TW'))
-    .forEach(co => body.appendChild(buildCompanyGroupEl(co, withCompany.get(co))));
+    .forEach(co => body.appendChild(buildCompanyGroupEl(co, withCompany.get(co), recentIdx)));
 
   wrap.querySelector('.group-edit-btn').addEventListener('click', e => {
     e.stopPropagation();

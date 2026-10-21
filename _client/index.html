@@ -3159,10 +3159,10 @@
 
   <!-- 閒置自動登出警告 Modal -->
   <div class="modal-overlay" id="idleTimeoutOverlay" style="display:none;z-index:9999">
-    <div class="modal" style="max-width:400px;text-align:center">
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="idleTitle" aria-describedby="idleCountdown" style="max-width:400px;text-align:center">
       <div class="modal-body" style="padding:32px 24px">
-        <div style="font-size:48px;margin-bottom:16px">⏱️</div>
-        <h3 class="idle-title" style="margin:0 0 12px;font-size:18px">閒置逾時警告</h3>
+        <div style="font-size:48px;margin-bottom:16px" aria-hidden="true">⏱️</div>
+        <h3 class="idle-title" id="idleTitle" style="margin:0 0 12px;font-size:18px">閒置逾時警告</h3>
         <p class="idle-text" style="margin:0 0 8px;font-size:14px">您已閒置一段時間，將在</p>
         <div id="idleCountdown" style="font-size:36px;font-weight:700;color:#e74c3c;margin:12px 0">5:00</div>
         <p class="idle-text" style="margin:0 0 24px;font-size:14px">後自動登出</p>

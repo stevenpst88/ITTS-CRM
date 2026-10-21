@@ -4762,6 +4762,14 @@ body.dark:not(.glass) .rh-tag { background: #21262d; }
 .mb-bgt-label { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; text-align: center; background: #f3f4f6; border-radius: 6px; padding: 3px 0; }
 .mb-bgt-input { width: 100%; padding: 8px 4px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; text-align: center; background: #fff; color: #111827; }
 
+/* ═══ 程式碼審查前端修正（PR-1）═══ */
+/* A2：閒置警告視窗不要在矮螢幕（手機直立／橫放）內部再捲動，否則「繼續使用／立即登出」會被擠到框外而倒數照走 */
+#idleTimeoutOverlay .modal-body { max-height: none; overflow-y: visible; }
+/* A7：舊有的無限動畫（脈動／浮動／彈跳）在「減少動態效果」下停止；轉圈圈（載入中）保留，因為它是狀態指示 */
+@media (prefers-reduced-motion: reduce) {
+  .mic-btn.listening, .z-badge-danger, .zombie-alert-icon, .bday-card-icon { animation: none !important; }
+}
+
 /* ═══ gc-*：深色玻璃對比修正（掃描報告 2026-10-20）═══
  * 原本 inline 的「淺底＋深字」搬進 class：這裡放原樣的淺色版（非玻璃／淺色玻璃外觀不變），
  * 深色玻璃的成對覆寫在 glass.css 檔尾（字色與底色一起換成 --g-*／--q4-* token）。
