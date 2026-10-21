@@ -479,7 +479,9 @@ G.static = async () => {
     const added = diff.split('\n').filter((l) => /^\+[^+]/.test(l)).map((l) => l.slice(1));
     const removed = diff.split('\n').filter((l) => /^-[^-]/.test(l)).map((l) => l.slice(1));
     const cnt = (arr, re) => arr.reduce((n, l) => n + (l.match(re) || []).length, 0);
-    ok(cnt(added, /<script\b/g) <= cnt(removed, /<script\b/g), 'static 沒有新增 inline <script>');
+    // 只算「行內」script（有 src= 的外部腳本檔是正常新增，例如新模組的 <script src="…">）
+    const INLINE_SCRIPT = /<script\b(?![^>]*\bsrc\s*=)/g;
+    ok(cnt(added, INLINE_SCRIPT) <= cnt(removed, INLINE_SCRIPT), 'static 沒有新增 inline <script>');
     ok(cnt(added, /\son[a-z]+\s*=\s*["']/g) <= cnt(removed, /\son[a-z]+\s*=\s*["']/g), 'static 沒有新增 on*= 事件屬性');
     ok(cnt(added, /\sstyle\s*=\s*["']/g) <= cnt(removed, /\sstyle\s*=\s*["']/g), `static 沒有新增 style= 屬性（加 ${cnt(added, /\sstyle\s*=\s*["']/g)} / 減 ${cnt(removed, /\sstyle\s*=\s*["']/g)}）`);
   } catch (e) { console.log('    （略過 git diff 檢查：' + String(e.message).slice(0, 80) + '）'); }
