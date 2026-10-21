@@ -1992,6 +1992,9 @@
               <input type="date" id="logFilterTo" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></div>
             <div><div style="font-size:12px;color:#888;margin-bottom:3px">文字搜尋</div>
               <input id="logFilterQ" placeholder="說明／對象／帳號" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px"></div>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#555;padding-bottom:7px;cursor:pointer" title="CSP 違規回報是瀏覽器自動送來的資安觀察雜訊，預設隱藏以免淹沒真實稽核；僅影響畫面，匯出 CSV／JSON 仍含全部">
+              <input type="checkbox" id="logShowCsp" onchange="loadLogs(false)"> 顯示 CSP 違規回報
+            </label>
             <button class="btn" onclick="loadLogs(true)" style="background:#1a73e8;color:#fff;padding:7px 16px">🔍 查詢</button>
             <button class="btn" onclick="clearLogFilter()" style="background:#f0f2f5;color:#333;padding:7px 12px">清除</button>
           </div>
@@ -5855,6 +5858,7 @@
 
     // 稽核日誌分頁／篩選：伺服端 /admin/logs?paged=1（含舊資料合併），每頁 200 筆
     const LOG_PAGE = 200;
+    const LOG_CSP_ACTIONS = new Set(['CSP_VIOLATION', 'CSP_REPORT_THROTTLED']);   // 資安回報雜訊：預設從畫面隱藏
     let logOffset = 0, logTotalCount = 0;
     function logQueryParams() {
       const p = new URLSearchParams();
@@ -5870,6 +5874,7 @@
     function clearLogFilter() {
       ['logFilterAction', 'logFilterOperator', 'logFilterFrom', 'logFilterTo', 'logFilterQ'].forEach(id => { $(id).value = ''; });
       $('logFilterKind').value = 'log';
+      if ($('logShowCsp')) $('logShowCsp').checked = false;
       loadLogs(true);
     }
     function logGoto(off) { logOffset = Math.max(0, off); loadLogs(false); }
@@ -5900,12 +5905,18 @@
         const r = await adminFetch(`${API}/admin/logs?${p}`);
         const data = await r.json();
         if (!r.ok) throw new Error((data && data.error) || '載入失敗');
-        const logs = data.rows || [];
+        const allLogs = data.rows || [];
+        // 預設隱藏 CSP 違規回報類事件（僅前端篩選，不改後端資料與匯出）。使用者在「動作代碼」明確輸入 CSP 時視為要看，不隱藏。
+        const showCsp = !!($('logShowCsp') && $('logShowCsp').checked) || /csp/i.test(($('logFilterAction') || {}).value || '');
+        const logs = showCsp ? allLogs : allLogs.filter(l => !LOG_CSP_ACTIONS.has(l.action));
+        const hiddenCsp = allLogs.length - logs.length;
         logTotalCount = data.total || 0;
-        $('logTotal').textContent = `（共 ${logTotalCount} 筆）`;
+        $('logTotal').textContent = `（共 ${logTotalCount} 筆${hiddenCsp ? `；本頁已隱藏 ${hiddenCsp} 筆 CSP 違規回報` : ''}）`;
         renderPager('logPager', data.offset || 0, data.limit || LOG_PAGE, logTotalCount, 'logGoto');
         if (!logs.length) {
-          $('logList').innerHTML = '<div class="ax-empty-lg">無符合條件的異動記錄</div>';
+          $('logList').innerHTML = hiddenCsp
+            ? '<div class="ax-empty-lg">本頁皆為 CSP 違規回報（已隱藏）。可勾選「顯示 CSP 違規回報」，或翻到其他頁</div>'
+            : '<div class="ax-empty-lg">無符合條件的異動記錄</div>';
           return;
         }
         const rows = logs.map(l => {
