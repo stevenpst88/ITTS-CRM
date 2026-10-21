@@ -2120,6 +2120,15 @@
                   <option value="">-- 請選擇類型 --</option>
                 </select>
               </div>
+              <div class="form-group full-width deal-id-group" id="cOppDealIdGroup" hidden>
+                <label for="cOppDealId">Deal ID <span class="required" id="cOppDealIdStar">*</span></label>
+                <div class="deal-id-box">
+                  <input type="text" id="cOppDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="cOppDealIdHint cOppDealIdErr" placeholder="貼上外部網站的商機代碼">
+                  <a id="cOppDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
+                </div>
+                <div class="deal-id-hint" id="cOppDealIdHint"></div>
+                <div class="deal-id-err" id="cOppDealIdErr" role="alert"></div>
+              </div>
               <div class="form-group">
                 <label>商機階段</label>
                 <select id="cOppStage">
@@ -2382,6 +2391,15 @@
                 <option value="">-- 請選擇類型 --</option>
               </select>
             </div>
+            <div class="form-group full-width deal-id-group" id="oppDealIdGroup" hidden>
+              <label for="oppDealId">Deal ID <span class="required" id="oppDealIdStar">*</span></label>
+              <div class="deal-id-box">
+                <input type="text" id="oppDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppDealIdHint oppDealIdErr" placeholder="貼上外部網站的商機代碼">
+                <a id="oppDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
+              </div>
+              <div class="deal-id-hint" id="oppDealIdHint"></div>
+              <div class="deal-id-err" id="oppDealIdErr" role="alert"></div>
+            </div>
             <div class="form-group">
               <label>預估金額（K）</label>
               <input type="number" id="oppAmount" placeholder="例：500" min="0">
@@ -2492,6 +2510,15 @@
             <select id="oppEditProductSub" class="product-custom-input" style="display:none;margin-top:6px">
               <option value="">-- 請選擇類型 --</option>
             </select>
+          </div>
+          <div class="form-group full-width deal-id-group" id="oppEditDealIdGroup" hidden>
+            <label for="oppEditDealId">Deal ID <span class="required" id="oppEditDealIdStar">*</span></label>
+            <div class="deal-id-box">
+              <input type="text" id="oppEditDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppEditDealIdHint oppEditDealIdErr" placeholder="貼上外部網站的商機代碼">
+              <a id="oppEditDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
+            </div>
+            <div class="deal-id-hint" id="oppEditDealIdHint"></div>
+            <div class="deal-id-err" id="oppEditDealIdErr" role="alert"></div>
           </div>
           <div class="form-group">
             <label>合約金額（K）</label>

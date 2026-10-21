@@ -855,6 +855,17 @@
   body.dark .qfe-badge.qfe-on, body.dark .qfe-badge.qfe-ok { background:#12301c; color:#7ee2a0; border-color:#1f5a33; }
   body.dark .qfe-badge.qfe-bad { background:#3f1717; color:#ff9b94; border-color:#7a2d28; }
   body.dark .qfe-num.qfe-warn { color:#ff9b94; }
+  /* 銷售商品維護：Deal ID 設定列（需要 Deal ID 勾選＋註冊網址）。顏色走 --ax-*，淺色／深色／玻璃深淺皆成對 */
+  #pcPanel .pc-deal-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; }
+  #pcPanel .pc-deal-chk { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--ax-text, #374151); cursor:pointer; }
+  #pcPanel .pc-deal-url { flex:1 1 280px; min-width:200px; padding:4px 8px; font-size:12px; border:1px solid var(--ax-border, #d1d5db); border-radius:6px; background:var(--ax-surface, #fff); color:var(--ax-text, #333); }
+  #pcPanel .pc-deal-url.pc-deal-bad { border-color:var(--ax-bad, #c62828) !important; box-shadow:0 0 0 1px var(--ax-bad, #c62828); }
+  #pcPanel .pc-deal-hint { flex-basis:100%; font-size:12px; color:var(--ax-muted, #6b7280); }
+  #pcPanel .pc-deal-hint.pc-deal-bad { color:var(--ax-bad, #c62828); }
+  body.dark #pcPanel .pc-deal-chk { color:#c9d1d9; }
+  body.dark #pcPanel .pc-deal-url { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+  body.dark #pcPanel .pc-deal-hint { color:#9aa4b0; }
+  body.dark #pcPanel .pc-deal-hint.pc-deal-bad { color:#ff9b94; }
 </style>
 </head>
 <body class="admin-page">
@@ -3846,11 +3857,41 @@
           group: g.group || '', enabled: g.enabled !== false,
           items: (g.items || []).map(it => ({
             name: it.name || '', _orig: it.name || '', enabled: it.enabled !== false,
+            requiresDealId: it.requiresDealId === true, dealRegisterUrl: typeof it.dealRegisterUrl === 'string' ? it.dealRegisterUrl : '',
             subs: (Array.isArray(it.subs) ? it.subs : []).map(s => ({ name: s, _orig: s })),
           })),
         }));
       }
       return model;
+    }
+
+    // Deal ID 註冊網址檢查（與伺服器 lib/productCatalog.js validateDealUrl 同規則；伺服器仍會再驗一次）。回 '' 表示通過。
+    function pcDealUrlError(v) {
+      const s = String(v == null ? '' : v).trim();
+      if (!s) return '';
+      if (s.length > 500) return '網址過長（上限 500 字）';
+      if (/\s/.test(s) || /[\u0000-\u001f\u007f-\u009f]/.test(s)) return '網址不可含空白或控制字元';
+      if (!/^https?:\/\//i.test(s)) return '網址必須以 http:// 或 https:// 開頭';
+      let u; try { u = new URL(s); } catch (_) { return '網址格式不正確'; }
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return '網址必須以 http:// 或 https:// 開頭';
+      if (!u.hostname) return '網址缺少網站名稱';
+      if (u.username || u.password) return '網址不可內含帳號密碼';
+      return '';
+    }
+    function pcDealHintText(p) {
+      const err = pcDealUrlError(p.dealRegisterUrl);
+      if (err) return { bad: true, text: '⚠ ' + err };
+      if (!String(p.dealRegisterUrl || '').trim()) return { bad: false, text: '尚未設定註冊網址：業務填單時只會看到「請洽管理員設定註冊網址」提示' };
+      return { bad: false, text: '業務選此商品時，Deal ID 為必填，並可從欄位旁的連結在新分頁開啟此網址' };
+    }
+    function pcDealRowHtml(p, gi, pi) {
+      let h = '<div class="pc-deal-row"><label class="pc-deal-chk"><input type="checkbox" data-pcfld="req" data-gi="' + gi + '" data-pi="' + pi + '"' + (p.requiresDealId ? ' checked' : '') + '> 需要 Deal ID</label>';
+      if (p.requiresDealId) {
+        const ht = pcDealHintText(p);
+        h += '<input class="pc-deal-url' + (pcDealUrlError(p.dealRegisterUrl) ? ' pc-deal-bad' : '') + '" data-pcfld="durl" data-gi="' + gi + '" data-pi="' + pi + '" value="' + pcEsc(p.dealRegisterUrl) + '" placeholder="Deal 註冊網址（https://…）" maxlength="500" aria-label="Deal 註冊網址：' + pcEsc(p.name) + '">'
+          + '<span class="pc-deal-hint' + (ht.bad ? ' pc-deal-bad' : '') + '" data-pchint role="status">' + pcEsc(ht.text) + '</span>';
+      }
+      return h + '</div>';
     }
 
     function pcRender() { pcRenderTabs(); pcRenderPanel(); }
@@ -3891,7 +3932,7 @@
               + `<button data-pcact="del-sub" data-gi="${gi}" data-pi="${pi}" data-si="${si}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px">✕</button></span>`;
           });
           h += `<button data-pcact="add-sub" data-gi="${gi}" data-pi="${pi}" style="font-size:12px;border:1px dashed #cbd5e1;background:none;border-radius:6px;padding:3px 9px;cursor:pointer;color:#6b7280">＋明細</button>`
-            + `</div></div>`
+            + `</div>` + pcDealRowHtml(p, gi, pi) + `</div>`
             + `<button data-pcact="del-prod" data-gi="${gi}" data-pi="${pi}" title="刪除產品" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px;margin-top:5px">🗑</button>`
             + `</div>`;
         });
@@ -3924,7 +3965,7 @@
       if (act === 'add-grp') { G.push({ group: '新分類群組', enabled: true, items: [] }); pcRender(); pcFocus(`[data-pcfld="group"][data-gi="${G.length - 1}"]`); }
       else if (act === 'del-grp') { if (confirm('刪除此分類群組？（歷史商機不受影響）')) { G.splice(gi, 1); pcRender(); } }
       else if (act === 'toggle-grp') { G[gi].enabled = !G[gi].enabled; pcRender(); }
-      else if (act === 'add-prod') { G[gi].items.push({ name: '', _orig: '', enabled: true, subs: [] }); pcRender(); pcFocus(`[data-pcfld="name"][data-gi="${gi}"][data-pi="${G[gi].items.length - 1}"]`); }
+      else if (act === 'add-prod') { G[gi].items.push({ name: '', _orig: '', enabled: true, requiresDealId: false, dealRegisterUrl: '', subs: [] }); pcRender(); pcFocus(`[data-pcfld="name"][data-gi="${gi}"][data-pi="${G[gi].items.length - 1}"]`); }
       else if (act === 'del-prod') { if (confirm('刪除此產品？（歷史商機不受影響）')) { G[gi].items.splice(pi, 1); pcRender(); } }
       else if (act === 'toggle-prod') { G[gi].items[pi].enabled = !G[gi].items[pi].enabled; pcRender(); }
       else if (act === 'add-sub') { G[gi].items[pi].subs.push({ name: '', _orig: '' }); pcRender(); pcFocus(`[data-pcfld="sub"][data-gi="${gi}"][data-pi="${pi}"][data-si="${G[gi].items[pi].subs.length - 1}"]`); }
@@ -3937,6 +3978,16 @@
       if (el.dataset.pcfld === 'group') G[gi].group = el.value;
       else if (el.dataset.pcfld === 'name') G[gi].items[pi].name = el.value;
       else if (el.dataset.pcfld === 'sub') G[gi].items[pi].subs[si].name = el.value;
+      else if (el.dataset.pcfld === 'req') {
+        G[gi].items[pi].requiresDealId = !!el.checked;
+        pcRender();
+        pcFocus('[data-pcfld="req"][data-gi="' + gi + '"][data-pi="' + pi + '"]');
+      } else if (el.dataset.pcfld === 'durl') {
+        const p = G[gi].items[pi]; p.dealRegisterUrl = el.value;
+        const ht = pcDealHintText(p), hint = el.parentNode.querySelector('[data-pchint]');
+        el.classList.toggle('pc-deal-bad', !!pcDealUrlError(el.value));
+        if (hint) { hint.textContent = ht.text; hint.classList.toggle('pc-deal-bad', ht.bad); }
+      }
     }
 
     function pcOnDragStart(e) {
@@ -3981,7 +4032,11 @@
         bus[bu] = (_pcData[bu] || [])
           .map(g => ({
             group: (g.group || '').trim(), enabled: !!g.enabled,
-            items: g.items.map(p => ({ name: (p.name || '').trim(), enabled: !!p.enabled, subs: p.subs.map(s => (s.name || '').trim()).filter(Boolean) })).filter(p => p.name),
+            items: g.items.map(p => {
+              const o = { name: (p.name || '').trim(), enabled: !!p.enabled, subs: p.subs.map(s => (s.name || '').trim()).filter(Boolean) };
+              if (p.requiresDealId) { o.requiresDealId = true; const u = String(p.dealRegisterUrl || '').trim(); if (u) o.dealRegisterUrl = u; }   // 不需要 Deal ID 的商品不存網址
+              return o;
+            }).filter(p => p.name),
           }))
           .filter(g => g.group);
       }
@@ -3990,6 +4045,10 @@
 
     async function pcSave() {
       const btn = $('pcSaveBtn'), st = $('pcStatus'), catalog = pcSerialize(), renames = pcCollectRenames();
+      for (const bu of PC_BUS) for (const g of (catalog.bus[bu] || [])) for (const p of g.items) {
+        const ue = p.requiresDealId ? pcDealUrlError(p.dealRegisterUrl) : '';
+        if (ue) { _pcActive = bu; pcRender(); st.innerHTML = '<span class="ax-bad">無法儲存：「' + pcEsc(p.name) + '」的 Deal 註冊網址' + pcEsc(ue.replace(/^網址/, '')) + '</span>'; return; }
+      }
       let applyRenames = [];
       if (renames.length) {
         try {
@@ -7532,6 +7591,12 @@
         if (d.fieldErrors && d.fieldErrors.length) {
           h += `<div class="ax-bad-mt8">⚠ ${d.fieldErrors.length} 列欄位異常（缺必填）、會被略過：<br>${d.fieldErrors.slice(0, 15).map(escH).join('<br>')}${d.fieldErrors.length > 15 ? '<br>…' : ''}</div>`;
         }
+        if (d.missingDealId) {
+          h += `<div class="ax-bad-mt8">ℹ ${escH(String(d.missingDealId))} 筆的商品要求 Deal ID 但檔案沒填（匯入不會被擋，之後業務編輯該商機時需補填）；Excel 欄位標題請用「Deal ID」</div>`;
+        }
+        if (d.invalidDealId) {
+          h += `<div class="ax-bad-mt8">⚠ ${escH(String(d.invalidDealId))} 筆的 Deal ID 超過 64 字或格式不合，該欄值會被捨棄</div>`;
+        }
         if (d.unmatchedCompanies && d.unmatchedCompanies.length) {
           h += `<div style="color:#b45309;margin-top:8px">⚠ ${d.unmatchedCompanies.length} 家公司在系統找不到相符名片（會建成孤立商機，可能名稱不一致）：<br>`;
           h += d.unmatchedCompanies.slice(0, 15).map(u =>
@@ -7582,6 +7647,12 @@
         }
         if (data.errors && data.errors.length) {
           html += `<div class="import-result-detail">⚠ ${data.errors.length} 列業務對不到略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
+        }
+        if (data.missingDealId) {
+          html += `<div class="import-result-detail">ℹ ${escH(String(data.missingDealId))} 筆缺 Deal ID（商品要求但檔案沒填）：已匯入，之後編輯該商機時需補填</div>`;
+        }
+        if (data.invalidDealId) {
+          html += `<div class="import-result-detail">⚠ ${escH(String(data.invalidDealId))} 筆 Deal ID 不合格（超過 64 字）已捨棄該欄值</div>`;
         }
         if (data.fieldErrors && data.fieldErrors.length) {
           html += `<div class="import-result-detail">⚠ ${data.fieldErrors.length} 列欄位異常略過：<br>${data.fieldErrors.slice(0,10).map(e => escH(e)).join('<br>')}${data.fieldErrors.length > 10 ? '<br>...' : ''}</div>`;

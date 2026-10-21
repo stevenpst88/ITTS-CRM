@@ -368,6 +368,15 @@ body.glass .form-group textarea:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-accent) 24%, transparent);
   outline: none;
 }
+/* Deal ID 欄位：連結／提示／錯誤的字色與底色成對（淺色玻璃用深字、深色玻璃用亮字） */
+body.glass .deal-id-link { color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 14%, transparent); }
+body.glass .deal-id-link:hover { background: color-mix(in srgb, var(--g-accent) 24%, transparent); }
+body.glass .deal-id-hint { color: var(--g-text-2); }
+body.glass:not(.dark) .deal-id-err { color: #a31515; }
+body.glass.dark .deal-id-err { color: #ff9b91; }
+body.glass:not(.dark) .form-group .deal-id-input.deal-id-invalid { border-color: #c5221f; }
+body.glass.dark .form-group .deal-id-input.deal-id-invalid { border-color: #ff8a80; }
+body.glass .kanban-card-dealid, body.glass .opp-dealid-line { color: var(--g-text-2); }
 
 /* ───────────── 9. 分頁籤 ───────────── */
 body.glass .modal-tabs,

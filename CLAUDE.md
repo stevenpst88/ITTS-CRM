@@ -44,6 +44,7 @@ CRM 核心：`contacts / companies / opportunities / visits / contracts / receiv
 - **程式碼審查 PR-2／PR-3／M-01 的環境變數開關**（2026-10，分支 fix/codrev-quote-audit，疊在 fix/secrev-quick 之上；全部有預設）：`SESSION_IDLE_MINUTES` 現在由 `middleware/jwtSession.js` 讀取（未設＝30 分鐘；`SESSION_IDLE_MS` 測試用優先；背景輪詢路徑與長度的單一來源在 `lib/sessionIdle.js`，`loginGuard.idleMiddleware` 只服務 `SESSION_BACKEND=memory`）；`QUOTE_CONFIG_OPEN=1` 還原 `GET /api/quote-approval/config` 只驗登入；`QUOTE_FLOW_MODE_AUDIT_NON_PROD=1`／`QUOTE_FLOW_MODE_THROTTLE_MS` 控制引擎模式紀錄（Vercel 非 production 部署預設不寫、同行程 10 分鐘節流）；`APPROVAL_CONFIG_MAX_PENDING`（預設 3，0＝不限）；`AUDIT_DDL_LOCK_TIMEOUT_MS`（預設 5000）。`/api/cron/audit-anchor` 在 `AUDIT_CHAIN=1` 卻無法使用時回 503；`/api/admin/audit-chain/verify` 預設比對最新已存錨點（`?storedAnchor=0` 關閉）。檢查腳本：`scripts/check-codrev-quote-audit.js`。
 - **統編查詢**：`/api/company-lookup?taxId=` 加 `&basic=1` 只查 GCIS（~4s）；不加會跑上市櫃+財務（冷啟動 ~62s，超過 Vercel maxDuration 30s 會逾時）。
 - **商品目錄**：商機/合約的 `product` 是**純文字非外鍵**。改名不自動連動歷史——要連動就走 `POST /api/admin/product-catalog` 的 renames 機制（有 preview 與確認）。
+- **商機 Deal ID**（2026-10）：商品目錄項目可設 `requiresDealId`／`dealRegisterUrl`（只收 http/https，存檔時 `new URL` 驗證）；商機 `dealId`（trim、去控制字元、≤64、不限格式）。`POST /api/opportunities` 與表單式 `PUT`（body 帶 `product` 或 `dealId`）在商品要求時缺 Deal ID → 400 `DEAL_ID_REQUIRED`；看板拖曳只送 `{stage}` 不檢查、舊商機不追溯、Excel 匯入不擋（只回 `missingDealId` 統計）。規則在 `lib/productCatalog.js`（`resolveDealIdRule` 以名稱完全相符或「名稱＋空白」最長前綴比對），前端 `app.js` 的 `dealId*` 函式與之同規則。檢查腳本：`scripts/check-opp-deal-id.js`（`DEALID_MUT=1` 跑變異）。
 
 ## Gemini AI
 
