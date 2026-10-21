@@ -3662,7 +3662,7 @@ async function initUser() {
           : myBus.map(b => {
               const c = BU_C[b] || '#6b7280';
               return `<span style="background:${c}20;color:${c};font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">${b}</span>`;
-            }).join(' ') || `<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">⚠️ 未設定 BU</span>`;
+            }).join(' ') || `<span class="gc-bu-missing" style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px">⚠️ 未設定 BU</span>`;
         topbarBadge.innerHTML = `
           <span style="font-size:12px;color:#6b7280;font-weight:600">${ROLE_LBL[user.role] || user.role}</span>
           ${buHtml}`;
@@ -5190,10 +5190,10 @@ async function loadManagerAchievement(year) {
     const canManage = ['admin', 'secretary'].includes(window._myRole);
     function renderCard(r) {
       const color = rateColor(r.rate);
-      const badge = ROLE_BADGE[r.role] ? `<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
+      const badge = ROLE_BADGE[r.role] ? `<span class="gc-chip-info" style="font-size:10px;border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600">${ROLE_BADGE[r.role]}</span>` : '';
       const qVals = r.qVals || [0, 0, 0, 0];
       const isTeamView = r.viewMode === 'team';
-      const teamHint = isTeamView ? '<span style="font-size:9px;color:#1a3c7a;background:#dbe5f7;padding:1px 5px;border-radius:6px;margin-left:4px">部屬加總</span>' : '';
+      const teamHint = isTeamView ? '<span class="gc-chip-navy" style="font-size:9px;padding:1px 5px;border-radius:6px;margin-left:4px">部屬加總</span>' : '';
       // 季度目標已改為「月度預算每 3 個月加總」的推導值，不再提供直接編輯
       // （手動改了也會被月度預算蓋掉）。要調整請走下方「設定月度預算」。
       const budgetBtn = (canManage && !isTeamView)
@@ -5207,7 +5207,7 @@ async function loadManagerAchievement(year) {
               <span style="font-size:9px;color:#9ca3af">月度預算加總</span>
             </div>
             <div class="qr-display" style="display:flex;gap:3px">
-              ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span style="flex:1;text-align:center;background:#f5f7fb;border-radius:4px;padding:3px 0;font-size:10px"><span style="color:#888">${q}</span><br><strong style="color:#1a3c7a">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
+              ${['Q1','Q2','Q3','Q4'].map((q,i) => `<span class="gc-qcell" style="flex:1;text-align:center;border-radius:4px;padding:3px 0;font-size:10px"><span class="gc-qcell-q">${q}</span><br><strong class="gc-qcell-v">${qVals[i] > 0 ? qVals[i].toLocaleString() : '–'}</strong></span>`).join('')}
             </div>
           </div>
           ${budgetBtn}

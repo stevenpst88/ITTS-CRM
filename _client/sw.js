@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v17';   // v17：併入 main（M1 流程引擎狀態 v16）後，後台新增「簽核流程設計器」（flow-designer.js／flow-designer.css／flow-overview.js，QUOTE_FLOW_DESIGNER=1 才顯示）。以下為各版歷史——
+const SW_VERSION = 'itts-crm-v18';   // v18：深色玻璃對比修正（前台）：新增 gc-* class（style.css／glass.css）、app.js／index.html／quote-approval.js／config-review.js 把 inline 淺底深字改 class。v17：併入 main（M1 流程引擎狀態 v16）後，後台新增「簽核流程設計器」（flow-designer.js／flow-designer.css／flow-overview.js，QUOTE_FLOW_DESIGNER=1 才顯示）。以下為各版歷史——
 //   M2（原 v16）：v16：後台新增「簽核流程設計器」（flow-designer.js／flow-designer.css／flow-overview.js，QUOTE_FLOW_DESIGNER=1 才顯示）。v15：後台「簽核流程設定」頁新增唯讀的流程引擎狀態區塊（admin.html）。以下為各版歷史——
 //   main：v16：併入 main（簽核進度卡片 v15）後，M1 流程引擎的後台唯讀狀態區塊。以下為各版歷史——
 // M1（原 v15）：v15：後台「簽核流程設定」頁新增唯讀的流程引擎狀態區塊（admin.html）。以下為各版歷史——
