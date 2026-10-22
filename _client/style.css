@@ -4918,3 +4918,92 @@ body.dark .cct-import-ow { color: #c0c9d4; }
 body.dark .cct-import-note { background: #0f2a1a; color: #b7f0c9; border-color: #1f5a37; }
 .cct-warn { color: #9a3412; font-weight: 600; }
 body.dark .cct-warn { color: #ffb38a; }
+
+/* ══════════════════════════════════════════════════════════
+   統編查無 → 申請行銷建檔（company-requests.js）— .creq-*
+   每個底色都搭配明確的字色（淺色／深色／玻璃淺／玻璃深），不依賴繼承；不使用 inline style。
+   ══════════════════════════════════════════════════════════ */
+.creq-panel, .creq-overlay, .creq-form, .creq-notice, .creq-badge {
+  --creq-bg: #ffffff; --creq-fg: #1f2937; --creq-sub: #475569; --creq-line: #d9dee7; --creq-soft: #f3f6fb;
+  --creq-accent: #1a56c8; --creq-accent-fg: #ffffff;
+  --creq-danger: #b3261e; --creq-danger-fg: #ffffff;
+  --creq-warn-bg: #fff1d6; --creq-warn-fg: #7a3f00; --creq-warn-line: #f0c27a;
+  --creq-bad-bg: #fde7e7; --creq-bad-fg: #8a1c1c; --creq-bad-line: #f2b1b1;
+}
+body.dark .creq-panel, body.dark .creq-overlay, body.dark .creq-form, body.dark .creq-notice, body.dark .creq-badge {
+  --creq-bg: #161b22; --creq-fg: #e6edf3; --creq-sub: #a9b4c1; --creq-line: #3a4350; --creq-soft: #1c232d;
+  --creq-accent: #1f6feb; --creq-accent-fg: #ffffff;
+  --creq-danger: #da3633; --creq-danger-fg: #ffffff;
+  --creq-warn-bg: #3a2a05; --creq-warn-fg: #ffd48a; --creq-warn-line: #7a5a12;
+  --creq-bad-bg: #3d1518; --creq-bad-fg: #ffb4b4; --creq-bad-line: #7a2a2f;
+}
+.creq-panel[hidden], .creq-form[hidden], .creq-error[hidden] { display: none !important; }
+.creq-panel { background: var(--creq-bg); color: var(--creq-fg); border: 1px solid var(--creq-line); border-left: 5px solid #b86e00; border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(15, 27, 53, .08); }
+body.dark .creq-panel { border-left-color: #d29922; }
+.creq-panel-overdue { border-left-color: var(--creq-danger) !important; }
+/* 玻璃模式：面板吃玻璃的面板色與字色（成對：--g-surface-strong 與 --g-text） */
+body.glass .creq-panel { background: var(--g-surface-strong); color: var(--g-text); --creq-fg: var(--g-text); --creq-sub: var(--g-text-2); --creq-line: var(--g-edge); -webkit-backdrop-filter: blur(var(--g-blur)); backdrop-filter: blur(var(--g-blur)); }
+.creq-panel-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.creq-panel-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--creq-fg); }
+.creq-panel .creq-count { background: #8a5200; color: #ffffff; border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: 700; }
+body.dark .creq-panel .creq-count { background: #d29922; color: #1a1300; }
+.creq-sub { margin: 0 0 8px; font-size: 13px; color: var(--creq-sub); line-height: 1.6; }
+.creq-lead { margin: 0 0 12px; font-size: 14px; color: var(--creq-fg); line-height: 1.7; }
+.creq-meta { font-size: 13px; color: var(--creq-sub); word-break: break-word; }
+.creq-list { list-style: none; margin: 0; padding: 0; }
+.creq-row { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--creq-line); }
+.creq-row:first-child { border-top: none; }
+.creq-row-overdue .creq-name { color: var(--creq-danger); }
+body.dark .creq-row-overdue .creq-name { color: #ff8b87; }
+body.glass:not(.dark) .creq-row-overdue .creq-name { color: #a31d16; }
+.creq-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.creq-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.creq-name { font-size: 15px; color: var(--creq-fg); word-break: break-word; }
+.creq-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.creq-chip { display: inline-block; background: var(--creq-warn-bg); color: var(--creq-warn-fg); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; }
+.creq-chip-danger { background: var(--creq-bad-bg); color: var(--creq-bad-fg); }
+.creq-btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 8px; padding: 8px 16px; min-height: 38px; cursor: pointer; border: 1px solid transparent; }
+.creq-btn-sm { font-size: 13px; padding: 5px 12px; min-height: 34px; }
+.creq-btn-primary { background: var(--creq-accent); color: var(--creq-accent-fg); }
+.creq-btn-danger { background: var(--creq-danger); color: var(--creq-danger-fg); }
+.creq-btn-ghost { background: var(--creq-soft); color: var(--creq-fg); border-color: var(--creq-line); }
+.creq-btn:disabled { opacity: .55; cursor: default; }
+.creq-btn:focus-visible, .creq-input:focus-visible, .creq-textarea:focus-visible, .creq-select:focus-visible { outline: 3px solid #4c8dff; outline-offset: 2px; }
+body.glass:not(.dark) :is(.creq-btn, .creq-input, .creq-textarea, .creq-select):focus-visible { outline-color: #1a56c8; }
+/* 對話框 */
+.creq-overlay { position: fixed; inset: 0; z-index: 100002; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); }
+.creq-dialog { background: var(--creq-bg); color: var(--creq-fg); width: 540px; max-width: 100%; max-height: 88vh; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid var(--creq-line); box-shadow: 0 24px 64px rgba(0, 0, 0, .4); overflow: hidden; }
+.creq-dlg-title { margin: 0; padding: 18px 22px 8px; font-size: 18px; font-weight: 700; color: var(--creq-fg); word-break: break-word; }
+.creq-dlg-body { padding: 4px 22px 14px; overflow-y: auto; }
+.creq-dlg-foot { padding: 12px 22px 16px; border-top: 1px solid var(--creq-line); display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.creq-fieldset { border: 1px solid var(--creq-line); border-radius: 8px; padding: 8px 12px 10px; margin: 0 0 12px; }
+.creq-legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--creq-sub); }
+.creq-radio { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 14px; color: var(--creq-fg); cursor: pointer; }
+.creq-field-label { display: block; margin: 10px 0 4px; font-size: 13px; font-weight: 600; color: var(--creq-sub); }
+.creq-input, .creq-textarea, .creq-select { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--creq-line); background: var(--creq-soft); color: var(--creq-fg); }
+.creq-textarea { resize: vertical; }
+.creq-error { margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--creq-warn-bg); color: var(--creq-warn-fg); }
+/* 名片表單內的申請區塊 */
+.creq-form { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--creq-warn-bg); color: var(--creq-warn-fg); border: 1px solid var(--creq-warn-line); }
+.creq-form-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.creq-form-hint { margin: 0 0 6px; font-size: 12.5px; line-height: 1.6; }
+.creq-form .creq-field-label { color: var(--creq-warn-fg); }
+.creq-form .creq-select, .creq-form .creq-textarea { background: #ffffff; color: #1f2937; border-color: var(--creq-warn-line); }
+body.dark .creq-form .creq-select, body.dark .creq-form .creq-textarea { background: #161b22; color: #e6edf3; }
+.creq-form .creq-count { color: var(--creq-warn-fg); text-align: right; font-size: 12px; }
+/* 名片徽章／詳情提示 */
+.creq-badge { display: inline-block; border-radius: 6px; padding: 1px 8px; font-size: 11.5px; font-weight: 700; border: 1px solid transparent; margin-left: 4px; white-space: nowrap; }
+.creq-badge-pending { background: var(--creq-warn-bg); color: var(--creq-warn-fg); border-color: var(--creq-warn-line); }
+.creq-badge-rejected { background: var(--creq-bad-bg); color: var(--creq-bad-fg); border-color: var(--creq-bad-line); }
+.creq-notice { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--creq-warn-line); background: var(--creq-warn-bg); color: var(--creq-warn-fg); }
+.creq-notice-rejected { border-color: var(--creq-bad-line); background: var(--creq-bad-bg); color: var(--creq-bad-fg); }
+.creq-notice .creq-badge { margin-left: 0; }
+.creq-notice-text { margin: 6px 0 0; font-size: 13px; line-height: 1.7; }
+.creq-notice-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.creq-notice .creq-btn-ghost { background: #ffffff; color: #1f2937; border-color: #c3cad6; }
+body.dark .creq-notice .creq-btn-ghost { background: #21262d; color: #e6edf3; border-color: #4a5461; }
+@media (max-width: 640px) {
+  .creq-row-actions { width: 100%; }
+  .creq-row-actions .creq-btn { flex: 1; min-height: 44px; }
+  .creq-panel { padding: 12px; }
+}

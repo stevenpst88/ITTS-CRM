@@ -1971,6 +1971,7 @@ function buildContactCard(c, extraClass = '') {
         ${kaChip}
       </span>
     </div>`;
+  if (window.ITTSCompanyReq) window.ITTSCompanyReq.decorateCard(card, c);   // 待行銷確認公司／建檔被退回徽章
   card.addEventListener('click', () => openView(c.id));
   const relBadge = card.querySelector('.contact-rel-badge');
   relBadge.addEventListener('click', e => { e.stopPropagation(); openRelPicker(c, relBadge); });
@@ -2797,7 +2798,7 @@ function tgState() {
   if (err) block = err.error;
   else if (need && (st === 'idle' || st === 'loading')) block = '統編比對中，請稍候';
   else if (need && st === 'unavailable') block = '目前無法驗證統編，請稍後再試（可按「重新查詢」）';
-  else if (need && st === 'notfound') block = '查無此統編的公司登記資料，無法存檔，請聯繫行銷人員';
+  else if (need && st === 'notfound') block = (window.ITTSCompanyReq && window.ITTSCompanyReq.enabled()) ? window.ITTSCompanyReq.formError() : '查無此統編的公司登記資料，無法存檔，請聯繫行銷人員';   // 申請建檔功能開啟：改填申請區塊（類別＋說明）才能存檔
   return { block, companyErr: err, status: st, need };
 }
 
@@ -2814,6 +2815,9 @@ function tgRender() {
   else if (g.status === 'matched') {
     bg = '#f0fdf4'; fg = '#166534'; bd = '#bbf7d0';
     parts.push('✓ 已比對：' + escapeHtml(taxGuard.officialName) + (taxGuard.source === 'master' ? '（企業主檔）' : '（經濟部商業司）'));
+  } else if (g.status === 'notfound' && (window.ITTSCompanyReq && window.ITTSCompanyReq.enabled())) {
+    bg = '#fffbeb'; fg = '#92400e'; bd = '#fcd34d';   // 黃色提示：可改走「申請行銷建檔」
+    parts.push('⚠ 查無此統編的公司登記資料（政府機關、學校、財團法人、行號等不在公司登記內）。請先確認統編沒有打錯；確定無誤請填寫下方「申請行銷建檔」後存檔。');
   } else if (g.status === 'notfound') {
     bg = '#fef2f2'; fg = '#b91c1c'; bd = '#fca5a5';
     parts.push('⛔ 查無此統編的公司登記資料，無法存檔，請聯繫行銷人員');
@@ -2826,7 +2830,7 @@ function tgRender() {
   }
   if (show) {
     box.style.cssText = `display:block;font-size:12.5px;line-height:1.5;margin-top:6px;padding:6px 10px;border-radius:6px;background:${bg};color:${fg};border:1px solid ${bd}`;
-    box.dataset.tg = g.status === 'matched' ? 'ok' : (g.status === 'notfound' || g.status === 'unavailable') ? 'bad' : 'info';   // glass.css 用來換色（無玻璃時無作用）
+    box.dataset.tg = g.status === 'matched' ? 'ok' : (g.status === 'notfound' && (window.ITTSCompanyReq && window.ITTSCompanyReq.enabled())) ? 'warn' : (g.status === 'notfound' || g.status === 'unavailable') ? 'bad' : 'info';   // glass.css 用來換色（無玻璃時無作用）
     box.innerHTML = parts.join('');
     const rb = $('taxGuardRetry');
     if (rb) rb.addEventListener('click', () => tgStartLookup(true));
@@ -2843,6 +2847,8 @@ function tgRender() {
     if (ub) ub.addEventListener('click', () => { $('company').value = taxGuard.officialName; $('company').dispatchEvent(new Event('input')); });
   } else { cbox.style.display = 'none'; cbox.innerHTML = ''; }
 
+  // 申請建檔區塊：只在「需要驗證且查無」時顯示（其他狀態一律收起，名片表單與原本相同）
+  if (window.ITTSCompanyReq) window.ITTSCompanyReq.showForm((window.ITTSCompanyReq && window.ITTSCompanyReq.enabled()) && g.need && g.status === 'notfound');
   const sb = $('saveBtn');
   if (sb && !tgReadonly()) {
     sb.disabled = !!g.block;
@@ -2895,6 +2901,7 @@ function taxGuardOpen(contact) {
   taxGuard.isNew = !contact;
   taxGuard.origCompany = contact ? String(contact.company || '').trim() : '';
   taxGuard.origTaxId = contact ? String(contact.taxId || '').trim() : '';
+  if (window.ITTSCompanyReq && $('creqFormHost')) { window.ITTSCompanyReq.mountForm($('creqFormHost'), tgRender); window.ITTSCompanyReq.resetForm(); }
   $('taxIdLoadingBadge').style.display = 'none';
   tgEnsureLookup();
   tgRender();
@@ -3639,6 +3646,9 @@ $('saveBtn').addEventListener('click', async () => {
     bu: ($('contactBu') && $('contactBu').value) || undefined,
     ...getPersonalInfo()
   };
+  // 統編查無且走「申請行銷建檔」：帶 companyRequest，伺服器建立名片＋申請（功能關閉或其他狀態不帶，payload 與原本相同）
+  const creqSent = (window.ITTSCompanyReq && window.ITTSCompanyReq.enabled()) && tg.need && tg.status === 'notfound';
+  if (creqSent) payload.companyRequest = window.ITTSCompanyReq.getRequest();
 
   const id = $('contactId').value;
   try {
@@ -3658,6 +3668,8 @@ $('saveBtn').addEventListener('click', async () => {
       showToast(d.notifiedMarketing > 0
         ? `🏢 全新客戶「${d.company || ''}」已建立，已通知行銷（${d.notifiedMarketing} 位）補產業屬性`
         : '🏢 全新客戶已建立', 4000);
+    } else if (creqSent) {
+      showToast('已存檔並送出建檔申請，等行銷確認', 4000);
     } else {
       showToast(id ? '已更新聯絡人' : '已新增聯絡人');
     }
@@ -3714,6 +3726,7 @@ function openView(id) {
     </div>`;
 
   $('viewBody').innerHTML = html;
+  if (window.ITTSCompanyReq) window.ITTSCompanyReq.decorateView($('viewBody'), c);   // 建檔狀態提示＋取消／重新申請
   $('viewOverlay').classList.add('open');
 }
 
@@ -3916,6 +3929,7 @@ async function initUser() {
     try { if (window.ITTSAnnounce) window.ITTSAnnounce.start(user); } catch (_) { /* ignore */ }
     // 待補名片待辦（company-card-tasks.js）：不 await、自帶錯誤處理；isFirstLoad＝剛登入的第一次載入才跳彙總視窗
     try { if (window.ITTSCardTasks) window.ITTSCardTasks.start(user, { login: isFirstLoad }); } catch (_) { /* ignore */ }
+    try { if (window.ITTSCompanyReq) window.ITTSCompanyReq.start(user); } catch (_) { /* ignore */ }
   } catch { window.location.href = '/login.html'; }
 }
 
@@ -9157,7 +9171,7 @@ function renderNotifList(list) {
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
     quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
-    company_card_task:'🗂️'
+    company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
@@ -9238,6 +9252,14 @@ function renderNotifList(list) {
         _pollBundleEtag = null; // server 狀態已改，強制下次取最新
         pollNotifications();
         if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
+        if (item.dataset.type === 'company_request_new' && window.ITTSCompanyReq) {
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSCompanyReq.openFromNotification();
+        }
+        if (item.dataset.type === 'company_request_done' && item.dataset.ref && typeof openView === 'function' && allContacts.some(x => x.id === item.dataset.ref)) {
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          openView(item.dataset.ref);
+        }
         if (item.dataset.type === 'company_card_task' && window.ITTSCardTasks) {
           const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
           window.ITTSCardTasks.openFromNotification();

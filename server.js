@@ -24,6 +24,7 @@ const pushNotify = require('./lib/pushNotify');
 const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動態報表：反覆延後警示／台北月界
 const secretBox = require('./lib/secretBox');
 const productCatalog = require('./lib/productCatalog');
+const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
@@ -1206,6 +1207,7 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/groups', '/api/usermap', '/api/company-lookup',
   '/api/product-catalog',   // 商機商品下拉目錄（跨 ERP/ITS/CRM/MDM/資安 五類產品；GET 唯讀）
   '/api/announcements',     // 公告彈窗：GET active、POST :id/ack（只寫自己的已讀）
+  '/api/company-requests',  // 統編查無→申請建檔：GET 自己的申請、POST :id/cancel（核可／退回由 handler 限行銷／管理員）
   '/api/my-tasks',          // 我的待辦（待補名片）：GET、POST dismiss——只讀寫呼叫者自己的待辦，集團業務是可擁有名片的角色
 ];
 app.use((req, res, next) => {
@@ -3543,6 +3545,13 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   // 統編↔公司名稱一致性（只比對內部主檔、不打外部）：公司欄純數字 / 與主檔官方名稱不符 → 400
   const _tg = TaxIdGuard.checkSave({ company: req.body.company, taxId: req.body.taxId, isForeign: _isForeign, companies: data.companies });
   if (_tg) return res.status(400).json(_tg);
+  // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 或沒帶 companyRequest：以下完全不執行）。主檔已有此統編時不需要申請，忽略
+  let _creqIn = null;
+  if (CREQ.enabled() && req.body.companyRequest != null && !_isForeign && !CREQ.masterExists(data, req.body.taxId)) {
+    const _cv = CREQ.validateRequest(req.body.companyRequest);
+    if (!_cv.ok) return res.status(400).json({ error: _cv.error, code: _cv.code });
+    _creqIn = _cv.value;
+  }
   const contact = {
     id: uuidv4(),
     owner,
@@ -3579,12 +3588,13 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   }
   // 企業主檔：自動掛勾（找不到對應主檔則自動建立），維持主檔不過期
   const _before = (data.companies || []).length;
-  const _master = ensureCompanyMaster(data, contact);
+  const _master = _creqIn ? null : ensureCompanyMaster(data, contact);   // 申請建檔期間不建主檔（否則會以業務填的子單位名稱先佔位），核可時才建
   if (_master) contact.companyId = _master.id;
   // 產業屬性僅行銷／管理員可設；其餘角色一律沿用企業主檔既有產業別（行銷維護的結果），不吃使用者輸入
   if (!isAdminOrMarketing(req)) contact.industry = (_master && _master.industry) ? _master.industry : '';
   // 全新客戶判斷：依公司名/統編比對，這張名片「新建」了一筆主檔（系統首次出現此公司）
   const _isNewCompany = !!_master && data.companies.length > _before;
+  const _creqRes = _creqIn ? CREQ.submitRequest(data, { contact, user: req.session.user, request: _creqIn, now: new Date().toISOString(), genId: uuidv4 }) : null;
   data.contacts.push(contact);
   syncCompanyFields(data, contact);  // 同步公司層級欄位到同公司其他空白名片
   // 補真名片後，自動清除同公司同 owner 的「待補名片」placeholder（企業主檔匯入分配而來）
@@ -3593,12 +3603,13 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   }
   db.save(data);
   writeContactAudit('CREATE', req, contact, []);
+  if (_creqRes) creqAfterSubmit(req, contact, _creqRes);
   // 全新客戶 → 通知行銷補產業屬性（行銷自己建的不重複通知）。pushNotification 自帶 load/save，故在 db.save 後呼叫
   let notifiedMarketing = 0;
   if (_isNewCompany && req.session.user.role !== 'marketing') {
     notifiedMarketing = notifyMarketingNewCompany(req, _master, owner);
   }
-  res.status(201).json({ ...contact, newCompany: _isNewCompany, notifiedMarketing });
+  res.status(201).json({ ...contact, newCompany: _isNewCompany, notifiedMarketing, ...(_creqRes ? { companyRequest: { id: _creqRes.request.id, merged: _creqRes.merged } } : {}) });
 });
 
 // ── 更新聯絡人 ──────────────────────────────────────────
@@ -3656,6 +3667,17 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
     });
     if (_tg) return res.status(400).json(_tg);
   }
+  // 統編查無→申請行銷建檔（重新申請／改統編後申請）。COMPANY_REQUESTS=off 或沒帶 companyRequest：以下完全不執行
+  let _creqIn = null;
+  if (CREQ.enabled() && req.body.companyRequest != null) {
+    const _fx = safeBody.isForeign !== undefined ? (safeBody.isForeign === true || safeBody.isForeign === 'true') : !!old.isForeign;
+    const _tx = safeBody.taxId !== undefined ? safeBody.taxId : old.taxId;
+    if (!_fx && /^\d{8}$/.test(String(_tx || '').trim()) && !CREQ.masterExists(data, _tx)) {
+      const _cv = CREQ.validateRequest(req.body.companyRequest);
+      if (!_cv.ok) return res.status(400).json({ error: _cv.error, code: _cv.code });
+      _creqIn = _cv.value;
+    }
+  }
   if (safeBody.website !== undefined) safeBody.website = sanitizeUrl(safeBody.website);
   if (safeBody.bu !== undefined) {
     // 若 bu 沒變動，跳過驗證（避免未設 BU 的使用者只想改其他欄位時被 BU 驗證擋下）
@@ -3685,8 +3707,18 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
       if (i !== idx && !c.deleted && c.owner === owner && c.company === updated.company) c.isPrimary = false;
     });
   }
-  // 企業主檔：公司/統編可能變動 → 重新掛勾（找不到則自動建立）
-  const _master = ensureCompanyMaster(data, updated);
+  // 建檔申請狀態（COMPANY_REQUESTS=off 時整段不執行）：改統編→舊綁定作廢；帶 companyRequest→（重新）送出；改統編卻沒帶＝前端已驗證通過→解除待確認
+  let _creqRes = null, _creqVoided = null;
+  if (CREQ.enabled()) {
+    const _taxChanged = String(updated.taxId || '').trim() !== String(old.taxId || '').trim() || !!updated.isForeign !== !!old.isForeign;
+    const _nowIso = new Date().toISOString();
+    if (_taxChanged && CREQ.isBlockingVerify(old)) _creqVoided = CREQ.detachContact(data, old, _nowIso, owner);
+    if (_creqIn) _creqRes = CREQ.submitRequest(data, { contact: updated, user: req.session.user, request: _creqIn, now: _nowIso, genId: uuidv4 });
+    else if (_taxChanged && CREQ.isBlockingVerify(old)) CREQ.clearVerify(updated);
+  }
+  // 企業主檔：公司/統編可能變動 → 重新掛勾（找不到則自動建立）。仍在待確認／被退回且主檔還沒建 → 不建（核可時才建，避免以子單位名稱佔位）
+  const _skipMaster = CREQ.enabled() && CREQ.isBlockingVerify(updated) && !CREQ.masterExists(data, updated.taxId);
+  const _master = _skipMaster ? null : ensureCompanyMaster(data, updated);
   updated.companyId = _master ? _master.id : (updated.companyId || '');
   // 待補名片被業務編輯成真名片（填了真實姓名）→ 轉正、清掉 placeholder 旗標，
   // 避免日後新增別張卡時被自動清理而誤刪
@@ -3701,6 +3733,8 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   syncCompanyFields(data, updated);  // 同步公司層級欄位到同公司其他空白名片
   db.save(data);
   if (changes.length > 0) writeContactAudit('UPDATE', req, updated, changes);
+  if (_creqVoided) writeLog('COMPANY_REQUEST_CANCEL', owner, _creqVoided.taxId, `改統編，申請自動作廢｜申請 ${_creqVoided.id}`, req);
+  if (_creqRes) creqAfterSubmit(req, updated, _creqRes);
   res.json(data.contacts[idx]);
 });
 
@@ -6801,6 +6835,10 @@ function notificationUrlFor(type, refId) {
       return refId ? `/index.html#receivable:${refId}` : '/index.html#receivables';
     case 'birthday':
       return refId ? `/index.html#contact:${refId}` : '/index.html#birthdays';
+    case 'company_request_new':
+      return '/index.html#creq';   // 前端 company-requests.js 處理：開企業主檔「建檔申請」
+    case 'company_request_done':
+      return refId ? `/index.html#contact:${refId}` : '/index.html#contacts';
     case 'company_card_task':
       return '/index.html#cardtasks';   // 前端 company-card-tasks.js 處理：開「待補名片」彙總視窗
     default:
@@ -6823,6 +6861,133 @@ function notifyMarketingNewCompany(req, master, ownerUsername) {
   mkts.forEach(u => { try { pushNotification(u.username, 'new_company_industry', title, body, master.id); } catch {} });
   return mkts.length;
 }
+
+// ════════════════════════════════════════════════════════════
+// 🏛️ 統編查無 → 申請行銷建檔（lib/companyRequests.js；COMPANY_REQUESTS=off 整個關閉：端點回 404、名片流程與沒有此功能時相同）
+//   - 業務儲存名片時帶 companyRequest{category,note} → 建立名片＋申請（同統編已有待處理申請則併單）；申請期間不建企業主檔
+//   - 行銷／管理員核可＝ensureCompanyMaster 建主檔（產業只由核可者填）並清掉所有同統編名片的待確認標記；退回必填原因
+//   - 待確認／被退回期間只擋「報價單送簽」與「推送 SAP」（lib/quoteRoutes.js、integrations/push/batch）
+// ════════════════════════════════════════════════════════════
+function creqOff(res) { return res.status(404).json({ error: '建檔申請功能未啟用', code: 'COMPANY_REQUESTS_OFF' }); }
+function creqNotifyMarketing(title, body, refId) {
+  let n = 0;
+  try {
+    (loadAuth().users || []).filter(u => u.role === 'marketing' && u.active !== false).forEach(u => {
+      try { pushNotification(u.username, 'company_request_new', title, body, refId); n++; } catch { /* 通知失敗不影響主流程 */ }
+    });
+  } catch (e) { console.error('[creqNotifyMarketing]', e && e.message); }
+  return n;
+}
+// 名片存檔（POST／PUT）送出申請後的稽核＋通知。併單不重複通知行銷（避免洗版）
+function creqAfterSubmit(req, contact, res0) {
+  const r = res0.request;
+  const who = req.session.user.username;
+  writeLog('COMPANY_REQUEST_CREATE', who, r.taxId, `${res0.merged ? '併入既有申請' : '新建申請'}｜類別 ${CREQ.categoryLabel(((r.requesters || []).find(x => x.contactId === contact.id) || {}).category) || r.category}｜公司「${contact.company || ''}」｜名片 ${contact.id}｜申請 ${r.id}`, req);
+  if (!res0.merged) {
+    const label = userLabel(loadAuth().users.find(u => u.username === who), who);
+    creqNotifyMarketing('🏛️ 有新的建檔申請待處理',
+      `業務 ${label} 申請建檔「${contact.company || ''}」（統編 ${r.taxId}，${CREQ.categoryLabel(r.category)}）：${r.note}。請至企業主檔「建檔申請」核對後核可或退回。`, r.id);
+  }
+}
+function creqViewer(req) { return { username: req.session.user.username, canResolve: isAdminOrMarketing(req) }; }
+
+app.get('/api/company-requests', requireAuth, (req, res) => {
+  if (!CREQ.enabled()) return creqOff(res);
+  const data = db.load();
+  const viewer = creqViewer(req);
+  const nowMs = Date.now();
+  // 逾期提醒（lazy）：行銷／管理員載入清單時，把「待處理超過 3 天且今天還沒提醒」的申請各提醒行銷一次（同一筆每天最多一次）
+  if (viewer.canResolve) {
+    const ymd = new Date(nowMs + 8 * 3600000).toISOString().slice(0, 10);   // 台北日期
+    const due = CREQ.dueReminders(data, nowMs, ymd);
+    if (due.length) {
+      due.forEach(r => { r.lastRemindedDate = ymd; });
+      db.save(data);
+      due.forEach(r => creqNotifyMarketing('⏰ 建檔申請已等待 ' + CREQ.ageDays(r, nowMs) + ' 天',
+        `「${r.companyName || ''}」（統編 ${r.taxId}）的建檔申請尚未處理，請至企業主檔「建檔申請」核可或退回。`, r.id));
+    }
+  }
+  const { usersByName } = respAuthIndex();
+  const items = CREQ.visibleList(data, viewer, nowMs, usersByName, userLabel)
+    .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || (a.status === 'pending' ? b.days - a.days : String(b.resolvedAt || b.requestedAt).localeCompare(String(a.resolvedAt || a.requestedAt))))
+    .slice(0, 500);
+  res.json({
+    enabled: true, canResolve: viewer.canResolve, items, pending: items.filter(x => x.status === 'pending').length,
+    overdueDays: CREQ.OVERDUE_DAYS, remindDays: CREQ.REMIND_DAYS, noteMin: CREQ.NOTE_MIN, noteMax: CREQ.NOTE_MAX,
+    categories: CREQ.CATEGORIES, rejectReasons: CREQ.REJECT_REASONS,
+  });
+});
+
+app.post('/api/company-requests/:id/approve', requireAuth, (req, res) => {
+  if (!CREQ.enabled()) return creqOff(res);
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限行銷／管理員）' });
+  const data = db.load();
+  const r = (data.companyRequests || []).find(x => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: '找不到此建檔申請' });
+  if (r.status !== 'pending') return res.status(409).json({ error: '這筆申請已處理完畢', code: 'ALREADY_RESOLVED' });
+  const b = req.body || {};
+  const name = String(b.name == null ? r.companyName : b.name).trim();
+  if (!name) return res.status(400).json({ error: '請填寫公司正式名稱' });
+  if ([...name].length > 100) return res.status(400).json({ error: '公司正式名稱不可超過 100 字' });
+  if (TaxIdGuard.isDigitsOnly(name)) return res.status(400).json({ error: TaxIdGuard.evaluate({ company: name, taxId: r.taxId, strictDigits: true }).error });
+  const address = String(b.address || '').trim();
+  const industry = String(b.industry || '').trim();
+  if ([...address].length > 200) return res.status(400).json({ error: '地址不可超過 200 字' });
+  if ([...industry].length > 50) return res.status(400).json({ error: '產業名稱不可超過 50 字' });
+  const now = new Date().toISOString();
+  const actor = req.session.user.username;
+  let master = (data.companies || []).find(c => c.matchKey === 'tax:' + r.taxId || c.taxId === r.taxId);
+  const created = !master;
+  if (!master) master = ensureCompanyMaster(data, { taxId: r.taxId, company: name, address, industry: '', _source: 'company-request' });
+  else if (address && !master.address) master.address = address;   // 主檔已存在（核可前被別的路徑建好）：不改名，只補空白地址
+  if (industry) {
+    master.industry = industry; master.industrySource = '手動';
+    if (!data.industries) data.industries = [];
+    if (!data.industries.includes(industry)) data.industries.push(industry);
+  }
+  master.updatedAt = now;
+  const ap = CREQ.applyApproval(data, r, master, actor, now, { name: master.name, address: master.address || address, industry: master.industry || '' });
+  const synced = industry ? overwriteContactsIndustryByCompany(data, master.id, industry) : 0;
+  db.save(data);
+  writeLog('COMPANY_REQUEST_APPROVE', actor, r.taxId, `核可建檔「${master.name}」${created ? '（新建企業主檔）' : '（主檔已存在，沿用）'}｜產業=${industry || '(未填)'}｜解除待確認名片 ${ap.touched.length} 張${synced ? `，同步產業 ${synced} 張` : ''}｜申請 ${r.id}`, req);
+  ap.notify.forEach(x => {
+    try { pushNotification(x.username, 'company_request_done', '✅ 建檔申請已核可', `統編 ${r.taxId} 的「${master.name}」已建立企業主檔。之後輸入此統編會直接帶入正式名稱。`, x.contactId); } catch { /* ignore */ }
+  });
+  const { usersByName } = respAuthIndex();
+  res.json({ success: true, companyId: master.id, created, cleared: ap.touched.length, request: CREQ.serialize(r, Date.now(), creqViewer(req), usersByName, userLabel) });
+});
+
+app.post('/api/company-requests/:id/reject', requireAuth, (req, res) => {
+  if (!CREQ.enabled()) return creqOff(res);
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限行銷／管理員）' });
+  const data = db.load();
+  const r = (data.companyRequests || []).find(x => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: '找不到此建檔申請' });
+  if (r.status !== 'pending') return res.status(409).json({ error: '這筆申請已處理完畢', code: 'ALREADY_RESOLVED' });
+  const v = CREQ.validateReject(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error, code: v.code });
+  const now = new Date().toISOString();
+  const actor = req.session.user.username;
+  const ap = CREQ.applyReject(data, r, actor, v.value, now);
+  db.save(data);
+  writeLog('COMPANY_REQUEST_REJECT', actor, r.taxId, `退回｜原因 ${ap.text}｜申請 ${r.id}`, req);
+  ap.notify.forEach(x => {
+    try { pushNotification(x.username, 'company_request_done', '↩️ 建檔申請被退回', `統編 ${r.taxId} 的建檔申請被退回：${ap.text}。請修正統編後重新送出（名片暫時不能送簽報價單、推送 SAP）。`, x.contactId); } catch { /* ignore */ }
+  });
+  const { usersByName } = respAuthIndex();
+  res.json({ success: true, request: CREQ.serialize(r, Date.now(), creqViewer(req), usersByName, userLabel) });
+});
+
+app.post('/api/company-requests/:id/cancel', requireAuth, (req, res) => {
+  if (!CREQ.enabled()) return creqOff(res);
+  const data = db.load();
+  const actor = req.session.user.username;
+  const c = CREQ.cancelRequest(data, req.params.id, actor, new Date().toISOString());
+  if (!c.ok) return res.status(c.status).json({ error: c.error });
+  db.save(data);
+  writeLog('COMPANY_REQUEST_CANCEL', actor, c.request.taxId, `申請人取消${c.fullyCancelled ? '（申請作廢）' : '（仍有其他申請人）'}｜名片保留待確認狀態｜申請 ${c.request.id}`, req);
+  res.json({ success: true, fullyCancelled: c.fullyCancelled });
+});
 
 // ── 合約到期提醒 API ────────────────────────────────────
 app.get('/api/contract-reminders', requireAuth, (req, res) => {
@@ -7519,6 +7684,12 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
   if (!companyIds.length) return res.json({ pushed: 0, failed: 0, records: [], logId: null });
 
   const data = db.load();
+  // 建檔申請尚未通過（待確認／被退回）的公司不能推送 SAP（COMPANY_REQUESTS=off 時不檢查；放在建立推送紀錄之前，擋下時不留空紀錄）
+  if (CREQ.enabled()) {
+    const _blk = CREQ.blockForSapCompanies(data, (data.companies || []).filter(c => companyIds.includes(c.id) && !c.deleted));
+    if (_blk) return res.status(409).json({ error: _blk.message, code: _blk.code, companies: _blk.names });
+  }
+
   const config = (data.integrations || []).find(x => x.type === 'sap-sales-cloud-v2');
   if (!config || !config.enabled) return res.status(400).json({ error: '連線未啟用' });
   const baseUrl = config.baseUrl;
