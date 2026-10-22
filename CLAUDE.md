@@ -67,3 +67,8 @@ node server.js        # 本地 JSON 模式，port 3000（或雙擊 啟動CRM.bat
 ## 稽核
 
 所有 CRUD 走 `writeLog(action, operator, target, detail, req)`；名片欄位級異動另走 `writeContactAudit()`。新增寫入型 API 時兩者不可省。
+
+## 升版規則（版本資訊頁）
+
+- 後台「版本資訊」顯示 `v<package.json version> · <提交短碼>`：大版本號手動管理，提交編號由 Vercel 部署時自動注入（`VERCEL_GIT_COMMIT_SHA` 等，見 `lib/gitInfo.js`），稽核時可由短碼對應到 GitHub 某筆提交。
+- **合併重要功能 PR 時手動改 `package.json` 的 `version`**（同步 `package-lock.json` 最上層兩處）：新功能升 minor、修正升 patch、不相容大改升 major。目前從 v1.8.0 起算。

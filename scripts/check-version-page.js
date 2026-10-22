@@ -128,7 +128,7 @@ async function serverPart() {
     eq(r.status, 200, 'version 200');
     eq(d.auditStore, 'legacy', 'API auditStore＝legacy（預設）');
     ok(d.auditWrites && typeof d.auditWrites.inserted === 'number' && 'failed' in d.auditWrites && 'retried' in d.auditWrites && 'fellBack' in d.auditWrites && 'unavailable' in d.auditWrites, 'API auditWrites 欄位');
-    eq(d.deploy, { kind: 'local', vercelEnv: '', label: '本機' }, 'API deploy＝本機');
+    eq(Object.assign({}, d.deploy, { git: undefined }), { kind: 'local', vercelEnv: '', label: '本機', git: undefined }, 'API deploy＝本機（git 欄位另由 check-version-deploy.js 驗證）');
     eq(d.backends, { db: 'json', storage: 'local', session: 'jwt' }, 'API backends');
     eq(d.database.type, 'JSON 檔案（本機開發）', 'API database.type');
     ok(!JSON.stringify(d).includes('On-Premise'), 'API 不含 On-Premise');

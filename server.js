@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const crypto = require('crypto');
 const db = require('./db');
+const { deriveGitInfo } = require('./lib/gitInfo');   // 版本資訊頁：Vercel 部署提交資訊（白名單變數）
 const { deriveRuntimeInfo } = require('./lib/runtimeInfo');   // 版本資訊頁：由真實環境推導部署／資料庫型態
 const AuditStore = require('./lib/auditStore');   // 稽核事件（只增不改）的篩選／輸出共用函式
 const jwtSession = require('./middleware/jwtSession');
@@ -10322,7 +10323,7 @@ app.get('/api/admin/version', requireAdmin, (req, res) => {
       { name: 'HTML5 / CSS3',         ver: '—',        desc: '頁面結構與樣式',   icon: '🎨' },
     ],
     database: rt.database,   // 由真實 DB_BACKEND 推導（postgres／json），不含連線字串
-    deploy:   rt.deploy,     // { kind:'vercel'|'local', vercelEnv, label }
+    deploy:   Object.assign({}, rt.deploy, { git: deriveGitInfo(process.env) }),   // { kind, vercelEnv, label, git:{sha7,sha,ref,message,repoUrl}|null }（git 僅取 Vercel 白名單變數）
     backends: { db: rt.dbBackend, storage: rt.storageBackend, session: rt.sessionBackend },
     generatedAt: new Date().toISOString(),
   });
