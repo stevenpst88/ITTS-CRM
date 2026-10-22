@@ -9,7 +9,7 @@
  *   CARDTASK_ONLY=unit,api,import,off,ui node ...             只跑指定群組（ui 需要 Edge）
  *   CARDTASK_MUT=1 node ...                                   另外跑變異測試（每個變異都必須讓對應群組變紅）
  *   CARDTASK_SHOTS=<資料夾> node ...                          另外輸出截圖（ui 群組）
- *   CARDTASK_PORT（預設 3562）／CARDTASK_CDP（預設 9473）／CARDTASK_BASE_DIR（開關比對用的「修改前」程式碼資料夾；沒給就用 git archive origin/main 匯出到暫存）
+ *   CARDTASK_PORT（預設 3562）／CARDTASK_CDP（預設 9473）／CARDTASK_BASE_DIR（開關比對用的「修改前」程式碼資料夾；沒給就用 git archive 匯出 CARDTASK_BASE_REF 到暫存；預設 e5915a1＝PR #38 合併前的 main，不是 origin/main）
  * 守門：工作樹已有 auth.json／data.json／audit.log.json（可能是真實資料）時拒絕執行。
  */
 const fs = require('fs');
@@ -475,11 +475,14 @@ async function groupImport() {
 }
 
 // ═════════════ 開關：COMPANY_CARD_TASKS=off ═════════════
+const BASE_REF_DEFAULT = 'e5915a1'; // PR #38 合併前的 main
 function exportBase() {
   if (process.env.CARDTASK_BASE_DIR) return { dir: process.env.CARDTASK_BASE_DIR, cleanup() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cardtask-base-'));
-  const a = spawnSync('git', ['archive', 'origin/main'], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
-  if (a.status !== 0) throw new Error('git archive 失敗：' + String(a.stderr));
+  // 「修改前」基準固定在責任業務功能（PR #38）合併前的 main；用 origin/main 會在功能合併後變成新程式本身而誤報。
+  const baseRef = process.env.CARDTASK_BASE_REF || BASE_REF_DEFAULT;
+  const a = spawnSync('git', ['archive', baseRef], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+  if (a.status !== 0) throw new Error('git archive ' + baseRef + ' 失敗：' + String(a.stderr));
   const t = spawnSync('tar', ['-x', '-C', dir], { input: a.stdout, maxBuffer: 256 * 1024 * 1024 });
   if (t.status !== 0) throw new Error('tar 失敗：' + String(t.stderr));
   spawnSync('cmd', ['/c', 'mklink', '/J', path.join(dir, 'node_modules'), path.join(ROOT, 'node_modules')], { stdio: 'ignore' });

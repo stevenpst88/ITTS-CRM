@@ -5,6 +5,7 @@
  *       PR1_ONLY=a1,a3,…   只跑指定群組（a1 a1b a2 a3 a4 a5 a6 a7 a8 a9 static；b09 含在 a6）
  *       PR1_MUT=1          另外跑變異測試（把前端檔換成改壞的版本，對應群組必須變紅）
  *       PR1_SHOTS=<資料夾> 另外輸出截圖
+ *       PR1_BASE_REF=<提交> a9 比對用的舊 app.js（預設 07a2bfa＝PR #32 合併前的 main，不是 origin/main）
  * 沙盒：臨時 _s_* 帳號與資料檔只存在於本次執行，結束以 PID 清掉伺服器與 Edge；不連遠端資料庫；不含任何帳密。
  *   A1 閒置警告「立即登出」（用 Date.now 偏移法觸發警告，真點按鈕）　A2 矮螢幕　A3 兩人覆核視窗（深色對比、焦點、Esc、陷阱、錯誤處理）
  *   A4 登入頁 #done aria-hidden　A5 季度覆核 label　A6 .fd-note 換行　A7 reduced-motion　A8 showToast　A9 名單渲染（新舊 DOM 完全相同＋計時）
@@ -540,7 +541,9 @@ async function runMutants(oldApp) {   // MUTANTS 第 6 欄（選填）：正規�
 
 (async () => {
   let oldApp = null;
-  try { oldApp = execFileSync('git', ['show', 'origin/main:_client/app.js'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); } catch (e) { console.log('取不到 origin/main 的 app.js：', String(e.message).slice(0, 100)); }
+  // a9 的「舊寫法」基準固定在 PR #32（前端修正）合併前的 main；用 origin/main 會在合併後變成新程式本身（速度比≈1 而誤報）。
+  const baseRef = process.env.PR1_BASE_REF || '07a2bfa';
+  try { oldApp = execFileSync('git', ['show', baseRef + ':_client/app.js'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); } catch (e) { console.log('取不到 ' + baseRef + ' 的 app.js：', String(e.message).slice(0, 100)); }
   try {
     if (want('static')) await G.static();
     const names = ['a1', 'a1b', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9'].filter(want);
