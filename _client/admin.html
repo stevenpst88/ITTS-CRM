@@ -1227,6 +1227,7 @@
                   <th>統一編號</th>
                   <th>名片數</th>
                   <th>服務業務</th>
+                  <th>責任業務</th>
                   <th>資本額</th>
                   <th>產業</th>
                   <th>BU</th>
@@ -1237,7 +1238,7 @@
                 </tr>
               </thead>
               <tbody id="companiesTbody">
-                <tr><td colspan="11" class="ax-empty-md">點「建立/更新企業主檔」開始</td></tr>
+                <tr><td colspan="12" class="ax-empty-md">點「建立/更新企業主檔」開始</td></tr>
               </tbody>
             </table>
           </div>
@@ -1992,6 +1993,9 @@
               <input type="date" id="logFilterTo" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></div>
             <div><div style="font-size:12px;color:#888;margin-bottom:3px">文字搜尋</div>
               <input id="logFilterQ" placeholder="說明／對象／帳號" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px"></div>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#555;padding-bottom:7px;cursor:pointer" title="CSP 違規回報是瀏覽器自動送來的資安觀察雜訊，預設隱藏以免淹沒真實稽核；僅影響畫面，匯出 CSV／JSON 仍含全部">
+              <input type="checkbox" id="logShowCsp" onchange="loadLogs(false)"> 顯示 CSP 違規回報
+            </label>
             <button class="btn" onclick="loadLogs(true)" style="background:#1a73e8;color:#fff;padding:7px 16px">🔍 查詢</button>
             <button class="btn" onclick="clearLogFilter()" style="background:#f0f2f5;color:#333;padding:7px 12px">清除</button>
           </div>
@@ -5855,6 +5859,7 @@
 
     // 稽核日誌分頁／篩選：伺服端 /admin/logs?paged=1（含舊資料合併），每頁 200 筆
     const LOG_PAGE = 200;
+    const LOG_CSP_ACTIONS = new Set(['CSP_VIOLATION', 'CSP_REPORT_THROTTLED']);   // 資安回報雜訊：預設從畫面隱藏
     let logOffset = 0, logTotalCount = 0;
     function logQueryParams() {
       const p = new URLSearchParams();
@@ -5870,6 +5875,7 @@
     function clearLogFilter() {
       ['logFilterAction', 'logFilterOperator', 'logFilterFrom', 'logFilterTo', 'logFilterQ'].forEach(id => { $(id).value = ''; });
       $('logFilterKind').value = 'log';
+      if ($('logShowCsp')) $('logShowCsp').checked = false;
       loadLogs(true);
     }
     function logGoto(off) { logOffset = Math.max(0, off); loadLogs(false); }
@@ -5900,12 +5906,18 @@
         const r = await adminFetch(`${API}/admin/logs?${p}`);
         const data = await r.json();
         if (!r.ok) throw new Error((data && data.error) || '載入失敗');
-        const logs = data.rows || [];
+        const allLogs = data.rows || [];
+        // 預設隱藏 CSP 違規回報類事件（僅前端篩選，不改後端資料與匯出）。使用者在「動作代碼」明確輸入 CSP 時視為要看，不隱藏。
+        const showCsp = !!($('logShowCsp') && $('logShowCsp').checked) || /csp/i.test(($('logFilterAction') || {}).value || '');
+        const logs = showCsp ? allLogs : allLogs.filter(l => !LOG_CSP_ACTIONS.has(l.action));
+        const hiddenCsp = allLogs.length - logs.length;
         logTotalCount = data.total || 0;
-        $('logTotal').textContent = `（共 ${logTotalCount} 筆）`;
+        $('logTotal').textContent = `（共 ${logTotalCount} 筆${hiddenCsp ? `；本頁已隱藏 ${hiddenCsp} 筆 CSP 違規回報` : ''}）`;
         renderPager('logPager', data.offset || 0, data.limit || LOG_PAGE, logTotalCount, 'logGoto');
         if (!logs.length) {
-          $('logList').innerHTML = '<div class="ax-empty-lg">無符合條件的異動記錄</div>';
+          $('logList').innerHTML = hiddenCsp
+            ? '<div class="ax-empty-lg">本頁皆為 CSP 違規回報（已隱藏）。可勾選「顯示 CSP 違規回報」，或翻到其他頁</div>'
+            : '<div class="ax-empty-lg">無符合條件的異動記錄</div>';
           return;
         }
         const rows = logs.map(l => {
@@ -8853,7 +8865,7 @@
       const hasFilter = !!(_companyFilter || indF);
       countEl.textContent = `共 ${_companiesData.length} 家（顯示 ${list.length}）`;
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="11" class="ax-empty-md">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" class="ax-empty-md">${hasFilter ? '查無符合' : '尚無主檔，點上方按鈕建立'}</td></tr>`;
         return;
       }
       const fmtCap = (n) => {
@@ -8880,6 +8892,14 @@
         const ownersCell = (c.owners && c.owners.length)
           ? `<span class="ax-fs12">${c.owners.map(escapeAttr).join('、')}</span>`
           : '<span style="color:#cbd5e1;font-size:12px">-</span>';
+        // 責任業務（company.responsibleSales，只讀）：後端 responsibleSalesDisplay 已是 userLabel；功能關閉或未指定 → —
+        const respCell = (Array.isArray(c.responsibleSalesDisplay) && c.responsibleSalesDisplay.length)
+          ? c.responsibleSalesDisplay.map(u => {
+              const st = (c.responsibleStatus || {})[u.username];
+              const mark = st === 'pending' ? ' <span title="該業務名下尚無此公司的真實名片" style="color:#b45309;font-size:11px">待補名片</span>' : '';
+              return `<span class="ax-fs12">${escapeAttr(u.label)}${(u.bu && u.bu.length) ? `<small class="ax-dim"> ${escapeAttr(u.bu.join('/'))}</small>` : ''}${mark}</span>`;
+            }).join('、')
+          : '<span class="ax-dim">—</span>';
         const buCell = (c.bu && c.bu.length)
           ? c.bu.map(b => `<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:5px;font-size:11px;padding:1px 6px;margin:1px">${escapeAttr(b)}</span>`).join('')
           : '<span class="ax-dim">—</span>';
@@ -8890,6 +8910,7 @@
           <td>${tax}</td>
           <td>${c.contactCount || 0}</td>
           <td>${ownersCell}</td>
+          <td class="company-resp-cell">${respCell}</td>
           <td>${cap}</td>
           <td>${companyIndustryCell(c)}</td>
           <td>${buCell}</td>
@@ -8899,7 +8920,7 @@
           <td><button class="company-del" data-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️ 刪除</button></td>
         </tr>`;
       };
-      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="11" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
+      const groupHeader = (icon, text, n, bg) => `<tr class="company-group-hd"><td colspan="12" style="background:${bg};font-weight:700;font-size:13px;padding:8px 12px">${icon} ${text} · ${n} 家</td></tr>`;
       // 區隔：新匯入（尚無真實名片）排上方、歷史資料（已有名片）排下方
       const newImports = list.filter(c => c.isNewImport).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       const historical = list.filter(c => !c.isNewImport);
