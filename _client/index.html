@@ -334,6 +334,7 @@
 
           <!-- 待補名片待辦（company-card-tasks.js 填入；沒有待辦時整塊隱藏） -->
           <div id="cctHostDash" class="cct-host" data-cct-host="dash" hidden></div>
+          <div id="creqHostDash" class="cct-host" data-creq-host="home" hidden></div><!-- 建檔申請（行銷／管理員；company-requests.js 填入） -->
 
           <!-- 殭屍商機警示卡 -->
           <div id="zombieAlertCard" style="display:none">
@@ -556,6 +557,7 @@
               </span>
             </div>
             <div id="cmImportResult" style="font-size:13px;margin-bottom:8px"></div>
+            <div id="creqHostCm" class="cct-host" data-creq-host="cm" hidden></div><!-- 建檔申請清單（行銷／管理員） -->
             <div id="cmBatchBar" class="cct-batchbar" hidden>
               <label class="cct-batch-all"><input type="checkbox" id="cmSelAll"> 全選目前列表</label>
               <span id="cmBatchCount" class="cct-batch-count" aria-live="polite">已選 0 家</span>
@@ -1405,7 +1407,7 @@
         </div>
 
         <!-- ── 行銷首頁／顧問首頁（內容由 role-homes.js 填入）── -->
-        <div id="marketingHomeView" style="display:none"><div id="cctHostMkt" class="cct-host" data-cct-host="mkt" hidden></div></div>
+        <div id="marketingHomeView" style="display:none"><div id="cctHostMkt" class="cct-host" data-cct-host="mkt" hidden></div><div id="creqHostMkt" class="cct-host" data-creq-host="home" hidden></div></div>
         <div id="consultHomeView" style="display:none"></div>
 
         <!-- ── 主管首頁 ── -->
@@ -1994,6 +1996,7 @@
                   <button type="button" class="mic-btn" id="taxIdMicBtn" title="語音輸入統編">&#127908;</button>
                 </div>
                 <div id="taxGuardStatus" style="display:none;font-size:12.5px;line-height:1.5;margin-top:6px;padding:6px 10px;border-radius:6px"></div>
+                <div id="creqFormHost" class="creq-form" hidden></div><!-- 統編查無時的「申請行銷建檔」區塊（company-requests.js 填入） -->
                 <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:13px;color:#555;font-weight:normal;cursor:pointer">
                   <input type="checkbox" id="isForeignChk"> 境外公司（無統一編號）
                 </label>
@@ -3230,6 +3233,7 @@
   <script src="taxid-guard.js"></script>
   <script src="announcements.js"></script><!-- 公告彈窗：須在 app.js 之前載入（initUser 於非同步後即呼叫 ITTSAnnounce.start） -->
   <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
+  <script src="company-requests.js"></script><!-- 統編查無→申請行銷建檔：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCompanyReq.start） -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
