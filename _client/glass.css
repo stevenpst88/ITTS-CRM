@@ -2666,3 +2666,146 @@ body.glass.dark .csp-grid ol { color: var(--g-text-2); }
 body.glass.dark .csp-chip.on { background: var(--q4-warn-bg); color: var(--q4-warn); }
 body.glass.dark .csp-chip.off { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); }
 body.glass .csp-note { color: var(--g-text-2); }
+
+/* ═══ 對比第二輪修正（掃描報告 scan2_REPORT；只調顏色，語意與行為不變）═══
+ * 上輪只處理「嚴重」項；這裡補上中度項與淺色玻璃獨有項。原則同前：class 來源的色彩直接改 class（不加 !important），
+ * 只有 JS／HTML 行內 style 才用「屬性選擇器＋!important」覆寫，且限定在 body.glass 之下，非玻璃（?glass=0）外觀不變。 */
+body.glass:not(.dark) { --q4-ok: #17592b; }   /* 淺色綠字再深一階：版本資訊「正常」晶片在灰玻璃上 4.37→≥4.5 */
+
+/* ── 通知鈴鐺下拉（原為固定淺灰字 #bbb／#888／#1a73e8，淺色玻璃與深色底都不夠） ── */
+body.glass:not(.dark) .notif-time, body.glass:not(.dark) .notif-empty { color: var(--g-text-2); }
+body.glass:not(.dark) .notif-group-hd { color: var(--g-text-2); }
+body.glass.dark .notif-read-all { color: var(--q4-info); }
+body.glass:not(.dark) .notif-read-all { color: var(--q4-info); }
+
+/* ── 圖表區（首頁客戶與產業分佈）：#aaa／#bbb／#888 灰字 ── */
+body.glass:not(.dark) :is(.chart-empty, .chart-title-sub, .chart-legend-pct) { color: var(--g-text-2); }
+
+/* ── 確認視窗／閒置登出視窗 ── */
+body.glass:not(.dark) .modal .text-muted { color: var(--g-text-2); }
+body.glass:not(.dark) .idle-text { color: var(--g-text-2); }
+body.glass:not(.dark) #idleCountdown { color: #b3261e !important; }   /* 行內 #e74c3c */
+
+/* ── 行內語意色（JS／HTML 寫死）：淺色加深、深色提亮，色相不變 ── */
+body.glass:not(.dark) .main :is([style*="color:#0a8a4a"], [style*="color:#1e7e34"]):not(.qpv-paper *) { color: var(--q4-ok) !important; }
+body.glass.dark .main :is([style*="color:#0a8a4a"], [style*="color:#1e7e34"]):not(.qpv-paper *) { color: var(--q4-ok) !important; }
+body.glass:not(.dark) .main :is([style*="color:#ea4335"], [style*="color:#d93025"], [style*="color:#c62828"]):not(.qpv-paper *) { color: #a31515 !important; }
+body.glass.dark .main :is([style*="color:#ea4335"], [style*="color:#d93025"]):not(.qpv-paper *) { color: var(--q4-bad) !important; }
+body.glass:not(.dark) .main .gd-n[style*="#dc2626"] { color: #b91c1c !important; }
+body.glass:not(.dark) .rh-n.rh-hot { color: #9a3d00; }
+body.glass.dark .main .ach-gauge-card [style*="color:#1a73e8"] { color: var(--q4-info) !important; }
+body.glass:not(.dark) :is(#cmDetailWrap, .modal) [style*="color:#c62828"], body.glass:not(.dark) .modal [style*="color:#ea4335"] { color: #a31515 !important; }   /* 錯誤訊息／必填星號 */
+body.glass:not(.dark) #myContactOverlay :is([style*="color:#5f6b7a"], [style*="color:#8a94a3"]) { color: var(--g-text-2) !important; }
+body.glass.dark #myContactOverlay [style*="color:#5f6b7a"] { color: var(--g-text-2) !important; }
+body.glass:not(.dark) .gc-mb-total-gm { color: #6d28d9; }
+body.glass:not(.dark) #lookupTaxIdDisplay, body.glass.dark #lookupTaxIdDisplay { color: #1252a8; }   /* 查詢結果框維持淺底 → 字色加深 */
+body.glass:not(.dark) #qpvPnlToggle { color: #2a5690; }
+body.glass:not(.dark) .zombie-alert-dismiss { color: #475569; }
+
+/* ── 側欄底部身分晶片（行內 #34d399 on #34d39933）：側欄底色偏深/中藍，改用更亮的薄荷綠 ── */
+body.glass .sidebar-footer span[style*="color:#34d399"] { color: #d1fae5 !important; }
+/* 側欄群組計數膠囊：淺色模式側欄是中藍，白字膠囊對比 4.23 → 底加深 */
+body.glass:not(.dark) .sg-count { background: rgba(8, 18, 46, .30); color: #fff; }
+
+/* ── 後台 ── */
+/* 帳號管理列的晶片：深色綠底 #dcfce7 + 被改亮的字 → 成對換成語意 token；淺色橘字 #e37400 加深 */
+body.glass.admin-page.dark #userTableBody span[style*="background:#dcfce7"][style*="color:#166534"] { background: var(--q4-ok-bg) !important; color: var(--q4-ok) !important; box-shadow: inset 0 0 0 1px var(--q4-ok-bd); }
+body.glass.admin-page:not(.dark) #userTableBody span[style*="color:#e37400"] { color: var(--q4-warn) !important; }
+/* 季度覆核：橘色提示晶片、統計數字 */
+body.glass.admin-page .badge[style*="background:#fef3e0"][style*="color:#b06000"] { background: var(--q4-warn-bg) !important; color: var(--q4-warn) !important; }
+body.glass.admin-page:not(.dark) .stat-value[style*="color:#b06000"] { color: var(--q4-warn) !important; }
+body.glass.admin-page:not(.dark) .stat-value[style*="color:#1e7e34"] { color: var(--q4-ok) !important; }
+body.glass.admin-page:not(.dark) #vChainInfo span[style*="color:#b06000"] { color: var(--q4-warn) !important; }
+body.glass:not(.dark) .qfe-sub { color: var(--g-text-2); }
+body.glass.admin-page:not(.dark) .pal-btn .kbd-hint { background: rgba(0, 0, 0, .22); }
+/* 已刪除名單「還原」綠鈕：白字壓 #34a853 只有 3.06 → 深一階 */
+body.glass.admin-page #sec-deleted-contacts button[style*="background:#34a853"] { background: #1e7e34 !important; }
+/* 商品分類拖曳把手與空值破折號（淡灰 #cbd5e1） */
+body.glass:not(.dark) :is(.admin-main, .main) :is([style*="color:#cbd5e1"]) { color: var(--g-text-2) !important; }
+
+/* ── 刪除確認鈕（白字壓 #ea4335 = 3.92）── */
+body.glass #oppDeleteConfirm { background: #c5221f !important; }
+body.glass .btn-danger { background: #c5221f; color: #fff; }
+body.glass .btn-danger:hover { background: #a31515; }
+
+/* ── 預留文字、排序圖示、分隔符 ── */
+body.glass:not(.dark) { --g-ph: #4e5a6d; }
+body.glass .ft-sort-arrow, body.glass .ft-filter-icon { opacity: .85; }
+body.glass .target-ach-sep { color: rgba(255, 255, 255, .6); }
+
+/* ── 第二輪補丁：BU 色晶片（同色底＋同色字，行內）、側欄身分晶片、刪除鈕、GCIS 晶片 ── */
+/* 帳號管理（表格＋卡片）的 BU 晶片：深色提亮、淺色加深，色相不變 */
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#1a73e8"] { color: #8ecfff !important; }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#0a8a4a"] { color: #6fdc8c !important; }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#e37400"] { color: #fdba74 !important; }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#7c3aed"] { color: #c4b5fd !important; }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#e11d48"] { color: #fda4af !important; }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#d97706"] { color: #fcd34d !important; }
+body.glass.admin-page:not(.dark) :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#1a73e8"] { color: #1243a8 !important; }
+body.glass.admin-page:not(.dark) :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#0a8a4a"] { color: #0b6b36 !important; }
+body.glass.admin-page:not(.dark) :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#7c3aed"] { color: #5b21b6 !important; }
+body.glass.admin-page:not(.dark) :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#e11d48"] { color: #9f1239 !important; }
+body.glass.admin-page:not(.dark) :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="color:#d97706"] { color: #92400e !important; }
+/* 前台側欄底部身分晶片：淺色模式側欄是中藍底，淡色字改近白（晶片的色相仍由半透明底色表達） */
+body.glass .sidebar-footer span[style*="background:#"][style*="color:#"] { color: #f8fafc !important; }
+/* 已刪除名單：永久刪除（紅）鈕 */
+body.glass.admin-page #sec-deleted-contacts button[style*="background:#ea4335"] { background: #c5221f !important; }
+body.glass:not(.dark) .main .gd-n[style*="#ef4444"] { color: #b91c1c !important; }
+body.glass.admin-page:not(.dark) span[style*="color:#0b8043"][style*="background:#e6f4ea"] { color: var(--q4-ok) !important; }
+/* 其他主題（aurora／graphite 深色）下仍不足的灰字／紅字 */
+body.glass.dark :is(.chart-legend-label, .chart-legend-pct) { color: var(--g-text-2); }
+body.glass.dark .main .gd-n[style*="#ef4444"] { color: var(--gd-neg, #ff8a80) !important; }
+body.glass:not(.dark) .alert-soft-error { color: #a31515; }
+
+/* ── 狀態：聚焦框／懸停／輸入框邊界（第二輪狀態掃描）── */
+body.glass:not(.dark) :is(.cct-btn, .cct-resp-edit, .cct-textarea):focus-visible { outline-color: #1a56c8; }   /* #4c8dff 在白底只有 2.97 */
+body.glass .sidebar-logout:hover { background: #c5221f; border-color: #c5221f; color: #fff; }   /* 白字壓 #ea4335 = 4.0 */
+body.glass.admin-page:not(.dark) .admin-topbar a.btn-back:hover { background: rgba(8, 18, 46, .32); }   /* 白字壓淺藍頂欄懸停 4.27 */
+/* 行內 border:1px solid #ddd 的表單控制項：淺色玻璃底上邊框幾乎看不見（對比 1.0～1.3）→ 加深到可辨識 */
+body.glass:not(.dark) :is(.admin-main, .main) :is(input, select, textarea)[style*="border:1px solid #ddd"] { border-color: rgba(15, 27, 53, .38) !important; }
+/* 帳號管理的報價單權限晶片（簽核／唯讀／未設定）：深色玻璃成對換色 */
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="background:#dcfce7"][style*="color:#166534"] { background: var(--q4-ok-bg) !important; color: var(--q4-ok) !important; box-shadow: inset 0 0 0 1px var(--q4-ok-bd); }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="background:#e5e7eb"][style*="color:#374151"] { background: color-mix(in srgb, var(--g-text) 12%, transparent) !important; color: var(--g-text-2) !important; box-shadow: inset 0 0 0 1px var(--g-edge); }
+body.glass.admin-page.dark :is(#userTableBody, #uvCards, #uvTableWrap) span[style*="background:#fef3c7"][style*="color:#92400e"] { background: var(--q4-warn-bg) !important; color: var(--q4-warn) !important; box-shadow: inset 0 0 0 1px var(--q4-warn-bd); }
+/* 後台按鈕懸停原為 opacity:.85（admin.html）→ 淺色玻璃上整顆變淡、白字壓色塊掉到 3.7～4.3；改成不透明＋略微加深（色相不變，對比不降反升） */
+body.glass.admin-page:not(.dark) .btn:hover:not(:disabled):not(.btn-primary) { opacity: 1; filter: brightness(.93); }
+/* 鍵盤聚焦框：原本 outline:none 又沒有替代樣式的篩選下拉／搜尋框／多選鈕（.forecast-year-sel 等）→ 補主題強調色框 */
+body.glass :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea, .fc-multisel-btn):focus-visible { outline: 2px solid var(--g-accent); outline-offset: 1px; }
+body.glass.admin-page:not(.dark) .admin-topbar :is(.btn-back, .gt-btn, .pal-btn, #adminDarkToggle):focus-visible { outline-color: #fff; }   /* 藍色頂欄上強調色框只有 1.3 */
+/* 後台淺色玻璃：表單控制項邊框（--g-edge 16% 與白色填色只有 1.39:1）→ 加深到約 2.2:1，仍保持輕盈。
+ * 後台輸入框的 border 是 var(--ax-border…)／var(--g-edge)，且 admin.html 用三層 :is(#ax-i,…) 拉高了選擇器權重 →
+ * 不拼權重，直接在「輸入元素自己」重設這幾個變數（自訂屬性只作用在該元素，不影響卡片／分隔線的邊） */
+body.glass.admin-page:not(.dark) :is(.admin-main, .modal) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) { --g-edge: rgba(15, 27, 53, .36); --ax-border: rgba(15, 27, 53, .36); --ax-border-4: rgba(15, 27, 53, .36); }
+
+/* ── 只在特定狀態才出現的 class 色塊（動態掃不到，以「造元素」實測）：淺底淺色字 → 語意 token 成對（兩種模式各自對比 ≥4.5）── */
+body.glass .vt-親訪 { background: var(--q4-info-bg); color: var(--q4-info); }      /* 拜訪方式 */
+body.glass .vt-電話 { background: var(--q4-ok-bg); color: var(--q4-ok); }
+body.glass .vt-Email { background: var(--q4-warn-bg); color: var(--q4-warn); }
+body.glass .vt-展覽 { background: var(--q4-bad-bg); color: var(--q4-bad); }
+body.glass:not(.dark) .vt-視訊 { background: rgba(147, 51, 234, .12); color: #6b21a8; }
+body.glass.dark .vt-視訊 { background: rgba(192, 132, 252, .16); color: #d8b4fe; }
+body.glass .badge-otc, body.glass .ct-btn-delete { background: var(--q4-bad-bg); color: var(--q4-bad); }
+body.glass .primary-badge, body.glass .ovt-type, body.glass .ka-dim-hook { background: var(--q4-info-bg); color: var(--q4-info); }
+body.glass .ci-unqualified, body.glass .ft-filter-clear { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); }   /* 底色與字色成對（深色底色原本仍是淺灰） */
+body.glass:not(.dark) .input-readonly { color: var(--g-text-2); }   /* 深色版由 style.css 的 body.dark .input-readonly 負責 */
+body.glass:not(.dark) .ovt-date { color: var(--g-text-2); }
+body.glass .nav-badge { background: #c5221f; color: #fff; }       /* 白字壓 #e53935 = 4.23 */
+body.glass .mic-btn.listening { background: #c5221f !important; border-color: #c5221f; color: #fff; }
+
+/* ── 第二輪收尾：最終掃描剩下的 4 項 ── */
+body.glass.dark :is(.qap-modal, .q-dlg, .modal) .qap-muted b[style*="color:#d93025"] { color: var(--q4-bad) !important; }   /* 簽核設定視窗不在 .main 內 */
+body.glass:not(.dark) :is(.qap-modal, .q-dlg, .modal) .qap-muted b[style*="color:#d93025"] { color: #a31515 !important; }
+body.glass.dark #idleCountdown { color: #ff8a80 !important; }   /* 行內 #e74c3c 在淡入動畫中途掉到 4.4 */
+body.glass:not(.dark) .sidebar-footer div[style*="color: rgba(255, 255, 255, 0.65)"] { color: rgba(255, 255, 255, .92) !important; }   /* 側欄底部職稱：中藍側欄上 0.65 白只有 3.75 */
+/* 後台懸停變淡（opacity:.85）在深色玻璃一樣讓色塊鈕對比掉到 3.7～4.4 → 兩種模式都改成不透明＋微調亮度 */
+body.glass.admin-page.dark .btn:hover:not(:disabled):not(.btn-primary) { opacity: 1; filter: brightness(.93); }
+body.glass.admin-page.dark .home-chip:focus-visible { outline-color: #fff; }   /* 強調色框在深色晶片上只有 2.7 */
+body.glass:not(.dark) { --q4-info: #124a98; }   /* 淺色資訊藍字再深一階：淡藍晶片上 4.45→≥4.9 */
+body.glass.dark .ovt-date { background: color-mix(in srgb, var(--g-text) 10%, transparent); }   /* 深色字 #8b949e 原本壓在 #f5f5f5 上 */
+/* 前台淺色玻璃：表單控制項邊框同樣只有約 1.3～1.4:1 → 與後台一致加深到約 2.2:1（有自己外框的搜尋框內層 input 是 border:none，不受影響；聚焦時沿用原本的強調色框） */
+body.glass:not(.dark) :is(.main, .modal) :is(select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea):not(:focus) { --g-edge: rgba(15, 27, 53, .36); border-color: rgba(15, 27, 53, .36); }
+/* 報價單合計區「優惠折扣（議價）」行內 #e65100：淺色 3.3、深色 4.19 → 同色系加深／提亮（上輪中度遺留，本輪最後一次掃描才在報價單視窗實際重現） */
+body.glass:not(.dark) :is(#qDiscountRowLabel, #qDiscountAmt)[style*="color:#e65100"] { color: #9a3d00 !important; }
+body.glass.dark :is(#qDiscountRowLabel, #qDiscountAmt)[style*="color:#e65100"] { color: #ffb74d !important; }
+/* 前台行內 border:1px solid #d1d5db／#ddd 的表單控制項（看板年度／負責人下拉、聯絡人篩選等）：淺色玻璃邊框同樣加深 */
+body.glass:not(.dark) :is(.main, .modal) :is(input, select, textarea)[style*="border:1px solid #d1d5db"], body.glass:not(.dark) :is(.main, .modal) :is(input, select, textarea)[style*="border:1px solid #ddd"] { border-color: rgba(15, 27, 53, .36) !important; }
