@@ -19,7 +19,8 @@ const ROOT = path.join(__dirname, '..');
 const EXAMPLE = process.env.ENVDOC_EXAMPLE || path.join(ROOT, '.env.example');
 
 // 平台注入／行程內建，不需要在範本中設定（範本最後一段以註解說明）
-const PLATFORM = new Set(['VERCEL', 'VERCEL_ENV', 'VERCEL_URL', 'VERCEL_REGION', 'VERCEL_PROJECT_PRODUCTION_URL']);
+const PLATFORM = new Set(['VERCEL', 'VERCEL_ENV', 'VERCEL_URL', 'VERCEL_REGION', 'VERCEL_PROJECT_PRODUCTION_URL',
+  'VERCEL_GIT_COMMIT_SHA', 'VERCEL_GIT_COMMIT_REF', 'VERCEL_GIT_COMMIT_MESSAGE', 'VERCEL_GIT_REPO_OWNER', 'VERCEL_GIT_REPO_SLUG']);
 // 行程慣用名稱，不是本專案設定
 const BUILTIN = new Set(['NODE_ENV']);   // NODE_ENV 範本也有寫，這裡只是說明「不寫也不算缺」
 

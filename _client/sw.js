@@ -21,7 +21,7 @@
 
 // ⚠️ 每次部署有改到 app.js / CSS 時都要提版號，否則使用者不會收到「有新版本可用」提示，
 //    app.js 走 stale-while-revalidate 會繼續回舊檔（HTML 是 network-first 會更新 → 新舊錯配）。
-const SW_VERSION = 'itts-crm-v28';   // v28：F5 還原區段不再 loadQuotationsView is not defined（app.js _whenScriptsReady）、後台稽核預設隱藏 CSP 違規回報、後台企業主檔列表加責任業務欄。v26：企業主檔責任業務＋待補名片待辦（company-card-tasks.js、登入彙總視窗、首頁待辦卡、企業主檔責任業務欄）。v25：客戶清單搜尋無結果改顯示「找不到符合…」。v24：商機 Deal ID 欄位（表單／看板卡片／後台商品目錄設定）。v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js v27：對比第二輪（glass.css 檔尾補中度項與淺色獨有項；只動顏色）。v26：企業主檔責任業務＋待補名片待辦（company-card-tasks.js、登入彙總視窗、首頁待辦卡、企業主檔責任業務欄）。v25：客戶清單搜尋無結果改顯示「找不到符合…」。v24：商機 Deal ID 欄位（表單／看板卡片／後台商品目錄設定）。v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js
+const SW_VERSION = 'itts-crm-v29';   // v29：版本資訊頁顯示版本號＋Git 提交短碼（admin.html）。v26：企業主檔責任業務＋待補名片待辦（company-card-tasks.js、登入彙總視窗、首頁待辦卡、企業主檔責任業務欄）。v25：客戶清單搜尋無結果改顯示「找不到符合…」。v24：商機 Deal ID 欄位（表單／看板卡片／後台商品目錄設定）。v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js v28：F5 還原區段不再 loadQuotationsView is not defined（app.js _whenScriptsReady）、後台稽核預設隱藏 CSP 違規回報、後台企業主檔列表加責任業務欄。v26：企業主檔責任業務＋待補名片待辦（company-card-tasks.js、登入彙總視窗、首頁待辦卡、企業主檔責任業務欄）。v25：客戶清單搜尋無結果改顯示「找不到符合…」。v24：商機 Deal ID 欄位（表單／看板卡片／後台商品目錄設定）。v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js v27：對比第二輪（glass.css 檔尾補中度項與淺色獨有項；只動顏色）。v26：企業主檔責任業務＋待補名片待辦（company-card-tasks.js、登入彙總視窗、首頁待辦卡、企業主檔責任業務欄）。v25：客戶清單搜尋無結果改顯示「找不到符合…」。v24：商機 Deal ID 欄位（表單／看板卡片／後台商品目錄設定）。v23：程式碼審查 PR-2/3（設計器 sweep 底線取樣被截斷時加註的 flow-designer.js；閒置登出單一機制）。歷史請看 git log -- _client/sw.js
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const HTML_CACHE = `${SW_VERSION}-html`;
 

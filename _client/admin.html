@@ -2726,11 +2726,12 @@
             <div style="font-size:13px;opacity:.75;margin-top:4px" id="vAppDesc">名片管理 CRM 系統</div>
           </div>
           <div class="ax-ta-r">
-            <div style="font-size:40px;font-weight:900;opacity:.15;position:absolute;right:32px;top:20px;letter-spacing:-2px" id="vVersionBg">v1.0</div>
+            <div style="font-size:40px;font-weight:900;opacity:.15;position:absolute;right:32px;top:20px;letter-spacing:-2px" id="vVersionBg">v1.8</div>
             <div style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
                  border-radius:10px;padding:8px 20px;display:inline-block">
               <div style="font-size:11px;opacity:.6;margin-bottom:2px">目前版本</div>
-              <div style="font-size:22px;font-weight:800" id="vVersion">v1.0.0</div>
+              <div style="font-size:22px;font-weight:800" id="vVersion">v1.8.0</div>
+              <div style="font-size:12px;opacity:.85;margin-top:2px" id="vCommitLine"></div>
             </div>
           </div>
         </div>
@@ -6553,6 +6554,26 @@
       if (!d || !d.deploy || !d.deploy.label) return '—（伺服器未回報）';
       return String(d.deploy.label);
     }
+    // 部署提交資訊（deploy.git）；舊版 API 或本機無資訊 → null（顯示「本機開發」）
+    function verGitInfo(d) {
+      const g = d && d.deploy && d.deploy.git;
+      return (g && typeof g.sha7 === 'string' && g.sha7) ? g : null;
+    }
+    // 橫幅小字：<短碼連結> · <分支>；全用 DOM／textContent，連結只接受 https://github.com/ 開頭
+    function verRenderCommitLine(el, g) {
+      if (!el) return;
+      el.textContent = '';
+      if (!g) { el.textContent = '本機開發'; return; }
+      if (g.repoUrl && /^https:\/\/github\.com\//.test(g.repoUrl)) {
+        const a = document.createElement('a');
+        a.href = g.repoUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.textContent = g.sha7; a.style.color = 'inherit'; a.style.textDecoration = 'underline';
+        el.appendChild(a);
+      } else {
+        el.appendChild(document.createTextNode(g.sha7));
+      }
+      if (g.ref) el.appendChild(document.createTextNode(' · ' + g.ref));
+    }
     function verBackendsLabel(d) {
       const b = (d && d.backends) || {};
       const parts = [];
@@ -6916,11 +6937,14 @@
         $('vAppDesc').textContent   = d.app.description;
         $('vVersion').textContent   = 'v' + d.app.version;
         $('vVersionBg').textContent = 'v' + d.app.version;
+        const gi = verGitInfo(d);
+        verRenderCommitLine($('vCommitLine'), gi);
 
         // 伺服器運行
         const startLocal = new Date(d.app.startTime).toLocaleString('zh-TW');
         $('vServerInfo').innerHTML =
-          vRow('系統版本',      'v' + d.app.version,  '#1a73e8') +
+          vRow('系統版本',      escH('v' + d.app.version + (gi ? ' · ' + gi.sha7 : '')),  '#1a73e8') +
+          vRow('部署提交',      escH(gi ? (gi.message || '（無提交說明）') : '本機開發')) +
           vRow('Node.js 版本', d.runtime.node,         '#34a853') +
           vRow('伺服器啟動時間', startLocal) +
           vRow('已運行時間',    d.app.uptime,           '#f57c00') +
