@@ -1460,6 +1460,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="idle-timeout\.js"/g, `src="idle-timeout.js?v=${BUILD_VERSION}"`)
       .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-terms\.js"/g, `src="quote-terms.js?v=${BUILD_VERSION}"`)
       .replace(/src="taxid-guard\.js"/g, `src="taxid-guard.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pricebook\.js"/g, `src="quote-pricebook.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-costlines\.js"/g, `src="quote-costlines.js?v=${BUILD_VERSION}"`)

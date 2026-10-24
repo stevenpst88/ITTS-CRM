@@ -117,6 +117,7 @@ function isBlankDefaultRow(it) {
   if (it.cost !== undefined && it.cost !== null && it.cost !== '' && Number(it.cost) !== 0) return false;
   if (it.cat) return false;
   if (it.spec || it.note) return false;   // 已經填了說明／備註就不是「還沒動過」
+  if (it.termKind) return false;           // 已經選了 License／MA 類型（MA_TRACKING=1 才有欄位）也不是「還沒動過」
   return true;
 }
 

@@ -69,6 +69,7 @@ body.dark .qpv-pnl-tools a { color: #79b0f0; }
 .qpv-items td.desc { white-space: pre-wrap; word-break: break-word; }
 .qpv-items td.blank { color: #333; }
 .qpv-items td.desc .qpv-spec { font-size: 0.82em; color: #6b7280; line-height: 1.45; margin-top: 2px; }
+.qpv-items td.desc .qpv-term { font-size: 0.82em; color: #6b7280; line-height: 1.45; margin-top: 2px; }
 .qpv-items td.desc .qpv-note { font-size: 0.9em; color: #9a3412; line-height: 1.45; margin-top: 2px; }
 .qpv-items tr.qpv-grp td { background: #f2f2f2; font-weight: 700; text-align: left; padding: 5px 10px; white-space: pre-wrap; word-break: break-word; }
 .qpv-items tr.qpv-sub td { font-weight: 700; }
@@ -188,7 +189,9 @@ function buildQuotePreviewHtml(q, info) {
     }
     const qty = parseFloat(it.qty) || 1, price = parseFloat(it.unitPrice) || 0;
     const tx = _qpvItemTexts(it);
-    const extra = (tx.spec ? `<div class="qpv-spec">${e(tx.spec)}</div>` : '') + (tx.note ? `<div class="qpv-note"><b>備註：</b>${e(tx.note)}</div>` : '');
+    // 服務期間（License／MA；伺服器只在 MA_TRACKING=1 時才輸出 termKind 等欄位，所以關閉時這裡一定是空字串）：品名下第一行灰字，與 Excel 同一句
+    const tl = (typeof QTERMS === 'object' && QTERMS) ? QTERMS.servicePeriodLine(it.termKind, it.termFrom, it.termTo) : '';
+    const extra = (tl ? `<div class="qpv-term">${e(tl)}</div>` : '') + (tx.spec ? `<div class="qpv-spec">${e(tx.spec)}</div>` : '') + (tx.note ? `<div class="qpv-note"><b>備註：</b>${e(tx.note)}</div>` : '');
     return `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}${extra}</td><td class="c">${e(String(qty))}</td>` +
            `<td class="c">${e(it.unit || '式')}</td><td class="r">${n(price)}</td><td></td><td class="r">${n(qty * price)}</td></tr>`;
   }).join('');

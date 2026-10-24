@@ -506,7 +506,10 @@ function buildItemsSection(q) {
     const price = parseFloat(it.unitPrice) || 0;
     subtotal += Math.round(qty * price * 100);
     seg += Math.round(qty * price * 100);
-    let tr = `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
+    // 服務期間（License／MA；伺服器只在 MA_TRACKING=1 才輸出 termKind 等欄位，所以關閉時 tl 一定是空字串＝輸出與以前相同）：品名下一行，唯讀
+    const tl = (typeof QTERMS === 'object' && QTERMS) ? QTERMS.servicePeriodLine(it.termKind, it.termFrom, it.termTo) : '';
+    const tlHtml = tl ? `<div class="qterm-view"><span class="qterm-badge">${e(QTERMS.KIND_LABEL[QTERMS.parseKind(it.termKind) || ''] || '')}</span> ${e(tl)}</div>` : '';
+    let tr = `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}${tlHtml}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
     if (showPrice) tr += `<td class="r">${e(fmtNum(price))}</td><td class="r">${e(fmtNum(qty * price))}</td>`;
     if (showCost) tr += `<td class="r">${it.cost === undefined || it.cost === null ? '—' : e(fmtNum(it.cost))}</td>`;
     if (showPrice && showCost) tr += `<td class="r">${e(lineMarginText(it))}</td>`;

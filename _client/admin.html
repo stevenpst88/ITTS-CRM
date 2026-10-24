@@ -872,7 +872,8 @@
   #pcPanel .pc-term-chk { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--ax-text, #374151); cursor:pointer; }
   #pcPanel .pc-term-chk.pc-term-off { opacity:.55; cursor:not-allowed; }
   #pcSuggestBtn { background:none; border:1px solid var(--ax-border, #d1d5db); color:var(--ax-text, #374151); padding:8px 14px; font-size:13px; border-radius:6px; cursor:pointer; margin-left:8px; }
-  body.dark #pcPanel .pc-term-lbl, body.dark #pcPanel .pc-term-chk { color:#c9d1d9; }
+  /* 商品列的卡片底色：玻璃深色版是深色、一般（非玻璃）深色版維持淺色卡片（既有 Deal ID 列同樣如此），所以淺字只用在玻璃深色 */
+  body.glass.dark #pcPanel .pc-term-lbl, body.glass.dark #pcPanel .pc-term-chk { color:#c9d1d9; }
   body.dark #pcPanel .pc-term-sel { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
   body.dark #pcSuggestBtn { border-color:#30363d; color:#c9d1d9; }
 </style>

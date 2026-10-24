@@ -5218,4 +5218,39 @@ body.dark .notif-read-all { color: #8ab8ff; }   /* 原本 #1a73e8 壓在深色�
   .nt-x { min-width: 40px; min-height: 40px; }
   .nt-btn { min-height: 36px; padding: 4px 14px; }
   .notif-header { gap: 6px; }
+/* ── License／MA 服務期間（.qterm-*）──────────────────────────────────────────
+   quote.js 的 quoteTermBlock() 產生（報價單品項列的「類型＋起迄日」、核准後「修改服務期間」小視窗），quote-approval.js 的簽核面板唯讀顯示用 .qterm-view。
+   MA_TRACKING=1 才有這些元素；樣式用 --qt-* 自訂變數，深色（body.dark）與玻璃版（body.glass）各自覆寫，全部對比 >= 4.5:1（scripts/_quote-terms-ui.js 實測）。
+   選擇器刻意加 body 前綴提高權重：quote.js 內嵌的 .qn-row input（修改說明小視窗）樣式是之後才插入 <head> 的，同權重會蓋掉這裡。 */
+.qterm { --qt-fg:#1f2937; --qt-sub:#4b5563; --qt-line:#9aa5b4; --qt-bg:#ffffff; --qt-err:#b3261e; --qt-accent:#1a56c8; --qt-chip:#eef3fd; --qt-chip-fg:#12439e;
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--qt-fg); }
+body.dark .qterm { --qt-fg:#e6edf3; --qt-sub:#b4bfcb; --qt-line:#5b6673; --qt-bg:#0d1117; --qt-err:#ff9d96; --qt-accent:#79b8ff; --qt-chip:#16253f; --qt-chip-fg:#a5cdff; }
+body.glass:not(.dark) .qterm { --qt-fg:var(--g-text, #1f2937); --qt-sub:var(--g-text-2, #4b5563); --qt-bg:#ffffff; }
+.qterm-field { display:inline-flex; align-items:center; gap:5px; margin:0; }
+.qterm-lab { color:var(--qt-sub); font-size:12px; white-space:nowrap; }
+body .qterm .qterm-kind, body .qterm .qterm-from, body .qterm .qterm-to {
+  width:auto; margin:0; min-height:30px; box-sizing:border-box; padding:3px 8px; font-size:12.5px; border:1px solid var(--qt-line); border-radius:5px;
+  background:var(--qt-bg); color:var(--qt-fg); color-scheme:light; }
+body.dark .qterm .qterm-kind, body.dark .qterm .qterm-from, body.dark .qterm .qterm-to { color-scheme:dark; }
+body .qterm .qterm-from, body .qterm .qterm-to { min-width:9.2em; }
+body .qterm .qterm-kind:focus-visible, body .qterm .qterm-from:focus-visible, body .qterm .qterm-to:focus-visible, .qterm .qterm-quick:focus-visible { outline:2px solid var(--qt-accent); outline-offset:1px; }
+body .qterm .qterm-bad { border-color:var(--qt-err); box-shadow:0 0 0 2px color-mix(in srgb, var(--qt-err) 22%, transparent); }
+.qterm-dates { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+.qterm-dates[hidden], .qterm-err[hidden], .qterm-hint[hidden] { display:none; }
+.qterm .qterm-quick { min-height:30px; padding:2px 11px; font-size:12.5px; border-radius:15px; cursor:pointer; border:1px solid var(--qt-accent); background:var(--qt-chip); color:var(--qt-chip-fg); font-weight:600; }
+.qterm .qterm-quick:hover { filter:brightness(.96); }
+.qterm-span { color:var(--qt-sub); font-weight:600; white-space:nowrap; }
+.qterm-err { flex:1 0 100%; color:var(--qt-err); font-size:12.5px; font-weight:600; }
+.qterm-hint { flex:1 0 100%; color:var(--qt-sub); font-size:12px; }
+.qterm-ovl { z-index:125; }
+.qterm-info { margin-bottom:10px; }
+/* 簽核面板（唯讀）：品名下的「類型徽章＋服務期間」 */
+.qterm-view { margin-top:3px; font-size:12px; line-height:1.5; color:#374151; }
+.qterm-badge { display:inline-block; padding:0 7px; border-radius:9px; font-size:11.5px; font-weight:700; background:#eef3fd; color:#12439e; border:1px solid #9bb7ec; }
+body.dark .qterm-view { color:#c5cfda; }
+body.dark .qterm-badge { background:#16253f; color:#a5cdff; border-color:#3a5f9a; }
+  .qterm { gap:6px 8px; }
+  .qterm-dates { width:100%; }
+  .qterm-dates .qterm-field { flex:1 0 100%; }   /* 起、迄各占一行，快捷按鈕與「共 N 個月」接在後面換行 */
+  body .qterm .qterm-from, body .qterm .qterm-to { flex:1; min-width:0; }
 }

@@ -199,7 +199,7 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
   /** 逐列檢查：品名、數量 > 0、單價欄有填（單價 0 視為贈品允許；但要使用者實際輸入過 0，預設帶出的 0 不算「有填」） */
   function itemsCheck() {
     if (typeof readQuoteItems === 'function') readQuoteItems();   // 讓還沒存檔的新列都有暫時代號（nid），單價「動過」的記錄才認得出是哪一列
-    var rows = itemRows(), r = { n: rows.length, desc: [], qty: [], price: [], zero: 0, first: null };
+    var rows = itemRows(), r = { n: rows.length, desc: [], qty: [], price: [], term: [], zero: 0, first: null };
     rows.forEach(function (tr, i) {
       var n = i + 1, d = tr.querySelector('.qi-desc'), q = tr.querySelector('.qi-qty'), p = tr.querySelector('.qi-price');
       var bad = null;
@@ -208,6 +208,9 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
       var raw = p ? String(p.value).trim() : '', num = Number(raw);
       var filled = !!p && raw !== '' && isFinite(num) && num >= 0 && (num > 0 || touched.has(rowKey(tr)));
       if (!filled) { r.price.push(n); bad = bad || p; } else if (num === 0) r.zero++;
+      // License／MA 品項的服務期間（MA_TRACKING=1 才有欄位；quote.js 的 quoteRowTermProblem 與送出時同一套規則）
+      var tp = typeof quoteRowTermProblem === 'function' ? quoteRowTermProblem(tr) : null;
+      if (tp) { r.term.push(n); bad = bad || tp.el; }
       if (bad && !r.first) r.first = bad;
     });
     return r;
@@ -218,6 +221,7 @@ body.dark #quoteTabContentInfo.qs-on > .qs-rail { background:#161b22; }
     if (c.desc.length) m.push('第 ' + c.desc.join('、') + ' 列的品名');
     if (c.qty.length) m.push('第 ' + c.qty.join('、') + ' 列的數量（需大於 0）');
     if (c.price.length) m.push('第 ' + c.price.join('、') + ' 列的單價（贈品請填 0）');
+    if (c.term.length) m.push('第 ' + c.term.join('、') + ' 列的服務期間（License／MA 需填起訖日）');
     return m;
   }
 
