@@ -30,6 +30,7 @@ const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片�
 const NTA = require('./lib/notifActions');   // 鈴鐺：清除通知（DELETE /api/notifications）與合約到期提醒「已處理」（POST /api/contract-reminders/:id/dismiss）的純邏輯
 const MA = require('./lib/maTracking');   // 成交納管／任務卡／合約串接的純邏輯（MA_TRACKING=1 才啟用；與 QTERM 同一個開關）
 const MAR = require('./lib/maRoutes');   // 其端點、稽核與通知；register 在檔案尾端，PUT／DELETE／restore 內呼叫掛鉤
+const MRR = require('./lib/maReminderRoutes');   // 到期「活規則」提醒（P3a）：規則設定／試算器端點、掃描（cron＋poll-bundle 補掃）、動態鈴鐺 maReminders；MA_TRACKING=1 才啟用
 const QTERM = require('./lib/quoteTerms');   // 報價單品項服務期間／商品類型（MA_TRACKING=1 才啟用，預設關閉）
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
@@ -1448,7 +1449,9 @@ app.get(/^\/q\/.*$/i, (req, res) => {
   res.status(r.status).set(r.headers).send(r.body);
 });
 app.use('/deep-link.js', express.static(path.join(__dirname, '_client', 'deep-link.js'), STATIC_NO_CACHE));
-registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json' });
+registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json',
+  // MA_TRACKING=1：每日一次的 mail-outbox cron 處理完信件後順便掃描到期提醒（不新增 vercel.json cron——Hobby 方案 cron 數量有限）；關閉時回 null＝不多任何輸出
+  maSweep: () => MRR.sweepReminders({ mode: 'cron' }) });
 // 稽核防竄改（hash chain／錨點／每日排程／簽核歷程鏈檢查）；預設關閉（AUDIT_CHAIN 沒設成 1 時只回報「未啟用」）。放在強制改密碼與角色白名單 middleware 之後。
 require('./lib/auditChainRoutes').register(app, { requireAdmin, writeLog, db });
 
@@ -7202,6 +7205,9 @@ function notificationUrlFor(type, refId) {
       return '/index.html#dealtasks';   // 成交簽約確認任務卡（MA_TRACKING；前端 P2b 處理：開「待簽約確認」彙總視窗）
     case 'deal_task_skipped':
       return '/index.html#maitems';    // 業務回報「此案不簽合約」→ 行銷／主管開到期管理頁
+    case 'ma_reminder':
+    case 'ma_not_renew':
+      return '/index.html#maitems';    // MA／License 到期提醒（P3）、業務標記不續約 → 開到期管理頁
     default:
       return '/';
   }
@@ -7362,7 +7368,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
   // manager2 會看到全部業務，兩者都無視 BU 與組織線，是可見性破口）
   const owners = getViewableOwners(req, 'contracts');
 
-  const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
+  const contracts = (data.contracts || []).filter(c => owners.includes(c.owner) && !(MA.enabled() && c.type === 'SERVICE_MA'));   // MA_TRACKING=1：SERVICE_MA 由到期提醒規則處理，避免重複
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
@@ -7443,7 +7449,7 @@ app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
 app.get('/api/notifications', requireAuth, (req, res) => {
   const username = req.session.user.username;
   const data = db.load();
-  const list = (data.notifications || []).filter(n => n.to === username);
+  const list = MRR.scrub(req.session.user.role, (data.notifications || []).filter(n => n.to === username));
   res.json(list);
 });
 
@@ -7452,18 +7458,21 @@ app.get('/api/notifications', requireAuth, (req, res) => {
 app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
   const username = req.session.user.username;
   const role     = req.session.user.role;
+  // MA_TRACKING=1：先做到期提醒的補掃／通知自動解除（可能寫入），再載入資料；關閉時回 null、什麼都不做
+  const _maReminders = MRR.poll(req);
   const data = db.load();
   const auth = loadAuth();
 
   // ── 1. 一般通知 ──
-  const notifications = (data.notifications || []).filter(n => n.to === username);
+  const notifications = MRR.scrub(role, (data.notifications || []).filter(n => n.to === username));   // MA_TRACKING 關閉或非秘書：原陣列原樣回傳
 
   // ── 2. 合約到期提醒 ──
   let contractReminders = [];
   if (role !== 'secretary') {
     // 同 /api/contract-reminders：一律走 getViewableOwners，不再自行硬寫階層
     const owners = getViewableOwners(req, 'contracts');
-    const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
+    // MA_TRACKING=1：SERVICE_MA 合約由『到期提醒規則』處理（鈴鐺的 maReminders），這裡排除避免重複提醒；ERP_MA／SAP_MA 與其他合約行為不變
+    const contracts = (data.contracts || []).filter(c => owners.includes(c.owner) && !(MA.enabled() && c.type === 'SERVICE_MA'));
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const calcStatus = (c) => NTA.contractReminderStatus(c, today);
     contracts.forEach(c => {
@@ -7541,8 +7550,11 @@ app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
     birthdayReminders.sort((a, b) => a.daysLeft - b.daysLeft);
   }
 
-  // ── 序列化 + ETag ──
+  // ── 4. MA／License 到期提醒（MA_TRACKING=1 才有；動態推導，條件不再成立就自動消失）──
   const body = { notifications, contractReminders, birthdayReminders };
+  if (_maReminders) body.maReminders = _maReminders;
+
+  // ── 序列化 + ETag ──
   const json = JSON.stringify(body);
   const etag = 'W/"' + crypto.createHash('sha1').update(json).digest('base64').slice(0, 22) + '"';
   if (req.headers['if-none-match'] === etag) {
@@ -11165,17 +11177,22 @@ app.put('/api/me/contact', requireAuth, (req, res) => {
 
 // ── 報價單：CRUD、成本填寫、簽核、簽核設定、報價章、匯出 ─────────────────────
 // 實作在 lib/quoteRoutes.js（權限／狀態機／通知／稽核），規則在 lib/quoteApproval.js（核決表、毛利精算、內容雜湊）。
+let _quoteConfigReview = null;
 require('./lib/quoteRoutes')(app, {
   db, loadAuth, saveAuth, requireAuth, requireAdmin, writeLog, pushNotification, getViewableOwners,
   sanitizeStr, genQuoteNo, taipeiToday, resolveIssuer, buildQuoteWorkbook, buildQuotePnlExcel,
   QUOTE_TEMPLATE, uuidv4, normalizeBu, getUserFeatures,
   flushAuditBeforeEnd,   // GET 路徑的稽核事件（流程引擎預覽的影子／熔斷）在回應送出前確保寫入
   mail: quoteMail,   // 簽核信件（E1–E6）；MAIL_MODE=off 時 notifyMail 立刻返回
+  exposeConfigReview: (cr) => { _quoteConfigReview = cr; },   // 提醒規則（MA_TRACKING）登錄自己的兩人覆核種類
+  maRenewOfCheck: (req, data, id, company) => MRR.checkRenewOf(req, data, id, company),   // 報價單 renewOf 驗證（MA_TRACKING=1 才會被呼叫）
 });
 
 // ── 成交納管／任務卡／到期管理（MA_TRACKING=1 才啟用；關閉時端點等同未登記）──────────
 // 實作在 lib/maRoutes.js，純邏輯在 lib/maTracking.js。商機成交／回退／刪除／還原的掛鉤在上面的商機端點內。
 MAR.register(app, { db, loadAuth, requireAuth, writeLog, pushNotification, getViewableOwners, filterByBu, filterByViewGroup, userLabel });
+// 到期提醒規則（後台設定／試算器）、單項時間軸、不續約／撤銷、續約候選；掃描與動態鈴鐺見 MRR.sweepReminders／MRR.poll
+MRR.register(app, { db, loadAuth, requireAuth, requireAdmin, writeLog, pushNotification, webPush: sendWebPush, configReview: _quoteConfigReview });
 
 // ── 全域錯誤處理（必須在所有路由之後）─────────────────────
 // eslint-disable-next-line no-unused-vars
@@ -11823,6 +11840,7 @@ async function checkOverdueReminders() {
     // D-30 預警（每份合約只送一次）+ D-7 急迫提醒（每天送，直到處理）
     for (const c of (data.contracts || [])) {
       if (!c.endDate || c.renewDate || c.deleted) continue;
+      if (MA.enabled() && c.type === 'SERVICE_MA') continue;   // MA_TRACKING=1：SERVICE_MA 由到期提醒規則處理，避免重複提醒
       const end = new Date(c.endDate); end.setHours(0, 0, 0, 0);
       if (end < today || end > in30days) continue;
       const daysLeft = Math.round((end - today) / 86400000);
