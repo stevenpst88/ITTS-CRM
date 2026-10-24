@@ -8290,7 +8290,8 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
       termDiff = productCatalog.diffTermSettings(data.productCatalog, tn.bus);
       norm.bus = tn.bus;
     } else {
-      norm.bus = productCatalog.stripCatalogTermSettings(norm.bus);
+      // 審查修正 M4：關閉時請求裡的這兩欄一律丟掉（不輸出、不使用），但「已存的」類型設定必須保留——否則開關關閉期間存一次目錄就永久洗掉，再開啟後成交默默不納管
+      norm.bus = productCatalog.preserveCatalogTermSettings(data.productCatalog, productCatalog.stripCatalogTermSettings(norm.bus), renames);
     }
     data.productCatalog = {
       bus: norm.bus,
@@ -8763,18 +8764,23 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   (data.visits || []).forEach(v => {
     if (v.owner === fromOwner && transferredIds.has(v.contactId)) { v.owner = toOwner; visitCount++; }
   });
+  const _maOppIds = MA.enabled() ? new Set() : null;   // MA_TRACKING：被移轉的商機 id，用來帶走對應的納管項與任務卡（審查修正 M1）
   (data.opportunities || []).forEach(o => {
-    if (o.owner === fromOwner && transferredIds.has(o.contactId)) { o.owner = toOwner; oppCount++; }
+    if (o.owner === fromOwner && transferredIds.has(o.contactId)) { o.owner = toOwner; oppCount++; if (_maOppIds) _maOppIds.add(o.id); }
   });
   (data.receivables || []).forEach(r => {
     if (r.owner === fromOwner && transferredCompanies.has(r.company)) { r.owner = toOwner; recvCount++; }
   });
+  const _maTr = _maOppIds && _maOppIds.size ? MA.transferOpps(data, _maOppIds, fromOwner, toOwner, { by: username, nowIso: new Date().toISOString() }) : null;
 
   db.save(data);
   writeLog('TRANSFER_CONTACTS', username, `${fromOwner}→${toOwner}`,
     `移轉 ${contactCount} 位客戶（拜訪 ${visitCount} 筆、商機 ${oppCount} 筆、帳款 ${recvCount} 筆）`, req);
+  if (_maTr) MAR.afterTransfer(req, _maTr, fromOwner, toOwner, username);
 
-  res.json({ success: true, contactCount, visitCount, oppCount, recvCount });
+  res.json(_maTr && (_maTr.items.length || _maTr.tasks.length)
+    ? { success: true, contactCount, visitCount, oppCount, recvCount, maItemCount: _maTr.items.length, maTaskCount: _maTr.tasks.length }
+    : { success: true, contactCount, visitCount, oppCount, recvCount });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -10510,12 +10516,14 @@ app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
     }
   });
   // 商機：池中 owner 且 contactId 或 company 比對到的
+  const _maPoolOpps = MA.enabled() ? new Set() : null;   // MA_TRACKING：連動帶走納管項與任務卡（審查修正 M1）
   (data.opportunities || []).forEach(o => {
     if (o.owner === POOL_USERNAME && (transferredIds.has(o.contactId) ||
         (o.company && transferredCompanies.has(o.company)))) {
-      o.owner = targetOwner; oppCount++;
+      o.owner = targetOwner; oppCount++; if (_maPoolOpps) _maPoolOpps.add(o.id);
     }
   });
+  const _maPoolTr = _maPoolOpps && _maPoolOpps.size ? MA.transferOpps(data, _maPoolOpps, POOL_USERNAME, targetOwner, { by: username, nowIso: new Date().toISOString() }) : null;
   // 合約
   (data.contracts || []).forEach(x => {
     if (x.owner === POOL_USERNAME && x.company && transferredCompanies.has(x.company)) {
@@ -10532,7 +10540,10 @@ app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
   db.save(data);
   writeLog('POOL_ASSIGN', username, `${POOL_USERNAME}→${targetOwner}`,
     `分配 ${contactCount} 位客戶（拜訪 ${visitCount}、商機 ${oppCount}、合約 ${contractCount}、帳款 ${recvCount} 筆）`, req);
-  res.json({ success: true, contactCount, visitCount, oppCount, contractCount, recvCount });
+  if (_maPoolTr) MAR.afterTransfer(req, _maPoolTr, POOL_USERNAME, targetOwner, username);
+  res.json(_maPoolTr && (_maPoolTr.items.length || _maPoolTr.tasks.length)
+    ? { success: true, contactCount, visitCount, oppCount, contractCount, recvCount, maItemCount: _maPoolTr.items.length, maTaskCount: _maPoolTr.tasks.length }
+    : { success: true, contactCount, visitCount, oppCount, contractCount, recvCount });
 });
 
 // ── 客戶名單匯入：下載範本 ────────────────────────────────────

@@ -71,11 +71,23 @@
     var out = iso(ny, nm, Math.min(p.d, daysInMonth(ny, nm)));
     return isRealDate(out) ? out : '';
   }
-  /** 快捷：起日＋years 年－1 天（years 預設 1；一年／三年按鈕分別傳 1、3）。起日不合法回 '' */
+  /**
+   * 起日＋n 個月的「迄日」（審查修正 L9，前後端與 span 共用的單一定義）：
+   *   · 一般情況＝起日＋n 個月－1 天（2026-01-01 起 12 個月 → 2026-12-31；2026-03-15 起 1 個月 → 2026-04-14）。
+   *   · 起日的「日」超過目標月份天數而被月底截斷時（1/31＋1 個月＝2/28、2024-02-29＋12 個月＝2025-02-28），截斷後的那一天本身就是迄日，不再減 1 天
+   *     （以前 2024-02-29 起一年會得到 2025-02-27，少了一天）。
+   * 起日不合法、n 不是有限數或結果超出年限回 ''。
+   */
+  function endAfterMonths(from, n) {
+    if (!isRealDate(from) || typeof n !== 'number' || !isFinite(n)) return '';
+    var e = addMonths(from, n);
+    if (!e) return '';
+    return parts(e).d !== parts(from).d ? e : addDays(e, -1);
+  }
+  /** 快捷：起日＋years 年（規則同 endAfterMonths：一般－1 天，月底截斷則不再減；years 預設 1；一年／三年按鈕分別傳 1、3）。起日不合法回 '' */
   function quickEnd(from, years) {
     var y = years === undefined ? 1 : years;
-    var e = addMonths(from, 12 * y);
-    return e ? addDays(e, -1) : '';
+    return endAfterMonths(from, 12 * y);
   }
 
   /**
@@ -84,15 +96,15 @@
    */
   function span(from, to) {
     if (!isRealDate(from) || !isRealDate(to) || to < from) return null;
-    var e = addDays(to, 1);
-    if (!e) return null;
-    var f = parts(from), x = parts(e);
-    var m = (x.y - f.y) * 12 + (x.m - f.m);
-    // 往回找到「起日＋m 個月」不晚於右端的最大 m（addMonths 對月底取該月最後一天，所以 1/31＋1 個月＝2/28）
-    while (m > 0 && addMonths(from, m) > e) m -= 1;
+    var f = parts(from), x = parts(to);
+    // 找最大的 m，使「起日＋m 個月的迄日（endAfterMonths，含月底截斷規則）」不晚於 to；剩下的零頭天數 = to − 該迄日。
+    // 與 quickEnd／endAfterMonths 同一個定義，所以 quickEnd 算出來的迄日一定回得出整數個月（審查修正 L9；也不再需要 to＋1 天，所以 to＝2999-12-31 不會回 null）
+    var m = (x.y - f.y) * 12 + (x.m - f.m) + 1;
+    var endM = function (k) { return k === 0 ? dayNumber(from) - 1 : (function () { var s = endAfterMonths(from, k); return s ? dayNumber(s) : Infinity; })(); };
+    var toN = dayNumber(to);
+    while (m > 0 && endM(m) > toN) m -= 1;
     if (m < 0) m = 0;
-    var anchor = addMonths(from, m);
-    var days = dayNumber(e) - dayNumber(anchor);
+    var days = toN - endM(m);
     if (days < 0) days = 0;
     return { months: m, days: days };
   }
@@ -158,7 +170,7 @@
     termEditState: termEditState,
     KINDS: KINDS, KIND_LABEL: KIND_LABEL, YEAR_MIN: YEAR_MIN, YEAR_MAX: YEAR_MAX,
     parseKind: parseKind, parseCatalogKind: parseCatalogKind, isRealDate: isRealDate,
-    addDays: addDays, addMonths: addMonths, quickEnd: quickEnd, span: span, spanText: spanText,
+    addDays: addDays, addMonths: addMonths, endAfterMonths: endAfterMonths, quickEnd: quickEnd, span: span, spanText: spanText,
     formatRange: formatRange, servicePeriodLine: servicePeriodLine, validateTerm: validateTerm, suggestKind: suggestKind,
   };
 });
