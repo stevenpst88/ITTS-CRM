@@ -5384,7 +5384,8 @@ body.glass:not(.dark) :is(.mat-btn, .mat-input, .mat-textarea, .mat-fchip, .mat-
 .mat-fchip { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 14px; min-height: 34px; border-radius: 999px; cursor: pointer; border: 1px solid var(--mat-line); background: var(--mat-soft); color: var(--mat-fg); }
 .mat-fchip-on { background: var(--mat-accent); color: var(--mat-accent-fg); border-color: var(--mat-accent); }
 .mat-tablewrap { overflow-x: auto; }
-.mat-table { width: 100%; border-collapse: collapse; font-size: 14px; color: var(--mat-fg); }
+.mat-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14px; color: var(--mat-fg); }   /* 481px 以上窄視窗：維持欄寬、外層 .mat-tablewrap 橫向捲動（≤480px 改卡片式） */
+.mat-table td[data-label="期間"], .mat-table td[data-label="剩餘天數"] { white-space: nowrap; }
 .mat-table th { text-align: left; font-size: 13px; padding: 8px 10px; color: var(--mat-sub); border-bottom: 2px solid var(--mat-line); white-space: nowrap; }
 .mat-table td { padding: 10px; border-bottom: 1px solid var(--mat-line); vertical-align: middle; word-break: break-word; color: var(--mat-fg); }
 .mat-tr-bad td { background: var(--mat-bad-bg); }
@@ -5427,6 +5428,8 @@ body.dark .mat-srcbox-k { color: #a9b4c1; }
   .mat-dl { grid-template-columns: 1fr; gap: 0; }
   .mat-dd { margin-bottom: 8px; }
   .mat-panel, .mat-page { padding: 12px; }
+  .mat-table { min-width: 0; }
+  .mat-table td[data-label="期間"], .mat-table td[data-label="剩餘天數"] { white-space: normal; }
   .mat-table thead { display: none; }
   .mat-table, .mat-table tbody, .mat-table tr, .mat-table td { display: block; width: 100%; box-sizing: border-box; }
   .mat-table tr { border: 1px solid var(--mat-line); border-radius: 10px; margin-bottom: 10px; padding: 4px 0; }

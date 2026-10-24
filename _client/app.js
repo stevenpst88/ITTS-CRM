@@ -7938,7 +7938,10 @@ function contractStatus(c) {
   if (!endDate) return { key: 'active', label: '有效', days: null, pct: 100, color: 'green', isRenewed: false };
 
   const end     = new Date(endDate);
-  const endDiff = Math.ceil((end - today) / 86400000);
+  // MA_TRACKING 開啟時，剩餘天數與「MA／License 到期管理」共用台北日曆日算法（ITTSMaTasks.daysLeft）；關閉時維持原算法
+  const _maDl = (d) => { const M = window.ITTSMaTasks; return M && M.enabled && M.enabled() && M.daysLeft ? M.daysLeft(d) : null; };
+  const _tpEnd = _maDl(endDate);
+  const endDiff = _tpEnd !== null ? _tpEnd : Math.ceil((end - today) / 86400000);
 
   let effectiveEnd, effectiveStart, isRenewed = false;
 
@@ -7957,7 +7960,8 @@ function contractStatus(c) {
     effectiveStart = startDate ? new Date(startDate) : null;
   }
 
-  const diff = Math.ceil((effectiveEnd - today) / 86400000);
+  const _tpDiff = _maDl(isRenewed ? renewDate : endDate);
+  const diff = _tpDiff !== null ? _tpDiff : Math.ceil((effectiveEnd - today) / 86400000);
 
   // 進度條：剩餘時間百分比
   let pct = 100;
@@ -9012,6 +9016,7 @@ $('contractDeleteConfirm').addEventListener('click', async () => {
     contractDeleteId = null;
     showToast('合約已刪除');
     await reloadCurrentContractView();
+    try { const M = window.ITTSMaTasks; if (M && M.enabled && M.enabled() && M.afterContractChange) M.afterContractChange(); } catch (_) { /* 刪除 Service MA 合約會重開簽約任務卡：首頁待辦、到期管理、鈴鐺跟著更新 */ }
   } catch { showToast('刪除失敗'); }
 });
 

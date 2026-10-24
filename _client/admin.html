@@ -3333,7 +3333,9 @@
 
     // ── 導覽切換 ──
     document.querySelectorAll('.admin-nav-item').forEach(item => {
-      item.addEventListener('click', function() {
+      item.addEventListener('click', function(ev) {
+        // 銷售商品維護（MA_TRACKING 開啟時）儲存進行中不切換頁面，避免離開後誤以為已存好（儲存完成後即可切換）
+        if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa && this.dataset.sec !== 'product-catalog') { showToast('「銷售商品維護」正在儲存中，請等顯示「已儲存」後再切換頁面'); return; }
         document.querySelectorAll('.admin-nav-item').forEach(i => i.classList.remove('active'));
         document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
         this.classList.add('active');
@@ -3850,8 +3852,11 @@
     // ── 銷售商品維護（Admin）───────────────────────────────────
     const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed', '資安': '#e11d48' };
-    let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null, _pcMa = false;   // _pcMa：伺服器回 maTracking:true（MA_TRACKING=1）才顯示商品類型欄
+    let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null, _pcMa = false, _pcSaving = false;   // _pcMa：伺服器回 maTracking:true（MA_TRACKING=1）才顯示商品類型欄
     const pcEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    // 儲存進行中（_pcSaving）關閉／重新整理分頁 → 瀏覽器確認視窗（只在 MA_TRACKING 開啟時；關閉時行為與以前相同）
+    window.addEventListener('beforeunload', (e) => { if (_pcMa && _pcSaving) { e.preventDefault(); e.returnValue = ''; return ''; } });
 
     async function initProductCatalog() {
       if (_pcInited) return;
@@ -4124,7 +4129,7 @@
           if (ok) applyRenames = renames;
         } catch (e) { /* 預覽失敗 → 當作只改目錄 */ }
       }
-      btn.disabled = true; const orig = btn.textContent; btn.textContent = '儲存中…'; st.textContent = '';
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = '儲存中…'; st.textContent = ''; _pcSaving = true;
       try {
         const r = await adminFetch(`${API}/admin/product-catalog`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ catalog, renames: applyRenames }) });
         const d = await r.json();
@@ -4133,7 +4138,7 @@
         const extra = (d.updatedOpps || d.updatedContracts) ? `（連動商機 ${d.updatedOpps}、合約 ${d.updatedContracts}）` : '';
         st.textContent = `已儲存 ${new Date().toLocaleTimeString()}${extra}`;
       } catch (e) { st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(e.message)}</span>`; }
-      finally { btn.disabled = false; btn.textContent = orig; }
+      finally { _pcSaving = false; btn.disabled = false; btn.textContent = orig; }
     }
 
     // ── 報價牌價簿（Admin）─────────────────────────────────────

@@ -78,6 +78,16 @@
     if (n === 0) return '今天到期';
     return '剩 ' + n + ' 天';
   }
+  // 台北日曆日倒數（與 lib/maTracking.js daysLeft 同算法，和瀏覽器時區無關）：迄日當天＝0、昨天迄日＝-1；日期不合法 → null
+  function tpDayNum(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s == null ? '' : s));
+    if (!m) return NaN;
+    var ms = Date.UTC(+m[1], +m[2] - 1, +m[3]), d = new Date(ms);
+    if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return NaN;   // 2026-02-30 這類不存在的日期
+    return Math.round(ms / 86400000);
+  }
+  function tpToday(now) { var t = typeof now === 'number' ? now : (now instanceof Date ? now.getTime() : Date.now()); return new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10); }
+  function daysLeft(to, now) { var a = tpDayNum(to); return isNaN(a) ? null : a - tpDayNum(tpToday(now)); }
   function refreshBell() {
     try { if (typeof window._refreshBell === 'function') window._refreshBell(); } catch (e) { /* ignore */ }
   }
@@ -283,6 +293,14 @@
       return next();
     });
   }
+  function loadTermHint(opp) {
+    // 同一商機先前（含作廢）納管項的最近一次期間，供再成交預填；沒有或失敗 → null
+    if (!opp || !opp.id) return Promise.resolve(null);
+    return jget('/api/ma-items/term-hint?oppId=' + encodeURIComponent(opp.id)).then(function (r) {
+      var t = r && r.terms && r.terms[0];
+      return t && t.from && t.to ? { from: t.from, to: t.to, expired: !!t.expired } : null;
+    });
+  }
   function wonTerm(opp, opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
@@ -294,12 +312,16 @@
       getCatalog().then(function (cat) {
         var rule = resolveTermKind(cat, product);
         if (!opts.force && rule.termKind === 'none') return resolve({});
-        loadQuoteTerms(opp).then(function (qt) {
+        Promise.all([loadQuoteTerms(opp), loadTermHint(opp)]).then(function (res) {
+          var qt = res[0], hint = res[1];
           var from = '', to = '', note = '', multi = false;
           if (opts.prefill && opts.prefill.termFrom) { from = opts.prefill.termFrom; to = opts.prefill.termTo || ''; }
           else if (qt && qt.groups.length === 1) { from = qt.groups[0].from; to = qt.groups[0].to; }
           if (qt && qt.groups.length === 1 && !(opts.prefill && opts.prefill.termFrom)) {
             note = '已帶入核准報價單 ' + qt.quoteNo + ' 的服務期間，可以調整。';
+          } else if (!qt && hint && !(opts.prefill && opts.prefill.termFrom)) {
+            from = hint.from; to = hint.to;
+            note = '已帶入這筆商機上次成交的服務期間 ' + rangeText(hint.from, hint.to) + '，可以調整。' + (hint.expired ? '這段期間已經過了，請確認期間是否正確（必要時改成新的期間）。' : '請確認期間。');
           } else if (qt && qt.groups.length > 1) {
             multi = true;
             note = '核准報價單 ' + qt.quoteNo + ' 有 ' + qt.groups.length + ' 組不同的服務期間（' + qt.groups.map(function (g) { return rangeText(g.from, g.to); }).join('、') + '）。兩欄都留空＝依報價單各組期間納管；填寫＝全部改用這一組期間。';
@@ -352,8 +374,13 @@
     });
     return d;
   }
+  function reloadServiceMa() {
+    // 簽約／合約異動後：Service MA 頁（若已建立）重新載入，避免停在舊列表
+    try { if (state.itemsOn && document.getElementById('serviceMaView') && typeof window.loadServiceMaView === 'function') return Promise.resolve(window.loadServiceMaView()).catch(function () {}); } catch (e) { /* ignore */ }
+    return Promise.resolve();
+  }
   function afterAction() {
-    return Promise.all([refresh(), state.itemsOn ? loadItems(true) : Promise.resolve()]).then(function () { refreshBell(); });
+    return Promise.all([refresh(), state.itemsOn ? loadItems(true) : Promise.resolve(), reloadServiceMa()]).then(function () { refreshBell(); });
   }
 
   function openSign(t, parent) {
@@ -389,6 +416,7 @@
     d.foot.appendChild(button('前往 Service MA', 'mat-btn mat-btn-primary', function () {
       d.close();
       if (typeof window.showSection === 'function') window.showSection('service-ma');
+      reloadServiceMa();
     }));
     focusFirst(d, '.mat-btn-primary');
   }
@@ -435,8 +463,13 @@
     ok.disabled = true;
     d.foot.appendChild(button('取消', 'mat-btn mat-btn-ghost', function () { d.close(); }));
     d.foot.appendChild(ok);
-    jget('/api/company-responsible/candidates').then(function (r) {
+    jget('/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign-candidates').then(function (r) {
       var users = ((r && r.users) || []).filter(function (u) { return u.username !== t.owner; });
+      if (r && !users.length) {
+        holder.appendChild(el('p', 'mat-note', '沒有可改派的人選：只能改派給與這筆案件同事業單位（BU）的在職業務。'));
+        focusFirst(d, '.mat-btn-ghost');
+        return;
+      }
       if (users.length) {
         users.forEach(function (u) {
           var o = document.createElement('option'); o.value = u.username;
@@ -800,6 +833,7 @@
     var chips = el('div', 'mat-filters'); chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', '篩選');
     v.appendChild(chips);
     var wrap = el('div', 'mat-tablewrap');
+    wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', '到期管理清單（窄視窗可左右捲動）');
     var table = el('table', 'mat-table');
     var cap = el('caption', 'mat-sr', 'MA／License 到期管理清單'); table.appendChild(cap);
     var thead = document.createElement('thead'); var tr = document.createElement('tr');
@@ -858,7 +892,8 @@
     if (it.status && it.status !== 'tracking') return ITEM_STATUS[it.status] || it.status;
     if (it.contractNo) return '已歸入 Service MA；到期前提醒';
     if (it.taskStatus === 'skipped') return '此案不簽合約（仍追蹤到期）';
-    return '待簽約確認';
+    if (it.pendingSign) return '待簽約確認';
+    return '追蹤中';   // 沒有簽約任務卡的納管項（例如 License MA 類）：只追蹤到期，沒有待簽約動作
   }
   function renderRows(list) {
     if (!itemsEls) return;
@@ -980,6 +1015,8 @@
     openFromNotification: function () { return openSummary({ fetch: true }); },
     openItemsFromNotification: function () { if (state.itemsOn && typeof window.showSection === 'function') window.showSection('maItems'); },
     itemsOn: function () { return state.itemsOn; },
+    daysLeft: daysLeft,
+    afterContractChange: function () { return afterAction(); },   // 合約被刪除等異動後：重開的任務卡、到期管理、鈴鐺一併刷新
     _state: state, _resolveTermKind: resolveTermKind,
   };
 })();

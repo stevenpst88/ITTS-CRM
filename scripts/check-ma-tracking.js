@@ -10,7 +10,7 @@
  *   node scripts/check-ma-tracking.js                       單元＋API＋角色＋開關
  *   MATRK_ONLY=unit,api,roles,off node ...                  只跑指定群組
  *   MATRK_MUT=1 node ...                                    另外跑變異測試（每個變異都必須讓對應群組變紅）
- *   MATRK_PORT（預設 3292；限 3290–3299）／MATRK_BASE_REF（開關比對的基準提交，預設 e779c3a＝P1 完成）／MATRK_BASE_DIR
+ *   MATRK_PORT（預設 3292；限 3290–3299 或 3310–3319）／MATRK_BASE_REF（開關比對的基準提交，預設 7efdba5＝P2 完成）／MATRK_BASE_DIR
  * 守門：工作樹已有 auth.json／data.json／audit.log.json 時拒絕執行。
  */
 const fs = require('fs');
@@ -22,7 +22,7 @@ const { assertPortFree } = require('./_port-free');
 
 const ROOT = path.join(__dirname, '..');
 const PORT = parseInt(process.env.MATRK_PORT || '3292', 10);
-if (!(PORT >= 3290 && PORT <= 3299)) { console.log('拒絕：此腳本只能用埠 3290–3299'); process.exit(2); }
+if (!((PORT >= 3290 && PORT <= 3299) || (PORT >= 3310 && PORT <= 3319))) { console.log('拒絕：此腳本只能用埠 3290–3299 或 3310–3319'); process.exit(2); }
 const FILES = ['auth.json', 'data.json', 'audit.log.json', 'mail-outbox.json', 'audit.log.jsonl', 'audit.failed.jsonl', 'contact_audit.json'].map((f) => path.join(ROOT, f));
 {
   const g = FILES.filter((f) => /(auth|data|audit.log)\.jsonl?$/.test(f)).filter((f) => fs.existsSync(f));
@@ -334,6 +334,40 @@ function groupUnit() {
   const t4 = r.task.id;
   eq([MA.reassignTask(d, t4, U.mktoff, c1, users).code, MA.reassignTask(d, t4, U.mkt, c1, users).code, MA.reassignTask(d, t4, 'nobody', c1, users).code, MA.reassignTask(d, t4, U.u1, c1, users).code, MA.reassignTask(d, t4, U.uoff, c1, users).code], ['ASSIGNEE_INACTIVE', 'ASSIGNEE_ROLE', 'ASSIGNEE_NOT_FOUND', 'ASSIGNEE_SAME', 'ASSIGNEE_INACTIVE'], 'U59 改派目標檢查（停用／角色／不存在／同人）');
   eq([MA.reassignTask(d, t4, U.u2, c1, users).ok, d.dealTasks.find((t) => t.id === t4).owner, itemsOf(d, 'oS')[0].owner], [true, U.u2, U.u2], 'U60 改派：任務與納管項負責人一起換');
+  // 改派候選人與驗證（驗收後修正）：只列在職業務（user）、BU 與任務卡負責人有交集；負責人已停用 → 以商機 BU 為準
+  const cand = MA.reassignCandidates(d, d.dealTasks.find((t) => t.id === t4), users).map((x) => x.username).sort();
+  eq(cand, [U.u1, U.u4, U.u5].sort(), 'U60b 候選人＝ERP 在職業務（現任負責人 u2 排除）；不含主管／行銷／秘書／集團／ITS／離職');
+  const d2 = D(); const o3 = { id: 'oS3', owner: U.u1, company: '己公司', product: MAP, amount: '5', bu: 'ERP' }; d2.opportunities.push(o3);
+  const tt = MA.applyWon(d2, o3, MA.planWon(d2, o3, { termFrom: '2026-01-01', termTo: '2026-12-31' }), c1).task;
+  eq([MA.reassignTask(d2, tt.id, U.m1, c1, users).code, MA.reassignTask(d2, tt.id, U.m2, c1, users).code, MA.reassignTask(d2, tt.id, U.gs, c1, users).code, MA.reassignTask(d2, tt.id, U.cs, c1, users).code], ['ASSIGNEE_ROLE', 'ASSIGNEE_ROLE', 'ASSIGNEE_ROLE', 'ASSIGNEE_ROLE'], 'U60c 改派給一級／二級主管、集團業務、顧問主管 → ASSIGNEE_ROLE');
+  eq(MA.reassignTask(d2, tt.id, U.u3, c1, users).code, 'ASSIGNEE_BU', 'U60d 改派給別的 BU 業務 → ASSIGNEE_BU（驗證在後端）');
+  eq(d2.dealTasks.find((t) => t.id === tt.id).owner, U.u1, 'U60e 被拒絕時負責人不變');
+  const d3 = D(); const o4 = { id: 'oS4', owner: U.uoff, company: '庚公司', product: MAP, amount: '5', bu: 'ITS' }; d3.opportunities.push(o4);
+  const t5 = MA.applyWon(d3, o4, MA.planWon(d3, o4, { termFrom: '2026-01-01', termTo: '2026-12-31' }), c1).task;
+  eq(MA.reassignCandidates(d3, t5, users).map((x) => x.username), [U.u3], 'U60f 負責人已停用 → 以商機 BU（ITS）為準，只剩 u3');
+  eq([MA.reassignTask(d3, t5.id, U.u2, c1, users).code, MA.reassignTask(d3, t5.id, U.u3, c1, users).ok], ['ASSIGNEE_BU', true], 'U60g 同上規則套用在改派驗證');
+  // 再成交期間提示
+  const hint = MA.termHint([{ termKind: 'ma', from: '2020-01-01', to: '2020-12-31', status: 'void', updatedAt: '2026-01-01T00:00:00Z' }, { termKind: 'ma', from: '2026-01-01', to: '2099-12-31', status: 'void', updatedAt: '2026-05-01T00:00:00Z' }, { termKind: 'ma', from: '2026-01-01', to: '2099-12-31', status: 'tracking', updatedAt: '2026-04-01T00:00:00Z' }], new Date());
+  eq([hint.length, hint[0].to, hint[0].expired, hint[1].expired], [2, '2099-12-31', false, true], 'U60m termHint：最近異動在前、相同期間只列一次、過期者 expired');
+  eq(MA.termHint([], new Date()), [], 'U60n termHint 空');
+  // 合約刪除重開（驗收後修正）
+  const d4 = D(); const o5 = { id: 'oS5', owner: U.u1, company: '辛公司', product: MAP, amount: '7', bu: 'ERP' }; d4.opportunities.push(o5);
+  const w5 = MA.applyWon(d4, o5, MA.planWon(d4, o5, { termFrom: '2026-01-01', termTo: '2026-12-31' }), c1);
+  const sg5 = MA.signTask(d4, w5.task.id, { contractNo: 'DEL-1', signedDate: '2026-02-01' }, c1);
+  sg5.contract.deleted = true;
+  const cdx = MA.applyContractDeleted(d4, sg5.contract, { by: U.u1, nowIso: '2026-10-25T00:00:00.000Z' });
+  const t5b = d4.dealTasks.find((t) => t.id === w5.task.id), i5 = d4.maItems.find((i) => i.oppId === 'oS5');
+  eq([cdx.touched, !!cdx.task, t5b.status, t5b.steps[0].status, t5b.history.slice(-1)[0].action, t5b.history.slice(-1)[0].note, i5.contractNo, i5.contractId, i5.history.slice(-1)[0].action], [true, true, 'open', 'pending', 'REOPEN', '合約已刪除，重開簽約', '', '', 'CONTRACT_DELETED'], 'U60h 刪除合約：任務卡重開（簽約步驟回 pending、history 記錄）、納管項清掉合約連結');
+  eq(MA.listItems(d4.maItems, users, new Date(), { filter: 'pending_sign', tasks: d4.dealTasks }).filter((x) => x.oppId === 'oS5').length, 1, 'U60i 重開後納管項重新出現在待簽約');
+  const cdy = MA.applyContractDeleted(d4, sg5.contract, { by: U.u1, nowIso: '2026-10-26T00:00:00.000Z' });
+  eq([cdy.touched, cdy.task, t5b.history.filter((h) => h.action === 'REOPEN').length], [false, null, 1], 'U60j 重複套用冪等（不再重開、history 不重複）');
+  eq(MA.signTask(d4, t5b.id, { contractNo: 'DEL-1', signedDate: '2026-03-01' }, c1).ok, true, 'U60k 重開後可用同編號重新簽約');
+  const d5 = D(); const o6 = { id: 'oS6', owner: U.u1, company: '壬公司', product: LICP, amount: '7', bu: 'ERP' }; d5.opportunities.push(o6);
+  const w6 = MA.applyWon(d5, o6, MA.planWon(d5, o6, { termFrom: '2026-01-01', termTo: '2026-12-31' }), c1);
+  const fakeC = { id: 'cx6', contractNo: 'LIC-1', deleted: true };
+  d5.maItems.find((i) => i.oppId === 'oS6').contractId = 'cx6'; d5.maItems.find((i) => i.oppId === 'oS6').contractNo = 'LIC-1';
+  const cd6 = MA.applyContractDeleted(d5, fakeC, { by: U.u1, nowIso: c1.nowIso });
+  eq([w6.task, cd6.touched, cd6.task, (d5.dealTasks || []).filter((t) => t.oppId === 'oS6').length, d5.maItems.find((i) => i.oppId === 'oS6').contractNo], [null, true, null, 0, ''], 'U60l 沒有任務卡的納管項：只清連結，不建任務卡');
   // 通知已讀
   d = D(); d.opportunities.push(o2);
   r = MA.applyWon(d, o2, MA.planWon(d, o2, { termFrom: '2026-01-01', termTo: '2026-12-31' }), c1);
@@ -361,7 +395,14 @@ function groupUnit() {
   eq(ids('all'), ['c', 'e', 'a', 'b'], 'U65 all：排除 void，依到期日排序');
   eq(ids('d90'), ['a'], 'U66 d90：0～90 天內（91 天不算；ended 不算）');
   eq(ids('overdue'), ['c'], 'U67 overdue：已過期');
-  eq(ids('pending_sign'), ['b', 'c'].sort((x, y) => (its.find((i) => i.id === x).to < its.find((i) => i.id === y).to ? -1 : 1)), 'U68 pending_sign：沒有合約編號且追蹤中');
+  const tk = [{ id: 'tb', type: 'ma_sign', maItemIds: ['b'], status: 'open' }, { id: 'tc', type: 'ma_sign', maItemIds: ['c'], status: 'skipped' }];
+  const idsT = (f) => MA.listItems(its, seedUsers(), new Date(), { filter: f, tasks: tk }).map((x) => x.id);
+  eq(idsT('pending_sign'), ['b'], 'U68 pending_sign：追蹤中、沒有合約編號、而且有開啟中的簽約任務（略過的不算）');
+  eq(ids('pending_sign'), [], 'U68b 沒有任務卡的納管項（License MA 類）不算待簽約');
+  const pv = MA.listItems(its, seedUsers(), new Date(), { filter: 'all', tasks: tk });
+  eq(['a', 'b', 'c', 'e'].map((k) => pv.find((x) => x.id === k).pendingSign), [false, true, false, false], 'U68c pendingSign 欄位：只有 b（有開啟任務）為真；沒任務／略過／已簽／已結束都不是');
+  eq(MA.isPendingSign({ status: 'tracking', contractNo: '' }, { status: 'open' }), true, 'U68d isPendingSign 開啟任務');
+  eq([MA.isPendingSign({ status: 'tracking', contractNo: '' }, null), MA.isPendingSign({ status: 'tracking', contractNo: '' }, { status: 'done' }), MA.isPendingSign({ status: 'tracking', contractNo: 'X' }, { status: 'open' })], [false, false, false], 'U68e isPendingSign 無任務／任務已完成／已有合約編號');
   eq(ids('bogus'), ids('all'), 'U69 未知 filter 視同 all');
   const sec = MA.listItems(its, seedUsers(), new Date(), { filter: 'all', secretary: true });
   ok(sec.every((x) => JSON.stringify(Object.keys(x).sort()) === JSON.stringify(['company', 'daysLeft', 'from', 'ownerLabel', 'product', 'termKind', 'to'])), 'U70 秘書只有 7 個欄位', JSON.stringify(sec[0]));
@@ -447,6 +488,12 @@ async function groupApi() {
   d = readData();
   eq([x2.status, itemsOf(d, li.id).length, !!taskOf(d, li.id), x2.json.ma && x2.json.ma.taskId], [200, 1, false, ''], 'A4b license（startsTask=false）：有納管項、沒任務卡');
   eq([itemsOf(d, pl.id).length, !!taskOf(d, pl.id)], [0, false], 'A4c 非類型商品沒有納管項');
+  {
+    const lAll = (await http(U.u1, 'GET', '/api/ma-items?filter=all')).json.items, lPend = (await http(U.u1, 'GET', '/api/ma-items?filter=pending_sign')).json.items;
+    const liIt = itemsOf(d, li.id)[0], a1It = itemsOf(d, a1.id)[0];
+    const row = lAll.find((i) => i.id === liIt.id);
+    eq([row.pendingSign, row.status, row.taskId, lPend.some((i) => i.id === liIt.id), lPend.some((i) => i.id === a1It.id), lAll.find((i) => i.id === a1It.id).pendingSign], [false, 'tracking', '', false, true, true], 'A4d License MA（無任務卡）：追蹤中、不是待簽約、不在 pending_sign 篩選；Service MA（有開啟任務）是待簽約');
+  }
   // A5 報價單來源
   const q1 = await http(U.u1, 'PUT', '/api/opportunities/oQ1', { stage: 'Won' });
   d = readData();
@@ -464,6 +511,12 @@ async function groupApi() {
   const nA1 = (await notifs(U.u1, 'deal_task')).filter((n) => n.refId === taskOf(d, a1.id).id);
   ok(nA1.length === 1 && nA1[0].read === true, 'A6b 取消後該任務通知標為已讀', JSON.stringify(nA1));
   ok(itemsOf(d, a1.id)[0].history.length >= 2, 'A6c 作廢保留 history');
+  {
+    const th = await http(U.u1, 'GET', '/api/ma-items/term-hint?oppId=' + a1.id);
+    eq([th.status, (th.json.terms || []).map((x) => x.termKind + x.from + x.to), (th.json.terms || [])[0] && th.json.terms[0].expired], [200, ['ma2026-01-012026-12-31'], '2026-12-31' < todayTp()], 'A6c2 再成交期間提示：回傳先前（含作廢）納管項的期間，expired 依台北今天判斷');
+    ok(clean(th), 'A6c3 期間提示不含金額與備註');
+    eq([(await http(U.u2, 'GET', '/api/ma-items/term-hint?oppId=' + a1.id)).json.terms.length, (await http(U.sec, 'GET', '/api/ma-items/term-hint?oppId=' + a1.id)).json.terms.length, (await http(U.u1, 'GET', '/api/ma-items/term-hint')).json.terms.length], [0, 0, 0], 'A6c4 別的業務／秘書／沒給 oppId 都是空');
+  }
   const again = await http(U.u1, 'PUT', `/api/opportunities/${a1.id}`, { stage: 'Won' });
   d = readData();
   eq([again.status, itemsOf(d, a1.id).length, (d.dealTasks || []).filter((t) => t.oppId === a1.id).length, itemsOf(d, a1.id)[0].status, taskOf(d, a1.id).status, again.json.ma && again.json.ma.taskAction], [200, 1, 1, 'tracking', 'open', 'reopened'], 'A6d 再次成交沒帶期間：重開、不重複建');
@@ -537,6 +590,25 @@ async function groupApi() {
   d = readData();
   const ia = itemsOf(d, a1.id).find((i) => i.status === 'tracking');
   eq([cdel.status, ia.contractNo, ia.contractId], [200, '', ''], 'A8t 合約刪除 → 納管項解除連結');
+  // 合約刪除重開簽約（驗收後修正）
+  const tRe = taskOf(d, a1.id);
+  eq([tRe.status, tRe.steps[0].status, tRe.history.slice(-1)[0].action, tRe.history.slice(-1)[0].note], ['open', 'pending', 'REOPEN', '合約已刪除，重開簽約'], 'A8t1 刪除合約 → 任務卡重開（open、簽約步驟 pending、history 記錄）');
+  const reN = (await notifs(U.u1, 'deal_task')).filter((n) => n.refId === tRe.id && !n.read);
+  ok(reN.length === 1 && reN[0].title.includes(a1.company) && !reN[0].title.includes(AMT) && !reN[0].body.includes(AMT) && !reN[0].body.includes(NOTE), 'A8t2 重新通知負責業務（未讀 1 則，只有公司名與品項、無金額）', JSON.stringify(reN));
+  const delReopen = async () => (await auditLines('MA_TASK_REOPEN')).filter((l) => JSON.stringify(l).includes('合約已刪除')).length;
+  eq([await delReopen(), (await auditLines('MA_CONTRACT_UNLINK')).length], [1, 1], 'A8t3 稽核 MA_TASK_REOPEN／MA_CONTRACT_UNLINK 各一筆');
+  const lAfter = (await http(U.u1, 'GET', '/api/ma-items?filter=pending_sign')).json.items.find((i) => i.id === ia.id);
+  eq([!!lAfter, lAfter && lAfter.pendingSign, lAfter && lAfter.taskStatus], [true, true, 'open'], 'A8t4 到期管理：刪除後重新出現在待簽約、任務 open（有入口可簽）');
+  const cdel2 = await http(U.u1, 'DELETE', '/api/contracts/' + cA1.id);
+  d = readData();
+  eq([cdel2.status, taskOf(d, a1.id).history.filter((h) => h.note === '合約已刪除，重開簽約').length, (await notifs(U.u1, 'deal_task')).filter((n) => n.refId === tRe.id && !n.read).length, await delReopen(), (await auditLines('MA_CONTRACT_UNLINK')).length], [200, 1, 1, 1, 1], 'A8t5 重複刪除冪等：不重複重開、不重複通知、不重複稽核');
+  const rs = await sign(U.u1, tRe.id, { contractNo: 'GONE-001', signedDate: '2026-02-05' });
+  d = readData();
+  eq([rs.status, taskOf(d, a1.id).status, itemsOf(d, a1.id).find((i) => i.status === 'tracking').contractNo, (d.contracts || []).filter((c) => c.oppId === a1.id && !c.deleted).length], [200, 'done', 'GONE-001', 1], 'A8t6 重開後可重新簽約（同編號可重用），只有一份有效合約');
+  const cNew = (d.contracts || []).find((c) => c.oppId === a1.id && !c.deleted);
+  const cdelOther = await http(U.u2, 'DELETE', '/api/contracts/' + cNew.id);
+  d = readData();
+  eq([cdelOther.status, (d.contracts.find((c) => c.id === cNew.id) || {}).deleted, taskOf(d, a1.id).status, itemsOf(d, a1.id).find((i) => i.status === 'tracking').contractNo], [200, undefined, 'done', 'GONE-001'], 'A8t7 非合約擁有者刪除：不生效，任務卡與納管項不動');
   // admin 可代簽
   const adminSign = await sign(U.adm, tA2.id, { contractNo: 'ADM-1', signedDate: '2026-03-01' });
   eq(adminSign.status, 200, 'A8u 管理員可代為簽約確認');
@@ -552,6 +624,10 @@ async function groupApi() {
   eq([sk.status, sk.json.notified, taskOf(d, a3.id).status, itemsOf(d, a3.id)[0].status], [200, 3, 'skipped', 'tracking'], 'A9d 略過：任務 skipped、納管項保留追蹤、通知 3 人（兩位行銷＋一級主管）');
   for (const [who, n] of [[U.mkt, 1], [U.mkt2, 1], [U.m1, 1], [U.mktoff, 0], [U.u1, 0], [U.m2, 0]]) eq((await notifs(who, 'deal_task_skipped')).length, n, 'A9e 略過通知 ' + who + ' = ' + n);
   ok((await notifs(U.mkt, 'deal_task_skipped')).every((n) => n.body.includes('客戶改用其他方案') && !n.body.includes(AMT)), 'A9f 通知含原因、不含金額');
+  {
+    const aAll = (await http(U.u1, 'GET', '/api/ma-items?filter=all')).json.items.find((i) => i.oppId === a3.id), aPend = (await http(U.u1, 'GET', '/api/ma-items?filter=pending_sign')).json.items;
+    eq([aAll.pendingSign, aAll.taskStatus, aPend.some((i) => i.oppId === a3.id)], [false, 'skipped', false], 'A9d2 此案不簽合約的納管項：不再算待簽約');
+  }
   eq((await skip(U.u1, tA3.id, { reason: '客戶改用其他方案' })).json.code, 'TASK_NOT_OPEN', 'A9g 不能重複略過');
   eq((await sign(U.u1, tA3.id, { contractNo: 'C-77', signedDate: '2026-02-01' })).json.code, 'TASK_NOT_OPEN', 'A9h 略過後不能簽');
   ok((await notifs(U.u1, 'deal_task')).filter((n) => n.refId === tA3.id).every((n) => n.read), 'A9i 略過後原通知已讀');
@@ -569,7 +645,14 @@ async function groupApi() {
   eq((await http(U.u1, 'POST', `/api/deal-tasks/${tq1}/reassign`, { to: U.u2 })).status, 403, 'A11 非管理員不能改派');
   eq((await http(U.adm, 'POST', `/api/deal-tasks/${tq1}/reassign`, { to: U.uoff })).json.code, 'ASSIGNEE_INACTIVE', 'A11b 改派給停用者被拒');
   eq((await http(U.adm, 'POST', `/api/deal-tasks/${tq1}/reassign`, { to: U.mkt })).json.code, 'ASSIGNEE_ROLE', 'A11c 改派給行銷被拒');
-  const ra = await http(U.adm, 'POST', `/api/deal-tasks/${tq1}/reassign`, { to: U.u2 });
+  const rsn = (to) => http(U.adm, 'POST', '/api/deal-tasks/' + tq1 + '/reassign', { to });
+  eq([(await rsn(U.m1)).json.code, (await rsn(U.m2)).json.code, (await rsn(U.gs)).json.code], ['ASSIGNEE_ROLE', 'ASSIGNEE_ROLE', 'ASSIGNEE_ROLE'], 'A11c2 改派給主管／集團業務 → 400 ASSIGNEE_ROLE');
+  eq((await rsn(U.u3)).json.code, 'ASSIGNEE_BU', 'A11c3 改派給別的 BU 業務 → 400 ASSIGNEE_BU');
+  eq(readData().dealTasks.find((t) => t.id === tq1).owner, U.u1, 'A11c4 被拒絕後負責人不變');
+  const cands = await http(U.adm, 'GET', '/api/deal-tasks/' + tq1 + '/reassign-candidates');
+  eq([cands.status, (cands.json.users || []).map((x) => x.username).sort()], [200, [U.u2, U.u4, U.u5].sort()], 'A11c5 候選人 API：只有在職、user、ERP、非目前負責人');
+  eq([(await http(U.u1, 'GET', '/api/deal-tasks/' + tq1 + '/reassign-candidates')).status, (await http(U.m1, 'GET', '/api/deal-tasks/' + tq1 + '/reassign-candidates')).status, (await http(U.adm, 'GET', '/api/deal-tasks/nope/reassign-candidates')).status], [403, 403, 404], 'A11c6 候選人 API 限管理員；找不到 404');
+  const ra = await http(U.adm, 'POST', '/api/deal-tasks/' + tq1 + '/reassign', { to: U.u2 });
   d = readData();
   eq([ra.status, d.dealTasks.find((t) => t.id === tq1).owner, itemsOf(d, 'oQ1').every((i) => i.owner === U.u2)], [200, U.u2, true], 'A11d 管理員改派：任務與納管項換負責人');
   eq([(await http(U.u2, 'GET', '/api/my-tasks/deals')).json.items.some((t) => t.id === tq1), (await http(U.u1, 'GET', '/api/my-tasks/deals')).json.items.some((t) => t.id === tq1)], [true, false], 'A11e 新負責人看得到、舊的看不到');
@@ -680,7 +763,7 @@ async function groupRoles() {
     // ma-items 各 filter
     for (const f of ['all', 'pending_sign', 'd90', 'overdue']) {
       const res = await http(who, 'GET', '/api/ma-items?filter=' + f);
-      const exp = raw.maItems.filter((it) => it.status !== 'void' && visible.has(it.oppId) && (f === 'all' || (it.status === 'tracking' && (f === 'pending_sign' ? !it.contractNo : f === 'd90' ? dl(it.to) >= 0 && dl(it.to) <= 90 : dl(it.to) < 0))))
+      const exp = raw.maItems.filter((it) => it.status !== 'void' && visible.has(it.oppId) && (f === 'all' || (it.status === 'tracking' && (f === 'pending_sign' ? !it.contractNo && raw.dealTasks.some((t) => t.status === 'open' && (t.maItemIds || [t.maItemId]).includes(it.id)) : f === 'd90' ? dl(it.to) >= 0 && dl(it.to) <= 90 : dl(it.to) < 0))))
         .sort((a, b) => (a.to < b.to ? -1 : a.to > b.to ? 1 : (a.id < b.id ? -1 : 1)));
       if (role === 'secretary') {
         eq(res.json.items, exp.map((it) => ({ company: it.company, product: it.product, termKind: it.termKind, from: it.from, to: it.to, daysLeft: dl(it.to), ownerLabel: label(it.owner) })), `R ma-items(${f}) ${who} 秘書：欄位白名單＋內容逐項相等`);
@@ -722,7 +805,7 @@ async function groupRoles() {
 function exportBase() {
   if (process.env.MATRK_BASE_DIR) return { dir: process.env.MATRK_BASE_DIR, cleanup() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'matrk-base-'));
-  const baseRef = process.env.MATRK_BASE_REF || 'e779c3a';
+  const baseRef = process.env.MATRK_BASE_REF || '7efdba5';
   const a = spawnSync('git', ['archive', baseRef], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   if (a.status !== 0) throw new Error('git archive ' + baseRef + ' 失敗：' + String(a.stderr));
   const t = spawnSync('tar', ['-x', '-C', dir], { input: a.stdout, maxBuffer: 256 * 1024 * 1024 });
@@ -759,7 +842,7 @@ async function groupOff() {
     out.keys = JSON.stringify(Object.keys(raw).sort());
     out.oppKeys = JSON.stringify((raw.opportunities || []).map((o) => Object.keys(o).sort().filter((k) => !['updatedAt', 'createdAt', 'id'].includes(k))));
     out.contractKeys = JSON.stringify((raw.contracts || []).map((c) => Object.keys(c).sort().filter((k) => !['createdAt', 'id'].includes(k))));
-    for (const [k, m, u, b] of [['myTasks', 'GET', '/api/my-tasks/deals'], ['overdue', 'GET', '/api/manager/deal-task-overdue'], ['maItems', 'GET', '/api/ma-items'], ['pending', 'GET', '/api/ma-items/pending-backfill'], ['backfill', 'POST', '/api/ma-items/backfill', {}], ['patch', 'PATCH', '/api/ma-items/x/term', {}], ['sign', 'POST', '/api/deal-tasks/tOld/sign', {}], ['skip', 'POST', '/api/deal-tasks/tOld/skip', {}], ['snooze', 'POST', '/api/deal-tasks/tOld/snooze'], ['reassign', 'POST', '/api/deal-tasks/tOld/reassign', {}]].map((a) => a.length === 3 ? [a[0], a[1], a[2], undefined] : a)) extra[k] = await httpAt(base, jr, U.adm, m, u, b);
+    for (const [k, m, u, b] of [['myTasks', 'GET', '/api/my-tasks/deals'], ['overdue', 'GET', '/api/manager/deal-task-overdue'], ['maItems', 'GET', '/api/ma-items'], ['pending', 'GET', '/api/ma-items/pending-backfill'], ['backfill', 'POST', '/api/ma-items/backfill', {}], ['patch', 'PATCH', '/api/ma-items/x/term', {}], ['sign', 'POST', '/api/deal-tasks/tOld/sign', {}], ['skip', 'POST', '/api/deal-tasks/tOld/skip', {}], ['snooze', 'POST', '/api/deal-tasks/tOld/snooze'], ['reassign', 'POST', '/api/deal-tasks/tOld/reassign', {}], ['reassignCands', 'GET', '/api/deal-tasks/tOld/reassign-candidates'], ['termHint', 'GET', '/api/ma-items/term-hint?oppId=oOld']].map((a) => a.length === 3 ? [a[0], a[1], a[2], undefined] : a)) extra[k] = await httpAt(base, jr, U.adm, m, u, b);
     await stopServer(); cleanupFiles(root);
     return { out, extra, raw };
   };
@@ -808,7 +891,14 @@ const MUTS = [
   { name: 'M15 一級主管不排除掛名主管', groups: ['unit'], spec: [{ file: 'lib/orgResolve.js', edits: [E("isActiveUser(u) && u.role === 'manager1' && !u.pureSupervisor", "isActiveUser(u) && u.role === 'manager1'")] }] },
   { name: 'M16 時區改用機器本地日', groups: ['unit'], spec: [{ file: 'lib/maTracking.js', edits: [E("return new Date((Number.isFinite(t) ? t : Date.now()) + 8 * 3600 * 1000).toISOString().slice(0, 10);", "return new Date((Number.isFinite(t) ? t : Date.now()) + 0 * 3600 * 1000).toISOString().slice(0, 10);")] }] },
   { name: 'M17 開關預設改成開', groups: ['unit', 'off'], spec: [{ file: 'lib/quoteTerms.js', edits: [E("return String(e.MA_TRACKING == null ? '' : e.MA_TRACKING).trim() === '1';", "return true;")] }] },
-  { name: 'M18 合約刪除不解除連結', groups: ['api'], spec: [{ file: 'server.js', edits: [E("it.contractNo = ''; it.contractId = ''; it.updatedAt = c.deletedAt;", "it.updatedAt = c.deletedAt;")] }] },
+  { name: 'M19 合約刪除不重開任務卡（lib）', groups: ['unit', 'api'], spec: [{ file: 'lib/maTracking.js', edits: [E("if (t && t.status === 'done') {", "if (false) {")] }] },
+  { name: 'M20 拿掉改派驗證（角色＋BU，lib）', groups: ['unit', 'api'], spec: [{ file: 'lib/maTracking.js', edits: [E("  const prob = assigneeProblem(data, t, u, users);\n  if (prob) return prob;", "  const prob = null;")] }] },
+  { name: 'M21 拿掉 pending_sign 的任務條件', groups: ['unit', 'api', 'roles'], spec: [{ file: 'lib/maTracking.js', edits: [E("!it.contractNo && !!task && task.status === 'open';", "!it.contractNo;")] }] },
+  { name: 'M22 改派只驗角色、不驗 BU', groups: ['unit', 'api'], spec: [{ file: 'lib/maTracking.js', edits: [E("if (![...mine].some((b) => ref.has(b)))", "if (false)")] }] },
+  { name: 'M23 合約重複刪除不冪等（lib 沒有連結時照樣當作有異動）', groups: ['unit', 'api'], spec: [{ file: 'lib/maTracking.js', edits: [E("  if (!linked.length) return out;\n  out.touched = true;", "  out.touched = true;")] }] },
+  { name: 'M24 候選人 API 不限管理員', groups: ['api'], spec: [{ file: 'lib/maRoutes.js', edits: [E("(req, res) => {\n    const L = loadTaskFor(req, res, true); if (!L) return;\n    const users = loadAuth().users || [];\n    res.set('Cache-Control', 'no-store');\n    res.json({ enabled: true, users:", "(req, res) => {\n    const L = loadTaskFor(req, res, false); if (!L) return;\n    const users = loadAuth().users || [];\n    res.set('Cache-Control', 'no-store');\n    res.json({ enabled: true, users:")] }] },
+  { name: 'M25 合約刪除重開不重新通知（routes）', groups: ['api'], spec: [{ file: 'lib/maRoutes.js', edits: [E("taskNotify(r.task, 'contract_deleted');", "")] }] },
+  { name: 'M18 合約刪除不解除連結', groups: ['unit', 'api'], spec: [{ file: 'lib/maTracking.js', edits: [E("it.contractNo = ''; it.contractId = ''; it.updatedAt = ctx.nowIso;\n    pushHist(it.history, H(ctx.nowIso, ctx.by, 'CONTRACT_DELETED'", "it.updatedAt = ctx.nowIso;\n    pushHist(it.history, H(ctx.nowIso, ctx.by, 'CONTRACT_DELETED'")] }] },
 ];
 async function groupMut() {
   console.log('[變異] 每個變異都必須讓對應群組變紅');

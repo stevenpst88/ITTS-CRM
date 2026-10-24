@@ -3,7 +3,7 @@
  * MA 納管前端（P2b）瀏覽器檢查：headless Edge＋CDP（真實滑鼠鍵盤；成交的拖曳 drop 用合成事件，因為 headless 無法產生原生拖放）。
  * 單獨執行：node scripts/_ma-tracking-ui.js            （全部區段；MATRK_UI_ONLY=off|flow|tasks|items|contracts|look 只跑一段）
  *          MATRK_UI_MUT=1 node scripts/_ma-tracking-ui.js （UI 變異：用 CDP 把前端檔換成改壞的版本，對應區段必須變紅）
- * 埠：伺服器 B2_PORT（預設 3300）、CDP 9600（MATRK_UI_CDP）。一次只跑一個。全部假資料、臨時 _s_* 帳號、sandbox 的 data.json／auth.json（不碰真實檔）。
+ * 埠：伺服器 B2_PORT（預設 3313）、CDP 9610（MATRK_UI_CDP）。一次只跑一個。全部假資料、臨時 _s_* 帳號、sandbox 的 data.json／auth.json（不碰真實檔）。
  * 區段：
  *   off      開關關閉：頁面（首頁、側欄、看板、商機表、ERP／SAP 合約頁）渲染與基準前端（git archive）逐位元相同、成交請求相同、沒有任何 .mat-* 元素
  *   flow     成交期間視窗（看板拖曳／表格／編輯表單三個入口）：預填、取消回原欄、快捷、伺服器錯誤碼 TERM_REQUIRED／TERM_INVALID 重開視窗
@@ -11,18 +11,20 @@
  *   items    到期管理頁（摘要卡、篩選、秘書欄位限制、待補納管、修改期間）
  *   contracts 合約管理「Service MA」頁籤（ERP／SAP 不受影響）、合約視窗唯讀來源
  *   look     XSS、四種外觀對比、手機寬度、reduced-motion、層級、截圖（scratchpad/ma2_shots/）
+ *   fix      3020 驗收後修正（scripts/_ma-tracking-ui-fix.js，FX-*）：License MA 追蹤中不算待簽約、改派候選人、簽約／刪除合約後各處刷新與任務卡重開、
+ *            兩頁剩餘天數一致（台北跨日、多時區）、再成交期間預填、到期管理窄視窗橫向捲動／卡片、後台商品維護儲存中攔截離開
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-process.env.B2_PORT = process.env.B2_PORT || '3300';
+process.env.B2_PORT = process.env.B2_PORT || '3313';
 const { withBrowser } = require('./_fd-cdp');
 
 const ROOT = path.resolve(__dirname, '..');
 const J = JSON.stringify;
-const CDP = parseInt(process.env.MATRK_UI_CDP || '9600', 10);
-const BASE_REF = process.env.MATRK_UI_BASE || '8e8b99c';   // P2a 後端 commit：前端與 e779c3a 相同，後端有 MA 端點
+const CDP = parseInt(process.env.MATRK_UI_CDP || '9610', 10);
+const BASE_REF = process.env.MATRK_UI_BASE || '7efdba5';   // P2b 完成的 commit（驗收後修正之前）；也可用 MATRK_UI_BASE=8e8b99c 比對沒有 MA 前端的版本
 
 let res = [];
 function t(name, ok, extra) { res.push([name, !!ok, extra == null ? '' : String(extra)]); if (!ok) console.log('  ✗ ' + name + (extra != null && extra !== '' ? '｜' + String(extra).slice(0, 220) : '')); }
@@ -214,7 +216,10 @@ async function secOff(C) {
   const cur = await snap(false);
   const old = await snap(true);
   t('OFF1 開關關閉：前端不建立任何本功能元素（沒有 .mat-*、側欄項、view、首頁 host），也沒有成交視窗', cur.matNodes === 0 && cur.dialogs === 0, 'nodes=' + cur.matNodes + ' dialogs=' + cur.dialogs);
-  t('OFF2 開關關閉：基準前端沒有 ITTSMaTasks、目前前端有（防止比對流於空轉）', old.ma === 'undefined' && cur.ma === 'object', old.ma + '/' + cur.ma);
+  // 基準早於 P2b（沒有 MA 前端）：基準沒有 ITTSMaTasks、目前有；基準已含 P2b 前端（預設 7efdba5）：兩邊都有，但檔案內容必須真的不同（防止比對流於空轉）
+  const baseHasMa = old.ma === 'object';
+  const filesDiffer = BASE_FILES.concat(['ma-tasks.js']).some((f) => { try { return fs.readFileSync(path.join(C.base, '_client', f), 'utf8') !== fs.readFileSync(path.join(ROOT, '_client', f), 'utf8'); } catch { return true; } });
+  t('OFF2 開關關閉：比對基準與目前前端確實不同（防止比對流於空轉）', baseHasMa ? (cur.ma === 'object' && filesDiffer) : (old.ma === 'undefined' && cur.ma === 'object'), old.ma + '/' + cur.ma + '/differ=' + filesDiffer);
   t('OFF3 開關關閉：首頁 body（去掉 script／註解）與基準逐位元相同', cur.home === old.home && cur.home.length > 3000, cur.home.length + ' vs ' + old.home.length);
   t('OFF4 開關關閉：側欄 HTML 與基準逐位元相同', cur.sidebar === old.sidebar && cur.sidebar.length > 1000, cur.sidebar.length + ' vs ' + old.sidebar.length);
   for (const s of ['pipeline', 'targets', 'erp-ma', 'sap-ma']) {
@@ -501,7 +506,7 @@ async function secTasks(C) {
     await b.waitFor(`document.querySelectorAll('.mat-overlay').length===1`, 5000);
     await b.waitFor(`!!__top('select') && __top('select').options.length>0`, 8000);
     const optTxt = await b.ev(`[...__top('select').options].map(o=>o.value).join(',')`);
-    t('TK-8b 改派對話框：下拉列出在職可負責商機的人員（含 _s_other），不含目前負責人與停用者', /_s_other/.test(optTxt) && !/_s_off/.test(optTxt), optTxt);
+    t('TK-8b 改派對話框：下拉只列在職業務（user）、同 BU：含 _s_other／_s_own，不含目前負責人、停用者、主管、行銷、秘書、管理員、其他 BU', optTxt.split(',').sort().join() === ['_s_other', '_s_own'].join(), optTxt);
     await b.ev(`(()=>{const s=__top('select'); s.value='_s_other'; s.dispatchEvent(new Event('change',{bubbles:true})); return 0})()`);
     await clickBtn(b, '改派');
     await b.waitFor(`document.querySelectorAll('.mat-overlay').length===0`, 8000);
@@ -807,6 +812,11 @@ async function secLook(C) {
 }
 
 
+// ═════════════════════════ fix：3020 驗收後修正（獨立檔，共用本檔小工具）═════════════════════════
+function secFix(C) {
+  return require('./_ma-tracking-ui-fix')({ t, browse, openAs, gotoItemsNav, countsOf, rowCos, panelRows, topText, clickBtn, focusTop, dateVals, drop, toBoard, oppOf, shotTo, mkUsers, mkOpp, mkItem, seedData, U, tp, MAP, LICP }).secFix(C);
+}
+
 // ═════════════════════════ 執行 ═════════════════════════
 function exportBase() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'matui-base-'));
@@ -824,6 +834,7 @@ async function run(C, only) {
   if (want('items')) await secItems(C);
   if (want('contracts')) await secContracts(C);
   if (want('look')) await secLook(C);
+  if (want('fix')) await secFix(C);
 }
 function report(title) {
   const bad = res.filter((x) => !x[1]);
@@ -841,6 +852,14 @@ const UI_MUTS = [
   { name: 'UM6 取消成交視窗仍繼續送出', file: 'app.js', find: 'if (extra === null) return null;', rep: 'if (extra === null) extra = {};', section: 'flow', expect: /FL5 |FL6 / },
   { name: 'UM7 .mat-overlay 層級高於其他彈窗', file: 'style.css', find: 'z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', rep: 'z-index: 100005; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', section: 'look', expect: /LK-Z/ },
   { name: 'UM8 Service MA 頁籤錯拿 SAP_MA 合約', file: 'app.js', find: "const list = allContracts.filter(c => c.type === 'SERVICE_MA');", rep: "const list = allContracts.filter(c => c.type === 'SAP_MA');", section: 'contracts', expect: /CT-/ },
+  { name: 'UM10 無任務卡的納管項仍顯示「待簽約確認」', file: 'ma-tasks.js', find: "return '追蹤中';", rep: "return '待簽約確認';", section: 'fix', expect: /FX-1b/ },
+  { name: 'UM11 改派候選人改回舊的全部人員清單', file: 'ma-tasks.js', find: "'/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign-candidates'", rep: "'/api/company-responsible/candidates'", section: 'tasks', expect: /TK-8b/ },
+  { name: 'UM12 簽約後不刷新 Service MA 頁', file: 'ma-tasks.js', find: 'reloadServiceMa()]).then(function () { refreshBell(); });', rep: 'Promise.resolve()]).then(function () { refreshBell(); });', section: 'fix', expect: /FX-4a/ },
+  { name: 'UM13 合約頁剩餘天數改回瀏覽器本地日算法', file: 'app.js', find: 'const diff = _tpDiff !== null ? _tpDiff : Math.ceil((effectiveEnd - today) / 86400000);', rep: 'const diff = Math.ceil((effectiveEnd - today) / 86400000);', section: 'fix', expect: /FX-6a|FX-6c/ },
+  { name: 'UM14 拿掉再成交期間預填', file: 'ma-tasks.js', find: '} else if (!qt && hint && !(opts.prefill && opts.prefill.termFrom)) {', rep: '} else if (false) {', section: 'fix', expect: /FX-7a|FX-7c/ },
+  { name: 'UM18 期間／剩餘天數欄允許斷行（窄視窗期間被擠成多行）', file: 'style.css', find: '.mat-table td[data-label="剩餘天數"] { white-space: nowrap; }', rep: '.mat-table td[data-label="剩餘天數"] { }', section: 'fix', expect: /FX-8a/ },
+  { name: 'UM16 後台商品維護儲存中仍可切換頁面', file: 'admin.html', find: "if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa && this.dataset.sec !== 'product-catalog') {", rep: 'if (false) {', section: 'fix', expect: /FX-5a/ },
+  { name: 'UM17 刪除 Service MA 合約後不刷新任務／到期管理／鈴鐺', file: 'app.js', find: 'if (M && M.enabled && M.enabled() && M.afterContractChange) M.afterContractChange();', rep: '', section: 'fix', expect: /FX-2c/ },
   { name: 'UM9 鈴鐺 deal_task 通知點了不開任務卡', file: 'app.js', find: "if (item.dataset.type === 'deal_task' && window.ITTSMaTasks) {", rep: "if (false) {", section: 'tasks', expect: /TK-B/ },
 ];
 async function groupMut() {
@@ -850,7 +869,9 @@ async function groupMut() {
   const exb = exportBase();
   let undetected = 0;
   try {
+    const only = process.env.MATRK_UI_MUT_ONLY ? new RegExp(process.env.MATRK_UI_MUT_ONLY) : null;
     for (const m of UI_MUTS) {
+      if (only && !only.test(m.name)) continue;
       let src = fs.readFileSync(path.join(ROOT, '_client', m.file), 'utf8');
       if (src.indexOf(String.fromCharCode(13)) >= 0) src = src.split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
       const find = m.find, rep = m.rep;
