@@ -1,0 +1,28 @@
+'use strict';
+/** UI 變異：用 CDP 把前端檔換成改壞的版本（不動磁碟檔案），對應區段的測試必須變紅。每筆：file＋(find→rep 或 edits[])＋section＋expect（失敗項目名稱必須符合）。 */
+module.exports = [
+  { name: 'UM1 ma-reminders.js 的 el() 改用 innerHTML（XSS）', file: 'ma-reminders.js', find: 'if (text != null) e.textContent = String(text);', rep: 'if (text != null) e.innerHTML = String(text);', section: 'bell', expect: /BL-5|BL-6/ },
+  { name: 'UM2 拿掉鈴鐺「條件達成後下一次輪詢自動消失」（清單空了仍顯示上一份）', file: 'app.js', find: 'const maList = Array.isArray(bundle.maReminders) ? bundle.maReminders : null;', rep: 'const maList = Array.isArray(bundle.maReminders) ? (bundle.maReminders.length ? (window.__maLast = bundle.maReminders) : (window.__maLast || [])) : null;', section: 'bell', expect: /BL-1[3-6]/ },
+  { name: 'UM3 後台儲存不帶回規則 id', file: 'ma-reminders-admin.js', find: 'if (m.id) o.id = m.id;', rep: '', section: 'admin', expect: /AD-16/ },
+  { name: 'UM4 後台拿掉開關判斷（404 也安裝側欄項）', file: 'ma-reminders-admin.js', edits: [{ find: "if (r.status === 404) { S.probed404 = true; return false; }", rep: '' }, { find: 'if (!r.ok) return false;\n      install(boot);', rep: 'install(boot);' }], section: 'off', expect: /OFF1|OFF8/ },
+  { name: 'UM5 報價單開表單時不把已存的 renewOf 交給選擇器（讀回丟失）', file: 'quote.js', find: 'value: val, original: q ? (q.company || \'\') : null', rep: "value: '', original: q ? (q.company || '') : null", section: 'quote', expect: /QR-4|QR-6|QR-8/ },
+  { name: 'UM6 後台即時驗證拿掉「天數重複」檢查', file: 'ma-reminders-admin.js', find: 'if (dups[dk] !== undefined) {', rep: 'if (false) {', section: 'admin', expect: /AD-7|AD-12/ },
+  { name: 'UM7 鈴鐺儲存型 ma_not_renew 點了不開到期管理頁', file: 'app.js', find: "if ((item.dataset.type === 'ma_reminder' || item.dataset.type === 'ma_not_renew') && window.ITTSMaTasks) {", rep: 'if (false) {', section: 'bell', expect: /BL-10/ },
+  { name: 'UM8 「已不續約」篩選晶片不篩選', file: 'ma-tasks.js', find: "if (f === 'not_renew') rows = ((r[0].data && r[0].data.items) || []).filter(function (x) { return x.status === 'not_renew'; });", rep: "if (f === 'not_renew') rows = ((r[0].data && r[0].data.items) || []);", section: 'items', expect: /IM-9/ },
+  { name: 'UM9 試算器不用編輯中的規則（改用已儲存的）', file: 'ma-reminders-admin.js', find: 'var body = Object.assign({}, sc, { rules: S.models.map(toApi) });', rep: 'var body = Object.assign({}, sc);', section: 'admin', expect: /AD-29|AD-30/ },
+  { name: 'UM10 報價單續約選擇器拿掉開關判斷（maTracking）', file: 'quote.js', find: 'function qRenewOn() { return quoteCfg().maTracking === true && ', rep: 'function qRenewOn() { return ', section: 'off', expect: /OFF1|OFF7/ },
+  { name: 'UM11 鈴鐺已讀不寫入 localStorage', file: 'ma-reminders.js', find: "function markRead(id) { try { localStorage.setItem(readKey(id), '1'); } catch (e) { /* ignore */ } }", rep: 'function markRead(id) { }', section: 'bell', expect: /BL-4|BL-7|BL-12/ },
+  { name: 'UM12 鈴鐺點列後到期管理頁不標示該列', file: 'ma-tasks.js', find: 'if (!state.focusId || !itemsEls) return;', rep: 'return;', section: 'bell', expect: /BL-9/ },
+  { name: 'UM13 .mar-lv-warn 字色對比不足（淺色外觀看不清）', file: 'style.css', find: '.mar-lv-warn { background: var(--mar-warn-bg); color: var(--mar-warn-fg); }', rep: '.mar-lv-warn { background: var(--mar-warn-bg); color: #ffd9a0; }', section: 'look', expect: /LK-C 鈴鐺/ },
+  { name: 'UM14 秘書也顯示到期管理的合約編號欄與操作', file: 'ma-tasks.js', find: "function isSecretary() { return !!(state.user && state.user.role === 'secretary'); }", rep: 'function isSecretary() { return false; }', section: 'items', expect: /IM-S1/ },
+  { name: 'UM15 標記不續約：選「其他」不要求備註', file: 'ma-tasks.js', find: "if (cat === '其他' && Array.from(nt).length < 2) {", rep: 'if (false) {', section: 'items', expect: /IM-13/ },
+  { name: 'UM16 「重新開啟」業務本人也看得到', file: 'ma-tasks.js', find: "if (isAdmin() && it.status === 'not_renew') {", rep: "if (it.status === 'not_renew') {", section: 'items', expect: /IM-3/ },
+  { name: 'UM17 鈴鐺列加了 z-index（會蓋過彈窗）', file: 'style.css', find: 'margin: 6px 0 0; cursor: pointer; font-size: 12.5px;', rep: 'margin: 6px 0 0; cursor: pointer; position: relative; z-index: 100005; font-size: 12.5px;', section: 'look', expect: /LK-Z1/ },
+  { name: 'UM18 時間軸「今天」指示線不隨滑桿', file: 'ma-reminders-admin.js', find: 'var sc = scenario();   // 今天指示線隨滑桿立即移動；各規則的成立狀態用最近一次伺服器試算結果', rep: 'var sc = { daysLeft: 45 };', section: 'admin', expect: /AD-35|AD-36/ },
+  { name: 'UM19 續約選擇器不標記「使用者動過」（選了也不送 renewOf）', file: 'ma-reminders.js', find: 'touched = true; cur = sel.value;', rep: 'cur = sel.value;', section: 'quote', expect: /QR-3|QR-5/ },
+  { name: 'UM20 儲存型 ma_reminder 不去重（和動態群組重複顯示）', file: 'app.js', find: "const shownRegular = maList ? regularList.filter(n => n.type !== 'ma_reminder') : regularList;", rep: 'const shownRegular = regularList;', section: 'bell', expect: /BL-1 |BL-2/ },
+  { name: 'UM21 還原預設規則不經確認', file: 'ma-reminders-admin.js', find: 'function askDefaults() { S.els.confirm.hidden = false;', rep: 'function askDefaults() { applyDefaults(); S.els.confirm.hidden = false;', section: 'admin', expect: /AD-21/ },
+  { name: 'UM22 後台雙人覆核 202 後不顯示待覆核提示', file: 'ma-reminders-admin.js', find: "setStatus('📨 已送出待另一位管理員覆核。' + (msg ? ' ' + msg : ''), 'info');", rep: "setStatus('已儲存', 'ok');", section: 'dual', expect: /DU-2/ },
+  { name: 'UM23 標記不續約不送出原因類別（只送備註）', file: 'ma-tasks.js', find: "var reason = nt ? cat + '：' + nt : cat;", rep: "var reason = nt || cat;", section: 'items', expect: /IM-14|IM-16/ },
+  { name: 'UM24 下一個提醒挑最遠的規則（排序反向）', file: 'ma-tasks.js', find: "return a.triggerDate < b.triggerDate ? -1 : a.triggerDate > b.triggerDate ? 1 : 0; });\n    var parts = [];", rep: "return a.triggerDate < b.triggerDate ? 1 : a.triggerDate > b.triggerDate ? -1 : 0; });\n    var parts = [];", section: 'items', expect: /IM-5b/ },
+];

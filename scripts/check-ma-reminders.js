@@ -219,7 +219,8 @@ function oracleActive(rule, kind, dl, qs, status) {
   if (rule.whenDays > 0 && dl < 0) return false;
   if (rule.condition === 'no_renewal_quote') return qs === 'none';
   if (rule.condition === 'quote_not_submitted') return qs === 'draft';
-  return true;   // always／not_renewed（共同前提 tracking 已在上面檢查）
+  if (rule.condition === 'always') return qs !== 'sent';   // 2026-10-24 決定：續約報價單已送簽（簽核中／已核准）→ 無條件規則也消失；草稿不解除
+  return true;   // not_renewed（共同前提 tracking 已在上面檢查）
 }
 
 // ═════════════ 單元 ═════════════
@@ -314,7 +315,7 @@ function groupUnit() {
   eq([stOf([q('i1'), q('i1', 'pending')]), stOf([q('i1', 'pending'), q('i1')]), stOf([q('i2', 'approved')]), stOf([q(5, 'approved')]), stOf([q('', 'approved')]), stOf([q(undefined, 'approved')])], ['sent', 'sent', 'none', 'none', 'none', 'none'], 'C2 多張取最進展者；指向別的納管項／非字串 renewOf 不算');
   eq([stOf([q('i1', 'approved', { invalid: { at: 'x' } })]), stOf([q('i1', 'pending', { status: 'rejected' })]), stOf([q('i1', 'pending', { deleted: true })]), stOf([q('i1', 'approved', { invalid: { at: 'x' } }), q('i1')])], ['none', 'none', 'none', 'draft'], 'C3 作廢（失效）／舊制已拒絕／已刪除的報價單不算；其餘有效的照算');
   const CH = (cond, qs, status) => MR.conditionHolds(cond, ITEM({ status: status || 'tracking' }), qs);
-  eq(['none', 'draft', 'sent'].map((s) => CH('always', s)), [true, true, true], 'C4 always 恆成立');
+  eq(['none', 'draft', 'sent'].map((s) => CH('always', s)), [true, true, false], 'C4 always：沒有報價單、草稿 → 成立；已送簽 → 不成立（2026-10-24 決定）');
   eq(['none', 'draft', 'sent'].map((s) => CH('no_renewal_quote', s)), [true, false, false], 'C5 no_renewal_quote：只有「沒有任何有效續約報價單」');
   eq(['none', 'draft', 'sent'].map((s) => CH('quote_not_submitted', s)), [false, true, false], 'C6 quote_not_submitted：有續約報價單但全部是草稿');
   eq([CH('not_renewed', 'none'), CH('not_renewed', 'sent'), CH('not_renewed', 'none', 'renewed'), CH('not_renewed', 'none', 'not_renew'), CH('not_renewed', 'none', 'ended'), CH('not_renewed', 'none', 'void'), CH('bogus', 'none')], [true, true, false, false, false, false, false], 'C7 not_renewed：只有 tracking；未知條件一律 false');
@@ -508,7 +509,9 @@ function groupUnit() {
   const sd = sim(MR.DEFAULT_RULES, { daysLeft: 45, quoteState: 'none' });
   eq([sd.activeRuleIds, sd.byRole.manager1.map((x) => x.ruleId), sd.byRole.owner.map((x) => x.ruleId), sd.byRole.marketing.length], [['default-d90', 'default-d45'], ['default-d45'], ['default-d90'], 0], 'M1 試算（剩 45 天、沒有續約報價單）：D-90 與 D-45 成立；manager1 看到 D-45、owner 看到 D-90');
   eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'draft' }).activeRuleIds, ['default-d90', 'default-d30'], 'M2 剩 20 天、草稿 → D-90、D-30（D-45 因已有報價單不成立）');
-  eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'sent' }).activeRuleIds, ['default-d90'], 'M3 剩 20 天、已送簽 → 只剩 always 的 D-90');
+  eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'sent' }).activeRuleIds, [], 'M3 剩 20 天、已送簽 → 連 always 的 D-90 也不成立（全部消失）');
+  eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'draft' }).rules.find((x) => x.ruleId === 'default-d90').active, true, 'M3b 剩 20 天、草稿 → always 的 D-90 仍成立（草稿不解除）');
+  eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'sent' }).rules.find((x) => x.ruleId === 'default-d90').reason, 'CONDITION', 'M3c 已送簽時 D-90 的未成立原因是 CONDITION');
   eq(sim(MR.DEFAULT_RULES, { daysLeft: -10, quoteState: 'none' }).activeRuleIds, ['default-after7'], 'M4 到期後 10 天 → 只有「到期後」規則（到期前的規則不補發）');
   eq(sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'none', notRenew: true }).activeRuleIds, [], 'M5 已標不續約 → 全部不成立');
   const sr = sim(MR.DEFAULT_RULES, { daysLeft: 20, quoteState: 'none', notRenew: true });
@@ -655,6 +658,41 @@ function simPart(MR) {
   ev = [];
   for (let dl = 100; dl >= 80; dl--) { const now = atDl(dl); const b = new Set(Object.keys((d.reminderLog || { entries: {} }).entries)); MR.sweep(d, UU, { now, rules: [RULE({ id: 'p', whenDays: 90, notify: ['owner'] })] }); Object.keys(d.reminderLog.entries).filter((k) => !b.has(k)).forEach((k) => ev.push([dl, MR.keyParts(k).itemId])); }
   eq(ev, [[90, 'x1'], [80, 'x2']], 'T21 兩個納管項各自在自己的剩 90 天達標（x1 在 90、x2 迄日晚 10 天所以在掃描區間的最後一天 80）');
+  // 8) always 規則：續約報價單「已送簽」後自動消失（2026-10-24 決定）；草稿不解除；作廢後回來
+  const AL = [RULE({ id: 'al', name: '無條件', whenDays: 90, notify: ['owner', 'secretary'], condition: 'always' })];
+  const aBell = (dd, dl) => [bellOf(dd, UU, dl, U.u1, AL).length, bellOf(dd, UU, dl, U.sec, AL).length];
+  d = mkD(); const alog = [];
+  ev = runDays(d, UU, AL, 100, 20, (dl, dd) => {
+    if (dl === 80) dd.quotations.push({ id: 'qa', renewOf: 'i1', approval: null });                  // 草稿：仍在
+    if (dl === 60) dd.quotations[0].approval = { state: 'pending' };                                  // 送簽：消失
+    if (dl === 50) dd.quotations[0].invalid = { at: 'x', by: 'y', reason: 'z' };                      // 作廢：回來
+    if (dl === 40) { delete dd.quotations[0].invalid; dd.quotations[0].approval = { state: 'approved' }; }   // 作廢取消（模擬還原）且已核准：再消失
+    alog.push([dl, aBell(dd, dl)]);
+  });
+  const ab = Object.fromEntries(alog);
+  eq([ab[91], ab[90], ab[81]], [[0, 0], [1, 1], [1, 1]], 'T22 always：剩 90 天出現；沒有報價單／草稿（剩 80 天建立草稿）都仍在');
+  eq([ab[80], ab[61]], [[1, 1], [1, 1]], 'T22b 草稿階段（80→61）一直在，不因草稿而消失');
+  eq([ab[60], ab[51]], [[0, 0], [0, 0]], 'T22c 剩 60 天送簽 → 當天起業務與秘書的鈴鐺都消失');
+  eq([ab[50], ab[41]], [[1, 1], [1, 1]], 'T22d 剩 50 天續約報價單作廢 → 提醒回來（視同沒有續約報價單）');
+  eq([ab[40], ab[20]], [[0, 0], [0, 0]], 'T22e 剩 40 天已核准 → 又消失');
+  eq(daysOf(ev, 'al').sort(), [90, 90, 90], 'T22f 去重：只在剩 90 天發過一次（作廢後回來不重發）');
+  // 送簽前一直沒達標、作廢後才第一次達標 → 才發（去重鍵沒有）
+  d = mkD(ITEM(), [{ id: 'qb', renewOf: 'i1', approval: { state: 'approved' } }]);
+  ev = runDays(d, UU, AL, 100, 20, (dl, dd) => { if (dl === 70) dd.quotations[0].invalid = { at: 'x', by: 'y', reason: 'z' }; });
+  eq(daysOf(ev, 'al').sort(), [70, 70, 70], 'T23 一路已送簽 → 剩 90 天不發；剩 70 天作廢 → 當天補發（已達門檻且沒發過）');
+  // 儲存型通知：已發的 always 通知在送簽後被標已讀
+  d = mkD(); runDays(d, UU, AL, 95, 85);
+  eq([unreadOf(d, U.u1), unreadOf(d, U.sec)], [1, 1], 'T24 剩 85 天：業務與秘書各有 1 則未讀 ma_reminder');
+  d.quotations.push({ id: 'qc', renewOf: 'i1', approval: { state: 'pending' } });
+  const mkA = MR.reconcileNotifications(d, UU, atDl(84), AL, (n) => n.to === U.u1);
+  eq([mkA, unreadOf(d, U.u1), unreadOf(d, U.sec)], [1, 0, 1], 'T24b 送簽後業務自己的 poll 把他的通知標已讀（秘書的下次 poll）');
+  runDays(d, UU, AL, 84, 84);
+  eq(unreadOf(d, U.sec), 0, 'T24c 下次掃描把秘書的通知也標已讀');
+  // 其他有效狀態：退回、撤回仍算草稿（always 仍在）；舊制 rejected／已刪除的單不算
+  const dd2 = { maItems: [ITEM()], quotations: [{ id: 'qd', renewOf: 'i1', approval: { state: 'returned' } }], notifications: [] };
+  eq([bellOf(dd2, UU, 80, U.u1, AL).length], [1], 'T25 續約報價單被退回（未送簽）→ always 仍在');
+  dd2.quotations = [{ id: 'qd', renewOf: 'i1', approval: { state: 'pending' }, deleted: true }];
+  eq([bellOf(dd2, UU, 80, U.u1, AL).length], [1], 'T25b 已送簽但被刪除的報價單不算 → always 仍在');
 
 }
 function volumePart(MR) {
@@ -888,7 +926,19 @@ async function apiMain() {
   ok(readData().quotations.find((q) => q.id === qid).renewOf === 'iA', 'D1c 資料檔有 renewOf');
   ok(!('contentHash' in (r.json || {})) || true, 'D1d');
   pb = await poll(U.u1);
-  ok(pb.maReminders.some((x) => x.itemId === 'iA') && pb.maReminders.find((x) => x.itemId === 'iA').quoteState === 'draft', 'D2 建立草稿後：預設規則的 D-90（always）仍在，但狀態顯示「草稿」（always 不因續約報價單而消失，設計如此）');
+  ok(pb.maReminders.some((x) => x.itemId === 'iA') && pb.maReminders.find((x) => x.itemId === 'iA').quoteState === 'draft', 'D2 建立草稿後：預設規則的 D-90（always）仍在，狀態顯示「草稿」（草稿不解除 always）');
+  { // always 規則：送簽後消失、作廢後回來（直接改資料檔模擬簽核狀態，讓伺服器的 poll-bundle 即時推導）
+    const orig = JSON.stringify(readData().quotations.find((x) => x.id === qid).approval);
+    writeData((d) => { d.quotations.find((x) => x.id === qid).approval = { state: 'pending', steps: [], cur: 0, history: [] }; });
+    pb = await poll(U.u1);
+    ok(!pb.maReminders.some((x) => x.itemId === 'iA'), 'D2b 續約報價單送簽（簽核中）→ 預設 D-90（always）消失，鈴鐺沒有 iA', J(pb.maReminders.map((x) => x.itemId)));
+    writeData((d) => { d.quotations.find((x) => x.id === qid).invalid = { at: nowIso, by: 'x', reason: '測試作廢' }; });
+    pb = await poll(U.u1);
+    ok(pb.maReminders.some((x) => x.itemId === 'iA' && x.quoteState === 'none'), 'D2c 該報價單作廢 → 視同沒有續約報價單，D-90 回來（狀態 none）');
+    writeData((d) => { const q = d.quotations.find((x) => x.id === qid); delete q.invalid; q.approval = JSON.parse(orig); });
+    pb = await poll(U.u1);
+    ok(pb.maReminders.some((x) => x.itemId === 'iA' && x.quoteState === 'draft'), 'D2d 還原為草稿（後續測試的前提）');
+  }
   // ═════ G. renewOf 驗證（POST／PUT）═════
   const QA = require(path.join(ROOT, 'lib', 'quoteApproval.js'));
   bad = await loginMany([U.tp, U.gs]);
@@ -1232,6 +1282,13 @@ async function groupRoles() {
     d.maItems.push(mkItem('rBU', U.u1, 20, { company: '假公司rBU', bu: 'ITS' }));
     d.maItems.push(mkItem('rQ', U.u2, 20, { company: '假公司rQ' }));
     d.quotations.push(mkQuote('qq', 'o_rQ', U.u2, '假公司rQ', [], 'pending', { renewOf: 'rQ' }));
+    // 草稿（always 仍成立）、已送簽但已逾期（not_renewed 的到期後規則不受影響）、已送簽但作廢（always 回來）
+    d.maItems.push(mkItem('rD', U.u2, 20, { company: '假公司rD' }));
+    d.quotations.push(mkQuote('qd', 'o_rD', U.u2, '假公司rD', [], 'none', { renewOf: 'rD' }));
+    d.maItems.push(mkItem('rE', U.u2, -10, { company: '假公司rE' }));
+    d.quotations.push(mkQuote('qe', 'o_rE', U.u2, '假公司rE', [], 'approved', { renewOf: 'rE' }));
+    d.maItems.push(mkItem('rV', U.u2, 20, { company: '假公司rV' }));
+    d.quotations.push(mkQuote('qv', 'o_rV', U.u2, '假公司rV', [], 'approved', { renewOf: 'rV', invalid: { at: nowIso, by: 'x', reason: '測試作廢' } }));
     d.reminderRules = { rules: ALLR, updatedAt: nowIso, updatedBy: U.adm };
     d.productCatalog = CAT();
   };
@@ -1239,7 +1296,8 @@ async function groupRoles() {
   const raw = readData();
   const users = seedUsers();
   const itemById = new Map(raw.maItems.map((i) => [i.id, i]));
-  const eligible = (it) => it.status === 'tracking' && (() => { const dl = Math.round((Date.parse(it.to + 'T00:00:00Z') - Date.parse(T + 'T00:00:00Z')) / DAY); return dl <= 200 && dl >= -400; })();   // all：到期前 200 天起到迄日；late：迄日後一直到 400 天
+  const sentIds = new Set(raw.quotations.filter((q) => q.renewOf && q.approval && (q.approval.state === 'pending' || q.approval.state === 'approved') && !q.invalid).map((q) => q.renewOf));
+  const eligible = (it) => it.status === 'tracking' && (() => { const dl = Math.round((Date.parse(it.to + 'T00:00:00Z') - Date.parse(T + 'T00:00:00Z')) / DAY); return dl <= 200 && dl >= -400 && !(sentIds.has(it.id) && dl >= 0); })();   // 已送簽的續約案：到期前的 always 規則消失，到期後的 not_renewed 規則照舊   // all：到期前 200 天起到迄日；late：迄日後一直到 400 天
   const expectedRecipients = {};
   raw.maItems.forEach((it) => { if (eligible(it)) expectedRecipients[it.id] = oracleRecipients(it, users); });
   const key = (x) => [x.company, x.product, x.to].join('|');
@@ -1280,7 +1338,7 @@ async function groupRoles() {
         else if (got.length) ok(got.every((x) => x.itemId && x.rule && Array.isArray(x.roles)), `R ${who} 一般角色有 itemId／rule／roles`);
       }
       // 時間軸：200 ⇔ 在 ma-items 可視範圍內
-      const probe = ['ir0_0', 'ir1_0', 'ir2_1', 'ir3_2', 'ir4_0', 'ir8_1', 'ir9_0', 'ir10_0', 'rBU', 'rQ', 'ir6_0'];
+      const probe = ['ir0_0', 'ir1_0', 'ir2_1', 'ir3_2', 'ir4_0', 'ir8_1', 'ir9_0', 'ir10_0', 'rBU', 'rQ', 'rD', 'rE', 'rV', 'ir6_0'];
       for (const id of probe) {
         if (!itemById.has(id)) continue;
         const t = await http(who, 'GET', `/api/ma-items/${id}/reminders`);
@@ -1299,9 +1357,12 @@ async function groupRoles() {
   await loginMany([U.m1, U.u1, U.u2, U.sec2]);
   const pm1 = (await poll(U.m1)).maReminders.map((x) => x.itemId), pu1 = (await poll(U.u1)).maReminders.map((x) => x.itemId);
   ok(expectedRecipients.rBU.has(U.m1) && !pm1.includes('rBU') && pu1.includes('rBU'), 'R rBU：m1 是收件人但依 BU 看不到 → 不顯示；負責業務本人顯示（可視範圍過濾生效）');
-  ok(!expectedRecipients.rQ.has(U.mkt) === false, 'R 行銷是收件人');
-  const prq = (await poll(U.u2)).maReminders.find((x) => x.itemId === 'rQ');
-  ok(prq && prq.quoteState === 'sent', 'R rQ：已送簽狀態');
+  const pu2 = (await poll(U.u2)).maReminders, g2 = (id) => pu2.find((x) => x.itemId === id);
+  ok(!expectedRecipients.rQ && !g2('rQ'), 'R rQ：已送簽（剩 20 天）→ 預設 always 規則消失，業務的鈴鐺沒有它');
+  ok(g2('rD') && g2('rD').quoteState === 'draft', 'R rD：草稿 → always 規則仍在，狀態 draft');
+  ok(g2('rE') && g2('rE').quoteState === 'sent' && g2('rE').days === -10, 'R rE：已送簽但已逾期 → 到期後的 not_renewed 規則不受影響，仍在');
+  ok(g2('rV') && g2('rV').quoteState === 'none', 'R rV：續約報價單已作廢 → 視同沒有，always 規則回來');
+  ok(expectedRecipients.rD && expectedRecipients.rE && expectedRecipients.rV && !expectedRecipients.rQ && expectedRecipients.rD.has(U.mkt), 'R 行銷是 rD／rE／rV 的收件人，rQ 沒有人');
   await stopServer(); cleanupFiles();
 }
 
@@ -1420,6 +1481,7 @@ const MUTS = [
   { name: 'M37 無收件人時不記稽核', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E("audits.push({ action: 'MA_REMINDER_NO_RECIPIENT', target: e.item.company || '', detail: '規則「'", "void ({ action: 'MA_REMINDER_NO_RECIPIENT', target: e.item.company || '', detail: '規則「'")] }] },
   { name: 'M38 管理員不在收件人退路', groups: ['unit', 'api:main'], spec: [{ file: 'lib/maRecipients.js', edits: [E("else { byRole.secretary = admins.slice(); issues.push({ role: 'secretary', code: 'NO_SECRETARY' }); }", "else { byRole.secretary = []; issues.push({ role: 'secretary', code: 'NO_SECRETARY' }); }")] }] },
   { name: 'M39 秘書不比對 BU', groups: ['unit', 'roles'], spec: [{ file: 'lib/maRecipients.js', edits: [E('.filter((u) => { const sb = buList(u.bu); return sb.includes(bu) && (!ownerBus.length || ownerBus.some((b) => sb.includes(b))); })', '.filter((u) => true)')] }] },
+  { name: 'M41 拿掉 always 的「已送簽解除」條件（恢復舊語意）', groups: ['unit', 'sim', 'api:main', 'api:rules', 'roles'], spec: [{ file: 'lib/maReminders.js', edits: [E("if (condition === 'always') return qs !== 'sent';", "if (condition === 'always') return true;")] }] },
   { name: 'M40 開關預設改成開', groups: ['off'], spec: [{ file: 'lib/quoteTerms.js', edits: [E("return String(e.MA_TRACKING == null ? '' : e.MA_TRACKING).trim() === '1';", 'return true;')] }] },
 ];
 function REAL_SWAP_LIBS(spec) {

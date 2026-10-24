@@ -620,7 +620,7 @@ async function secItems(C) {
     // ── 行銷：看得到全部、不能改 ──
     await openAs(b, C, U.mk, 1440, 900, { expectOn: true, noLoginFlag: true });
     await gotoItemsNav(b);
-    t('IT-M1 行銷看得到所有業務的納管項，但沒有「修改期間…」「處理簽約…」按鈕', (await rowCos(b)).includes('O他人公司') && (await b.ev(`[...document.querySelectorAll('#maItemsView tbody button')].length`)) === 0);
+    t('IT-M1 行銷看得到所有業務的納管項，但沒有「修改期間…」「處理簽約…」按鈕', (await rowCos(b)).includes('O他人公司') && (await b.ev(`[...document.querySelectorAll('#maItemsView tbody button')].filter(x=>x.textContent.trim()!=='提醒時間軸').length`)) === 0);
     const fe = b.errors.filter((e) => !/Failed to load resource|favicon/i.test(e));
     t('IT-9z 沒有 JS 例外', fe.length === 0, J(fe).slice(0, 300));
   });
@@ -852,7 +852,7 @@ const UI_MUTS = [
   { name: 'UM6 取消成交視窗仍繼續送出', file: 'app.js', find: 'if (extra === null) return null;', rep: 'if (extra === null) extra = {};', section: 'flow', expect: /FL5 |FL6 / },
   { name: 'UM7 .mat-overlay 層級高於其他彈窗', file: 'style.css', find: 'z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', rep: 'z-index: 100005; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', section: 'look', expect: /LK-Z/ },
   { name: 'UM8 Service MA 頁籤錯拿 SAP_MA 合約', file: 'app.js', find: "const list = allContracts.filter(c => c.type === 'SERVICE_MA');", rep: "const list = allContracts.filter(c => c.type === 'SAP_MA');", section: 'contracts', expect: /CT-/ },
-  { name: 'UM10 無任務卡的納管項仍顯示「待簽約確認」', file: 'ma-tasks.js', find: "return '追蹤中';", rep: "return '待簽約確認';", section: 'fix', expect: /FX-1b/ },
+  { name: 'UM10 無任務卡的納管項仍顯示「待簽約確認」', file: 'ma-tasks.js', find: "return '';   // 沒有簽約任務卡的納管項（例如 License MA 類）：只追蹤到期，沒有待簽約動作（徽章顯示「追蹤中」）", rep: "return '待簽約確認';", section: 'fix', expect: /FX-1b/ },
   { name: 'UM11 改派候選人改回舊的全部人員清單', file: 'ma-tasks.js', find: "'/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign-candidates'", rep: "'/api/company-responsible/candidates'", section: 'tasks', expect: /TK-8b/ },
   { name: 'UM12 簽約後不刷新 Service MA 頁', file: 'ma-tasks.js', find: 'reloadServiceMa()]).then(function () { refreshBell(); });', rep: 'Promise.resolve()]).then(function () { refreshBell(); });', section: 'fix', expect: /FX-4a/ },
   { name: 'UM13 合約頁剩餘天數改回瀏覽器本地日算法', file: 'app.js', find: 'const diff = _tpDiff !== null ? _tpDiff : Math.ceil((effectiveEnd - today) / 86400000);', rep: 'const diff = Math.ceil((effectiveEnd - today) / 86400000);', section: 'fix', expect: /FX-6a|FX-6c/ },
