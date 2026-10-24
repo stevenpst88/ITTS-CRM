@@ -28,6 +28,8 @@ const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（
 const productCatalog = require('./lib/productCatalog');
 const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片自動轉客戶（WON_AUTO_CUSTOMER=0 關閉）
 const NTA = require('./lib/notifActions');   // 鈴鐺：清除通知（DELETE /api/notifications）與合約到期提醒「已處理」（POST /api/contract-reminders/:id/dismiss）的純邏輯
+const MA = require('./lib/maTracking');   // 成交納管／任務卡／合約串接的純邏輯（MA_TRACKING=1 才啟用；與 QTERM 同一個開關）
+const MAR = require('./lib/maRoutes');   // 其端點、稽核與通知；register 在檔案尾端，PUT／DELETE／restore 內呼叫掛鉤
 const QTERM = require('./lib/quoteTerms');   // 報價單品項服務期間／商品類型（MA_TRACKING=1 才啟用，預設關閉）
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
@@ -1285,6 +1287,8 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/company-requests',  // 統編查無→申請建檔：GET 自己的申請、POST :id/cancel（核可／退回由 handler 限行銷／管理員）
   '/api/my-tasks',          // 我的待辦（待補名片）：GET、POST dismiss——只讀寫呼叫者自己的待辦，集團業務是可擁有名片的角色
 ];
+// 成交納管（MA_TRACKING=1 才放行）：集團業務是可擁有商機的角色，成交後要能處理自己的簽約確認任務卡、看到期管理（範圍仍由 handler 的可視範圍收斂）。關閉時不放行＝與以前相同（403）。
+const MA_GROUPSALES_PREFIXES = ['/api/ma-items', '/api/deal-tasks'];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
   if (!GROUP_SCOPED_ROLES.includes(role)) return next();
@@ -1300,7 +1304,7 @@ app.use((req, res, next) => {
   }
 
   // groupsales：讀寫皆可，但限於白名單端點
-  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => rp === p || rp.startsWith(p + '/'));
+  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => rp === p || rp.startsWith(p + '/')) || (MA.enabled() && MA_GROUPSALES_PREFIXES.some(p => rp === p || rp.startsWith(p + '/')));
   if (!ok) return res.status(403).json({ error: '無權存取此資源' });
   next();
 });
@@ -4848,6 +4852,15 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
     if (req.body.dealId !== undefined) req.body.dealId = _dl.dealId;   // 存正規化後的值（去控制字元／前後空白）
   }
+  // 成交納管（MA_TRACKING=1）：階段變 Won 的檢查一律在這裡做（看板拖曳、表單、表格、直接打 API 都走這支）。缺服務期間 → 400 TERM_REQUIRED，且在任何資料變更之前回應（無副作用）。
+  let _maPlan = null, _maUnwon = false;
+  if (MA.enabled() && typeof req.body.stage === 'string') {
+    if (req.body.stage === 'Won' && oldStage !== 'Won') {
+      const _pl = MA.planWon(data, { id: req.params.id, product: req.body.product !== undefined ? req.body.product : data.opportunities[idx].product }, req.body);
+      if (!_pl.ok) return res.status(_pl.status).json({ error: _pl.message, code: _pl.code });
+      if (_pl.track) _maPlan = _pl;
+    } else if (oldStage === 'Won' && req.body.stage !== 'Won') _maUnwon = true;
+  }
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   if (data.opportunities[idx].dealId === '') delete data.opportunities[idx].dealId;   // 清空＝移除鍵
   const newStage = data.opportunities[idx].stage;
@@ -4885,6 +4898,10 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   // 成交（非 Won → Won）自動把綁定名片轉為客戶；系統自動行為，不看名片 owner。已是客戶不重寫（冪等）、Won 回退不降級。
   const _newCidSaved = String(data.opportunities[idx].contactId || '');
   const _won = (WONC.enabled() && newStage === 'Won' && (oldStage !== 'Won' || (_newCidSaved && _newCidSaved !== _oldCid))) ? WONC.convertForWonOpp(data, data.opportunities[idx]) : null;   // 非 Won→Won，或已是 Won 但改綁了別張名片（舊名片不降級）
+  // 成交納管：建立／重開納管項與任務卡，或在離開 Won 時取消／作廢（與商機更新同一次 db.save）
+  let _maRes = null, _maUn = null;
+  if (_maPlan) _maRes = MA.applyWon(data, data.opportunities[idx], _maPlan, { by: username, nowIso: new Date().toISOString() });
+  else if (_maUnwon) _maUn = MA.applyUnwon(data, req.params.id, { by: username, nowIso: new Date().toISOString() }, 'STAGE_REVERTED');
   db.save(data);
   if (_won) logWonAutoCustomer(req, username, data.opportunities[idx], _won);
   const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
@@ -4892,6 +4909,12 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   const dealDetail = oldDealId !== newDealId ? ` DealID:${oldDealId || '（空）'}→${newDealId || '（空）'}` : '';   // Deal ID 變更要留稽核
   writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
     `${data.opportunities[idx].product}${stageDetail}${dealDetail}`, req);
+  if (_maRes) MAR.afterWon(req, data.opportunities[idx], _maRes, username);
+  if (_maUn) MAR.afterUnwon(req, data.opportunities[idx], _maUn, 'STAGE_REVERTED', username);
+  // 有納管動作才多回 ma 區塊（前端據此提示「已建立任務卡」）；沒有就與以前相同
+  if ((_maRes && (_maRes.items.length || _maRes.task)) || (_maUn && (_maUn.cancelledTasks.length || _maUn.voidedItems.length))) {
+    return res.json({ ...data.opportunities[idx], ma: { items: _maRes ? _maRes.items.length : 0, createdItems: _maRes ? _maRes.createdItems.length : 0, taskId: _maRes && _maRes.task ? _maRes.task.id : '', taskAction: _maRes ? _maRes.taskAction : '', cancelledTasks: _maUn ? _maUn.cancelledTasks.length : 0, voidedItems: _maUn ? _maUn.voidedItems.length : 0 } });
+  }
   res.json(data.opportunities[idx]);
 });
 
@@ -5196,7 +5219,9 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
     console.error('[opp void cascade]', e);
     return res.status(500).json({ error: '商機作廢時處理連結的報價單失敗，商機未刪除，請重試', code: 'OPP_VOID_CASCADE_FAILED' });
   }
+  const _maDel = MA.enabled() ? MA.applyUnwon(data, opp.id, { by: owner, nowIso: new Date().toISOString() }, 'OPP_DELETED') : null;   // 成交納管：商機刪除 → 任務卡取消、納管項作廢（可還原）
   db.save(data);
+  if (_maDel) MAR.afterUnwon(req, opp, _maDel, 'OPP_DELETED', owner);
   writeLog('DELETE_OPP', owner, opp.company || opp.contactName,
     `${opp.product} 原因:${deleteReason || '未說明'}${_inv.length ? '｜連結報價單 ' + _inv.length + ' 張同時失效（' + _inv.map(x => x.q.quoteNo || '草稿').slice(0, 10).join('、') + '）' : ''}`, req);
   // 站內通知報價單擁有者（pushNotification 自帶 load/save，必須在 db.save 之後）
@@ -5372,7 +5397,9 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
   data.lostOpportunities.splice(idx, 1);
   // 因這筆商機作廢而失效的報價單恢復（簽核中被關閉的回到草稿，需重新送簽）
   const _rev = quoteOppLink.revalidateForOpp(data, restored, username, new Date().toISOString());
+  const _maRs = MA.enabled() && restored.stage === 'Won' ? MA.applyRestore(data, restored, { by: username, nowIso: new Date().toISOString() }) : null;   // 成交納管：還原 Won 商機 → 重開作廢的納管項與任務卡
   db.save(data);
+  if (_maRs && (_maRs.items.length || _maRs.task)) MAR.afterWon(req, restored, _maRs, username);
   if (_rev.length) writeLog('RESTORE_OPP_QUOTES', username, restored.company || restored.contactName, `商機還原，${_rev.length} 張報價單恢復`, req);
   _rev.forEach(q => { try { pushNotification(q.owner, 'quote_voided', '✅ 報價單已恢復：' + (q.quoteNo || '草稿'), '連結的商機已還原，這張報價單恢復可用。', q.id); } catch (e) { /* 忽略 */ } });
   res.json({ success: true, opportunity: restored, revalidatedQuotes: _rev.length });
@@ -6313,7 +6340,12 @@ app.put('/api/contracts/:id', requireAuth, (req, res) => {
   );
   if (idx === -1) return res.status(404).json({ error: '找不到此合約' });
   const owner = data.contracts[idx].owner; // 保留原 owner，不讓前端改
+  const _oldCn = data.contracts[idx].contractNo;
   data.contracts[idx] = { ...data.contracts[idx], ...pickFields(req.body, CONTRACT_FIELDS), id: req.params.id, owner };
+  // 成交納管：由任務卡建立的合約（有 maItemId）改合約編號 → 同步回納管項並留 history（舊合約沒有 maItemId，完全不進這裡）
+  if (MA.enabled() && data.contracts[idx].maItemId && data.contracts[idx].contractNo !== _oldCn) {
+    (data.maItems || []).filter(it => it && it.contractId === req.params.id).forEach(it => { it.contractNo = data.contracts[idx].contractNo; it.updatedAt = new Date().toISOString(); it.history.push({ at: it.updatedAt, by: username, action: 'CONTRACT_NO_EDIT', note: '合約編號修改', from: _oldCn, to: data.contracts[idx].contractNo }); });
+  }
   db.save(data);
   writeLog('UPDATE_CONTRACT', username, data.contracts[idx].company,
     `合約No:${data.contracts[idx].contractNo}`, req);
@@ -6329,6 +6361,8 @@ app.delete('/api/contracts/:id', requireAuth, (req, res) => {
   c.deleted   = true;
   c.deletedAt = new Date().toISOString();
   c.deletedBy = owner;
+  // 成交納管：刪除由任務卡建立的合約 → 納管項解除合約連結（回到待簽約狀態，編號可重新使用）
+  if (MA.enabled() && c.maItemId) (data.maItems || []).filter(it => it && it.contractId === c.id).forEach(it => { it.contractNo = ''; it.contractId = ''; it.updatedAt = c.deletedAt; it.history.push({ at: c.deletedAt, by: owner, action: 'CONTRACT_DELETED', note: '合約已刪除，解除連結' }); });
   db.save(data);
   writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
   res.json({ success: true });
@@ -7161,6 +7195,10 @@ function notificationUrlFor(type, refId) {
       return refId ? `/index.html#contact:${refId}` : '/index.html#contacts';
     case 'company_card_task':
       return '/index.html#cardtasks';   // 前端 company-card-tasks.js 處理：開「待補名片」彙總視窗
+    case 'deal_task':
+      return '/index.html#dealtasks';   // 成交簽約確認任務卡（MA_TRACKING；前端 P2b 處理：開「待簽約確認」彙總視窗）
+    case 'deal_task_skipped':
+      return '/index.html#maitems';    // 業務回報「此案不簽合約」→ 行銷／主管開到期管理頁
     default:
       return '/';
   }
@@ -11131,6 +11169,10 @@ require('./lib/quoteRoutes')(app, {
   flushAuditBeforeEnd,   // GET 路徑的稽核事件（流程引擎預覽的影子／熔斷）在回應送出前確保寫入
   mail: quoteMail,   // 簽核信件（E1–E6）；MAIL_MODE=off 時 notifyMail 立刻返回
 });
+
+// ── 成交納管／任務卡／到期管理（MA_TRACKING=1 才啟用；關閉時端點等同未登記）──────────
+// 實作在 lib/maRoutes.js，純邏輯在 lib/maTracking.js。商機成交／回退／刪除／還原的掛鉤在上面的商機端點內。
+MAR.register(app, { db, loadAuth, requireAuth, writeLog, pushNotification, getViewableOwners, filterByBu, filterByViewGroup, userLabel });
 
 // ── 全域錯誤處理（必須在所有路由之後）─────────────────────
 // eslint-disable-next-line no-unused-vars
