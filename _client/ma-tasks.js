@@ -87,6 +87,8 @@
     if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return NaN;   // 2026-02-30 這類不存在的日期
     return Math.round(ms / 86400000);
   }
+  // ISO 時間（UTC）→ 台北日曆日（審查修正：不能直接切字串，台北 00:00–08:00 會少一天）
+  function tpDateOfIso(iso) { var t = Date.parse(iso); return Number.isFinite(t) ? tpToday(t) : ''; }
   function tpToday(now) { var t = typeof now === 'number' ? now : (now instanceof Date ? now.getTime() : Date.now()); return new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10); }
   function daysLeft(to, now) { var a = tpDayNum(to); return isNaN(a) ? null : a - tpDayNum(tpToday(now)); }
   function refreshBell() {
@@ -452,19 +454,22 @@
       afterAction();
     });
   }
-  function openReassign(t, parent) {
-    var d = openDialog({ title: '改派「' + t.company + '」的簽約確認', role: 'dialog' });
-    d.body.appendChild(el('p', 'mat-lead', '目前負責人：' + (t.ownerLabel || t.owner) + (t.ownerActive === false ? '（已停用）' : '') + '。改派後新的負責人會收到通知。'));
+  // mode 'item'：改「納管項」的負責人（審查修正 M1：沒有任務卡的 License 類納管項原本沒有入口；同一商機底下的納管項與任務卡一起換）；預設改任務卡
+  function openReassign(t, parent, mode) {
+    var isItem = mode === 'item';
+    var base = (isItem ? '/api/ma-items/' : '/api/deal-tasks/') + encodeURIComponent(t.id);
+    var d = openDialog({ title: isItem ? '更換「' + t.company + '」的負責業務' : '改派「' + t.company + '」的簽約確認', role: 'dialog' });
+    d.body.appendChild(el('p', 'mat-lead', '目前負責人：' + (t.ownerLabel || t.owner) + (t.ownerActive === false ? '（已停用）' : '') + (isItem ? '。更換後，同一個商機底下的納管項與簽約任務卡會一起換成新的負責業務（提醒也改送給他）。' : '。改派後新的負責人會收到通知。')));
     var holder = el('div', 'mat-reassign');
     d.body.appendChild(holder);
     var sel = document.createElement('select'); sel.className = 'mat-input';
     var txt = null;
     var showErr = errBox(d);
-    var ok = button('改派', 'mat-btn mat-btn-primary');
+    var ok = button(isItem ? '確認更換' : '改派', 'mat-btn mat-btn-primary');
     ok.disabled = true;
     d.foot.appendChild(button('取消', 'mat-btn mat-btn-ghost', function () { d.close(); }));
     d.foot.appendChild(ok);
-    jget('/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign-candidates').then(function (r) {
+    jget(base + '/reassign-candidates').then(function (r) {
       var users = ((r && r.users) || []).filter(function (u) { return u.username !== t.owner; });
       if (r && !users.length) {
         holder.appendChild(el('p', 'mat-note', '沒有可改派的人選：只能改派給與這筆案件同事業單位（BU）的在職業務。'));
@@ -489,11 +494,11 @@
       var to = txt ? txt.value.trim() : sel.value;
       if (!to) { showErr('請選擇新的負責業務'); return; }
       showErr(''); ok.disabled = true;
-      jreq('POST', '/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign', { to: to }).then(function (r) {
+      jreq('POST', base + '/reassign', { to: to }).then(function (r) {
         if (!r.ok) { ok.disabled = false; showErr((r.data && r.data.error) || '改派失敗'); return; }
         d.close();
         if (parent) parent.close();
-        toast('✓ 已改派');
+        toast(isItem ? '✓ 已更換負責業務' : '✓ 已改派');
         afterAction();
       });
     });
@@ -817,6 +822,8 @@
   /* ───────── 到期管理頁 ───────── */
   var itemsEls = null;
   function isSecretary() { return !!(state.user && state.user.role === 'secretary'); }
+  // 行銷與集團業務本來就看不到合約，伺服器也不回合約編號（審查修正 L1）→ 不畫「合約編號」欄
+  function hideContractCol() { var r = state.user && state.user.role; return r === 'marketing' || r === 'groupsales'; }
   function canEditItem(it) { return !isSecretary() && !!it.id && (isAdmin() || (state.user && it.owner === state.user.username)); }
   function buildItemsView(anchor) {
     var v = el('div', 'mat-page'); v.id = 'maItemsView'; v.hidden = true;
@@ -838,7 +845,7 @@
     var table = el('table', 'mat-table');
     var cap = el('caption', 'mat-sr', 'MA／License 到期管理清單'); table.appendChild(cap);
     var thead = document.createElement('thead'); var tr = document.createElement('tr');
-    var cols = isSecretary() ? ['客戶', '品項', '期間', '剩餘天數', '負責業務'] : ['客戶', '品項', '合約編號', '期間', '剩餘天數', '狀態／下一步', '負責業務', '操作'];
+    var cols = isSecretary() ? ['客戶', '品項', '期間', '剩餘天數', '負責業務'] : ['客戶', '品項', '合約編號', '期間', '剩餘天數', '狀態／下一步', '負責業務', '操作'].filter(function (h) { return !(h === '合約編號' && hideContractCol()); });
     cols.forEach(function (h) { var th = el('th', null, h); th.scope = 'col'; tr.appendChild(th); });
     thead.appendChild(tr); table.appendChild(thead);
     var tbody = document.createElement('tbody'); table.appendChild(tbody);
@@ -909,7 +916,7 @@
       function td(label, node) { var c = document.createElement('td'); c.setAttribute('data-label', label); if (node) c.appendChild(typeof node === 'string' ? document.createTextNode(node) : node); tr.appendChild(c); return c; }
       td('客戶', el('strong', null, it.company || ''));
       var pc = td('品項'); pc.appendChild(el('span', null, it.product || '')); pc.appendChild(document.createTextNode(' ')); pc.appendChild(el('span', 'mat-chip', KIND_LABEL[it.termKind] || it.termKind || ''));
-      if (!isSecretary()) td('合約編號', it.contractNo || '—');
+      if (!isSecretary() && !hideContractCol()) td('合約編號', it.contractNo || '—');
       td('期間', rangeText(it.from, it.to));
       var dc = td('剩餘天數');
       if (typeof it.daysLeft === 'number') { dc.appendChild(barFor(it.daysLeft)); dc.appendChild(el('span', 'mat-days' + (it.daysLeft < 0 ? ' mat-days-bad' : ''), daysText(it.daysLeft))); }
@@ -942,6 +949,10 @@
         if (isAdmin() && it.status === 'not_renew') {
           var rb = button('重新開啟', 'mat-btn mat-btn-ghost mat-btn-sm mar-btn-reopen', function () { openReopen(it); });
           rb.setAttribute('aria-label', '重新開啟「' + it.company + '」的提醒追蹤'); box.appendChild(rb);
+        }
+        if (isAdmin() && it.id && it.status !== 'void') {
+          var ob = button('改負責人…', 'mat-btn mat-btn-ghost mat-btn-sm mat-btn-reown', function () { openReassign({ id: it.id, company: it.company, product: it.product, owner: it.owner, ownerLabel: it.ownerLabel, ownerActive: it.ownerActive }, null, 'item'); });
+          ob.setAttribute('aria-label', '更換「' + it.company + '」的負責業務'); box.appendChild(ob);
         }
         if (it.id) {
           var tb2 = button('提醒時間軸', 'mat-btn mat-btn-ghost mat-btn-sm mar-btn-tl', function () { toggleTimeline(tr, it, tb2); });
@@ -1110,7 +1121,7 @@
   }
   function buildTimeline(tl) {
     var box = el('div', 'mar-tl');
-    var head = el('p', 'mar-tl-sub', '規則來源：' + (tl.isDefault ? '系統預設規則' : '管理員自訂規則' + (tl.rulesUpdatedAt ? '（更新於 ' + String(tl.rulesUpdatedAt).slice(0, 10) + '）' : '')) + '　目前續約報價單：' + ({ none: '尚未建立', draft: '草稿（未送簽）', sent: '已送簽' }[tl.quoteState] || ''));
+    var head = el('p', 'mar-tl-sub', '規則來源：' + (tl.isDefault ? '系統預設規則' : '管理員自訂規則' + (tl.rulesUpdatedAt ? '（更新於 ' + (tl.rulesUpdatedDate || tpDateOfIso(tl.rulesUpdatedAt)) + '）' : '')) + '　目前續約報價單：' + ({ none: '尚未建立', draft: '草稿（未送簽）', sent: '已送簽' }[tl.quoteState] || ''));
     box.appendChild(head);
     var ol = el('ol', 'mar-tl-list');
     (tl.rules || []).slice().sort(function (a, b) { return a.triggerDate < b.triggerDate ? -1 : a.triggerDate > b.triggerDate ? 1 : 0; }).forEach(function (r) {
@@ -1123,7 +1134,7 @@
       main.appendChild(el('span', 'mar-tl-state mar-tl-state-' + st.cls, st.text));
       li.appendChild(main);
       var meta = '對象：' + notifyText(r.notify) + '｜條件：' + (COND_TEXT[r.condition] || r.condition);
-      if (r.sentCount) meta += '｜已發送 ' + r.sentCount + ' 次' + (r.lastSentAt ? '（最近 ' + slash(String(r.lastSentAt).slice(0, 10)) + '）' : '');
+      if (r.sentCount) meta += '｜已發送 ' + r.sentCount + ' 次' + (r.lastSentAt ? '（最近 ' + slash(r.lastSentDate || tpDateOfIso(r.lastSentAt)) + '）' : '');
       if (r.sent && r.sent.length) meta += '｜收件：' + r.sent.map(function (x) { return x.toLabel || x.to; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、');
       li.appendChild(el('div', 'mar-tl-meta', meta));
       ol.appendChild(li);
