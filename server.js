@@ -28,6 +28,7 @@ const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（
 const productCatalog = require('./lib/productCatalog');
 const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片自動轉客戶（WON_AUTO_CUSTOMER=0 關閉）
 const NTA = require('./lib/notifActions');   // 鈴鐺：清除通知（DELETE /api/notifications）與合約到期提醒「已處理」（POST /api/contract-reminders/:id/dismiss）的純邏輯
+const QTERM = require('./lib/quoteTerms');   // 報價單品項服務期間／商品類型（MA_TRACKING=1 才啟用，預設關閉）
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
@@ -8198,7 +8199,8 @@ app.get('/api/admin/integrations/logs', requireAdmin, (req, res) => {
 // 讀：全站登入者可用（商機/合約下拉要吃）
 app.get('/api/product-catalog', requireAuth, (req, res) => {
   const data = db.load();
-  res.json(data.productCatalog || productCatalog.SEED_PRODUCT_CATALOG);
+  // MA_TRACKING 開啟 → 多帶 maTracking:true；關閉 → 去掉商品類型欄位（輸出與沒有此功能時逐位元相同）
+  res.json(productCatalog.catalogForOutput(data.productCatalog || productCatalog.SEED_PRODUCT_CATALOG, QTERM.enabled()));
 });
 
 // 存：僅 admin。可帶 renames 連動改名 opp.product/contract.product；?preview=1 只回影響筆數不寫入
@@ -8215,7 +8217,7 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   }
 
   // 驗證目錄形狀後寫入
-  let dealDiff = [];
+  let dealDiff = [], termDiff = [];
   if (b.catalog && b.catalog.bus && typeof b.catalog.bus === 'object' && !Array.isArray(b.catalog.bus)) {
     // Deal ID 設定（requiresDealId／dealRegisterUrl）：網址只收 http/https，驗證失敗整份不寫入
     const norm = productCatalog.normalizeCatalogDealSettings(b.catalog.bus);
@@ -8224,6 +8226,18 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
       return res.status(400).json({ error: `商品「${e0.name}」：${e0.error}`, code: 'DEAL_URL_INVALID', details: norm.errors.slice(0, 20) });
     }
     dealDiff = productCatalog.diffDealSettings(data.productCatalog, norm.bus);
+    // 商品類型（termKind／startsTask）：MA_TRACKING=1 才驗證並存；關閉時請求裡的這兩欄一律丟掉（稽核不記）
+    if (QTERM.enabled()) {
+      const tn = productCatalog.normalizeCatalogTermSettings(norm.bus);
+      if (tn.errors.length) {
+        const e0 = tn.errors[0];
+        return res.status(400).json({ error: `商品「${e0.name}」：${e0.error}`, code: 'TERM_KIND_INVALID', details: tn.errors.slice(0, 20) });
+      }
+      termDiff = productCatalog.diffTermSettings(data.productCatalog, tn.bus);
+      norm.bus = tn.bus;
+    } else {
+      norm.bus = productCatalog.stripCatalogTermSettings(norm.bus);
+    }
     data.productCatalog = {
       bus: norm.bus,
       updatedAt: new Date().toISOString(),
@@ -8238,7 +8252,8 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   db.save(data);
   writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
     `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆` +
-    (dealDiff.length ? `；Deal ID 設定異動：${dealDiff.slice(0, 10).join('、')}${dealDiff.length > 10 ? ' 等 ' + dealDiff.length + ' 項' : ''}` : ''), req);
+    (dealDiff.length ? `；Deal ID 設定異動：${dealDiff.slice(0, 10).join('、')}${dealDiff.length > 10 ? ' 等 ' + dealDiff.length + ' 項' : ''}` : '') +
+    (termDiff.length ? `；商品類型設定異動：${termDiff.slice(0, 10).join('、')}${termDiff.length > 10 ? ' 等 ' + termDiff.length + ' 項' : ''}` : ''), req);
   res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
 });
 

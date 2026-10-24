@@ -9332,7 +9332,7 @@ function renderNotifList(list) {
   const typeIcon = {
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴', contract_expiring_30:'📅', contract_expiring_7:'⚠️', receivable_overdue:'🔴', lead_assigned:'🎯', birthday:'🎂',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
-    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_term_changed:'📅', quote_mode_changed:'🔏', admin_account_change:'🛡️',
     company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨'
   };
 
