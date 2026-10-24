@@ -9,7 +9,7 @@
  *   [api]     POST／PUT 驗證與沿用舊值、標題列不帶欄位、序列化、送簽 blocker、時間軸／稽核摘要、雜湊與簽章不含新欄位、PATCH item-terms（權限／不變量／稽核／通知）、關閉開關
  *   [compat]  舊單相容：與基準程式碼（git archive）逐位元比對 contentHash／儲存形狀／GET 完整回應／Excel／預覽 HTML；MA_TRACKING 關閉時帶了期間欄位的請求也與基準相同
  *   [server]  商品目錄 API（開／關）、稽核、PATCH 關閉時等同未登記、通知深連結、真實伺服器建立／改期間
- *   [browser] 階段 B 補（輸入、快捷、紅字、拖曳保留、儲存重載、預覽、PDF、四種外觀對比、手機寬度、XSS）——本階段未實作，標示「未驗證」，不偽造通過
+ *   [ui]      瀏覽器（scripts/_quote-terms-ui.js；headless Edge＋CDP，真實滑鼠鍵盤；CDP 埠 9571）：開關關閉與基準前端逐位元相同、輸入／預選／快捷／紅字／逐步進度、排序保留、儲存重載、核准後修改小視窗、預覽／PDF／Excel、XSS、四種外觀對比與手機寬度。CTERM_UI_ONLY=off|new|edit|approved|docs|look 只跑一個區段；CTERM_SHOTS 指定截圖資料夾（預設 scratchpad/ma1_shots）
  * 測試資料只用通用字串（公開 repo：不放客戶名、人名、真實費率）。
  */
 'use strict';
@@ -570,6 +570,38 @@ async function groupMut() {
   return undetected;
 }
 
+// UI 變異：用 CDP 把前端檔換成改壞的版本（不動磁碟上的檔案），對應區段的測試必須變紅
+const UI_MUTS = [
+  { name: 'UM1 renderQuoteItems 不渲染期間欄位', file: 'quote.js', find: "  if (quoteTermsOn()) {\n    const trs = tbody.querySelectorAll('tr');", rep: "  if (false) {\n    const trs = tbody.querySelectorAll('tr');", section: 'new', expect: /UI-N1 |UI-N2|UI-N6/ },
+  { name: 'UM2 readQuoteItems 不讀回期間（重畫／拖曳會丟值）', file: 'quote.js', find: "const tkSel = row.querySelector('.qterm-kind');\n    if (tkSel) {", rep: "const tkSel = null;\n    if (tkSel) {", section: 'new', expect: /UI-N12|UI-N13|UI-N17/ },
+  { name: 'UM3 saveQuote 的 payloadItems 不送期間', file: 'quote.js', find: "if (typeof it.termKind === 'string') {\n      o.termKind = it.termKind;", rep: "if (false) {\n      o.termKind = it.termKind;", section: 'new', expect: /UI-N17|UI-N18/ },
+  { name: 'UM4 儲存前的前端期間驗證拿掉', file: 'quote.js', find: "if (tp) { switchQuoteTab('info');", rep: "if (false) { switchQuoteTab('info');", section: 'edit', expect: /UI-E5/ },
+  { name: 'UM5 客戶預覽不顯示服務期間行', file: 'quote-preview.js', find: "const tl = (typeof QTERMS === 'object' && QTERMS) ?", rep: 'const tl = (false) ?', section: 'docs', expect: /UI-V1/ },
+  { name: 'UM6 簽核面板不顯示服務期間', file: 'quote-approval.js', find: 'const tlHtml = tl ? `', rep: 'const tlHtml = false ? `', section: 'approved', expect: /UI-A12/ },
+  { name: 'UM7 牌價簿空白列判斷不看類型', file: 'quote-pricebook.js', find: '  if (it.termKind) return false;', rep: '', section: 'new', expect: /UI-N15|UI-N2[0-9]/ },
+];
+async function groupMutUi() {
+  console.log('[UI 變異] 用 CDP 替換前端檔為改壞的版本，對應區段的測試必須變紅');
+  const U = require('./_quote-terms-ui'), H = require('./_b2-harness');
+  H.guardClean();
+  const exb = exportBase();
+  let undetected = 0;
+  try {
+    for (const m of UI_MUTS) {
+      const src = fs.readFileSync(path.join(ROOT, '_client', m.file), 'utf8').replace(/\r\n/g, '\n');
+      if (!src.includes(m.find)) { console.log('  ✗ 變異錨點不存在：' + m.name); undetected++; continue; }
+      res = [];
+      try { await U.run({ H, t, ROOT, base: exb.dir, shots: null, cdp: 9571, mut: m.name, mutFiles: { [m.file]: src.replace(m.find, () => m.rep) } }, m.section); } catch (e) { t('(ui 例外) ' + String(e && e.message).slice(0, 100), false); }
+      const failed = res.filter((x) => !x[1]);
+      const hit = failed.some((x) => m.expect.test(x[0]));
+      console.log((hit ? '  ✓ ' : '  ✗ ') + m.name + '：' + failed.length + ' 項變紅' + (hit ? '' : '（預期的測試沒變紅）') + (failed.length ? '｜例：' + failed[0][0].slice(0, 60) : ''));
+      if (!hit) undetected++;
+    }
+  } finally { await H.finish(); exb.cleanup(); }
+  console.log('UI 變異測試：' + (UI_MUTS.length - undetected) + '/' + UI_MUTS.length + ' 被偵測到');
+  return undetected;
+}
+
 // ═════════════════════════ 主程式 ═════════════════════════
 function report(title) {
   const bad = res.filter((x) => !x[1]);
@@ -579,14 +611,24 @@ function report(title) {
 }
 (async () => {
   let fails = 0;
-  if (MUT) { process.exitCode = (await groupMut()) ? 1 : 0; return; }
+  if (MUT) { let u = await groupMut(); if (process.env.CTERM_MUT_NOUI !== '1') u += await groupMutUi(); process.exitCode = u ? 1 : 0; return; }
   const run = (g) => !ONLY || ONLY === g;
   if (run('unit')) { res = []; groupUnit(ROOT); fails += report('unit'); }
   if (run('api')) { res = []; await groupApi(ROOT); fails += report('api'); }
   if (run('compat')) { res = []; await groupCompat(ROOT); fails += report('compat'); }
   if (run('server')) { const R = await groupServer(); const n = R.fail; if (n) console.log(R.failures.map((f) => '  ✗ ' + f).join('\n')); console.log(`[server] ${R.pass}/${R.pass + R.fail} 通過`); fails += n; }
-  if (!ONLY) {
-    console.log('[browser] 階段 B 補（本次未驗證）：輸入／快捷鍵／紅字提示、拖曳排序保留期間、儲存重載、預覽與 PDF 的「服務期間」行、Excel 品名下灰字與列高、簽核面板唯讀顯示、四種外觀對比與手機寬度截圖、XSS（品名／期間含 <img onerror>）、renderQuoteItems 變異。');
+  if (run('ui')) {
+    const U = require('./_quote-terms-ui');
+    const H = require('./_b2-harness');
+    H.guardClean();
+    const exb = exportBase();
+    res = [];
+    try {
+      const shots = process.env.CTERM_SHOTS || path.join(ROOT, '..', 'ma1_shots');
+      await U.run({ H, t, ROOT, base: exb.dir, shots, cdp: 9571, mut: null }, process.env.CTERM_UI_ONLY || '');
+    } catch (e) { t('(ui 例外) ' + (e && e.stack || e).toString().slice(0, 400), false); }
+    finally { await H.finish(); exb.cleanup(); }
+    fails += report('ui');
   }
   console.log(fails ? `\n結果：失敗 ${fails} 項` : '\n結果：全部通過（瀏覽器項目除外，見上）');
   process.exitCode = fails ? 1 : 0;
