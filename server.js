@@ -6358,13 +6358,16 @@ app.delete('/api/contracts/:id', requireAuth, (req, res) => {
   if (!data.contracts) return res.json({ success: true });
   const c = data.contracts.find(c => c.id === req.params.id && c.owner === owner);
   if (!c) return res.json({ success: true });
+  // 成交納管：已刪除的 SERVICE_MA 合約再刪一次 → 直接成功，不重複解除連結／重開任務卡／通知（冪等）
+  if (MA.enabled() && c.maItemId && c.deleted) return res.json({ success: true });
   c.deleted   = true;
   c.deletedAt = new Date().toISOString();
   c.deletedBy = owner;
-  // 成交納管：刪除由任務卡建立的合約 → 納管項解除合約連結（回到待簽約狀態，編號可重新使用）
-  if (MA.enabled() && c.maItemId) (data.maItems || []).filter(it => it && it.contractId === c.id).forEach(it => { it.contractNo = ''; it.contractId = ''; it.updatedAt = c.deletedAt; it.history.push({ at: c.deletedAt, by: owner, action: 'CONTRACT_DELETED', note: '合約已刪除，解除連結' }); });
+  // 成交納管：刪除由任務卡建立的合約 → 納管項解除合約連結，任務卡已完成者重開（業務可重新簽約，編號可重新使用）
+  const _maCd = MA.enabled() && c.maItemId ? MA.applyContractDeleted(data, c, { by: owner, nowIso: c.deletedAt }) : null;
   db.save(data);
   writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
+  if (_maCd) MAR.afterContractDeleted(req, c, _maCd, owner);
   res.json({ success: true });
 });
 
