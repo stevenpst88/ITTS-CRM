@@ -3293,6 +3293,7 @@
   <script src="config-review.js"></script>
   <script src="flow-overview.js"></script><!-- 簽核流程設計器：唯讀總覽圖 -->
   <script src="flow-designer.js"></script><!-- 簽核流程設計器：泳道編輯／模擬器／驗證／草稿 -->
+  <script src="ma-reminders-admin.js"></script><!-- 提醒規則頁（MA_TRACKING=1 才會由 probe 動態插入側欄項／section／樣式表；關閉時什麼都不建立）：須在 config-review.js 之後 -->
   <script src="admin-users-view.js"></script>
   <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
@@ -5249,6 +5250,7 @@
         renderUserTable();
         if (typeof mailAfterUserTable === 'function') mailAfterUserTable();
         if (window.FlowDesigner && typeof window.FlowDesigner.probe === 'function') window.FlowDesigner.probe();   // 簽核流程設計器：開關開啟時才顯示側欄項
+        if (window.MaRemAdmin) window.MaRemAdmin.probe({ fetch: adminFetch, crApi: _afCrApi, canLeave: () => { if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa) { showToast('「銷售商品維護」正在儲存中，請等顯示「已儲存」後再切換頁面'); return false; } return true; } });   // 提醒規則頁（MA_TRACKING=1 才插入）
       } catch (e) { if (e.message !== 'Session expired') showToast('載入失敗'); }
     }
 

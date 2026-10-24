@@ -27,17 +27,18 @@
   var KIND_LABEL = { ma: 'MA', license: 'License' };
   var SUMMARY_MAX = 10;
   var PANEL_MAX = 5;
-  var ITEM_STATUS = { ended: '已結束', renewed: '已續約', not_renew: '不續約' };
+  var ITEM_STATUS = { tracking: '追蹤中', ended: '已結束', renewed: '已續約', not_renew: '不續約', void: '作廢' };
   var FILTERS = [
     { key: 'all', label: '全部' },
     { key: 'pending_sign', label: '待簽約' },
     { key: 'd90', label: '90 天內到期' },
     { key: 'overdue', label: '已逾期' },
+    { key: 'not_renew', label: '已不續約', local: true },   // P3b：在已載入的清單上本地篩選（伺服器的 filter= 沒有這一項）
   ];
 
   var state = {
     user: null, enabled: false, tasks: null, overdue: null, seq: 0, loginShown: false, summary: null, expanded: false,
-    catalog: null, catalogAt: 0, itemsOn: false, pendingSection: '', filter: 'all', itemsAll: null, pending: null,
+    catalog: null, catalogAt: 0, itemsOn: false, pendingSection: '', filter: 'all', itemsAll: null, pending: null, focusId: '',
   };
   var stack = [];
   var uidN = 0;
@@ -875,7 +876,7 @@
     if (!itemsEls) return;
     itemsEls.chips.textContent = '';
     FILTERS.forEach(function (f) {
-      if (isSecretary() && f.key === 'pending_sign') return;
+      if (isSecretary() && (f.key === 'pending_sign' || f.key === 'not_renew')) return;
       var b = button(f.label, 'mat-fchip' + (state.filter === f.key ? ' mat-fchip-on' : ''), function () { state.filter = f.key; renderChips(); loadItems(false, true); });
       b.setAttribute('aria-pressed', state.filter === f.key ? 'true' : 'false');
       itemsEls.chips.appendChild(b);
@@ -889,11 +890,11 @@
     return p;
   }
   function nextStep(it) {
-    if (it.status && it.status !== 'tracking') return ITEM_STATUS[it.status] || it.status;
+    if (it.status && it.status !== 'tracking') return '';   // 已續約／不續約／已結束：狀態徽章已說明
     if (it.contractNo) return '已歸入 Service MA；到期前提醒';
     if (it.taskStatus === 'skipped') return '此案不簽合約（仍追蹤到期）';
     if (it.pendingSign) return '待簽約確認';
-    return '追蹤中';   // 沒有簽約任務卡的納管項（例如 License MA 類）：只追蹤到期，沒有待簽約動作
+    return '';   // 沒有簽約任務卡的納管項（例如 License MA 類）：只追蹤到期，沒有待簽約動作（徽章顯示「追蹤中」）
   }
   function renderRows(list) {
     if (!itemsEls) return;
@@ -904,6 +905,7 @@
     list.forEach(function (it) {
       var tr = document.createElement('tr');
       if (typeof it.daysLeft === 'number' && it.daysLeft < 0) tr.className = 'mat-tr-bad';
+      if (it.id) tr.setAttribute('data-item-id', it.id);
       function td(label, node) { var c = document.createElement('td'); c.setAttribute('data-label', label); if (node) c.appendChild(typeof node === 'string' ? document.createTextNode(node) : node); tr.appendChild(c); return c; }
       td('客戶', el('strong', null, it.company || ''));
       var pc = td('品項'); pc.appendChild(el('span', null, it.product || '')); pc.appendChild(document.createTextNode(' ')); pc.appendChild(el('span', 'mat-chip', KIND_LABEL[it.termKind] || it.termKind || ''));
@@ -911,7 +913,15 @@
       td('期間', rangeText(it.from, it.to));
       var dc = td('剩餘天數');
       if (typeof it.daysLeft === 'number') { dc.appendChild(barFor(it.daysLeft)); dc.appendChild(el('span', 'mat-days' + (it.daysLeft < 0 ? ' mat-days-bad' : ''), daysText(it.daysLeft))); }
-      if (!isSecretary()) td('狀態／下一步', nextStep(it));
+      if (!isSecretary()) {
+        var sc = td('狀態／下一步');
+        var stKey = it.status || 'tracking';
+        sc.appendChild(el('span', 'mar-badge mar-badge-' + stKey, ITEM_STATUS[stKey] || stKey));
+        var stepTxt = nextStep(it);
+        if (stepTxt) { sc.appendChild(document.createTextNode(' ')); sc.appendChild(el('span', 'mar-step', stepTxt)); }
+        if (stKey === 'not_renew') sc.appendChild(el('div', 'mar-reason', '原因：' + (it.notRenewReason || '（未填）')));
+        if (stKey === 'tracking' && it.id) sc.appendChild(nextCell(it));
+      }
       td('負責業務', (it.ownerLabel || it.owner || '') + (it.ownerActive === false ? '（已停用）' : ''));
       if (!isSecretary()) {
         var ac = td('操作'); var box = el('div', 'mat-row-actions');
@@ -925,10 +935,23 @@
           var eb = button('修改期間…', 'mat-btn mat-btn-ghost mat-btn-sm', function () { openEditTerm(it); });
           eb.setAttribute('aria-label', '修改「' + it.company + '」的服務期間'); box.appendChild(eb);
         }
+        if (canEditItem(it) && it.status === 'tracking') {
+          var nb = button('標記不續約…', 'mat-btn mat-btn-ghost mat-btn-sm mar-btn-norenew', function () { openNotRenew(it); });
+          nb.setAttribute('aria-label', '將「' + it.company + '」標記為不續約'); box.appendChild(nb);
+        }
+        if (isAdmin() && it.status === 'not_renew') {
+          var rb = button('重新開啟', 'mat-btn mat-btn-ghost mat-btn-sm mar-btn-reopen', function () { openReopen(it); });
+          rb.setAttribute('aria-label', '重新開啟「' + it.company + '」的提醒追蹤'); box.appendChild(rb);
+        }
+        if (it.id) {
+          var tb2 = button('提醒時間軸', 'mat-btn mat-btn-ghost mat-btn-sm mar-btn-tl', function () { toggleTimeline(tr, it, tb2); });
+          tb2.setAttribute('aria-expanded', 'false'); tb2.setAttribute('aria-label', '展開或收合「' + it.company + '」的提醒時間軸'); box.appendChild(tb2);
+        }
         ac.appendChild(box);
       }
       tb.appendChild(tr);
     });
+    applyFocus();
   }
   var itemsSeq = 0;
   function loadItems(quiet, filterOnly) {
@@ -936,14 +959,19 @@
     var seq = ++itemsSeq;
     var f = state.filter;
     var jobs = [filterOnly ? Promise.resolve({ ok: true, data: state.itemsAll }) : jreq('GET', '/api/ma-items?filter=all')];
-    if (f !== 'all') jobs.push(jreq('GET', '/api/ma-items?filter=' + encodeURIComponent(f)));
+    if (f !== 'all' && f !== 'not_renew') jobs.push(jreq('GET', '/api/ma-items?filter=' + encodeURIComponent(f)));
     if (!isSecretary() && !filterOnly) jobs.push(jreq('GET', '/api/ma-items/pending-backfill'));
     return Promise.all(jobs).then(function (r) {
       if (seq !== itemsSeq) return;
       if (!r[0].ok) { if (!quiet) toast((r[0].data && r[0].data.error) || '無法載入到期管理資料'); return; }
       state.itemsAll = r[0].data;
-      var rows = (f === 'all' ? r[0].data : (r[1].ok ? r[1].data : r[0].data)).items || [];
-      if (f !== 'all' && !r[1].ok) rows = [];
+      var rows;
+      if (f === 'not_renew') rows = ((r[0].data && r[0].data.items) || []).filter(function (x) { return x.status === 'not_renew'; });   // 本地篩選（不多一次請求）
+      else {
+        rows = (f === 'all' ? r[0].data : (r[1].ok ? r[1].data : r[0].data)).items || [];
+        if (f !== 'all' && !r[1].ok) rows = [];
+      }
+      if (!filterOnly) nextCache = {};   // 資料重載（可能剛有人送簽／標不續約）：下一個提醒重新查
       if (!isSecretary() && !filterOnly) {
         var pb = r[r.length - 1];
         state.pending = pb && pb.ok ? pb.data : null;
@@ -1007,13 +1035,187 @@
     focusFirst(d, '.mat-btn-primary');
   }
 
+
+  /* ───────── P3b：下一個提醒、提醒時間軸、標記不續約／重新開啟、鈴鐺深連結的列標示 ───────── */
+  var COND_TEXT = { always: '無條件（續約報價單送簽後自動停止）', no_renewal_quote: '尚未建立續約報價單', quote_not_submitted: '續約報價單仍是草稿', not_renewed: '仍在追蹤中' };
+  var ROLE_TEXT = { owner: '業務', secretary: '秘書', manager1: '一級主管', manager2: '二級主管', marketing: '行銷' };
+  var NR_REASONS = ['客戶停用', '轉用他廠', '預算不足', '併入新合約', '其他'];
+  var nextCache = {};   // 納管項 id → Promise<時間軸回應|null>（loadItems 重載時清空）
+  var tlQueue = [], tlRunning = 0, TL_CONC = 3;
+
+  function whenText(r) {
+    var w = r.whenDays;
+    var t = w > 0 ? '到期前 ' + w + ' 天' : (w === 0 ? '到期當天' : '到期後 ' + (-w) + ' 天');
+    return t + (r.repeatEveryDays ? '，每 ' + r.repeatEveryDays + ' 天重複' : '');
+  }
+  function notifyText(list) { return (list || []).map(function (x) { return ROLE_TEXT[x] || x; }).join('、'); }
+  function fetchReminders(id) {
+    if (!nextCache[id]) nextCache[id] = jreq('GET', '/api/ma-items/' + encodeURIComponent(id) + '/reminders').then(function (r) { return r.ok && r.data && r.data.enabled !== false ? r.data : null; });
+    return nextCache[id];
+  }
+  // 「下一個提醒」：目前有效的規則，加上尚未到達的規則中觸發日期最近的一條（只看啟用、適用此類型的）
+  function nextReminder(tl) {
+    if (!tl || !tl.item) return null;
+    if (tl.item.status && tl.item.status !== 'tracking') return { text: '提醒已停止（' + (ITEM_STATUS[tl.item.status] || tl.item.status) + '）', cls: 'off' };
+    var rules = tl.rules || [];
+    var act = rules.filter(function (r) { return r.activeNow; });
+    var tdy = tpToday();
+    var future = rules.filter(function (r) { return r.enabled && r.appliesToThis && !r.reached && r.triggerDate && r.triggerDate >= tdy; })
+      .sort(function (a, b) { return a.triggerDate < b.triggerDate ? -1 : a.triggerDate > b.triggerDate ? 1 : 0; });
+    var parts = [];
+    if (act.length) parts.push('目前提醒中：' + act.map(function (r) { return r.name; }).join('、'));
+    if (future.length) parts.push('下一個提醒：' + slash(future[0].triggerDate) + '（' + future[0].name + '，' + whenText(future[0]) + '）');
+    if (!parts.length) parts.push('沒有後續提醒');
+    return { text: parts.join('；'), cls: act.length ? 'active' : (future.length ? 'future' : 'off') };
+  }
+  function pumpQueue() {
+    while (tlRunning < TL_CONC && tlQueue.length) {
+      var job = tlQueue.shift();
+      tlRunning++;
+      job().then(function () { tlRunning--; pumpQueue(); }, function () { tlRunning--; pumpQueue(); });
+    }
+  }
+  var nextObserver = null;
+  function nextCell(it) {
+    var box = el('div', 'mar-next', '下一個提醒：載入中…');
+    box.setAttribute('data-next-for', it.id);
+    var started = false;
+    function load() {
+      if (started) return; started = true;
+      tlQueue.push(function () {
+        return fetchReminders(it.id).then(function (tl) {
+          if (!document.contains(box)) return;
+          var n = nextReminder(tl);
+          if (!n) { box.hidden = true; return; }
+          box.textContent = n.text; box.className = 'mar-next mar-next-' + n.cls;
+        });
+      });
+      pumpQueue();
+    }
+    if (typeof IntersectionObserver === 'function') {
+      if (!nextObserver) nextObserver = new IntersectionObserver(function (ents) { ents.forEach(function (e) { if (e.isIntersecting) { nextObserver.unobserve(e.target); if (e.target.__marLoad) e.target.__marLoad(); } }); }, { rootMargin: '200px' });
+      box.__marLoad = load;
+      nextObserver.observe(box);
+    } else load();
+    return box;
+  }
+  function ruleState(r) {
+    if (r.activeNow) return { cls: 'active', text: '目前提醒中' };
+    var m = {
+      NOT_TRACKING: ['off', '已停止（此項目已不在追蹤中）'], DISABLED: ['off', '規則已停用'], APPLIES: ['off', '不適用此類型'],
+      EXPIRED_WINDOW: ['off', '已過期（到期前的規則，過了迄日就不再提醒）'], TOO_OLD: ['off', '逾期過久，不再提醒'],
+      NOT_REACHED: ['future', '尚未到達'], CONDITION: ['cond', '已到達，但條件目前不成立'], BAD_DATE: ['off', '迄日不是有效日期'],
+    }[r.reason];
+    return m ? { cls: m[0], text: m[1] } : { cls: 'off', text: '' };
+  }
+  function buildTimeline(tl) {
+    var box = el('div', 'mar-tl');
+    var head = el('p', 'mar-tl-sub', '規則來源：' + (tl.isDefault ? '系統預設規則' : '管理員自訂規則' + (tl.rulesUpdatedAt ? '（更新於 ' + String(tl.rulesUpdatedAt).slice(0, 10) + '）' : '')) + '　目前續約報價單：' + ({ none: '尚未建立', draft: '草稿（未送簽）', sent: '已送簽' }[tl.quoteState] || ''));
+    box.appendChild(head);
+    var ol = el('ol', 'mar-tl-list');
+    (tl.rules || []).slice().sort(function (a, b) { return a.triggerDate < b.triggerDate ? -1 : a.triggerDate > b.triggerDate ? 1 : 0; }).forEach(function (r) {
+      var st = ruleState(r);
+      var li = el('li', 'mar-tl-li mar-tl-' + st.cls);
+      li.appendChild(el('span', 'mar-tl-date', slash(r.triggerDate)));
+      var main = el('div', 'mar-tl-main');
+      main.appendChild(el('strong', 'mar-tl-name', r.name));
+      main.appendChild(el('span', 'mar-tl-when', whenText(r)));
+      main.appendChild(el('span', 'mar-tl-state mar-tl-state-' + st.cls, st.text));
+      li.appendChild(main);
+      var meta = '對象：' + notifyText(r.notify) + '｜條件：' + (COND_TEXT[r.condition] || r.condition);
+      if (r.sentCount) meta += '｜已發送 ' + r.sentCount + ' 次' + (r.lastSentAt ? '（最近 ' + slash(String(r.lastSentAt).slice(0, 10)) + '）' : '');
+      if (r.sent && r.sent.length) meta += '｜收件：' + r.sent.map(function (x) { return x.toLabel || x.to; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、');
+      li.appendChild(el('div', 'mar-tl-meta', meta));
+      ol.appendChild(li);
+    });
+    box.appendChild(ol);
+    return box;
+  }
+  function toggleTimeline(tr, it, btn) {
+    var nxt = tr.nextElementSibling;
+    if (nxt && nxt.classList.contains('mar-tl-tr') && nxt.getAttribute('data-tl-for') === it.id) {
+      nxt.parentNode.removeChild(nxt); btn.setAttribute('aria-expanded', 'false'); return;
+    }
+    btn.setAttribute('aria-expanded', 'true');
+    var row = document.createElement('tr'); row.className = 'mar-tl-tr'; row.setAttribute('data-tl-for', it.id);
+    var cell = document.createElement('td'); cell.colSpan = tr.children.length; cell.className = 'mar-tl-td';
+    cell.appendChild(el('p', 'mar-tl-load', '提醒時間軸載入中…'));
+    row.appendChild(cell);
+    tr.parentNode.insertBefore(row, tr.nextSibling);
+    delete nextCache[it.id];   // 展開＝要最新資料
+    fetchReminders(it.id).then(function (tl) {
+      cell.textContent = '';
+      if (!tl) { cell.appendChild(el('p', 'mar-tl-load', '無法載入提醒時間軸')); return; }
+      cell.appendChild(buildTimeline(tl));
+    });
+  }
+  function applyFocus() {
+    if (!state.focusId || !itemsEls) return;
+    var rows = itemsEls.tbody.querySelectorAll('tr[data-item-id]'), hit = null;
+    for (var i = 0; i < rows.length; i++) if (rows[i].getAttribute('data-item-id') === state.focusId) hit = rows[i];
+    if (!hit) return;   // 還沒載入或篩選掉了：下次渲染再試
+    state.focusId = '';
+    hit.classList.add('mat-tr-focus');
+    try { hit.scrollIntoView({ block: 'center' }); } catch (e) { /* ignore */ }
+    setTimeout(function () { hit.classList.remove('mat-tr-focus'); }, 4000);
+  }
+
+  function openNotRenew(it) {
+    var d = openDialog({ title: '標記「' + it.company + '」不續約', role: 'dialog' });
+    d.body.appendChild(el('p', 'mat-lead', '品項：' + (it.product || '') + '（' + rangeText(it.from, it.to) + '）。標記後這個項目的所有到期提醒都會停止，並通知一級主管與行銷。管理員可以事後重新開啟。'));
+    var sel = document.createElement('select'); sel.className = 'mat-input';
+    var ph = document.createElement('option'); ph.value = ''; ph.textContent = '請選擇原因…'; sel.appendChild(ph);
+    NR_REASONS.forEach(function (r) { var op = document.createElement('option'); op.value = r; op.textContent = r; sel.appendChild(op); });
+    field(d.body, '不續約原因（必選）', sel);
+    var note = document.createElement('textarea'); note.className = 'mat-textarea'; note.rows = 3; note.maxLength = 150;
+    field(d.body, '備註（選「其他」時必填至少 2 個字）', note);
+    var showErr = errBox(d);
+    var ok = button('確認不續約', 'mat-btn mat-btn-danger');
+    d.foot.appendChild(button('取消', 'mat-btn mat-btn-ghost', function () { d.close(); }));
+    d.foot.appendChild(ok);
+    ok.addEventListener('click', function () {
+      var cat = sel.value, nt = note.value.trim();
+      if (!cat) { showErr('請選擇不續約的原因'); sel.focus(); return; }
+      if (cat === '其他' && Array.from(nt).length < 2) { showErr('選「其他」時，備註至少要 2 個字'); note.focus(); return; }
+      var reason = nt ? cat + '：' + nt : cat;
+      if (Array.from(reason).length < 2) { showErr('原因至少 2 個字'); return; }
+      showErr(''); ok.disabled = true;
+      jreq('PATCH', '/api/ma-items/' + encodeURIComponent(it.id) + '/not-renew', { reason: reason }).then(function (r) {
+        if (!r.ok) { ok.disabled = false; showErr((r.data && r.data.error) || '標記失敗，請再試一次'); return; }
+        var n = r.data && typeof r.data.notified === 'number' ? r.data.notified : 0;
+        toast('✓ 已標記不續約，提醒已停止' + (n ? '；已通知 ' + n + ' 位同仁' : ''));
+        d.close(); nextCache = {};
+        loadItems(true); refreshBell();
+      });
+    });
+    focusFirst(d, 'select');
+  }
+  function openReopen(it) {
+    var d = openDialog({ title: '重新開啟「' + it.company + '」', role: 'dialog' });
+    d.body.appendChild(el('p', 'mat-lead', '這個項目會回到「追蹤中」，到期提醒恢復（已經發過的提醒不會重發）。目前的不續約原因：' + (it.notRenewReason || '（未填）')));
+    var showErr = errBox(d);
+    var ok = button('重新開啟', 'mat-btn mat-btn-primary');
+    d.foot.appendChild(button('取消', 'mat-btn mat-btn-ghost', function () { d.close(); }));
+    d.foot.appendChild(ok);
+    ok.addEventListener('click', function () {
+      ok.disabled = true;
+      jreq('PATCH', '/api/ma-items/' + encodeURIComponent(it.id) + '/reopen').then(function (r) {
+        if (!r.ok) { ok.disabled = false; showErr((r.data && r.data.error) || '重新開啟失敗'); return; }
+        toast('✓ 已重新開啟，提醒恢復');
+        d.close(); nextCache = {};
+        loadItems(true); refreshBell();
+      });
+    });
+    focusFirst(d, '.mat-btn-primary');
+  }
+
   window.ITTSMaTasks = {
     start: start, refresh: refresh, refreshSoon: refreshSoon,
     enabled: function () { return state.enabled; },
     wonTerm: wonTerm, onSection: onSection,
     openSummary: openSummary,
     openFromNotification: function () { return openSummary({ fetch: true }); },
-    openItemsFromNotification: function () { if (state.itemsOn && typeof window.showSection === 'function') window.showSection('maItems'); },
+    openItemsFromNotification: function (itemId) { if (state.itemsOn && typeof window.showSection === 'function') { state.focusId = itemId ? String(itemId) : ''; window.showSection('maItems'); applyFocus(); } },
     itemsOn: function () { return state.itemsOn; },
     daysLeft: daysLeft,
     afterContractChange: function () { return afterAction(); },   // 合約被刪除等異動後：重開的任務卡、到期管理、鈴鐺一併刷新

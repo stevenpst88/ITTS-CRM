@@ -1,0 +1,139 @@
+/* 後台「提醒規則」頁（ma-reminders-admin.js）樣式 — .mar-a-*
+ * 後台頁面不載入 style.css，所以本檔獨立（由 ma-reminders-admin.js 在探測到 MA_TRACKING=1 後才動態插入 <link>；功能關閉時後台不會載入本檔）。
+ * 主題：預設＝淺色；body.dark＝深色；body.glass（＋.dark）＝玻璃。卡片與輸入框都用不透明底色與明確字色，所以四種外觀的文字對比一致（≥ 4.5:1，scripts/_ma-reminders-ui.js 以實際顏色驗證）。
+ * 不使用 style= 屬性：時間軸是 SVG，座標用屬性、顏色與字型全用 class。層級：不設 z-index。 */
+
+.mar-a {
+  --mar-bg: #ffffff; --mar-fg: #1f2937; --mar-sub: #475569; --mar-line: #d9dee7; --mar-line2: #8793a8; --mar-soft: #f3f6fb; --mar-input: #ffffff;
+  --mar-accent: #1a56c8; --mar-accent-fg: #ffffff; --mar-focus: #b45309; --mar-today: #b3261e;
+  --mar-info-bg: #e8edfb; --mar-info-fg: #1f2f7a; --mar-warn-bg: #fff1d6; --mar-warn-fg: #7a3f00;
+  --mar-danger-bg: #fde7e7; --mar-danger-fg: #8a1c1c; --mar-ok-bg: #e3f4e8; --mar-ok-fg: #14532d;
+  color: var(--mar-fg); font-size: 14px; line-height: 1.55; max-width: 1560px;
+}
+body.dark .mar-a {
+  --mar-bg: #161b22; --mar-fg: #e6edf3; --mar-sub: #a9b4c1; --mar-line: #3a4350; --mar-line2: #6b7686; --mar-soft: #1c232d; --mar-input: #0d1117;
+  --mar-accent: #1f6feb; --mar-accent-fg: #ffffff; --mar-focus: #ffd27a; --mar-today: #ff8a80;
+  --mar-info-bg: #1f2a44; --mar-info-fg: #c9d6ff; --mar-warn-bg: #3a2a05; --mar-warn-fg: #ffd48a;
+  --mar-danger-bg: #3d1518; --mar-danger-fg: #ffb4b4; --mar-ok-bg: #0f2a1a; --mar-ok-fg: #b7f0c9;
+}
+.mar-a *, .mar-a *::before, .mar-a *::after { box-sizing: border-box; }
+.mar-a [hidden] { display: none !important; }
+.mar-a :focus-visible { outline: 3px solid var(--mar-focus); outline-offset: 2px; }
+.mar-a-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.mar-a-card { background: var(--mar-bg); color: var(--mar-fg); border: 1px solid var(--mar-line); border-radius: 12px; padding: 16px; margin: 0 0 16px; }
+.mar-a-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.mar-a-metaline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mar-a-pill { display: inline-block; border-radius: 999px; padding: 2px 12px; font-size: 13px; font-weight: 700; background: var(--mar-info-bg); color: var(--mar-info-fg); }
+.mar-a-pill-def { background: var(--mar-soft); color: var(--mar-fg); border: 1px solid var(--mar-line2); }
+.mar-a-muted { color: var(--mar-sub); font-size: 13px; margin: 0; }
+.mar-a-hd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
+.mar-a-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--mar-fg); }
+.mar-a-subtitle { margin: 14px 0 6px; font-size: 14px; font-weight: 700; color: var(--mar-fg); }
+.mar-a-sub, .mar-a-count { font-size: 13px; color: var(--mar-sub); }
+.mar-a-help { margin: 0 0 10px; font-size: 13px; color: var(--mar-sub); }
+.mar-a-error { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--mar-danger-bg); color: var(--mar-danger-fg); font-size: 13px; word-break: break-word; }
+.mar-a-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--mar-warn-bg); color: var(--mar-warn-fg); font-size: 13px; }
+
+/* 規則編輯表 */
+.mar-a-tblwrap { overflow-x: auto; border: 1px solid var(--mar-line); border-radius: 8px; }
+.mar-a-tbl { width: 100%; min-width: 1080px; border-collapse: collapse; background: var(--mar-bg); color: var(--mar-fg); }
+.mar-a-tbl th { text-align: left; font-size: 12.5px; padding: 8px 10px; color: var(--mar-sub); background: var(--mar-soft); border-bottom: 2px solid var(--mar-line); white-space: nowrap; }
+.mar-a-tbl td { padding: 8px 10px; border-bottom: 1px solid var(--mar-line); vertical-align: top; color: var(--mar-fg); }
+.mar-a-row-bad td { background: var(--mar-danger-bg); }
+.mar-a-empty { text-align: center; color: var(--mar-sub); padding: 18px; }
+.mar-a-inp, .mar-a-sel { font: inherit; font-size: 14px; background: var(--mar-input); color: var(--mar-fg); border: 1px solid var(--mar-line2); border-radius: 6px; padding: 6px 8px; min-height: 34px; max-width: 100%; }
+.mar-a-inp[aria-invalid="true"], .mar-a-notify[aria-invalid="true"] { border-color: var(--mar-danger-fg); outline: 2px solid var(--mar-danger-fg); }
+.mar-a-name { width: 230px; }
+.mar-a-n, .mar-a-rep { width: 68px; }
+.mar-a-applies { width: 125px; }
+.mar-a-cond { width: 225px; }
+.mar-a-inline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mar-a-unit { color: var(--mar-fg); font-size: 13px; }
+.mar-a-chk { width: 20px; height: 20px; accent-color: var(--mar-accent); }
+.mar-a-notify { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 150px; }
+.mar-a-chkl { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--mar-fg); white-space: nowrap; }
+.mar-a-chkl input { accent-color: var(--mar-accent); width: 16px; height: 16px; }
+.mar-a-hint { font-size: 12px; color: var(--mar-sub); margin-top: 3px; }
+.mar-a-ferr { margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--mar-danger-fg); background: var(--mar-danger-bg); border-radius: 4px; padding: 2px 6px; }
+.mar-a-ops { display: flex; gap: 6px; flex-wrap: wrap; max-width: 96px; }
+.mar-a-nowrap { flex-wrap: nowrap; }
+
+.mar-a-btn { font: inherit; font-size: 13.5px; font-weight: 600; background: var(--mar-soft); color: var(--mar-fg); border: 1px solid var(--mar-line2); border-radius: 8px; padding: 6px 14px; min-height: 36px; cursor: pointer; }
+.mar-a-btn:disabled { opacity: .5; cursor: default; }
+.mar-a-btn-primary { background: var(--mar-accent); color: var(--mar-accent-fg); border-color: var(--mar-accent); }
+.mar-a-btn-warn { background: var(--mar-warn-bg); color: var(--mar-warn-fg); border-color: var(--mar-warn-fg); }
+.mar-a-btn-danger { background: var(--mar-danger-bg); color: var(--mar-danger-fg); border-color: var(--mar-danger-fg); }
+.mar-a-btn-icon { padding: 6px 10px; min-width: 36px; }
+.mar-a-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.mar-a-spacer { flex: 1 1 auto; }
+.mar-a-status { font-size: 13px; color: var(--mar-fg); font-weight: 600; word-break: break-word; }
+.mar-a-status-ok { color: var(--mar-ok-fg); background: var(--mar-ok-bg); border-radius: 6px; padding: 2px 8px; }
+.mar-a-status-err { color: var(--mar-danger-fg); background: var(--mar-danger-bg); border-radius: 6px; padding: 2px 8px; }
+.mar-a-status-info { color: var(--mar-info-fg); background: var(--mar-info-bg); border-radius: 6px; padding: 2px 8px; }
+.mar-a-confirm { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; border-radius: 8px; background: var(--mar-warn-bg); color: var(--mar-warn-fg); border: 1px solid var(--mar-warn-fg); font-size: 13px; }
+.mar-a-crhost { font-size: 13px; }
+
+/* 試算器 */
+.mar-a-simctl { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 18px; margin-bottom: 10px; }
+.mar-a-simgrp { border: 0; margin: 0; padding: 0; min-width: 0; }
+.mar-a-lbl { display: block; font-size: 13px; font-weight: 700; color: var(--mar-fg); margin-bottom: 4px; padding: 0; }
+.mar-a-range { width: 100%; accent-color: var(--mar-accent); }
+.mar-a-simnum { width: 90px; }
+.mar-a-daytxt { font-size: 14px; font-weight: 700; color: var(--mar-fg); }
+.mar-a-radio { display: inline-flex; align-items: center; gap: 4px; margin: 0 14px 4px 0; font-size: 13.5px; color: var(--mar-fg); }
+.mar-a-radio input { accent-color: var(--mar-accent); width: 16px; height: 16px; }
+.mar-a-simgrp .mar-a-sel { width: 100%; }
+.mar-a-tlwrap { overflow-x: auto; background: var(--mar-bg); border: 1px solid var(--mar-line); border-radius: 8px; padding: 8px; }
+.mar-a-svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.mar-a-axis { stroke: var(--mar-sub); stroke-width: 2; }
+.mar-a-tickmark { stroke: var(--mar-sub); stroke-width: 1.5; }
+.mar-a-txt { fill: var(--mar-fg); font-size: 12.5px; font-family: inherit; }
+.mar-a-txt-sm { font-size: 11.5px; fill: var(--mar-sub); }
+.mar-a-txt-today { fill: var(--mar-today); font-weight: 700; }
+.mar-a-expiry { stroke: var(--mar-sub); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.mar-a-today { stroke: var(--mar-today); stroke-width: 2.5; }
+.mar-a-stem { stroke: var(--mar-line2); stroke-width: 1; }
+.mar-a-rtick { stroke: var(--mar-accent); stroke-width: 2; }
+.mar-a-rtick-off { stroke: var(--mar-line2); }
+.mar-a-dot { stroke-width: 2.5; }
+.mar-a-dot-active { fill: var(--mar-accent); stroke: var(--mar-fg); }
+.mar-a-dot-idle { fill: var(--mar-bg); stroke: var(--mar-accent); }
+.mar-a-dot-off { fill: var(--mar-soft); stroke: var(--mar-line2); stroke-dasharray: 3 2; }
+.mar-a-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 12.5px; color: var(--mar-fg); }
+.mar-a-keyitem { display: inline-flex; align-items: center; gap: 6px; }
+.mar-a-key { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--mar-accent); }
+.mar-a-key-active { background: var(--mar-accent); border-color: var(--mar-fg); }
+.mar-a-key-idle { background: var(--mar-bg); }
+.mar-a-key-off { background: var(--mar-soft); border-style: dashed; border-color: var(--mar-line2); }
+.mar-a-tllist { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--mar-fg); }
+.mar-a-tlitem { word-break: break-word; }
+.mar-a-tlstate { font-weight: 700; border-radius: 999px; padding: 0 8px; }
+.mar-a-tlstate-on { background: var(--mar-warn-bg); color: var(--mar-warn-fg); }
+.mar-a-tlstate-off { background: var(--mar-soft); color: var(--mar-sub); }
+.mar-a-roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.mar-a-role { background: var(--mar-soft); color: var(--mar-fg); border: 1px solid var(--mar-line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.mar-a-role-on { border-color: var(--mar-accent); border-left-width: 5px; }
+.mar-a-role-h { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--mar-fg); }
+.mar-a-role-msg { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--mar-fg); word-break: break-word; }
+.mar-a-role-rules, .mar-a-role-who { margin: 0 0 3px; font-size: 12.5px; color: var(--mar-sub); word-break: break-word; }
+.mar-a-role-none { margin: 0; font-size: 13px; color: var(--mar-sub); }
+
+@media (max-width: 900px) { .mar-a-name { width: 180px; } .mar-a-cond { width: 200px; } }
+@media (max-width: 480px) {
+  .mar-a-card { padding: 12px; }
+  .mar-a-tblwrap { overflow-x: visible; border: 0; }
+  .mar-a-tbl { min-width: 0; }
+  .mar-a-tbl thead { display: none; }
+  .mar-a-tbl, .mar-a-tbl tbody, .mar-a-tbl tr, .mar-a-tbl td { display: block; width: 100%; }
+  .mar-a-tbl tr { border: 1px solid var(--mar-line); border-radius: 10px; margin-bottom: 10px; padding: 4px 0; }
+  .mar-a-tbl td { border: 0; padding: 6px 12px; }
+  .mar-a-tbl td::before { content: attr(data-label); display: block; font-size: 12px; font-weight: 600; color: var(--mar-sub); margin-bottom: 2px; }
+  .mar-a-row-bad td { background: transparent; }
+  .mar-a-row-bad { background: var(--mar-danger-bg); }
+  .mar-a-name, .mar-a-cond { width: 100%; }
+  .mar-a-btn { flex: 1 1 auto; }
+  .mar-a-bar .mar-a-btn { flex: 1 1 100%; min-height: 44px; }
+  .mar-a-svg { min-width: 560px; }
+}
+@media (prefers-reduced-motion: reduce) { .mar-a * { transition: none !important; animation: none !important; } }

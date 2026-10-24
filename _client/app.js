@@ -9415,8 +9415,16 @@ async function pollNotifications() {
       };
     });
 
-    // 合併：生日 → 合約 → 一般通知
-    const merged = [...birthdayNotifs, ...contractNotifs, ...regularList];
+    // MA／License 到期提醒（P3b；MA_TRACKING=1 才有 maReminders 鍵）：依當下條件即時推導的「依人彙總」群組。
+    // 儲存型 ma_reminder 只負責 Web Push／歷史，同一件事不重複顯示（條件不成立時伺服器也會把它標已讀）。沒有 maReminders 鍵＝與以前完全相同。
+    const maList = Array.isArray(bundle.maReminders) ? bundle.maReminders : null;
+    const maNotifs = (maList && maList.length && window.ITTSMaRem)
+      ? [{ id: 'ma_summary', type: 'ma_summary', isMa: true, read: window.ITTSMaRem.allRead(maList), createdAt: null, items: maList }]
+      : [];
+    const shownRegular = maList ? regularList.filter(n => n.type !== 'ma_reminder') : regularList;
+
+    // 合併：生日 → 合約 → MA／License → 一般通知
+    const merged = [...birthdayNotifs, ...contractNotifs, ...maNotifs, ...shownRegular];
 
     // 未讀計算
     const unreadCount = merged.filter(n => !n.read).length;
@@ -9441,13 +9449,14 @@ function renderNotifList(list) {
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
     quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_term_changed:'📅', quote_mode_changed:'🔏', admin_account_change:'🛡️',
     company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨',
-    deal_task:'📝', deal_task_skipped:'⚠️'
+    deal_task:'📝', deal_task_skipped:'⚠️', ma_reminder:'⏳', ma_not_renew:'🚫'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
   const birthdayItems  = list.filter(n => n.isBirthday);
   const contractItems  = list.filter(n => n.isContract);
-  const regularItems   = list.filter(n => !n.isContract && !n.isBirthday);
+  const maItems        = list.filter(n => n.isMa);
+  const regularItems   = list.filter(n => !n.isContract && !n.isBirthday && !n.isMa);
 
   let html = '';
 
@@ -9495,8 +9504,12 @@ function renderNotifList(list) {
     }).join('');
   }
 
+  if (maItems.length) {
+    html += `<div class="notif-group-hd">⏳ MA／License 到期提醒</div><div id="maRemBellHost"></div>`;
+  }
+
   if (regularItems.length) {
-    if (contractItems.length) html += `<div class="notif-group-hd">🔔 系統通知</div>`;
+    if (contractItems.length || maItems.length) html += `<div class="notif-group-hd">🔔 系統通知</div>`;
     html += regularItems.slice(0, 20).map(n => `
       <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}" data-type="${escapeHtml(n.type || '')}" data-ref="${escapeHtml(n.refId || '')}">
         <div class="notif-icon">${typeIcon[n.type] || '🔔'}</div>
@@ -9550,6 +9563,10 @@ function renderNotifList(list) {
           const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
           window.ITTSMaTasks.openItemsFromNotification();
         }
+        if ((item.dataset.type === 'ma_reminder' || item.dataset.type === 'ma_not_renew') && window.ITTSMaTasks) {   // 深連結 #maitems
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSMaTasks.openItemsFromNotification();
+        }
         _notifGoByType(item.dataset.type, item.dataset.ref);   // 合約到期（儲存型）、Call-in、Lead、應收逾期：之前點了沒有任何導向
       }
     });
@@ -9577,6 +9594,17 @@ function renderNotifList(list) {
       _contractReminderDone(btn.dataset.ntContractId, btn);
     });
   });
+
+  // MA／License 群組（動態內容；要在上面綁完 .notif-item 的點擊之後才畫，否則會被當成一般通知去呼叫 /notifications/:id/read）
+  if (maItems.length && window.ITTSMaRem) {
+    window.ITTSMaRem.paintBell($('maRemBellHost'), maItems[0].items, {
+      open: (x) => {
+        const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+        if (window.ITTSMaTasks) window.ITTSMaTasks.openItemsFromNotification(x && x.itemId);
+      },
+      onRead: () => _updateBadgeFromDOM(),
+    });
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -9731,6 +9759,8 @@ $('notifReadAll').addEventListener('click', async () => {
   document.querySelectorAll('.notif-item[data-contract="1"]').forEach(item => {
     markContractReminderRead(item.dataset.id);
   });
+  // MA／License 到期提醒全標已讀（localStorage，每日重置；沒有 maReminders 就什麼都不做）
+  if (window.ITTSMaRem && _pollBundleCache && Array.isArray(_pollBundleCache.maReminders)) window.ITTSMaRem.markAllRead(_pollBundleCache.maReminders);
   await fetch(`${API}/notifications/read-all`, { method: 'PUT' });
   _pollBundleEtag = null; // server 狀態已改，強制下次取最新
   pollNotifications();

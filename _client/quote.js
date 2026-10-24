@@ -1486,7 +1486,42 @@ function updatePnlNumbers() {
 }
 
 // ── 關閉 Modal ───────────────────────────────────────────────
+// ── 續約對象 renewOf（MA_TRACKING=1 才有；ma-reminders.js 提供選擇器）─────────────────────────────
+// 「這是續約嗎？」只在內部表單顯示；不進核准雜湊、不印在客戶版報價單、簽核面板與預覽也不顯示。
+// 關閉時 qRenewOn() 為 false：不建立任何元素、請求也不多任何欄位，畫面與請求與以前位元級相同。
+// 讀回→重畫：開表單時 q.renewOf 交給選擇器當初值；使用者沒動過就不送 renewOf（伺服器沿用舊值，防舊分頁／載入失敗洗掉）；動過才送（空字串＝清除）。
+var _qRenew = { picker: null };
+function qRenewOn() { return quoteCfg().maTracking === true && typeof ITTSMaRem === 'object' && ITTSMaRem !== null && typeof ITTSMaRem.mountRenewPicker === 'function'; }
+function qRenewFetch(url) {
+  return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+}
+function qRenewReset() {
+  if (_qRenew.picker) { _qRenew.picker.destroy(); _qRenew.picker = null; }
+}
+function qRenewInit(q) {
+  qRenewReset();
+  if (!qRenewOn()) return;
+  var host = $('qRenewHost');
+  if (!host) {
+    // 放在「連結商機」那一步（#qOppStep）之後、但不屬於任何 .qs-step：逐步填寫時步驟會收合，放在步驟裡面橫幅就會被收起來看不到
+    var anchor = $('qOppStep');
+    if (!anchor || !anchor.parentNode) return;
+    host = document.createElement('div'); host.id = 'qRenewHost'; host.hidden = true;
+    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+  }
+  var approved = !!(q && q.approval && q.approval.state === 'approved');
+  var val = q && typeof q.renewOf === 'string' ? q.renewOf : '';
+  if (approved && !val) { host.hidden = true; return; }   // 已核准且沒有續約對象：不顯示（已核准後唯讀）
+  _qRenew.picker = ITTSMaRem.mountRenewPicker(host, {
+    getCompany: function () { return $('qCompany') ? $('qCompany').value : ''; },
+    value: val, original: q ? (q.company || '') : null, locked: approved, fetchJson: qRenewFetch,
+  });
+  _qRenew.picker.refresh();
+}
+function qRenewRefreshSoon() { if (_qRenew.picker) _qRenew.picker.refreshSoon(); }
+
 function closeQuoteModal() {
+  qRenewReset();
   qInvalidReset();
   $('quoteModalOverlay').style.display = 'none';
   _qOppAwaiting = false; { const oo = $('oppEditOverlay'); if (oo) oo.style.zIndex = ''; }
@@ -1769,6 +1804,7 @@ async function qOppSelect(id, quiet) {
   qOppRenderList();
   updateQuoteTotals();
   if (typeof QSteps === 'object' && QSteps && typeof QSteps.refresh === 'function') QSteps.refresh();
+  qRenewRefreshSoon();   // 換商機＝換客戶：重查續約候選
   return true;
 }
 
@@ -2058,6 +2094,7 @@ async function openQuoteModal(idOrNull, opts) {
       // 公司輸入時篩聯絡人
       $('qCompany').addEventListener('input', function() {
         buildQuoteContactSelect('', this.value);
+        qRenewRefreshSoon();
       });
 
       // 聯絡人選擇後自動帶入
@@ -2083,6 +2120,7 @@ async function openQuoteModal(idOrNull, opts) {
 
     // 商機連結（新單必選；編輯舊單顯示目前連結／未連結）。要在逐步填寫（QSteps.onOpen）之前完成，商機步驟才會依預選結果判定
     await qOppInit(q, opts);
+    qRenewInit(q);   // 續約對象（MA_TRACKING=1 才有）：公司已由商機帶入，才查候選
 
     // 儲存按鈕 — 每次重設 onclick 避免舊 context 殘留
     $('quoteModalSave').onclick = saveQuote;
@@ -2884,6 +2922,7 @@ async function saveQuote() {
     costNote:      needC ? $('qCostNote').value.trim() : '',
   };
   if (oppIdVal) payload.oppId = oppIdVal;
+  if (_qRenew.picker && _qRenew.picker.touched()) payload.renewOf = _qRenew.picker.value();   // 續約對象（不進核准雜湊）；沒動過就不送
   if (costLinesPayload !== undefined) {
     payload.costLines = costLinesPayload;
     // 過期分頁保護：帶上表單載入時的成本明細摘要，伺服器發現別的視窗已改過就回 409 STALE_COSTS（新單、舊畫面沒有摘要就不帶）
