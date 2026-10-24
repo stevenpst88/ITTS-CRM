@@ -7455,10 +7455,10 @@ app.get('/api/notifications', requireAuth, (req, res) => {
 
 // ── 通知合併端點：notifications + contract-reminders + birthday-reminders ──
 // 單次 db.load() 完成三組計算 + ETag 支援，省 Supabase egress
-app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
+app.get('/api/poll-bundle', requireAuth, mailPollDrain, MRR.lazyMiddleware, (req, res) => {
   const username = req.session.user.username;
   const role     = req.session.user.role;
-  // MA_TRACKING=1：先做到期提醒的補掃／通知自動解除（可能寫入），再載入資料；關閉時回 null、什麼都不做
+  // MA_TRACKING=1：到期提醒的補掃由上面的 MRR.lazyMiddleware 先做完；這裡做通知自動解除（可能寫入）與動態推導，再載入資料；關閉時回 null、什麼都不做
   const _maReminders = MRR.poll(req);
   const data = db.load();
   const auth = loadAuth();
