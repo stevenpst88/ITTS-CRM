@@ -85,7 +85,7 @@ function mkEnv(R, quotations) {
   const PNL = require(path.join(R, 'lib/quotePnlExcel.js'));
   const routes = {};
   const app = {};
-  ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });
+  ['get', 'post', 'put', 'patch', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[m.toUpperCase() + ' ' + p] = h; }; });   // patch：服務期間 item-terms（MA_TRACKING）
   const env = { data: { opportunities: [{ id: 'O1', owner: 'own1', stage: 'C', company: '', product: 'P', amount: '100', bu: 'ITS' }], quotations, quoteApproval: { roster: { gm: ['gm1'], chairman: ['ch1'], boardProxy: [], costProviders: ['cons1'], sealManagers: [] }, productClasses: CLASSES }, contacts: [] }, logs: [], notes: [], saves: 0, seq: 0, nseq: 0 };
   env.auth = { users: JSON.parse(JSON.stringify(USERS)) };
   const deps = {
