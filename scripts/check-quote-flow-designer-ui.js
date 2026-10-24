@@ -5,6 +5,7 @@
  *       FD_UI_ONLY=<群組名,…>  只跑指定群組（render,drag,drawer,keyboard,save,sim,val,ov,xss,mobile,theme,motion,gate,static）
  *       FD_UI_MUT=1            另外跑變異測試（把前端檔換成改壞的版本，對應群組必須變紅）
  *       FD_SHOTS=<資料夾>      另外輸出截圖（1440 深／淺、總覽、模擬、錯誤、375 手機）
+ *       FD_BASE_REF=<提交>     static 群組「admin.html 沒有新增 style=／on*」的比對基準；預設固定在提交 ed36964（不是 origin/main——main 會隨別的功能合併而前進，基準跟著變，列出的屬性就變成別的功能的、造成誤報；固定提交才可重現）
  * 沙盒：臨時 _s_* 帳號與資料檔只存在於本次執行，結束以 PID 清掉伺服器與 Edge（以臨時 profile 路徑辨識）；不連遠端資料庫。
  * 涵蓋原型 152 項互動測試中的核心項目：拖拉（卡片排序／換路線／條件卡／路線優先順序）、雙擊開抽屜、條件造句編輯器、底線即時拒絕、
  * 鍵盤操作、刪除確認、儲存／重載／樂觀並行、模擬器（高亮／比較／邊界掃描）、驗證面板定位、總覽（縮放／平移／高亮）、XSS、手機唯讀、
@@ -21,6 +22,8 @@ const CDP = parseInt(process.env.FD_CDP || '9461', 10);
 const ONLY = (process.env.FD_UI_ONLY || '').split(',').map((s) => s.trim()).filter(Boolean);
 const want = (k) => !ONLY.length || ONLY.includes(k);
 const SHOTS = process.env.FD_SHOTS || '';
+// admin.html 新增屬性的比對基準：固定提交 ed36964（完整雜湊）。可用環境變數 FD_BASE_REF 覆寫（寫法同 check-company-card-tasks.js 的 CARDTASK_BASE_REF）
+const FD_BASE_REF_DEFAULT = 'ed3696419e8f93153220f4a02353aa053212f7a5';
 fx.guard();
 
 let pass = 0, fail = 0, quiet = false;
@@ -722,7 +725,7 @@ G.static = async () => {
   eq(sinks, 2, 'static flow-designer.js 只有 2 個 innerHTML 出口（put() 與 drawerErr 的錯誤框，皆為已跳脫的 Raw）');
   ok(!/[.]innerHTML|[.]outerHTML|insertAdjacentHTML/.test(files[1][1]), 'static flow-overview.js 完全不使用 innerHTML（SVG 以 createElementNS＋textContent）');
   const adm = fs.readFileSync(path.join(ROOT, '_client', 'admin.html'), 'utf8');
-  const gitDiff = require('child_process').spawnSync('git', ['diff', '-U0', process.env.FD_BASE_REF || '12a763fc652d973e370bab5637b1fb1b50df7b75', '--', '_client/admin.html'], { cwd: ROOT, encoding: 'utf8' }).stdout || '';
+  const gitDiff = require('child_process').spawnSync('git', ['diff', '-U0', process.env.FD_BASE_REF || FD_BASE_REF_DEFAULT, '--', '_client/admin.html'], { cwd: ROOT, encoding: 'utf8' }).stdout || '';
   const added = gitDiff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
   ok(added.length > 5, 'static admin.html 有新增行（可比對）', String(added.length));
   // 新增的行不得「新增」style=／on*= 屬性。既有行因別的原因被改動而整行重寫（屬性內容原樣出現在被移除的行）不算新增
