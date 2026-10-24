@@ -71,7 +71,16 @@ function groupUnit(R) {
   t('U5 addDays：跨月／跨年／閏年／負數；不合法回空字串', QT.addDays('2026-01-31', 1) === '2026-02-01' && QT.addDays('2026-12-31', 1) === '2027-01-01' && QT.addDays('2024-02-28', 1) === '2024-02-29' && QT.addDays('2025-03-01', -1) === '2025-02-28' && QT.addDays('2026-02-30', 1) === '' && QT.addDays('2026-01-01', NaN) === '' && QT.addDays('2999-12-31', 1) === '');
   t('U6 addMonths：月底取該月最後一天（1/31＋1＝2/28；閏年 2/29），負數月份，跨年', QT.addMonths('2026-01-31', 1) === '2026-02-28' && QT.addMonths('2024-01-31', 1) === '2024-02-29' && QT.addMonths('2024-02-29', 12) === '2025-02-28' && QT.addMonths('2026-03-15', -3) === '2025-12-15' && QT.addMonths('2026-11-30', 3) === '2027-02-28' && QT.addMonths('2026-02-30', 1) === '');
   // 快捷
-  t('U7 一年快捷：起日＋12 個月－1 天（2026-01-01→2026-12-31；2026-10-24→2027-10-23；2024-02-29→2025-02-27）', QT.quickEnd('2026-01-01', 1) === '2026-12-31' && QT.quickEnd('2026-10-24', 1) === '2027-10-23' && QT.quickEnd('2024-02-29', 1) === '2025-02-27' && QT.quickEnd('2026-01-31') === '2027-01-30');
+  t('U7 一年快捷：起日＋12 個月－1 天（2026-01-01→2026-12-31；2026-10-24→2027-10-23）；月底被截斷時不再減 1 天（2024-02-29→2025-02-28；審查修正 L9）', QT.quickEnd('2026-01-01', 1) === '2026-12-31' && QT.quickEnd('2026-10-24', 1) === '2027-10-23' && QT.quickEnd('2024-02-29', 1) === '2025-02-28' && QT.quickEnd('2026-01-31') === '2027-01-30');
+  t('U7b 邊界（審查修正 L9）：endAfterMonths 1/31、2/29、12/31、跨年——被月底截斷的不減 1 天，其餘減 1 天；前端 span 與它同一個定義', (() => {
+    const E = QT.endAfterMonths, S = QT.span;
+    return E('2025-01-31', 1) === '2025-02-28' && E('2024-01-31', 1) === '2024-02-29' && E('2025-01-30', 1) === '2025-02-28' && E('2025-01-15', 1) === '2025-02-14'
+      && E('2024-02-29', 12) === '2025-02-28' && E('2024-02-29', 48) === '2028-02-28' && E('2024-02-29', 36) === '2027-02-28' && E('2026-12-31', 1) === '2027-01-30' && E('2025-12-31', 2) === '2026-02-28'
+      && E('2026-12-31', 12) === '2027-12-30' && E('2026-01-01', 12) === '2026-12-31' && E('2026-02-30', 1) === '' && E('2026-01-01', NaN) === '' && E('2999-06-01', 12) === ''
+      && S('2024-02-29', '2025-02-28').months === 12 && S('2024-02-29', '2025-02-28').days === 0 && S('2025-01-31', '2025-02-28').months === 1 && S('2025-01-31', '2025-02-28').days === 0
+      && S('2025-01-31', '2025-02-27').months === 0 && S('2025-01-31', '2025-02-27').days === 28 && S('2026-01-01', '2999-12-31') !== null
+      && QT.spanText('2024-02-29', QT.quickEnd('2024-02-29', 1)) === '共 12 個月' && QT.spanText('2025-01-31', E('2025-01-31', 1)) === '共 1 個月' && QT.spanText('2026-12-31', QT.quickEnd('2026-12-31', 3)) === '共 36 個月';
+  })());
   t('U8 三年快捷：起日＋36 個月－1 天（2026-01-01→2028-12-31；2026-10-24→2029-10-23）；不合法起日回空字串', QT.quickEnd('2026-01-01', 3) === '2028-12-31' && QT.quickEnd('2026-10-24', 3) === '2029-10-23' && QT.quickEnd('2026-02-30', 1) === '' && QT.quickEnd('', 1) === '');
   // 月數
   const sp = (a, b) => QT.spanText(a, b);
@@ -94,10 +103,11 @@ function groupUnit(R) {
   for (let i = 0; i < 2000; i++) {
     const a = QT.addDays('2020-01-01', Math.floor(rnd() * 3000)), b = QT.addDays(a, Math.floor(rnd() * 900));
     const s = QT.span(a, b); if (!s) { monoOk = false; continue; }
-    const back = QT.addDays(QT.addMonths(a, s.months), s.days - 1);   // 起日＋整月＋零頭 －1 天 ＝ 迄日
+    const base = s.months === 0 ? QT.addDays(a, -1) : QT.endAfterMonths(a, s.months);   // 起日＋整月的迄日（月底截斷不再減 1 天，其餘減 1 天）
+    const back = QT.addDays(base, s.days);   // ＋零頭天數 ＝ 迄日
     if (back !== b) monoOk = false;
   }
-  t('U12 隨機 2000 組起迄：起日＋月數個月＋零頭天數－1 天 必等於迄日（span 與 addMonths／addDays 一致）', monoOk);
+  t('U12 隨機 2000 組起迄：整月迄日（endAfterMonths）＋零頭天數 必等於迄日（span 與 endAfterMonths／addDays 一致）', monoOk);
   // 格式
   t('U13 formatRange：「YYYY/MM/DD – YYYY/MM/DD」（en dash、前後空白）；servicePeriodLine 加「服務期間：」；一般類型／不合法回空字串', QT.formatRange('2026-01-01', '2026-12-31') === '2026/01/01 – 2026/12/31' && QT.servicePeriodLine('ma', '2026-01-01', '2026-12-31') === '服務期間：2026/01/01 – 2026/12/31' && QT.servicePeriodLine('', '2026-01-01', '2026-12-31') === '' && QT.servicePeriodLine('ma', '2026-02-30', '2026-12-31') === '' && QT.formatRange('x', 'y') === '');
   // 驗證
@@ -521,9 +531,12 @@ async function groupServer() {
     r = await H.http('_s_admin', 'POST', '/api/admin/product-catalog', { catalog: { bus: cat.bus }, renames: [] });
     logs = await reg('SAVE_PRODUCT_CATALOG');
     const rawData = JSON.parse(fs.readFileSync(path.join(ROOT, 'data.json'), 'utf8'));
-    ok(r.status === 200 && !/商品類型/.test(logs[0].detail) && !JSON.stringify(rawData.productCatalog).includes('termKind') && !JSON.stringify(rawData.productCatalog).includes('startsTask'), 'S18 關閉：儲存帶類型的目錄 → 200，類型欄位被丟掉、稽核不記 ' + (logs[0] && logs[0].detail));
+    const flatCat = (bus) => Object.keys(bus).flatMap((bu) => bus[bu].flatMap((g) => (g.items || []).map((i) => [bu, g.group, i.name, i.termKind || '', i.startsTask === true ? 1 : 0].join('|')))).sort().join(';');
+    ok(r.status === 200 && !/商品類型/.test(logs[0].detail) && flatCat(rawData.productCatalog.bus) === flatCat(cat.bus), 'S18 關閉：儲存帶類型的目錄 → 200，請求裡的類型欄位不使用、稽核不記；已存的類型設定保留（審查修正 M4：以前會被永久洗掉）' + (logs[0] && logs[0].detail));
+    ok(!JSON.stringify((await H.http('_s_admin', 'GET', '/api/product-catalog')).json).includes('termKind'), 'S18b 關閉：存檔之後 GET 輸出仍沒有類型欄位（保留但不輸出）');
     r = await H.http('_s_admin', 'POST', '/api/admin/product-catalog', { catalog: { bus: bad.bus }, renames: [] });
-    ok(r.status === 200, 'S19 關閉：不認得的類型也不驗證（欄位被丟掉）→ 200');
+    const rawBad = JSON.parse(fs.readFileSync(path.join(ROOT, 'data.json'), 'utf8'));
+    ok(r.status === 200 && flatCat(rawBad.productCatalog.bus) === flatCat(cat.bus) && !JSON.stringify(rawBad.productCatalog).includes('xyz'), 'S19 關閉：不認得的類型也不驗證（請求裡的欄位被丟掉）→ 200，已存的設定不受影響');
     r = await H.http('_s_u1', 'POST', '/api/quotations', Object.assign({}, qbody, { items: [Object.assign({}, qbody.items[0], { termTo: '' })] }));
     ok(r.status === 201 && !('termKind' in r.json.items[0]), 'S20 關閉：POST 缺迄日也不擋，回應沒有期間欄位 ' + r.text.slice(0, 160));
     const rq = await H.http('_s_u1', 'GET', '/api/quote-approval/config');
@@ -566,6 +579,7 @@ const MUTS = [
   { name: 'M18 一般編輯儲存的摘要不放期間舊→新', file: 'lib/quoteRoutes.js', find: "if (fields.has('服務期間')) out.push('服務期間：' + termDiffLines(a.items, b.items).join('、'));", rep: '', expect: /A16/ },
   { name: 'M19 共用的狀態條件永遠為真', file: '_client/quote-terms.js', find: "return !!(q && !q.invalid && q.approval && q.approval.state === 'approved');", rep: 'return !!q;', expect: /U24b|A30/ },
   { name: 'M20 TERM_EDIT 不是時間軸事件（被丟掉）', file: 'lib/quoteRoutes.js', find: "'COST_REOPEN', 'TERM_EDIT'];", rep: "'COST_REOPEN'];", expect: /A27/ },
+  { name: 'M21 一年快捷月底截斷仍減 1 天（舊行為：2024-02-29 起一年少一天）', file: '_client/quote-terms.js', find: "return parts(e).d !== parts(from).d ? e : addDays(e, -1);", rep: "return addDays(e, -1);", expect: /U7|U7b|U11|U12/ },
   { name: 'M15 稽核差異不含商品類型', file: 'lib/productCatalog.js', find: "if (ov.kind !== nv.kind) out.push(", rep: "if (false) out.push(", expect: /U31/ },
 ];
 function copyTree(dst) {

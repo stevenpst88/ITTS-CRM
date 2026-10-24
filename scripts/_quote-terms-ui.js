@@ -245,7 +245,7 @@ async function secNew(C) {
     let r1 = await termOf(b, 1);
     t('UI-N1 新增列：品名輸入完（Tab 離開）含 License MA → 預選 MA（MA 優先於 License），日期區出現，提示「已依品名預選」', r1.kind === 'ma' && !r1.datesHidden && r1.hint, J(r1));
     t('UI-N2 預選後缺起迄日：列內立刻紅字提示「請填寫服務期間的起日與迄日」，起迄日欄位標紅（aria-invalid）', /請填寫服務期間的起日與迄日/.test(r1.err) && (await b.ev(`document.querySelectorAll('${rowSel(1)} .qterm-bad[aria-invalid="true"]').length`)) === 2, J(r1));
-    await b.shot('C:/Users/steven.lee/AppData/Local/Temp/qt_new2.png');
+    await b.shot(path.join(require('os').tmpdir(), 'qt_new2.png'));
     // 逐步進度：報價項目這一步要列出服務期間
     const need = await b.ev(`document.getElementById('quoteModalOverlay').innerText`);
     t('UI-N3 逐步進度：「還需要」清單含「第 1 列的服務期間（License／MA 需填起訖日）」', /第 1 列的服務期間（License／MA 需填起訖日）/.test(need), need.slice(need.indexOf('還需要'), need.indexOf('還需要') + 120));
@@ -312,7 +312,7 @@ async function secNew(C) {
     t('UI-N20 成本編輯器種子（QCL.seedFromItems）不受影響：輸出不含任何期間欄位，行數＝有價品項數', typeof seed === 'string' && seed.indexOf('term') < 0 && seed.indexOf('服務期間') < 0 && JSON.parse(seed).length >= 1, String(seed).slice(0, 200));
     const blankKept = await b.ev(`(()=>{ const add=QPB.buildItems([{id:'pb1',bu:'ERP',name:'x',price:1,cost:1,spec:''}],[{id:'pb1',qty:1}]); const pl=QPB.planAppend([{desc:'',unit:'式',qty:1,unitPrice:0,termKind:'license',termFrom:'',termTo:''}],add,50); return JSON.stringify([pl.items.length, pl.replacedBlank]); })()`);
     t('UI-N21 牌價簿：只有一列「空白但已選 License／MA 類型」的預設列時不會被當成未動過的空白列取代', blankKept === '[2,false]', blankKept);
-    await b.shot('C:/Users/steven.lee/AppData/Local/Temp/qt_new3.png');
+    await b.shot(path.join(require('os').tmpdir(), 'qt_new3.png'));
     // 填單價（真實鍵盤）並走完逐步填寫後儲存
     const rowsNow = await b.ev(`document.querySelectorAll('#quoteItemsBody tr').length`);
     for (let i = 1; i <= rowsNow; i++) {
@@ -326,7 +326,7 @@ async function secNew(C) {
       await b.sleep(350);
     }
     const saveEnabled = await b.waitFor(`!document.getElementById('quoteModalSave').disabled`, 6000);
-    if (!saveEnabled) { console.log('DBG', await b.ev(`document.getElementById('quoteModalOverlay').innerText.slice(0,1500)`)); await b.shot('C:/Users/steven.lee/AppData/Local/Temp/qt_new4.png'); }
+    if (!saveEnabled) { console.log('DBG', await b.ev(`document.getElementById('quoteModalOverlay').innerText.slice(0,1500)`)); await b.shot(path.join(require('os').tmpdir(), 'qt_new4.png')); }
     t('UI-N16 走完逐步填寫（服務期間都填妥）→ 「儲存」可按', saveEnabled);
     await b.click('#quoteModalSave');
     await b.waitFor(`document.getElementById('quoteModalOverlay').style.display==='none'`, 15000);

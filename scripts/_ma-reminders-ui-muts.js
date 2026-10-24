@@ -25,4 +25,6 @@ module.exports = [
   { name: 'UM22 後台雙人覆核 202 後不顯示待覆核提示', file: 'ma-reminders-admin.js', find: "setStatus('📨 已送出待另一位管理員覆核。' + (msg ? ' ' + msg : ''), 'info');", rep: "setStatus('已儲存', 'ok');", section: 'dual', expect: /DU-2/ },
   { name: 'UM23 標記不續約不送出原因類別（只送備註）', file: 'ma-tasks.js', find: "var reason = nt ? cat + '：' + nt : cat;", rep: "var reason = nt || cat;", section: 'items', expect: /IM-14|IM-16/ },
   { name: 'UM24 下一個提醒挑最遠的規則（排序反向）', file: 'ma-tasks.js', find: "return a.triggerDate < b.triggerDate ? -1 : a.triggerDate > b.triggerDate ? 1 : 0; });\n    var parts = [];", rep: "return a.triggerDate < b.triggerDate ? 1 : a.triggerDate > b.triggerDate ? -1 : 0; });\n    var parts = [];", section: 'items', expect: /IM-5b/ },
+  { name: 'UM25 時間軸規則更新日期直接切 UTC 字串（審查修正）', file: 'ma-tasks.js', find: '(tl.rulesUpdatedDate || tpDateOfIso(tl.rulesUpdatedAt))', rep: 'String(tl.rulesUpdatedAt).slice(0, 10)', section: 'items', expect: /IM-8b/ },
+  { name: 'UM26 時間軸最近發送日期直接切 UTC 字串（審查修正）', file: 'ma-tasks.js', find: 'slash(r.lastSentDate || tpDateOfIso(r.lastSentAt))', rep: 'slash(String(r.lastSentAt).slice(0, 10))', section: 'items', expect: /IM-8b/ },
 ];

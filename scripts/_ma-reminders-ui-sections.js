@@ -193,7 +193,7 @@ module.exports = function makeSections(X) {
     // 具體值（防止兩邊都空的空轉）
     await setDays(b, 45); await b.ev(`document.querySelector('input[name="marSimQs"][value="none"]').click(); 0`); await b.sleep(900);
     const r45 = await simRoles(b);
-    t('AD-25 剩 45 天、尚未建立：業務與秘書看到 D-90、一級主管看到 D-45、二級主管與行銷沒有', r45.owner.indexOf('到期前 90 天') >= 0 && r45.secretary.indexOf('到期前 90 天') >= 0 && r45.manager1.indexOf('45 天') >= 0 && r45.manager2 === '' && r45.marketing === '', J(r45));
+    t('AD-25 剩 45 天、尚未建立：業務與秘書看到 D-90、一級主管看到 D-45、二級主管與行銷沒有', r45.owner.indexOf('到期前第一次提醒') >= 0 && r45.secretary.indexOf('到期前第一次提醒') >= 0 && r45.manager1.indexOf('到期前追蹤') >= 0 && r45.manager2 === '' && r45.marketing === '', J(r45));
     const msg = await txt(b, '#marAdminHost .mar-a-role[data-role="owner"] .mar-a-role-msg');
     t('AD-26 角色卡顯示此刻的提醒文字（與鈴鐺同格式：公司：品項 剩 N 天到期｜續約報價單狀態）', /^⏰ （示範客戶）：（示範品項） 剩 45 天到期｜尚未建立續約報價單$/.test(msg), msg);
     await b.ev(`document.querySelector('input[name="marSimQs"][value="sent"]').click(); 0`); await b.sleep(900);
@@ -201,7 +201,7 @@ module.exports = function makeSections(X) {
     t('AD-27 已送簽：連預設的「無條件」D-90 也不再成立（2026-10-24 決定），所有角色都沒有提醒', ROLES.every((r) => rsent[r] === ''), J(rsent));
     await b.ev(`document.querySelector('input[name="marSimQs"][value="draft"]').click(); 0`); await b.sleep(900);
     const rdraft = await simRoles(b);
-    t('AD-28 草稿：D-90 仍成立（草稿不解除）', rdraft.owner.indexOf('到期前 90 天') >= 0, J(rdraft));
+    t('AD-28 草稿：D-90 仍成立（草稿不解除）', rdraft.owner.indexOf('到期前第一次提醒') >= 0, J(rdraft));
     // 未儲存的草稿規則：把 D-90 改成 60 天，剩 70 天時業務不會看到（但伺服器規則仍是 90）
     await typeInto(b, rowS(0) + ' .mar-a-n', '60');
     await setDays(b, 70); await b.ev(`document.querySelector('input[name="marSimQs"][value="none"]').click(); 0`); await b.sleep(900);

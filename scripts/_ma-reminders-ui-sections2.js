@@ -91,9 +91,9 @@ module.exports = function makeSections2(X) {
       await openBell(b);
       await b.click('#notifList .mar-bell-sum'); await b.sleep(500);
       const open1 = await b.ev(`(()=>{const rows=[...document.querySelectorAll('#notifList .mar-bell-row')]; return JSON.stringify({exp:document.querySelector('#notifList .mar-bell-sum').getAttribute('aria-expanded'), vis:!document.querySelector('#notifList .mar-bell-list').hidden, n:rows.length, ids:rows.map(r=>r.getAttribute('data-marem-row')), first:rows[0].innerText.replace(/\\s+/g,' '), sumUnread:document.querySelector('#notifList .mar-bell-sum').classList.contains('unread'), badge:document.getElementById('notifBadge').textContent, ls:Object.keys(localStorage).filter(k=>k.indexOf('marem_read_')===0)})})()`).then(JSON.parse);
-      t('BL-4 點摘要展開：4 列依剩餘天數排序（iC 逾期 20 天最前）；每列有公司、品項、天數、所屬規則名稱；摘要變已讀、徽章剩 1；已讀存 localStorage（marem_read_ma_<id>_<日期>）', open1.exp === 'true' && open1.vis && open1.n === 4 && J(open1.ids) === J(['ma_iC', 'ma_iB', 'ma_iA', 'ma_iX']) && /R丙公司/.test(open1.first) && /已逾期 20 天/.test(open1.first) && /規則：到期後每 7 天追蹤未續約/.test(open1.first) && open1.sumUnread === false && open1.badge === '1' && open1.ls.length === 4 && open1.ls.every((k) => new RegExp('^marem_read_ma_i[A-Z]+_' + tp(0) + '$').test(k)), J(open1));
+      t('BL-4 點摘要展開：4 列依剩餘天數排序（iC 逾期 20 天最前）；每列有公司、品項、天數、所屬規則名稱；摘要變已讀、徽章剩 1；已讀存 localStorage（marem_read_ma_<id>_<日期>）', open1.exp === 'true' && open1.vis && open1.n === 4 && J(open1.ids) === J(['ma_iC', 'ma_iB', 'ma_iA', 'ma_iX']) && /R丙公司/.test(open1.first) && /已逾期 20 天/.test(open1.first) && /規則：到期後持續追蹤/.test(open1.first) && open1.sumUnread === false && open1.badge === '1' && open1.ls.length === 4 && open1.ls.every((k) => new RegExp('^marem_read_ma_i[A-Z]+_' + tp(0) + '$').test(k)), J(open1));
       const rowsTxt = await b.ev(`JSON.stringify([...document.querySelectorAll('#notifList .mar-bell-row')].map(r=>r.innerText.replace(/\\s+/g,' ')))`).then(JSON.parse);
-      t('BL-5 各列文字：iB「R乙公司 Svc Lic 永久 License 剩 20 天到期 規則：到期前 90 天…」、iA 剩 40 天、iX XSS 公司名原樣顯示成文字', /R乙公司/.test(rowsTxt[1]) && /License/.test(rowsTxt[1]) && /剩 20 天到期/.test(rowsTxt[1]) && /剩 40 天到期/.test(rowsTxt[2]) && rowsTxt[3].indexOf(XSS1) >= 0 && rowsTxt[3].indexOf(XSS2) >= 0, J(rowsTxt));
+      t('BL-5 各列文字：iB「R乙公司 Svc Lic 永久 License 剩 20 天到期 規則：到期前第一次提醒…」、iA 剩 40 天、iX XSS 公司名原樣顯示成文字', /R乙公司/.test(rowsTxt[1]) && /License/.test(rowsTxt[1]) && /剩 20 天到期/.test(rowsTxt[1]) && /剩 40 天到期/.test(rowsTxt[2]) && rowsTxt[3].indexOf(XSS1) >= 0 && rowsTxt[3].indexOf(XSS2) >= 0, J(rowsTxt));
       const noAmt = await b.ev(`(()=>{const h=document.getElementById('notifList').innerHTML; return JSON.stringify({img:document.querySelectorAll('#notifList img').length, script:document.querySelectorAll('#notifList script').length, xss:window.__xss, cno:h.indexOf(${J(CNO)})>=0, amt:h.indexOf(${J(AMT)})>=0})})()`).then(JSON.parse);
       t('BL-6 鈴鐺內沒有 <img>／<script> 元素（純文字）、XSS 沒有執行、沒有合約編號與金額', noAmt.img === 0 && noAmt.script === 0 && noAmt.xss === 0 && !noAmt.cno && !noAmt.amt, J(noAmt));
       await shotTo(C, b, 'bell_open_glass_dark.png');
@@ -209,10 +209,10 @@ module.exports = function makeSections2(X) {
       await b.ev(`document.querySelector('#maItemsView tr[data-item-id="iF"]').scrollIntoView({block:'center'}); 0`);
       await b.waitFor(`!/載入中/.test(document.querySelector('#maItemsView tr[data-item-id="iF"] .mar-next').textContent)`, 8000);
       const nextF = await txt(b, '#maItemsView tr[data-item-id="iF"] .mar-next');
-      t('IM-5b 剩 100 天的 iF（4 條規則都還沒到）：下一個提醒是「最近」的一條（到期前 90 天，日期＝迄日−90）', nextF === '下一個提醒：' + slash(futF.triggerDate) + '（' + futF.name + '，' + wt(futF) + '）' && /到期前 90 天/.test(nextF), nextF);
+      t('IM-5b 剩 100 天的 iF（4 條規則都還沒到）：下一個提醒是「最近」的一條（到期前第一次提醒，日期＝迄日−90）', nextF === '下一個提醒：' + slash(futF.triggerDate) + '（' + futF.name + '，' + wt(futF) + '）' && /到期前第一次提醒/.test(nextF), nextF);
       const nextC = await txt(b, '#maItemsView tr[data-item-id="iC"] .mar-next');
       const nextD = await rowText(b, 'iD');
-      t('IM-6 逾期的 iC：目前提醒中（到期後規則）、沒有後續提醒或下一個；不續約的 iD 沒有「下一個提醒」區塊', /目前提醒中：到期後每 7 天/.test(nextC) && !/下一個提醒/.test(nextD), nextC);
+      t('IM-6 逾期的 iC：目前提醒中（到期後規則）、沒有後續提醒或下一個；不續約的 iD 沒有「下一個提醒」區塊', /目前提醒中：到期後持續追蹤/.test(nextC) && !/下一個提醒/.test(nextD), nextC);
       // 提醒時間軸展開
       await b.click(btnIn('iA', '提醒時間軸'));
       await b.waitFor(`document.querySelectorAll('#maItemsView tr.mar-tl-tr .mar-tl-li').length===4`, 8000);
@@ -222,6 +222,14 @@ module.exports = function makeSections2(X) {
       await shotTo(C, b, 'items_timeline.png');
       await b.click(btnIn('iA', '提醒時間軸')); await b.sleep(300);
       t('IM-8 再按一次收合：時間軸列移除、aria-expanded=false', (await b.ev(`document.querySelectorAll('#maItemsView tr.mar-tl-tr').length`)) === 0 && (await b.ev(`document.querySelector('#maItemsView tr[data-item-id="iA"] .mar-btn-tl').getAttribute('aria-expanded')`)) === 'false');
+      // 審查修正（3020 驗收）：時間軸的日期用台北日曆日（UTC 16:30＝台北隔天 00:30，以前直接切 ISO 字串會少一天）
+      writeData((d) => { d.reminderRules = { rules: JSON.parse(J(require('../lib/maReminders').DEFAULT_RULES)), updatedAt: '2026-10-24T16:30:00.000Z', updatedBy: U.adm }; d.reminderLog = d.reminderLog || { v: 1, entries: {} }; const ia = d.maItems.find((x) => x.id === 'iA'); d.reminderLog.entries['default-d90|iA|' + U.own + '|' + ia.to + '|0'] = '2026-10-24T16:30:00.000Z'; });
+      await b.click(btnIn('iA', '提醒時間軸'));
+      await b.waitFor(`document.querySelectorAll('#maItemsView tr.mar-tl-tr .mar-tl-li').length===4`, 8000);
+      const tl2 = await b.ev(`document.querySelector('#maItemsView .mar-tl-sub').textContent + '||' + [...document.querySelectorAll('#maItemsView tr.mar-tl-tr .mar-tl-meta')].map(x=>x.textContent).join('||')`);
+      t('IM-8b 提醒時間軸日期是台北日曆日：規則更新於 UTC 2026-10-24 16:30 → 顯示 2026-10-25；最近發送顯示 2026/10/25', /更新於 2026-10-25/.test(tl2) && /最近 2026\/10\/25/.test(tl2) && !/2026-10-24|2026\/10\/24/.test(tl2), tl2.slice(0, 300));
+      await b.click(btnIn('iA', '提醒時間軸')); await b.sleep(300);
+      writeData((d) => { delete d.reminderRules; const ia = d.maItems.find((x) => x.id === 'iA'); delete d.reminderLog.entries['default-d90|iA|' + U.own + '|' + ia.to + '|0']; });
       // 篩選晶片
       await b.click(() => [...document.querySelectorAll('#maItemsView .mat-fchip')].find((c) => c.textContent === '已不續約'));
       await b.sleep(500);
@@ -481,7 +489,9 @@ module.exports = function makeSections2(X) {
       await shotTo(C, b, 'mobile_bell.png');
       await b.ev(`document.getElementById('notifDropdown').style.display='none'; showSection('maItems'); 0`);
       await b.waitFor(`document.querySelectorAll('#maItemsView tbody tr').length>0`, 12000); await b.sleep(1600);
-      await b.click(btnIn('iA', '提醒時間軸')); await b.sleep(1200);
+      await b.click(btnIn('iA', '提醒時間軸'));
+      try { await b.waitFor(`!!document.querySelector('#maItemsView .mar-tl-li')`, 10000); } catch (e) { /* 逾時由下面的斷言回報 */ }
+      await b.sleep(400);
       const mi = await b.ev(`JSON.stringify({sw:document.documentElement.scrollWidth, w:innerWidth, head:getComputedStyle(document.querySelector('#maItemsView thead')).display, tl:!!document.querySelector('#maItemsView .mar-tl-li'), tlOk:[...document.querySelectorAll('#maItemsView .mar-tl-li')].every(r=>r.getBoundingClientRect().right<=innerWidth+1), next:!!document.querySelector('#maItemsView .mar-next')})`).then(JSON.parse);
       t('LK-M2 手機寬度：到期管理頁（卡片式）含下一個提醒與時間軸不爆版', mi.sw <= mi.w + 1 && mi.head === 'none' && mi.tl && mi.tlOk && mi.next, J(mi));
       await shotTo(C, b, 'mobile_items_timeline.png');

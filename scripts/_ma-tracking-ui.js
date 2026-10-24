@@ -853,13 +853,16 @@ const UI_MUTS = [
   { name: 'UM7 .mat-overlay 層級高於其他彈窗', file: 'style.css', find: 'z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', rep: 'z-index: 100005; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade', section: 'look', expect: /LK-Z/ },
   { name: 'UM8 Service MA 頁籤錯拿 SAP_MA 合約', file: 'app.js', find: "const list = allContracts.filter(c => c.type === 'SERVICE_MA');", rep: "const list = allContracts.filter(c => c.type === 'SAP_MA');", section: 'contracts', expect: /CT-/ },
   { name: 'UM10 無任務卡的納管項仍顯示「待簽約確認」', file: 'ma-tasks.js', find: "return '';   // 沒有簽約任務卡的納管項（例如 License MA 類）：只追蹤到期，沒有待簽約動作（徽章顯示「追蹤中」）", rep: "return '待簽約確認';", section: 'fix', expect: /FX-1b/ },
-  { name: 'UM11 改派候選人改回舊的全部人員清單', file: 'ma-tasks.js', find: "'/api/deal-tasks/' + encodeURIComponent(t.id) + '/reassign-candidates'", rep: "'/api/company-responsible/candidates'", section: 'tasks', expect: /TK-8b/ },
+  { name: 'UM11 改派候選人改回舊的全部人員清單', file: 'ma-tasks.js', find: "jget(base + '/reassign-candidates')", rep: "jget('/api/company-responsible/candidates')", section: 'tasks', expect: /TK-8b/ },
   { name: 'UM12 簽約後不刷新 Service MA 頁', file: 'ma-tasks.js', find: 'reloadServiceMa()]).then(function () { refreshBell(); });', rep: 'Promise.resolve()]).then(function () { refreshBell(); });', section: 'fix', expect: /FX-4a/ },
   { name: 'UM13 合約頁剩餘天數改回瀏覽器本地日算法', file: 'app.js', find: 'const diff = _tpDiff !== null ? _tpDiff : Math.ceil((effectiveEnd - today) / 86400000);', rep: 'const diff = Math.ceil((effectiveEnd - today) / 86400000);', section: 'fix', expect: /FX-6a|FX-6c/ },
   { name: 'UM14 拿掉再成交期間預填', file: 'ma-tasks.js', find: '} else if (!qt && hint && !(opts.prefill && opts.prefill.termFrom)) {', rep: '} else if (false) {', section: 'fix', expect: /FX-7a|FX-7c/ },
   { name: 'UM18 期間／剩餘天數欄允許斷行（窄視窗期間被擠成多行）', file: 'style.css', find: '.mat-table td[data-label="剩餘天數"] { white-space: nowrap; }', rep: '.mat-table td[data-label="剩餘天數"] { }', section: 'fix', expect: /FX-8a/ },
   { name: 'UM16 後台商品維護儲存中仍可切換頁面', file: 'admin.html', find: "if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa && this.dataset.sec !== 'product-catalog') {", rep: 'if (false) {', section: 'fix', expect: /FX-5a/ },
   { name: 'UM17 刪除 Service MA 合約後不刷新任務／到期管理／鈴鐺', file: 'app.js', find: 'if (M && M.enabled && M.enabled() && M.afterContractChange) M.afterContractChange();', rep: '', section: 'fix', expect: /FX-2c/ },
+  { name: 'UM19 到期管理列沒有「改負責人…」按鈕（審查修正 M1）', file: 'ma-tasks.js', find: "if (isAdmin() && it.id && it.status !== 'void') {", rep: 'if (false) {', section: 'fix', expect: /FX-9/ },
+  { name: 'UM20 行銷／集團業務也畫合約編號欄（審查修正 L1）', file: 'ma-tasks.js', find: "function hideContractCol() { var r = state.user && state.user.role; return r === 'marketing' || r === 'groupsales'; }", rep: 'function hideContractCol() { return false; }', section: 'fix', expect: /FX-10/ },
+  { name: 'UM21 改負責人對話框打到任務卡的改派端點（審查修正 M1）', file: 'ma-tasks.js', find: "var base = (isItem ? '/api/ma-items/' : '/api/deal-tasks/') + encodeURIComponent(t.id);", rep: "var base = '/api/deal-tasks/' + encodeURIComponent(t.id);", section: 'fix', expect: /FX-9|ui 例外/ },
   { name: 'UM9 鈴鐺 deal_task 通知點了不開任務卡', file: 'app.js', find: "if (item.dataset.type === 'deal_task' && window.ITTSMaTasks) {", rep: "if (false) {", section: 'tasks', expect: /TK-B/ },
 ];
 async function groupMut() {

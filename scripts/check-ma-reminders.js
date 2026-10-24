@@ -26,7 +26,7 @@ const { assertPortFree } = require('./_port-free');
 
 const ROOT = path.join(__dirname, '..');
 const PORT = parseInt(process.env.MAREM_PORT || '3322', 10);
-if (!(PORT >= 3320 && PORT <= 3329)) { console.log('拒絕：此腳本只能用埠 3320–3329'); process.exit(2); }
+if (!((PORT >= 3320 && PORT <= 3329) || (PORT >= 3350 && PORT <= 3359))) { console.log('拒絕：此腳本只能用埠 3320–3329 或 3350–3359'); process.exit(2); }
 const FILES = ['auth.json', 'data.json', 'audit.log.json', 'mail-outbox.json', 'audit.log.jsonl', 'audit.failed.jsonl', 'contact_audit.json'].map((f) => path.join(ROOT, f));
 {
   const g = FILES.filter((f) => /(auth|data|audit.log)\.jsonl?$/.test(f)).filter((f) => fs.existsSync(f));
@@ -477,13 +477,88 @@ function groupUnit() {
   eq(Object.keys(bigLog.entries).length, 19990, 'W12c 預留 incoming 空間');
   // 自動解除
   const mkN = (to, ids, extra) => Object.assign({ id: 'n' + Math.random(), to, type: 'ma_reminder', title: 't', body: 'b', read: false, maItemIds: ids, createdAt: nowIso }, extra || {});
-  d = mkData([ITEM({ id: 'a' }), ITEM({ id: 'b', status: 'not_renew' }), ITEM({ id: 'c' })], { quotations: [q('c', 'pending')], notifications: [mkN(U.u1, ['a']), mkN(U.u1, ['b']), mkN(U.u1, ['gone']), mkN(U.u1, ['c']), mkN(U.u1, ['a', 'b']), mkN(U.u2, ['a']), mkN(U.u1, undefined), { id: 'dt', to: U.u1, type: 'deal_task', read: false, maItemIds: ['b'] }] });
+  const mkNs = () => [mkN(U.u1, ['a']), mkN(U.u1, ['b']), mkN(U.u1, ['gone']), mkN(U.u1, ['c']), mkN(U.u1, ['a', 'b']), mkN(U.u2, ['a']), mkN(U.u1, undefined), { id: 'dt', to: U.u1, type: 'deal_task', read: false, maItemIds: ['b'] }];
+  const mkA = () => mkData([ITEM({ id: 'a' }), ITEM({ id: 'b', status: 'not_renew' }), ITEM({ id: 'c' })], { quotations: [q('c', 'pending')], notifications: mkNs() });
+  d = mkA();
   const rules1 = [RULE({ id: 'q', whenDays: 30, notify: ['owner'], condition: 'no_renewal_quote' })];
   const mk = MR.reconcileNotifications(d, UU, T(20), rules1);
-  eq([mk, d.notifications.map((n) => n.read)], [4, [false, true, true, true, false, true, false, false]], 'A1 自動解除：仍成立的不動（a）；不續約（b）、不存在（gone）、已送簽（c）、他人不是收件人（u2 的 a）標已讀；無 maItemIds 與其他 type 不動');
-  d.notifications.forEach((n) => { n.read = false; });
-  eq(MR.reconcileNotifications(d, UU, T(20), rules1, (n) => n.to === U.u2), 1, 'A2 filter：只處理符合的通知');
-  eq(MR.reconcileNotifications(mkData([ITEM()], { notifications: [mkN(U.u1, ['i1'], { read: true })] }), UU, T(20), rules1), 0, 'A3 已讀的不重複處理');
+  eq([mk, d.notifications.map((n) => n.type + ':' + (n.maItemIds || []).join('+') + ':' + n.to.slice(-2) + ':' + n.read)], [4, ['ma_reminder:a:u1:false', 'ma_reminder:a+b:u1:false', 'ma_reminder::u1:false', 'deal_task:b:u1:false']], 'A1 自動解除（審查修正 M2：直接移除，不是標已讀）：仍成立的不動（a、a+b）；不續約（b）、不存在（gone）、已送簽（c）、他人不是收件人（u2 的 a）移除；無 maItemIds 與其他 type 不動');
+  d = mkA();
+  eq(MR.reconcileNotifications(d, UU, T(20), rules1, (n) => n.to === U.u2), 1, 'A2 filter：只處理符合的通知（只移除 u2 的）');
+  eq(d.notifications.length, 7, 'A2b filter 之外的通知一則都沒少（8 → 7）');
+  eq(MR.reconcileNotifications(mkData([ITEM()], { notifications: [mkN(U.u1, ['i1'], { read: true })] }), UU, T(20), rules1), 0, 'A3 條件仍成立的（即使已讀）不動');
+  { const dr = mkData([ITEM({ status: 'not_renew' })], { notifications: [mkN(U.u1, ['i1'], { read: true }), mkN(U.u1, ['i1'], { type: 'ma_not_renew' }), mkN(U.u2, ['i1'], { type: 'quote_approval' })] });
+    eq([MR.reconcileNotifications(dr, UU, T(20), rules1), dr.notifications.map((n) => n.type)], [1, ['ma_not_renew', 'quote_approval']], 'A3b 條件不成立的已讀 ma_reminder 也移除；ma_not_renew 與別種類型的通知（即使帶 maItemIds）不動'); }
+  { const dn = mkData([ITEM()], { notifications: undefined }); delete dn.notifications;
+    eq(MR.reconcileNotifications(dn, UU, T(20), rules1), 0, 'A3c 沒有 notifications 陣列 → 0、不丟例外'); }
+  { const ds = mkData([ITEM({ status: 'not_renew' })], { notifications: [mkN(U.u1, ['i1']), mkN(U.u2, ['i1'], { type: 'deal_task' }), mkN(U.u1, ['i1'], { read: true })] });
+    const ss = MR.sweep(ds, UU, { now: T(30), rules: rules1 });
+    eq([ss.stats.resolved, ds.notifications.map((n) => n.type)], [2, ['deal_task']], 'A4 掃描時也把條件已不成立的 ma_reminder 直接移除（含已讀的）；別種類型不動'); }
+
+  // ── 每位收件人最多保留最近 20 則儲存型 ma_reminder（審查修正 M2）──
+  { const old = Array.from({ length: 25 }, (_, i) => mkN(U.u1, ['i1'], { id: 'o' + i, createdAt: 'x' }));   // 新的在前（o0 最新）
+    const others = [mkN(U.u2, ['i2'], { id: 'u2a' }), mkN(U.u2, ['i2'], { id: 'u2b' }), { id: 'dt1', to: U.u1, type: 'deal_task', read: false }, { id: 'ap1', to: U.u1, type: 'quote_approval', read: false }];
+    const i2 = ITEM({ id: 'i2', oppId: 'o2', owner: U.u2, company: '假公司乙' });
+    const dc = mkData([ITEM(), i2], { notifications: others.concat(old) });
+    const sc = MR.sweep(dc, UU, { now: T(30), rules: one });
+    const mine = dc.notifications.filter((n) => n.to === U.u1 && n.type === 'ma_reminder');
+    eq([mine.length, mine[0].id === sc.created.find((n) => n.to === U.u1).id, mine[1].id, mine[19].id, sc.stats.pruned], [20, true, 'o0', 'o18', 6], 'P1 每人最多保留 20 則：本次新增的在最前，保留最近的、丟掉最舊的（25+1−20＝6）');
+    eq([dc.notifications.filter((n) => n.to === U.u2 && n.type === 'ma_reminder').map((n) => n.id).filter((x) => x === 'u2a' || x === 'u2b').length, dc.notifications.filter((n) => n.type === 'deal_task').length, dc.notifications.filter((n) => n.type === 'quote_approval').length], [2, 1, 1], 'P2 別人（u2，條件仍成立）的 ma_reminder 與其他類型的通知一則都沒少');
+    const dd2 = mkData([ITEM(), i2], { notifications: others.concat(old) });
+    const dry = MR.sweep(dd2, UU, { now: T(30), rules: one, dryRun: true });
+    eq([dry.stats.pruned, dd2.notifications.length], [6, 29], 'P3 dryRun 回報會移除幾則但不修改資料');
+    const again = MR.sweep(dc, UU, { now: T(30), rules: one });
+    eq([again.stats.pruned, dc.notifications.filter((n) => n.to === U.u1 && n.type === 'ma_reminder').length], [0, 20], 'P4 第二次掃描（已去重、沒新增）不再移除、仍是 20 則');
+    eq(MR.capStored([mkN(U.u1, ['x']), { id: 'o', to: U.u1, type: 'deal_task' }, mkN(U.u1, ['y'])], 1).list.map((n) => n.type + (n.maItemIds || []).join()), ['ma_reminderx', 'deal_task'], 'P5 capStored 單元：只動 ma_reminder'); }
+  { const lst = []; for (let i = 0; i < 300; i++) lst.push(mkN('w' + i, ['i1'], { id: 'm' + i })); for (let i = 0; i < 210; i++) lst.push({ id: 'a' + i, to: 'x' + i, type: 'quote_approval', read: false });   // 新的在前：300 則隱藏的 ma_reminder 在前、210 則別人的未讀簽核通知最舊
+    const tl = MR.trimNotifications(lst, 500);
+    eq([tl.length, tl.filter((n) => n.type === 'quote_approval').length, tl.filter((n) => n.type === 'ma_reminder').length], [500, 210, 290], 'P6 全站超過 500 筆：先丟隱藏的 ma_reminder，不擠掉別人的未讀簽核通知（審查修正 M2）'); }
+
+  // ── 審查修正 M5：沒有任何收件人的規則，同一組只記一次稽核 ──
+  { const dn = mkData([ITEM({ owner: 'ghost' })]); const us = [{ username: 'zzz', role: 'user' }];
+    let n = 0, last = null;
+    for (let i = 0; i < 10; i++) { last = MR.sweep(dn, us, { now: T(30), rules: one }); n += last.audits.filter((a) => a.action === 'MA_REMINDER_NO_RECIPIENT').length; }
+    eq([n, Object.keys(dn.reminderLog.noRecip || {}).length, Object.keys(dn.reminderLog.entries).length, last.stats.noRecipient, last.audits.length], [1, 1, 0, 1, 0], 'N1 連續掃描 10 次：無收件人的稽核只有 1 筆（去重標記在 reminderLog.noRecip，不污染 entries）；統計仍如實計數但第 2 次起沒有新稽核');
+    ok(/^a\|i1\|norecipient\|2026-12-31\|0$/.test(Object.keys(dn.reminderLog.noRecip)[0]), 'N1b 去重鍵含 規則代號＋納管項＋norecipient＋迄日＋週期', Object.keys(dn.reminderLog.noRecip)[0]);
+    dn.maItems[0].to = '2026-12-30';
+    n = MR.sweep(dn, us, { now: T(30), rules: one }).audits.length;
+    eq([n, Object.keys(dn.reminderLog.noRecip).length], [1, 2], 'N2 改了迄日（新的一組）→ 再記 1 筆');
+    const dd0 = mkData([ITEM({ owner: 'ghost' })]);
+    eq([MR.sweep(dd0, us, { now: T(30), rules: one, dryRun: true }).audits.length, MR.sweep(dd0, us, { now: T(30), rules: one, dryRun: true }).audits.length, dd0.reminderLog], [1, 1, undefined], 'N3 dryRun 不寫標記（每次都回報、資料不變）');
+    const lg2 = { entries: {}, noRecip: { 'a|i1|norecipient|2025-01-01|0': 'x', 'a|i2|norecipient|2026-12-31|0': 'x' } };
+    MR.pruneLog(lg2, '2026-12-31', 0);
+    eq(Object.keys(lg2.noRecip), ['a|i2|norecipient|2026-12-31|0'], 'N4 無收件人標記依迄日 +400 天清理'); }
+
+  // ── 審查修正 L3：renewOf 的同公司檢查評估時再做一次 ──
+  { const stC = (quotes, items) => MR.quoteStateOf(MR.renewalIndex({ quotations: quotes, maItems: items }), 'i1');
+    eq([stC([q('i1', 'pending', { company: '假公司甲' })], [ITEM()]), stC([q('i1', 'pending', { company: '別家公司' })], [ITEM()]), stC([q('i1', 'pending')], [ITEM()]),
+      stC([q('i1', 'approved', { company: '別家公司' }), q('i1', undefined, { company: ' 假公司甲 ' })], [ITEM()]), stC([q('i1', 'pending', { company: '假公司甲' })], []), stC([q('i1', 'pending', { company: '' })], [ITEM()])],
+    ['sent', 'none', 'sent', 'draft', 'none', 'none'], 'L3 公司與納管項不符（報價單後來換了客戶）的 renewOf 不算續約報價單；公司比對 trim；沒有 company 欄位的舊資料照舊算；找不到納管項不算');
+    const pl3 = MR.plan({ maItems: [ITEM()], quotations: [q('i1', 'pending', { company: '別家公司' })] }, UU, T(20), [RULE({ id: 'aw', whenDays: 30, condition: 'always' })]);
+    eq(pl3.entries.length, 1, 'L3b 公司不符的「已送簽」報價單不會讓 always 規則消失（仍提醒）');
+    const pl3b = MR.plan({ maItems: [ITEM()], quotations: [q('i1', 'pending', { company: '假公司甲' })] }, UU, T(20), [RULE({ id: 'aw', whenDays: 30, condition: 'always' })]);
+    eq(pl3b.entries.length, 0, 'L3c 同公司的已送簽報價單 → always 規則消失（對照組）'); }
+
+  // ── 3020 驗收：預設規則名稱不含天數；舊資料的內建名稱讀取時換新、id／天數／去重鍵不動 ──
+  { eq(MR.DEFAULT_RULES.map((r) => r.id), ['default-d90', 'default-d45', 'default-d30', 'default-after7'], 'DN1 預設規則代號不變');
+    ok(MR.DEFAULT_RULES.every((r) => !/[0-9０-９]/.test(r.name) && r.name.length <= 40), 'DN1b 預設規則名稱不含任何數字（天數）、長度合法', J(MR.DEFAULT_RULES.map((r) => r.name)));
+    const legacy = { 'default-d90': '到期前 90 天：提醒業務並同步秘書', 'default-d45': '到期前 45 天仍無續約報價單：通知一級主管' };
+    const stored = [RULE({ id: 'default-d90', name: legacy['default-d90'], whenDays: 60, notify: ['owner', 'secretary'] }), RULE({ id: 'default-d45', name: '我自己改的名稱', whenDays: 45, condition: 'no_renewal_quote', notify: ['manager1'] }), RULE({ id: 'custom1', name: legacy['default-d45'], whenDays: 20 })];
+    const cfg = MR.getConfig({ reminderRules: { rules: clone(stored), updatedAt: '2026-10-24T16:30:00.000Z', updatedBy: 'x' } });
+    eq([cfg.rules[0].name, cfg.rules[0].id, cfg.rules[0].whenDays, cfg.rules[1].name, cfg.rules[2].name], [MR.DEFAULT_RULES[0].name, 'default-d90', 60, '我自己改的名稱', legacy['default-d45']], 'DN2 舊資料：id 是內建代號且名稱還是舊內建名稱 → 換成新名稱（天數 60 不動）；自訂名稱與非內建代號不動');
+    eq([MR.logKey(cfg.rules[0].id, 'i1', 'u', '2026-12-31', 0)], ['default-d90|i1|u|2026-12-31|0'], 'DN3 去重鍵只含規則代號，不受名稱影響'); }
+
+  // ── 3020 驗收：時間軸日期用台北日曆日 ──
+  { const itT = ITEM({ to: '2026-12-31' });
+    const mkLog = (iso) => ({ reminderLog: { entries: { ['r1|i1|' + U.u1 + '|2026-12-31|0']: iso } } });
+    const row = (iso) => MR.timeline(Object.assign({ maItems: [itT], quotations: [] }, mkLog(iso)), itT, [RULE()], { now: T(10), labelOf: (u) => u })[0];
+    eq([row('2026-10-24T15:30:00.000Z').lastSentDate, row('2026-10-24T16:30:00.000Z').lastSentDate, row('2026-10-24T16:30:00.000Z').sent[0].date, row('2026-10-24T16:30:00.000Z').lastSentAt], ['2026-10-24', '2026-10-25', '2026-10-25', '2026-10-24T16:30:00.000Z'], 'TZ1 timeline 已發送日期：UTC 15:30＝台北 23:30 仍是 10-24；UTC 16:30＝台北隔天 00:30 → 10-25（lastSentAt 仍是原始 ISO）'); }
+
+  // ── 審查修正 L6：超過上限時，同一時間戳（首次大量補發）改丟「迄日最久以前」的 ──
+  { const tl6 = { entries: {} }; const ts6 = '2026-01-01T00:00:00.000Z';
+    for (let i = 0; i < 20005; i++) tl6.entries['r|i' + i + '|u|' + (i >= 20000 ? '2025-06-01' : '2026-12-31') + '|0'] = ts6;
+    const rm6 = MR.pruneLog(tl6, '2026-01-02', 0);
+    ok(rm6 === 5 && Object.keys(tl6.entries).length === 20000 && Object.keys(tl6.entries).every((k) => !/2025-06-01/.test(k)), 'L6 同時間戳超過 20000 筆：丟掉的是迄日最久的 5 筆（以前是依鍵字母序任意丟，會丟到還有效的標記而重發）'); }
   // 動態鈴鐺
   const plD = MR.plan(mkData([ITEM({ id: 'z1', to: plusDays(todayTp(), 10) }), ITEM({ id: 'z2', to: plusDays(todayTp(), -3), company: '逾期公司' }), ITEM({ id: 'z3', owner: U.u2, to: plusDays(todayTp(), 5) })]), UU, Date.now(), MR.DEFAULT_RULES);
   const dyn = MR.dynamicFor(plD, U.u1, { labelOf: (u) => u });
@@ -493,6 +568,7 @@ function groupUnit() {
   const dynSec = MR.dynamicFor(plD, U.sec, { secretary: true, labelOf: (u) => u });
   ok(dynSec.length === 2 && dynSec.every((x) => !('itemId' in x) && !('rule' in x) && !('roles' in x) && /^ma_[0-9a-f]{12}$/.test(x.id)), 'B2 秘書：不給納管項 id 與規則細節，id 為雜湊');
   eq(Object.keys(dynSec[0]).sort(), ['body', 'company', 'days', 'from', 'id', 'level', 'ownerLabel', 'product', 'termKind', 'title', 'to', 'type'], 'B2b 秘書欄位白名單');
+  ok(dynSec.every((x) => !/續約報價單|已送簽|尚未/.test(x.body) && /服務期間/.test(x.body)) && dyn.every((x) => /續約報價單/.test(x.body)), 'B2c 審查修正 L2：秘書的鈴鐺內文不帶續約報價單狀態；其他角色照舊');
   eq(MR.dynamicFor(plD, U.u1, { visible: (it) => it.id === 'z1' }).map((x) => x.itemId), ['z1'], 'B3 visible 過濾（與 ma-items 同範圍）');
   eq(MR.dynamicFor(plD, 'nobody', {}), [], 'B4 不是任何規則的收件人 → 空');
   // 補掃節流
@@ -501,7 +577,7 @@ function groupUnit() {
   eq([SL(t0, {}), SL(t0, { instLastAttemptMs: t0 - 30000, lastSweepDate: '2026-10-23' }), SL(t0, { instLastAttemptMs: t0 - 61000, lastSweepDate: '2026-10-23' })], [true, false, true], 'L1 今天還沒掃過 → 立刻掃；剛試過 60 秒內不重試');
   eq([SL(t0, { instLastAttemptMs: 0, lastSweepDate: '2026-10-24', lastSweepAt: new Date(t0 - 30 * 60000).toISOString() }), SL(t0, { instLastAttemptMs: 0, lastSweepDate: '2026-10-24', lastSweepAt: new Date(t0 - 61 * 60000).toISOString() }), SL(t0, { instLastAttemptMs: t0 - 30 * 60000, lastSweepDate: '2026-10-24', lastSweepAt: new Date(t0 - 90 * 60000).toISOString() })], [false, true, false], 'L2 今天掃過：距上次掃描（持久化）≥60 分鐘且本實例 ≥60 分鐘沒試才補掃');
   eq([SL(Date.parse('2026-10-24T16:30:00Z'), { instLastAttemptMs: 0, lastSweepDate: '2026-10-24', lastSweepAt: '2026-10-24T16:00:00.000Z' })], [true], 'L3 台北日期跨日（UTC 16:30＝台北隔天）：持久化日期已過期 → 立刻掃');
-  eq(MR.sweep(mkData([ITEM()]), UU, { now: T(30), rules: [] }).stats, { evaluated: 1, fired: 0, recipients: 0, skippedDup: 0, noRecipient: 0, capped: 0, resolved: 0 }, 'L4 沒有任何規則 → 全零統計');
+  eq(MR.sweep(mkData([ITEM()]), UU, { now: T(30), rules: [] }).stats, { evaluated: 1, fired: 0, recipients: 0, skippedDup: 0, noRecipient: 0, capped: 0, resolved: 0, pruned: 0 }, 'L4 沒有任何規則 → 全零統計');
   const lm = mkData([ITEM()]); MR.sweep(lm, UU, { now: T(30), rules: one, mode: 'lazy' });
   eq([lm.reminderLog.lastSweepMode, lm.reminderLog.lastSweepDate, typeof lm.reminderLog.lastSweepAt], ['lazy', '2026-12-01', 'string'], 'L5 掃描後記錄 lastSweep（持久化，供補掃判斷）');
   // 試算器
@@ -881,7 +957,7 @@ async function apiMain() {
   eq([(await http(null, 'GET', '/api/cron/mail-outbox')).status, (await http(null, 'GET', '/api/cron/mail-outbox', undefined, { Authorization: 'Bearer wrong' })).status], [401, 401], 'C1 cron 沒有／錯誤密鑰 → 401');
   cr = await cron();
   ok(cr.status === 200 && cr.json.ok === true && cr.json.enabled === false && cr.json.reminders && cr.json.reminders.fired > 0 && cr.json.reminders.evaluated > 0, 'C2 cron（MAIL off 分支）200 且帶 reminders 統計', cr.text.slice(0, 300));
-  eq(Object.keys(cr.json.reminders).sort(), ['capped', 'evaluated', 'fired', 'noRecipient', 'notifications', 'recipients', 'resolved', 'skippedDup', 'today'], 'C2b 統計欄位（含必要的 evaluated/fired/recipients/skippedDup/noRecipient/capped）');
+  eq(Object.keys(cr.json.reminders).sort(), ['capped', 'evaluated', 'fired', 'noRecipient', 'notifications', 'pruned', 'recipients', 'resolved', 'skippedDup', 'today'], 'C2b 統計欄位（含必要的 evaluated/fired/recipients/skippedDup/noRecipient/capped）');
   dd = readData();
   const mr = (to) => (dd.notifications || []).filter((n) => n.to === to && n.type === 'ma_reminder');
   ok(mr(U.u1).length === 1 && mr(U.m1).length === 1 && mr(U.sec).length === 1, 'C3 剩 40 天（預設規則）：業務甲、一級主管、秘書各收到 1 則彙總通知', J({ u1: mr(U.u1).length, m1: mr(U.m1).length, sec: mr(U.sec).length }));
@@ -1007,7 +1083,8 @@ async function apiMain() {
   ok(rowD45.reached && rowD45.conditionNow === false && rowD45.activeNow === false && rowD45.reason === 'CONDITION' && rowD45.sentCount === 1, 'H1c D-45：已有續約報價單 → 條件現在不成立；但先前（建立報價單前）已發過 1 筆', J(rowD45));
   ok(clean(r) && !r.text.includes('contractNo'), 'H1d 時間軸沒有金額與合約編號');
   r = await http(U.sec, 'GET', '/api/ma-items/iA/reminders');
-  ok(r.status === 200 && !r.json.item.id && !('notRenewReason' in r.json.item) && r.json.rules.every((x) => !('sent' in x)) && clean(r) && Object.keys(r.json.item).sort().join() === 'company,daysLeft,from,ownerLabel,product,status,termKind,to', '秘書 H2：同 BU 可看，但項目沒有 id、規則列沒有收件人名單、沒有金額與合約編號', r.text.slice(0, 300));
+  ok(r.status === 200 && !r.json.item.id && !('notRenewReason' in r.json.item) && r.json.rules.every((x) => !('sent' in x)) && clean(r) && Object.keys(r.json.item).sort().join() === 'company,daysLeft,from,ownerLabel,product,termKind,to', '秘書 H2：同 BU 可看，item 只有 7 欄白名單（審查修正 L2：不含 status）、沒有 id、沒有收件人名單、沒有金額與合約編號', r.text.slice(0, 300));
+  ok(Object.keys(r.json).sort().join() === 'enabled,item,rules' && r.json.rules.length > 0 && r.json.rules.every((x) => Object.keys(x).sort().join() === 'activeNow,reached,triggerDate' && typeof x.reached === 'boolean' && typeof x.activeNow === 'boolean') && !/quoteState|isDefault|rulesUpdatedAt|sentCount|lastSentAt|ruleId|"name"|notify|condition|draft|sent"/.test(r.text), '秘書 H2b（審查修正 L2）：時間軸只回「會通知秘書的規則」的觸發日＋兩個布林；沒有規則名稱／對象／條件／已發送次數／續約報價單狀態／預設旗標', r.text.slice(0, 400));
   eq([(await http(U.u2, 'GET', '/api/ma-items/iA/reminders')).status, (await http(U.m1b, 'GET', '/api/ma-items/iA/reminders')).status, (await http(U.u1, 'GET', '/api/ma-items/nope/reminders')).status, (await http(U.gs, 'GET', '/api/ma-items/iA/reminders')).status, (await http(U.tp, 'GET', '/api/ma-items/iA/reminders')).status, (await http(null, 'GET', '/api/ma-items/iA/reminders')).status],
     [404, 404, 404, 404, 403, 401], 'H3 看不到的（他人／別條線／不存在／集團業務範圍外）→ 404；集團 PM 403；未登入 401');
   eq([(await http(U.mkt, 'GET', '/api/ma-items/iA/reminders')).status, (await http(U.m1, 'GET', '/api/ma-items/iA/reminders')).status, (await http(U.adm, 'GET', '/api/ma-items/iA/reminders')).status], [200, 200, 200], 'H3b 行銷（看全部）、一級主管（自己線）、管理員可看');
@@ -1108,7 +1185,8 @@ async function apiFlow() {
   // 送簽
   writeData((d) => { const q = d.quotations.find((x) => x.id === q2); q.approval = { state: 'pending', steps: [], cur: 0, history: [] }; });
   pu = await poll(U.u1);
-  eq([pu.maReminders.some((x) => x.itemId === 'iA'), unread(U.u1)], [false, 0], 'E3 送簽後：業務甲的鈴鐺沒有 iA，且他自己的兩則通知在這次 poll 就被標已讀');
+  eq([pu.maReminders.some((x) => x.itemId === 'iA'), unread(U.u1)], [false, 0], 'E3 送簽後：業務甲的鈴鐺沒有 iA，且他自己的兩則通知在這次 poll 就被自動解除');
+  eq([(readData().notifications || []).filter((n) => n.to === U.u1 && n.type === 'ma_reminder').length, (readData().notifications || []).filter((n) => n.to === U.m1 && n.type === 'ma_reminder').length > 0], [0, true], 'E3a（審查修正 M2）失效的儲存型通知是被「移除」而不是留著標已讀；別人（一級主管）仍成立的不受影響');
   let pm = await poll(U.m1);
   eq([pm.maReminders.map((x) => x.itemId), unread(U.m1)], [['iB'], 1], 'E3b 一級主管的鈴鐺只剩 iB；c45 那則（iA＋iB）因 iB 仍成立保持未讀、kq 那則（只有 iA）已標已讀');
   eq(unread(U.mkt), 1, 'E3d 行銷還沒 poll → 通知暫時未讀');
@@ -1121,7 +1199,7 @@ async function apiFlow() {
   eq([pm.maReminders.length, unread(U.m1), unread(U.u2)], [0, 0, 0], 'E4b 一級主管、業務乙的鈴鐺與未讀通知全部清空');
   const total3 = (readData().notifications || []).length;
   cr = await cron();
-  eq([cr.json.reminders.fired, (readData().notifications || []).length], [0, total3], 'E4c 之後的 cron 不再發');
+  ok(cr.json.reminders.fired === 0 && (readData().notifications || []).length <= total3, 'E4c 之後的 cron 不再發（通知數不增加；掃描順便移除其他人已失效的儲存型通知）', J({ fired: cr.json.reminders.fired, total3, now: (readData().notifications || []).length }));
   // 續約成交
   writeData((d) => { const q = d.quotations.find((x) => x.id === q2); q.status = 'approved'; q.approval = { state: 'approved', rulesVersion: QA.RULES_VERSION, hash: QA.contentHash(q), steps: [{ status: 'approved', at: nowIso, label: '核決' }], cur: 1, history: [] }; });
   const itemsBefore = readData().maItems.length;
@@ -1166,6 +1244,38 @@ async function apiFlow() {
   await loginMany([U.u1]);
   r = await http(U.u1, 'PUT', '/api/opportunities/oR', { stage: 'Won', termFrom: plusDays(T0, 41), termTo: plusDays(T0, 405) });
   eq([r.status, readData().maItems.find((x) => x.id === 'iA').status, readData().maItems.find((x) => x.id === 'iB').status], [200, 'not_renew', 'ended'], 'F6 舊項已是 not_renew／ended／不存在 → 不動、不丟例外');
+  // ═════ 審查修正 L3：renewOf 指向的報價單後來換了公司 → 評估時忽略；續約成交也不標舊項 ═════
+  await freshServer({ data: (d) => {
+    d.opportunities = [mkOpp('oR', U.u1, MAP, 'C', { company: 'CoX' })];
+    d.maItems = [mkItem('iA', U.u1, 40, { company: 'CoA' })];
+    d.quotations = [mkQuote('qm', 'oR', U.u1, 'CoX', [], 'approved', { renewOf: 'iA' })];
+    d.reminderRules = { rules: [RULE({ id: 'aw', whenDays: 90, notify: ['owner'], condition: 'always' })], updatedAt: nowIso, updatedBy: U.adm };
+  } });
+  await loginMany([U.u1]);
+  let pu3 = await poll(U.u1);
+  ok(pu3.maReminders.some((x) => x.itemId === 'iA' && x.quoteState === 'none'), 'L3d 報價單公司（CoX）與納管項（CoA）不符：鈴鐺仍有 iA、續約報價單狀態 none（不算續約）');
+  r = await http(U.u1, 'PUT', '/api/opportunities/oR', { stage: 'Won', termFrom: plusDays(T0, 41), termTo: plusDays(T0, 405) });
+  eq([r.status, readData().maItems.find((x) => x.id === 'iA').status], [200, 'tracking'], 'L3e 續約成交時再驗一次同公司：不符 → 不標舊項為已續約');
+  // ═════ 審查修正 M5：沒有收件人的規則，連續 cron 10 次只記 1 筆稽核 ═════
+  await freshServer({ data: (d) => {
+    d.maItems = [mkItem('nr1', U.u2, 20, { company: 'CoNR' })];
+    d.reminderRules = { rules: [RULE({ id: 'nr', whenDays: 30, notify: ['manager2'] })], updatedAt: nowIso, updatedBy: U.adm };
+  } });
+  await loginMany([U.adm, U.u2]);
+  for (let i = 0; i < 10; i++) cr = await cron();
+  lg = await auditLines('MA_REMINDER_NO_RECIPIENT');
+  dd = readData();
+  eq([lg.length, Object.keys(dd.reminderLog.noRecip || {}).length, Object.keys(dd.reminderLog.entries).length, cr.json.reminders.noRecipient], [1, 1, 0, 1], 'M5 連續 cron 10 次：MA_REMINDER_NO_RECIPIENT 稽核只有 1 筆（以前每次都寫），統計仍如實回報 noRecipient=1');
+  r = await http(U.u2, 'PATCH', '/api/ma-items/nr1/term', { termFrom: plusDays(T0, -300), termTo: plusDays(T0, 22) });
+  for (let i = 0; i < 3; i++) await cron();
+  eq((await auditLines('MA_REMINDER_NO_RECIPIENT')).length, 2, 'M5b 改了迄日（新的一組）→ 再記 1 筆，之後同樣不重複');
+  // 3020 驗收：時間軸 API 的日期用台北日曆日（UTC 23:30／00:30 邊界）
+  for (const [iso, exp] of [['2026-10-24T15:30:00.000Z', '2026-10-24'], ['2026-10-24T16:30:00.000Z', '2026-10-25']]) {
+    writeData((d) => { const it = d.maItems.find((x) => x.id === 'nr1'); d.reminderRules.updatedAt = iso; d.reminderLog.entries['nr|nr1|' + U.u2 + '|' + it.to + '|0'] = iso; });
+    r = await http(U.u2, 'GET', '/api/ma-items/nr1/reminders');
+    const rr = r.json.rules.find((x) => x.ruleId === 'nr');
+    eq([r.status, r.json.rulesUpdatedDate, rr.lastSentDate, rr.sent[0].date, r.json.rulesUpdatedAt], [200, exp, exp, exp, iso], 'TZ2 時間軸 API（' + iso + '）：rulesUpdatedDate／lastSentDate／sent[].date＝台北日 ' + exp);
+  }
 }
 async function apiDual() {
   let bad, r, lg;
@@ -1452,7 +1562,7 @@ const MUTS = [
   { name: 'M9 拿掉單次上限', groups: ['unit', 'volume'], spec: [{ file: 'lib/maReminders.js', edits: [E('const take = names.slice(0, Math.max(0, cap));', 'const take = names;')] }] },
   { name: 'M10 秘書也給納管項 id 與規則細節', groups: ['unit', 'roles'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (o.secretary) {', 'if (false) {')] }] },
   { name: 'M11 動態鈴鐺拿掉可視範圍過濾', groups: ['roles'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('visible: (item) => { if (!vis)', 'visible: (item) => { return true; if (!vis)')] }] },
-  { name: 'M12 條件不成立時不標通知已讀', groups: ['unit', 'sim', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (!mine || !n.maItemIds.some((i) => mine.has(i))) { n.read = true; marked++; }', 'if (false) { n.read = true; marked++; }')] }] },
+  { name: 'M12 條件不成立時不移除通知（審查修正 M2）', groups: ['unit', 'sim', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (!mine || !n.maItemIds.some((i) => mine.has(i))) drop.add(n);', 'if (false) drop.add(n);')] }] },
   { name: 'M13 不續約不檢查負責人／管理員', groups: ['api:main'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E("if (!isOwnerOrAdmin(req, it.owner)) return err(res, 403, 'FORBIDDEN', '只有負責業務或管理員可以標記不續約');", '')] }] },
   { name: 'M14 撤銷不續約不限管理員', groups: ['api:main'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E("if (req.session.user.role !== 'admin') return err(res, 403, 'FORBIDDEN', '只有管理員可以撤銷不續約');", '')] }] },
   { name: 'M15 不續約原因不必填', groups: ['api:main'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('if (Array.from(reason).length < MA.SKIP_REASON_MIN) return err(', 'if (false) return err(')] }] },
@@ -1467,14 +1577,14 @@ const MUTS = [
   { name: 'M23 規則 GET 不限管理員', groups: ['api:rules'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E("app.get('/api/admin/reminder-rules', maOn, requireAdmin,", "app.get('/api/admin/reminder-rules', maOn, requireAuth,")] }] },
   { name: 'M24 試算不限管理員', groups: ['api:rules'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E("'/api/admin/reminder-rules/simulate', maOn, requireAdmin,", "'/api/admin/reminder-rules/simulate', maOn, requireAuth,")] }] },
   { name: 'M25 時間軸不限可視範圍', groups: ['api:main', 'roles'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('const it = visibleItems(req, data).find((x) => x && x.id === req.params.id);', 'const it = (data.maItems || []).find((x) => x && x.id === req.params.id);')] }] },
-  { name: 'M26 秘書時間軸也給收件人名單', groups: ['api:main', 'roles'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('{ now: Date.now(), secretary, labelOf', '{ now: Date.now(), secretary: false, labelOf')] }] },
+  { name: 'M26 秘書時間軸不收斂（審查修正 L2：給 status／報價狀態／規則細節）', groups: ['api:main', 'roles'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('    if (secretary) {\n      // 審查修正 L2', '    if (false) {\n      // 審查修正 L2')] }] },
   { name: 'M27 續約候選含非追蹤中', groups: ['api:main'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E("it && it.status === 'tracking' && OL.companyEq(it.company, company)", 'it && OL.companyEq(it.company, company)')] }] },
   { name: 'M28 拿掉「追蹤中」共同前提', groups: ['unit', 'sim'], spec: [{ file: 'lib/maReminders.js', edits: [E("if (!item || item.status !== 'tracking' || !KINDS.includes(item.termKind)) return null;", 'if (!item || !KINDS.includes(item.termKind)) return null;')] }] },
   { name: 'M29 重複週期恆為 0', groups: ['unit', 'sim'], spec: [{ file: 'lib/maReminders.js', edits: [E('return Math.floor((rule.whenDays - dl) / rule.repeatEveryDays);', 'return 0;')] }] },
   { name: 'M30 到期前規則過期後仍補發', groups: ['unit', 'sim'], spec: [{ file: 'lib/maReminders.js', edits: [E("if (rule.whenDays > 0 && dl < 0) return { active: false, reason: 'EXPIRED_WINDOW' };", '')] }] },
   { name: 'M31 去重鍵不含迄日', groups: ['unit', 'sim'], spec: [{ file: 'lib/maReminders.js', edits: [E('const logKey = (ruleId, itemId, recipient, endDate, period) => [ruleId, itemId, recipient, endDate, period].join', "const logKey = (ruleId, itemId, recipient, endDate, period) => [ruleId, itemId, recipient, '', period].join")] }] },
   { name: 'M32 彙總改成每個（項目×規則）一項', groups: ['unit', 'volume'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (!items.has(p.item.id)) items.set(p.item.id, p);', 'items.set(p.key, p);')] }] },
-  { name: 'M33 dryRun 也會寫入', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E("const view = dry ? { entries: Object.assign({}, (data.reminderLog && data.reminderLog.entries) || {}) } : ensureLog(data);", 'const view = ensureLog(data);')] }] },
+  { name: 'M33 dryRun 也會寫入', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E("const view = dry ? { entries: Object.assign({}, (data.reminderLog && data.reminderLog.entries) || {}), noRecip: Object.assign({}, (data.reminderLog && data.reminderLog.noRecip) || {}) } : ensureLog(data);", 'const view = ensureLog(data);')] }] },
   { name: 'M34 補掃不節流', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('return sinceAttempt >= LAZY_INTERVAL_MS && nowMs', 'return true || nowMs')] }] },
   { name: 'M35 擠掉通知時不優先丟已讀', groups: ['unit', 'volume'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (list[i] && list[i].read) { drop.add(i); over--; }', 'if (false) { drop.add(i); over--; }')] }] },
   { name: 'M36 cron 掃描失敗會讓 mail cron 失敗', groups: ['api:fail'], spec: [{ file: 'lib/mail/routes.js', edits: [E("if (pr.error) { console.warn('[mail cron] 到期提醒掃描失敗:', pr.error && pr.error.message); return null; }", 'if (pr.error) throw pr.error;'), E("catch (e) { console.warn('[mail cron] 到期提醒掃描例外:', e && e.message); return null; }", 'catch (e) { throw e; }')] }] },
@@ -1482,6 +1592,20 @@ const MUTS = [
   { name: 'M38 管理員不在收件人退路', groups: ['unit', 'api:main'], spec: [{ file: 'lib/maRecipients.js', edits: [E("else { byRole.secretary = admins.slice(); issues.push({ role: 'secretary', code: 'NO_SECRETARY' }); }", "else { byRole.secretary = []; issues.push({ role: 'secretary', code: 'NO_SECRETARY' }); }")] }] },
   { name: 'M39 秘書不比對 BU', groups: ['unit', 'roles'], spec: [{ file: 'lib/maRecipients.js', edits: [E('.filter((u) => { const sb = buList(u.bu); return sb.includes(bu) && (!ownerBus.length || ownerBus.some((b) => sb.includes(b))); })', '.filter((u) => true)')] }] },
   { name: 'M41 拿掉 always 的「已送簽解除」條件（恢復舊語意）', groups: ['unit', 'sim', 'api:main', 'api:rules', 'roles'], spec: [{ file: 'lib/maReminders.js', edits: [E("if (condition === 'always') return qs !== 'sent';", "if (condition === 'always') return true;")] }] },
+  { name: 'M44 掃描時失效通知只標已讀、不移除（審查修正 M2）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (stale.size) { data.notifications = data.notifications.filter((n) => !stale.has(n)); changed = true; }', 'if (stale.size) { stale.forEach((n) => { n.read = true; }); changed = true; }')] }] },
+  { name: 'M44b poll 的自動解除只標已讀、不移除（審查修正 M2）', groups: ['unit', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('data.notifications = list.filter((n) => !drop.has(n));', 'drop.forEach((n) => { n.read = true; });')] }] },
+  { name: 'M45 拿掉每人 20 則上限（審查修正 M2）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('const MAX_STORED_PER_RECIPIENT = 20;', 'const MAX_STORED_PER_RECIPIENT = 100000;')] }] },
+  { name: 'M46 擠掉通知時不先丟隱藏的 ma_reminder（審查修正 M2）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (!drop.has(i) && list[i] && list[i].type === NOTIF_TYPE) { drop.add(i); over--; }', 'if (false) { drop.add(i); over--; }')] }] },
+  { name: 'M47 無收件人稽核不去重（審查修正 M5）', groups: ['unit', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (noRecipSeen[k] || noRecipAudited.has(k)) return;', 'if (noRecipAudited.has(k)) return;')] }] },
+  { name: 'M48 無收件人標記沒有存進 reminderLog（審查修正 M5）', groups: ['unit', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('noRecipNew.forEach((k) => { view.noRecip[k] = nowIso; });', '')] }] },
+  { name: 'M49 秘書鈴鐺內文帶續約報價單狀態（審查修正 L2）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('const body = o.secretary\n', 'const body = false\n')] }] },
+  { name: 'M50 評估時不比對 renewOf 報價單的公司（審查修正 L3）', groups: ['unit', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (!it || !OL.companyEq(it.company, q.company)) return;', 'if (false) return;')] }] },
+  { name: 'M50b 續約成交時不再驗同公司（審查修正 L3）', groups: ['api:flow'], spec: [{ file: 'lib/maTracking.js', edits: [E("(typeof q.company === 'string' && !QOL.companyEq(old.company, q.company))", 'false')] }] },
+  { name: 'M51 超過上限時同時間戳改依鍵字母序丟（審查修正 L6）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E("      : (keyParts(a).endDate < keyParts(b).endDate ? -1 : keyParts(a).endDate > keyParts(b).endDate ? 1 : (a < b ? -1 : 1))));", "      : (a < b ? -1 : 1)));")] }] },
+  { name: 'M52 時間軸已發送日期直接切 UTC 字串（3020 驗收）', groups: ['unit', 'api:flow'], spec: [{ file: 'lib/maReminders.js', edits: [E("lastSentDate: sent.length ? MA.taipeiDate(sent[sent.length - 1].at) : ''", "lastSentDate: sent.length ? String(sent[sent.length - 1].at).slice(0, 10) : ''")] }] },
+  { name: 'M53 時間軸規則更新日期直接切 UTC 字串（3020 驗收）', groups: ['api:flow'], spec: [{ file: 'lib/maReminderRoutes.js', edits: [E('MA.taipeiDate(cfg.updatedAt)', 'String(cfg.updatedAt).slice(0, 10)')] }] },
+  { name: 'M54 舊資料的內建規則名稱讀取時不換新（3020 驗收）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E('if (LEGACY_DEFAULT_NAMES[r.id] === r.name) r.name', 'if (false) r.name')] }] },
+  { name: 'M55 預設規則名稱又內嵌天數（3020 驗收）', groups: ['unit'], spec: [{ file: 'lib/maReminders.js', edits: [E("name: '到期前第一次提醒：業務並同步秘書'", "name: '到期前 90 天：提醒業務並同步秘書'")] }] },
   { name: 'M40 開關預設改成開', groups: ['off'], spec: [{ file: 'lib/quoteTerms.js', edits: [E("return String(e.MA_TRACKING == null ? '' : e.MA_TRACKING).trim() === '1';", 'return true;')] }] },
 ];
 function REAL_SWAP_LIBS(spec) {

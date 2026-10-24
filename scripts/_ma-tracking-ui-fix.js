@@ -9,12 +9,15 @@
  *   FX-6  合約頁與到期管理頁剩餘天數同一函式（台北日曆日；多個瀏覽器時區）
  *   FX-7  再成交時期間預填（上次期間；已過期則提示請確認期間）
  *   FX-8  到期管理窄視窗：≥481px 橫向捲動且期間不斷行、≤480px 卡片式
+ *   FX-9  審查修正 M1：管理員在到期管理列「改負責人…」（含沒有任務卡的 License 類）；非管理員沒有這個按鈕
+ *   FX-10 審查修正 L1：行銷（本來就看不到合約）的到期管理頁沒有「合約編號」欄
  */
 const J = JSON.stringify;
 
 module.exports = function makeFix(X) {
   const { t, browse, openAs, gotoItemsNav, countsOf, rowCos, panelRows, topText, clickBtn, focusTop, dateVals, drop, toBoard, oppOf, shotTo, mkUsers, mkOpp, mkItem, seedData, U, tp, MAP, LICP } = X;
 
+  const hasBtnTxt = (b, txt) => b.ev(`(()=>{const o=[...document.querySelectorAll('.mat-overlay')].pop(); return !!o && [...o.querySelectorAll('button')].some(x=>x.textContent.trim()===${J(txt)})})()`);
   const RE_DAYS = (n) => new RegExp('(剩餘|剩) ' + n + ' 天');
 
   async function secFix(C) {
@@ -114,6 +117,45 @@ module.exports = function makeFix(X) {
       const r400b = await H.http(U.adm, 'POST', '/api/deal-tasks/tOff/reassign', { to: U.m1 });
       t('FX-3b 直接打後端改派給別的 BU 業務／主管：400（前端限制不是唯一防線）', r400.status === 400 && r400.json.code === 'ASSIGNEE_BU' && r400b.status === 400 && r400b.json.code === 'ASSIGNEE_ROLE', J([r400.status, r400.json.code, r400b.status, r400b.json.code]));
       await b.key('Escape');
+    });
+
+    // ── 管理員更換納管項負責業務（審查修正 M1）──
+    await browse(C, 300000, async (b) => {
+      await openAs(b, C, U.adm, 1440, 900, { expectOn: true, noLoginFlag: true });
+      await gotoItemsNav(b);
+      const btnOf = (company) => '()=>{ const r = [...document.querySelectorAll("#maItemsView tbody tr")].find((x) => x.querySelector("strong") && x.querySelector("strong").textContent === ' + J(company) + '); return r && [...r.querySelectorAll("button")].find((x) => x.textContent.trim() === "改負責人…"); }';
+      t('FX-9a 管理員在到期管理列看得到「改負責人…」（L公司：License、沒有任務卡）', await b.ev(`!!(${btnOf('L公司')})()`));
+      await b.click(btnOf('L公司'));
+      await b.waitFor(`document.querySelectorAll('.mat-overlay').length===1`, 5000);
+      await b.waitFor(`!!__top('select') && __top('select').options.length>0`, 8000);
+      const opts9 = await b.ev(`[...__top('select').options].map(o=>o.value).sort().join()`);
+      t('FX-9b 候選人只有在職、同 BU 的業務（_s_other；不含目前負責人 _s_own、ITS 業務、主管、行銷）', opts9 === '_s_other', opts9);
+      t('FX-9c 對話框說明：同一商機底下的納管項與簽約任務卡一起換', /一起換成新的負責業務/.test(await topText(b)) && (await hasBtnTxt(b, '確認更換')));
+      await clickBtn(b, '取消');
+      await b.waitFor(`document.querySelectorAll('.mat-overlay').length===0`, 5000);
+      t('FX-9d 按「取消」不送出：納管項負責人不變', ((await H.http(U.adm, 'GET', '/api/ma-items')).json.items.find((x) => x.company === 'L公司') || {}).owner === U.own);
+      await b.click(btnOf('L公司'));
+      await b.waitFor(`!!__top('select') && __top('select').options.length>0`, 8000);
+      await clickBtn(b, '確認更換');
+      await b.waitFor(`document.querySelectorAll('.mat-overlay').length===0`, 8000);
+      await b.sleep(1500);
+      const it9 = (await H.http(U.adm, 'GET', '/api/ma-items')).json.items.find((x) => x.company === 'L公司');
+      const rowTxt9 = await b.ev(`[...document.querySelectorAll('#maItemsView tbody tr')].find(x=>/L公司/.test(x.innerText)).innerText.replace(/\\s+/g,' ')`);
+      t('FX-9e 更換後：後端納管項 owner＝_s_other、畫面該列刷新顯示新負責業務', !!it9 && it9.owner === U.oth && /測試業務乙/.test(rowTxt9), J([it9 && it9.owner, rowTxt9.slice(-60)]));
+      const aud9 = ((await H.http(U.adm, 'GET', '/api/admin/logs')).json || []).filter((l) => l.action === 'MA_ITEM_REASSIGN');
+      t('FX-9f 稽核 MA_ITEM_REASSIGN 一筆（舊→新）', aud9.length === 1 && new RegExp(U.own + ' → ' + U.oth).test(aud9[0].detail || ''), J(aud9.map((x) => x.detail)));
+      const fe = b.errors.filter((e) => !/Failed to load resource|favicon/i.test(e));
+      t('FX-E5 沒有 JS 例外（改負責人）', fe.length === 0, J(fe).slice(0, 300));
+    });
+    await browse(C, 300000, async (b) => {
+      await openAs(b, C, U.oth, 1440, 900, { expectOn: true, noLoginFlag: true });
+      await gotoItemsNav(b);
+      t('FX-9g 負責業務（非管理員）看不到「改負責人…」；剛被換過來的 L公司 出現在他的清單', (await b.ev(`[...document.querySelectorAll('#maItemsView tbody button')].filter(x=>x.textContent.trim()==='改負責人…').length`)) === 0 && (await rowCos(b)).includes('L公司'));
+      await openAs(b, C, U.mk, 1440, 900, { expectOn: true, noLoginFlag: true });
+      await gotoItemsNav(b);
+      const hdr10 = await b.ev(`[...document.querySelectorAll('#maItemsView thead th')].map(x=>x.textContent).join('|')`);
+      t('FX-10a 行銷：欄位沒有「合約編號」，其餘照舊', hdr10 === '客戶|品項|期間|剩餘天數|狀態／下一步|負責業務|操作', hdr10);
+      t('FX-10b 行銷畫面沒有任何合約編號文字（C-2／C-3）；也沒有「改負責人…」', !/C-2|C-3/.test(await b.ev(`document.getElementById('maItemsView').innerText`)) && (await b.ev(`[...document.querySelectorAll('#maItemsView tbody button')].filter(x=>x.textContent.trim()==='改負責人…').length`)) === 0);
     });
 
     // ── 再成交期間預填（FX-7）──
