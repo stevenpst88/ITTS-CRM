@@ -85,6 +85,13 @@ function seedData(R, withTerms) {
   const qa = Object.assign({}, qa0, { approval: approvedOf(QA, qa0) });
   const quotes = [qd, qa];
   if (withTerms) {
+    // 各種簽核狀態的單（核准後修改服務期間的按鈕只該出現在已核准）：簽核中、退回、已作廢（核准被撤銷）、已失效（商機作廢）
+    const stItems = (p) => [Object.assign({ lid: p + '1', desc: 'SAP License 授權', unit: '套', qty: 1, unitPrice: 10000, cost: 0 }, T('license', '2026-01-01', '2026-12-31'))];
+    const withAp = (id, no, fn, extra) => { const q0 = mkQ(id, no, { items: stItems(id.toLowerCase()) }); const ap = approvedOf(QA, q0); fn(ap); return Object.assign({}, q0, { approval: ap }, extra || {}); };
+    quotes.push(withAp('QP', 'QU-T-011', (ap) => { ap.state = 'pending'; ap.steps[0].status = 'pending'; ap.cur = 0; }));
+    quotes.push(withAp('QR', 'QU-T-012', (ap) => { ap.state = 'returned'; ap.steps[0].status = 'returned'; ap.history.push({ at: '2026-10-09T00:00:00.000Z', by: '_s_m1', action: 'RETURN', comment: '請修改', tier: 'mgr1' }); }));
+    quotes.push(withAp('QV', 'QU-T-013', (ap) => { ap.state = 'none'; ap.steps = []; ap.hash = null; ap.history.push({ at: '2026-10-09T00:00:00.000Z', by: '_s_own', action: 'INVALIDATE', comment: '', tier: '' }); }));
+    quotes.push(withAp('QI', 'QU-T-014', () => {}, { invalid: { at: T0, reason: '商機作廢', by: '_s_admin', company: '測試公司' } }));
     quotes.push(mkQ('QX', 'QU-T-003', { items: [
       { lid: 'x1', desc: XSS1 + 'XSS 品名', unit: '式', qty: 1, unitPrice: 1000, cost: 0, termKind: 'ma', termFrom: XSS1, termTo: XSS2 },
       { lid: 'x2', desc: XSS2 + 'License', unit: '套', qty: 1, unitPrice: 2000, cost: 0, termKind: 'license', termFrom: '2026-01-01', termTo: '2026-12-31', spec: XSS1, note: XSS2 },
@@ -154,6 +161,18 @@ async function typeDesc(b, sel, text) {
   await b.sleep(120);
 }
 const termOf = (b, n) => b.ev(`(()=>{const r=document.querySelector(${J(rowSel(n))}); if(!r) return null; const k=r.querySelector('.qterm-kind'); return k?{kind:k.value, from:r.querySelector('.qterm-from').value, to:r.querySelector('.qterm-to').value, datesHidden:r.querySelector('.qterm-dates').hidden, err:r.querySelector('.qterm-err').hidden?'':r.querySelector('.qterm-err').textContent, span:r.querySelector('.qterm-span').textContent, hint:!r.querySelector('.qterm-hint').hidden}:{none:true}})()`);
+/** 第 n 列（要先有類型＋日期顯示）的版面量測：品名輸入框寬、modal 最大寬、品項表是否橫向捲動、一年／三年是否同組同一行、整組在迄日旁或下方 */
+const layoutOf = (b, n) => b.ev(`(()=>{
+  const r=document.querySelector(${J(rowSel(n))}); if(!r) return null;
+  const q=r.querySelector('.qterm'); const qs=[...r.querySelectorAll('.qterm-quick')]; const to=r.querySelector('.qterm-to'); const from=r.querySelector('.qterm-from');
+  const tb=to.getBoundingClientRect(), fb=from.getBoundingClientRect(); const k=r.querySelector('.qterm-qk'); const kb=k?k.getBoundingClientRect():null;
+  const wrap=document.querySelector('.quote-items-wrap'); const modal=document.querySelector('#quoteModalOverlay > .modal');
+  const b0=qs[0].getBoundingClientRect(), b1=qs[1].getBoundingClientRect();
+  return JSON.stringify({ descW: Math.round(r.querySelector('.qi-desc').getBoundingClientRect().width), modalMax: modal.style.maxWidth, modalW: Math.round(modal.getBoundingClientRect().width),
+    wrapOver: wrap.scrollWidth>wrap.clientWidth+1, grouped: !!k && qs.every(x=>x.closest('.qterm-qk')===k) && !!k.querySelector('.qterm-span'),
+    sameLine: Math.abs(b0.top-b1.top)<2, kbPos: kb? (kb.top>tb.bottom-2?'below':'beside'):'none', toBesideFrom: Math.abs(fb.top-tb.top)<2,
+    sig: [kb? (kb.top>tb.bottom-2?'below':'beside'):'none', Math.abs(b0.top-b1.top)<2, Math.abs(fb.top-tb.top)<2, Math.round(b1.left-b0.left)] });
+})()`);
 const descOf = (b) => b.ev(`[...document.querySelectorAll('#quoteItemsBody tr')].map(r=>r.dataset.kind?('['+r.dataset.kind+']'):r.querySelector('.qi-desc').value).join('|')`);
 const itemsDump = (b) => b.ev(`JSON.stringify(readQuoteItems().map(i=>({d:i.desc,k:i.termKind,f:i.termFrom,t:i.termTo,kind:i.kind})))`);
 
@@ -243,6 +262,9 @@ async function secNew(C) {
     await b.click(rowSel(1) + ' .qterm-quick:nth-of-type(2)');
     r1 = await termOf(b, 1);
     t('UI-N7 按「三年」→ 迄日 2029-02-28、顯示「共 36 個月」', r1.to === '2029-02-28' && r1.span === '共 36 個月', J(r1));
+    { const lay = JSON.parse(await layoutOf(b, 1));
+      t('UI-W1 新增模式（修改後）：報價資訊頁籤 modal 加寬到 1240px；品名輸入框寬 >= 330px（修改前約 200px，長品名被截）；品項表沒有橫向捲動', lay.modalMax === "1240px" && lay.descW >= 330 && !lay.wrapOver, J(lay));
+      t('UI-W2 新增模式：「一年」「三年」「共 N 個月」在同一組（.qterm-qk）且兩顆按鈕同一行', lay.grouped && lay.sameLine, J(lay)); }
     await typeDate(b, rowSel(1) + ' .qterm-to', '2026-01-01');
     r1 = await termOf(b, 1);
     t('UI-N8 迄日早於起日：紅字「迄日不得早於起日」，不顯示月數', /迄日不得早於起日/.test(r1.err) && r1.span === '', J(r1));
@@ -344,6 +366,23 @@ async function secEdit(C) {
     const dump0 = JSON.parse(await itemsDump(b));
     t('UI-E1 編輯草稿：已存的類型與起迄日讀回；標題列、小計列沒有期間欄位', dump0.length === 5 && dump0[0].k === 'license' && dump0[0].f === '2026-01-01' && dump0[0].t === '2026-12-31' && dump0[1].k === 'ma' && dump0[1].t === '2027-02-28' && !dump0[2].k && !dump0[3].k && !dump0[4].k && (await b.ev(`document.querySelectorAll('#quoteItemsBody tr[data-kind] .qterm').length`)) === 0, J(dump0));
     t('UI-E2 已存列顯示「共 12 個月」（2026-01-01～2026-12-31）；2026-03-01～2027-02-28 也是 12 個月', (await termOf(b, 1)).span === '共 12 個月' && (await termOf(b, 2)).span === '共 12 個月');
+    { const lay = JSON.parse(await layoutOf(b, 1));
+      t('UI-W3 編輯模式：modal 1240px、品名輸入框寬 >= 330px、品項表沒有橫向捲動；一年／三年同組同一行', lay.modalMax === "1240px" && lay.descW >= 330 && !lay.wrapOver && lay.grouped && lay.sameLine, J(lay));
+      // 新增模式（同樣資料）的排版簽章必須與編輯模式完全相同（這次驗收發現兩種模式排版不一致）
+      await shotTo(C, b, 'qterm_layout_edit.png');
+      await closeModal(b);
+      await b.ev(`openQuoteModal(null,{oppId:'o2'}); 0`);
+      await b.waitFor(`document.querySelectorAll('#quoteItemsBody tr').length>0`, 15000);
+      await b.sleep(800);
+      await typeDesc(b, rowSel(1) + ' .qi-desc', 'SAP License 授權');
+      await pickKind(b, rowSel(1) + ' .qterm-kind', 'license');
+      await typeDate(b, rowSel(1) + ' .qterm-from', '2026-01-01');
+      await b.click(rowSel(1) + ' .qterm-quick');
+      const lay2 = JSON.parse(await layoutOf(b, 1));
+      await shotTo(C, b, 'qterm_layout_new.png');
+      t('UI-W4 新增模式與編輯模式的「類型／起迄日／一年三年」排版簽章完全相同（同一個函式、同一組 class；簽章＝[整組位置, 兩鈕同行, 起迄同行, 兩鈕間距]）', J(lay.sig) === J(lay2.sig) && lay2.grouped && lay2.sameLine && lay2.descW >= 330 && lay2.modalMax === '1240px', J(lay.sig) + ' vs ' + J(lay2.sig) + ' ' + lay.descW + '/' + lay2.descW);
+      await closeModal(b);
+      await openEdit(b, 'QD'); }
     // 把 License 列改成一般 → 儲存請求帶 termKind '' 且不帶日期
     await b.ev(`window.__puts=[]; const of=window.fetch.bind(window); window.fetch=(u,o)=>{ if(o&&o.method==='PUT'){ window.__puts.push(o.body); } return of(u,o); }; 0`);
     t('UI-E3 真實鍵盤把第 1 列類型改回「一般」', await pickKind(b, rowSel(1) + ' .qterm-kind', ''));
@@ -364,6 +403,13 @@ async function secEdit(C) {
     t('UI-E6 儲存請求：改回一般的列送 termKind:""（不帶日期）；新設 License 的列帶起迄日；沒動的 MA 列原樣帶', put.items[0].termKind === '' && !('termFrom' in put.items[0]) && put.items[1].termKind === 'ma' && put.items[1].termFrom === '2026-03-01' && put.items[2].termKind === 'license' && put.items[2].termTo === '2027-06-30' && !('termKind' in put.items[3]), J(put.items.map((x) => [x.termKind, x.termFrom, x.termTo])));
     const sv = (await H.http('_s_own', 'GET', '/api/quotations/QD')).json;
     t('UI-E7 伺服器：第 1 列欄位整個移除、第 3 列變 License 2026-07-01～2027-06-30、標題／小計列不含期間', !('termKind' in sv.items[0]) && sv.items[2].termKind === 'license' && sv.items[2].termFrom === '2026-07-01' && sv.items[2].termTo === '2027-06-30' && !('termKind' in sv.items[3]) && !('termKind' in sv.items[4]), J(sv.items.map((x) => [x.termKind, x.termFrom, x.termTo])));
+    // 一般編輯儲存路徑的時間軸：動作仍是「儲存修改」，詳情要有逐列 舊→新（只有日期與類型）
+    await b.ev(`openQuoteApproval('QD'); 0`);
+    await b.waitFor(`!!document.querySelector('#quoteApprovalOverlay .qap-hist')`, 10000);
+    const gRow = await b.ev(`(()=>{const r=[...document.querySelectorAll('#quoteApprovalOverlay .qap-hist tbody tr')].reverse().find(x=>x.cells[2].innerText.indexOf('儲存修改')>=0); return r? JSON.stringify({act:r.cells[2].innerText.trim(), txt:r.cells[3].innerText}):null;})()`);
+    const gr = gRow ? JSON.parse(gRow) : null;
+    t('UI-E7b 一般編輯儲存後的時間軸：動作「儲存修改」，詳情含「服務期間：第 1 列「…」類型 License→一般」與「第 3 列「…」類型 一般→License、期間 ∅→2026/07/01 – 2027/06/30」，沒有金額', !!gr && /服務期間：第 1 列「[^」]*」類型 License → 一般/.test(gr.txt) && /第 3 列「[^」]*」類型 一般 → License、期間 ∅ → 2026[/]07[/]01 – 2027[/]06[/]30/.test(gr.txt) && !/NT[$]|600000|50000/.test(gr.txt), gRow);
+    await b.key('Escape'); await b.sleep(250);
     // ── XSS：髒資料（期間欄位存了 HTML）與品名含標籤 ──
     await openEdit(b, 'QX');
     const x1 = await termOf(b, 1);
@@ -403,9 +449,18 @@ async function secApproved(C) {
     await toQuotes(b);
     t('UI-A2 管理員的列表上有「📅 服務期間」鈕（簽核中／已核准的單，且有 License／MA 品項）', await hasTermsBtn(b, 'QA'));
     t('UI-A3 草稿單（QD）沒有「服務期間」鈕（草稿直接編輯）', !(await hasTermsBtn(b, 'QD')));
+    const stateBtns = async () => JSON.stringify(await Promise.all(['QD', 'QP', 'QR', 'QV', 'QI', 'QA'].map((id) => hasTermsBtn(b, id))));
+    t('UI-A3b 管理員：只有「已核准」（QA）有「📅 服務期間」鈕；草稿／簽核中／退回／已作廢／已失效（QD／QP／QR／QV／QI）都沒有（與後端 item-terms 的狀態條件一致）', (await stateBtns()) === '[false,false,false,false,false,true]', await stateBtns());
     await openAs(b, C, '_s_own', 1440, 900);
     await toQuotes(b);
     t('UI-A4 擁有者的列表上有「📅 服務期間」鈕', await hasTermsBtn(b, 'QA'));
+    t('UI-A4b 擁有者：只有已核准（QA）有「📅 服務期間」鈕；草稿／簽核中／退回／已作廢／已失效都沒有', (await stateBtns()) === '[false,false,false,false,false,true]', await stateBtns());
+    { // 前端狀態條件與後端一致：每個狀態直接打 PATCH，只有已核准通過（其餘 409）
+      const lids = { QD: 'd1', QP: 'qp1', QR: 'qr1', QV: 'qv1', QI: 'qi1' };
+      const got = {};
+      for (const id of Object.keys(lids)) got[id] = (await H.http('_s_own', 'PATCH', '/api/quotations/' + id + '/item-terms', { items: [{ lid: lids[id], termTo: '2027-05-31' }] })).status;
+      t('UI-A4c 後端同一組狀態：草稿／簽核中／退回／已作廢／已失效的 PATCH item-terms 全部 409（按鈕不顯示＝後端也不收）', Object.values(got).every((x) => x === 409), J(got));
+    }
     await b.click('#quoteTbody [data-qact="terms"][data-id="QA"]');
     t('UI-A5 按鈕開啟小視窗（role=dialog、標題含單號）', (await b.waitFor(`!!document.querySelector('#qTermsOverlay [role=dialog]')`, 8000)) && (await b.ev(`document.getElementById('qTermsTitle').textContent`)).indexOf('QU-T-002') >= 0);
     const rowsInfo = await b.ev(`JSON.stringify([...document.querySelectorAll('#qTermsOverlay .qn-row')].map(r=>({name:r.querySelector('.qn-name').textContent, kind:r.querySelector('.qterm-kind').value, opts:[...r.querySelectorAll('.qterm-kind option')].map(o=>o.value).join(','), from:r.querySelector('.qterm-from').value, to:r.querySelector('.qterm-to').value})))`);
@@ -439,6 +494,10 @@ async function secApproved(C) {
     const apHtml = await b.ev(`document.querySelector('#quoteApprovalOverlay .qap-body').innerText`);
     t('UI-A12 簽核面板品項區在品名下唯讀顯示「類型徽章＋服務期間：…」（新迄日 2027/03/31）', apHtml.indexOf('服務期間：2026/01/01 – 2027/03/31') >= 0 && apHtml.indexOf('服務期間：2026/06/01 – 2027/05/31') >= 0, apHtml.slice(Math.max(0, apHtml.indexOf('服務期間') - 40), apHtml.indexOf('服務期間') + 80));
     t('UI-A13 時間軸有「修改品項服務期間」那一筆', /修改品項服務期間/.test(apHtml), apHtml.slice(-300));
+    const tlRow = await b.ev(`(()=>{const rs=[...document.querySelectorAll('#quoteApprovalOverlay .qap-hist tbody tr')].reverse(); const r=rs.find(x=>x.cells[2].innerText.indexOf('修改品項服務期間')>=0); if(!r) return null; const w=document.querySelector('#quoteApprovalOverlay .qap-hist').parentNode; return JSON.stringify({act:r.cells[2].innerText.trim(), txt:r.cells[3].innerText, cellOver:r.cells[3].scrollWidth>r.cells[3].clientWidth+1, wrapOver:w.scrollWidth>w.clientWidth+1, acts:rs.map(x=>x.cells[2].innerText.trim())});})()`);
+    const tr = tlRow ? JSON.parse(tlRow) : null;
+    t('UI-A13b 時間軸「動作」欄是「修改品項服務期間」（不是「儲存修改」）；詳情逐列顯示「第 N 列「品名」期間 舊期間 → 新期間」（只有日期，沒有金額）', !!tr && tr.act === '修改品項服務期間' && tr.txt.indexOf('第 1 列「SAP PCOE Lic…」期間 2026/01/01 – 2026/12/31 → 2026/01/01 – 2027/03/31') >= 0 && !/NT[$]|1000000|1,000,000|300000/.test(tr.txt) && !tr.acts.includes('儲存修改'), tlRow);
+    t('UI-A13c 時間軸詳情欄會換行、表格不橫向捲動', !!tr && !tr.cellOver && !tr.wrapOver, tlRow);
     await shotTo(C, b, 'qterm_approval_panel_glass-dark.png');
     await b.key('Escape'); await b.sleep(200);
     // 伺服器端驗證
@@ -576,6 +635,7 @@ async function secLook(C) {
     await theme(b, 'glass-dark');
     await closeModal(b);
     // 簽核面板（唯讀）與預覽
+    await H.http('_s_own', 'PATCH', '/api/quotations/QA/item-terms', { items: [{ lid: 'a1', termTo: '2027-03-31' }] });   // 讓時間軸有一筆「修改品項服務期間」
     await b.ev(`openQuoteApproval('QA'); 0`);
     await b.waitFor(`!!document.querySelector('#quoteApprovalOverlay .qterm-view')`, 10000);
     for (const th of THEMES) {
@@ -583,7 +643,13 @@ async function secLook(C) {
       const dark = th.endsWith('dark');
       const c1 = await contrast(b, '#quoteApprovalOverlay .qterm-view', dark), c2 = await contrast(b, '#quoteApprovalOverlay .qterm-badge', dark);
       t('UI-L2 簽核面板（' + th + '）：唯讀「服務期間」行與類型徽章對比 >= 4.5:1', c1 >= 4.5 && c2 >= 4.5, c1 + '/' + c2);
+      const hsel = '#quoteApprovalOverlay .qap-hist tbody tr:last-child';
+      const h1 = await contrast(b, hsel + ' .qap-badge', dark), h2 = await contrast(b, hsel + ' td.desc', dark);
+      t('UI-L2b 簽核面板時間軸（' + th + '）：「修改品項服務期間」徽章與舊→新詳情文字對比 >= 4.5:1', h1 >= 4.5 && h2 >= 4.5, h1 + '/' + h2);
       await shotTo(C, b, 'qterm_approval_' + th + '.png');
+      await b.ev(`(()=>{const h=document.getElementById('qapHistory'); if(h) h.scrollIntoView({block:'center'}); return 0})()`);
+      await shotTo(C, b, 'qterm_timeline_' + th + '.png');
+      await b.ev(`(()=>{const o=document.querySelector('#quoteApprovalOverlay .qap-body'); if(o) o.scrollTop=0; return 0})()`);
     }
     await b.key('Escape'); await b.sleep(200);
     await theme(b, 'glass-dark');

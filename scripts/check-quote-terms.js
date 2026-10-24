@@ -3,13 +3,13 @@
  * 報價單品項「服務期間」（License／MA 起訖日）＋商品目錄「類型」檢查（MA_TRACKING=1；P1 階段 A＝後端／目錄／共用規則）。
  * 用法：node scripts/check-quote-terms.js
  *   CTERM_ONLY=unit|api|compat|server  只跑一個群組　　CTERM_MUT=1  變異測試（改一份程式碼副本，對應測試必須變紅）
- *   CTERM_PORT（預設 3271，限 3270–3279）　CTERM_BASE_REF（舊單／關閉開關比對的基準 commit；預設 ed36964＝本功能之前的 origin/main）　CTERM_BASE_DIR（直接指定已解開的基準資料夾）
+ *   CTERM_PORT（預設 3281，限 3280–3289；CDP 用 CTERM_CDP，預設 9581，限 9580–9589）　CTERM_BASE_REF（舊單／關閉開關比對的基準 commit；預設 ed36964＝本功能之前的 origin/main）　CTERM_BASE_DIR（直接指定已解開的基準資料夾）
  * 不碰真實 data.json／auth.json／audit.log.json：[unit][api][compat] 用記憶體資料庫直接呼叫路由處理器；[server] 用 scripts/_b2-harness.js 在本工作樹建臨時 auth.json／data.json 與 _s_* 假帳號（結束即刪），一次只起一台。
  *   [unit]    _client/quote-terms.js（真實日期、月數、一年／三年快捷、顯示格式、時區無關）、lib/quoteTerms.js、lib/productCatalog.js 的類型正規化／稽核差異／輸出
  *   [api]     POST／PUT 驗證與沿用舊值、標題列不帶欄位、序列化、送簽 blocker、時間軸／稽核摘要、雜湊與簽章不含新欄位、PATCH item-terms（權限／不變量／稽核／通知）、關閉開關
  *   [compat]  舊單相容：與基準程式碼（git archive）逐位元比對 contentHash／儲存形狀／GET 完整回應／Excel／預覽 HTML；MA_TRACKING 關閉時帶了期間欄位的請求也與基準相同
  *   [server]  商品目錄 API（開／關）、稽核、PATCH 關閉時等同未登記、通知深連結、真實伺服器建立／改期間
- *   [ui]      瀏覽器（scripts/_quote-terms-ui.js；headless Edge＋CDP，真實滑鼠鍵盤；CDP 埠 9571）：開關關閉與基準前端逐位元相同、輸入／預選／快捷／紅字／逐步進度、排序保留、儲存重載、核准後修改小視窗、預覽／PDF／Excel、XSS、四種外觀對比與手機寬度。CTERM_UI_ONLY=off|new|edit|approved|docs|look 只跑一個區段；CTERM_SHOTS 指定截圖資料夾（預設 scratchpad/ma1_shots）
+ *   [ui]      瀏覽器（scripts/_quote-terms-ui.js；headless Edge＋CDP，真實滑鼠鍵盤；CDP 埠 9580–9589）：開關關閉與基準前端逐位元相同、輸入／預選／快捷／紅字／逐步進度、排序保留、儲存重載、核准後修改小視窗、預覽／PDF／Excel、XSS、四種外觀對比與手機寬度。CTERM_UI_ONLY=off|new|edit|approved|docs|look 只跑一個區段；CTERM_SHOTS 指定截圖資料夾（預設 scratchpad/ma1_shots）
  * 測試資料只用通用字串（公開 repo：不放客戶名、人名、真實費率）。
  */
 'use strict';
@@ -18,8 +18,10 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
-const PORT_N = parseInt(process.env.CTERM_PORT || '3271', 10);
-if (!(PORT_N >= 3270 && PORT_N <= 3279)) { console.log('拒絕：本檢查只用 3270–3279 埠'); process.exit(2); }
+const PORT_N = parseInt(process.env.CTERM_PORT || '3281', 10);
+if (!(PORT_N >= 3280 && PORT_N <= 3289)) { console.log('拒絕：本檢查只用 3280–3289 埠'); process.exit(2); }
+const CDP_N = parseInt(process.env.CTERM_CDP || '9581', 10);
+if (!(CDP_N >= 9580 && CDP_N <= 9589)) { console.log('拒絕：本檢查只用 CDP 9580–9589 埠'); process.exit(2); }
 process.env.B2_PORT = String(PORT_N);
 const ROOT = path.join(__dirname, '..');
 const G = require('./lib-quote-notes-golden.js');
@@ -125,6 +127,8 @@ function groupUnit(R) {
   t('U22 validateRawItems：顛倒→TERM_INVALID 且指出第 2 列；超過 max 的列不處理', ve2 && ve2.code === 'TERM_INVALID' && /第 2 列「C」/.test(ve2.message) && QTS.validateRawItems(items0, [], true, 1) === null);
   t('U23 blockersFor：缺期間／不合法→blocker；完整→無；功能關閉→[]；標題列略過', QTS.blockersFor({ items: [{ lid: 'a', desc: 'X', termKind: 'ma' }, { lid: 'b', desc: 'Y', termKind: 'license', termFrom: '2026-01-01', termTo: '2026-02-01' }, { lid: 'c', kind: 'title', desc: 'T' }, { lid: 'd', desc: 'Z' }] }, true).map((b) => b.code).join() === 'TERM_REQUIRED' && QTS.blockersFor({ items: [{ lid: 'a', desc: 'X', termKind: 'ma' }] }, false).length === 0);
   t('U24 termChanges：類型與期間的 舊→新 文字；沒變回空；只動一般品項欄位', J(QTS.termChanges({ desc: 'a' }, { desc: 'a', termKind: 'license', termFrom: '2026-01-01', termTo: '2026-12-31' })) === J(['類型 一般→License', '期間 ∅→2026/01/01 – 2026/12/31']) && QTS.termChanges(old, Object.assign({}, old)).length === 0 && QTS.termChanges(old, Object.assign({}, old, { termTo: '2027-01-31' }))[0] === '期間 2026/01/01 – 2026/12/31→2026/01/01 – 2027/01/31');
+  const mkAp = (state) => ({ approval: state === undefined ? null : { state } });
+  t('U24b termEditState（前後端共用的狀態條件）：只有 approval.state 為 approved 且未失效為真；草稿（無 approval／none）、簽核中、退回、已失效、空值全為假', QT.termEditState(mkAp('approved')) === true && [mkAp(undefined), mkAp('none'), mkAp('pending'), mkAp('returned'), Object.assign(mkAp('approved'), { invalid: true }), {}, null, undefined, { approval: 'approved' }].every((q) => QT.termEditState(q) === false));
   // productCatalog
   const seed = PC.SEED_PRODUCT_CATALOG;
   t('U25 deriveDropdowns：不傳 opts（預設）輸出與種子一致且沒有 PRODUCT_TERMS 鍵', J(Object.keys(PC.deriveDropdowns(seed))) === J(['OPP_PRODUCTS', 'PRODUCT_SUBSELS']));
@@ -237,7 +241,7 @@ async function groupApi(R) {
     env = G.mkEnv(R, [mkq(null)]);
     u = await env.call('own1', 'PUT', '/api/quotations/:id', { id: 'Q1' }, { items: itemsOf(stored(env), (x) => (x.lid === 'i1' ? { termTo: '2027-06-30' } : {})) });
     const tl = (stored(env).timeline || []).slice(-1)[0] || {}; const lg = env.logs[env.logs.length - 1] || [];
-    t('A16 PUT 改期間：時間軸 DRAFT_SAVE 摘要含「服務期間」；稽核 UPDATE_QUOTATION 含「期間 舊→新」', u.s === 200 && tl.action === 'DRAFT_SAVE' && /服務期間/.test(tl.comment) && lg[0] === 'UPDATE_QUOTATION' && /期間 2026\/01\/01 – 2026\/12\/31→2026\/01\/01 – 2027\/06\/30/.test(lg[3]), J(tl) + J(lg));
+    t('A16 PUT 改期間（一般編輯儲存路徑）：時間軸 DRAFT_SAVE 摘要含「服務期間：第 N 列「品名」期間 舊→新」且沒有金額；稽核 UPDATE_QUOTATION 含「期間 舊→新」', u.s === 200 && tl.action === 'DRAFT_SAVE' && /服務期間/.test(tl.comment) && /服務期間：第 1 列「SAP License」期間 2026[/]01[/]01 – 2026[/]12[/]31 → 2026[/]01[/]01 – 2027[/]06[/]30/.test(tl.comment) && !/NT[$]|600000/.test(tl.comment) && lg[0] === 'UPDATE_QUOTATION' && /期間 2026\/01\/01 – 2026\/12\/31→2026\/01\/01 – 2027\/06\/30/.test(lg[3]), J(tl) + J(lg));
     u = await env.call('own1', 'PUT', '/api/quotations/:id', { id: 'Q1' }, { items: itemsOf(stored(env)) });
     t('A17 PUT 原樣再存（期間沒變）→ 稽核 UPDATE_QUOTATION 不含「期間」（時間軸同人同動作 60 秒內合併，不看）', u.s === 200 && (env.logs[env.logs.length - 1] || [])[0] === 'UPDATE_QUOTATION' && !/期間/.test((env.logs[env.logs.length - 1] || [])[3]), J(env.logs[env.logs.length - 1]));
     // 雜湊與簽章不含新欄位
@@ -279,7 +283,7 @@ async function groupApi(R) {
     const money = (q) => J(q.items.map((x) => [x.lid, x.desc, x.unit, x.qty, x.unitPrice, x.cost]));
     t('A26 金額欄位逐位元不變、品項順序不變、status 不變、updatedAt 更新、歷程沒有 INVALIDATE', money(sq) === money(before) && sq.status === before.status && sq.updatedAt !== before.updatedAt && !sq.approval.history.some((h) => h.action === 'INVALIDATE'));
     const lgT = env.logs[env.logs.length - 1] || []; const tlT = (sq.timeline || []).slice(-1)[0] || {};
-    t('A27 稽核 UPDATE_QUOTE_TERM 記下逐列 舊→新（類型、期間）且標示不影響簽核；時間軸多一筆；回應是完整序列化', lgT[0] === 'UPDATE_QUOTE_TERM' && lgT[1] === 'own1' && lgT[2] === 'QU-1' && /僅修改品項服務期間（不影響簽核）/.test(lgT[3]) && /第 1 列「SAP License」期間 2026\/01\/01 – 2026\/12\/31→2026\/02\/01 – 2027\/01\/31/.test(lgT[3]) && /第 2 列「Service MA」類型 MA→License/.test(lgT[3]) && tlT.action === 'DRAFT_SAVE' && /服務期間/.test(tlT.comment) && u.j.quoteNo === 'QU-1', J(lgT) + J(tlT));
+    t('A27 稽核 UPDATE_QUOTE_TERM 記下逐列 舊→新（類型、期間）且標示不影響簽核；時間軸多一筆 TERM_EDIT（動作『修改品項服務期間』，內文逐列 舊→新、沒有金額）；回應是完整序列化', lgT[0] === 'UPDATE_QUOTE_TERM' && lgT[1] === 'own1' && lgT[2] === 'QU-1' && /僅修改品項服務期間（不影響簽核）/.test(lgT[3]) && /第 1 列「SAP License」期間 2026\/01\/01 – 2026\/12\/31→2026\/02\/01 – 2027\/01\/31/.test(lgT[3]) && /第 2 列「Service MA」類型 MA→License/.test(lgT[3]) && tlT.action === 'TERM_EDIT' && /^不影響簽核｜/.test(tlT.comment) && /第 1 列「SAP License」期間 2026[/]01[/]01 – 2026[/]12[/]31 → 2026[/]02[/]01 – 2027[/]01[/]31/.test(tlT.comment) && /第 2 列「Service MA」類型 MA → License/.test(tlT.comment) && !/NT[$]|600000|100000/.test(tlT.comment) && u.j.quoteNo === 'QU-1', J(lgT) + J(tlT));
     const nt = env.notes.filter((n) => n[1] === 'quote_term_changed');
     t('A28 通知：只發 quote_term_changed 給已簽核的一級主管（修改者本人不收）；refId＝報價單 id；內容只有單號與公司名，沒有金額／期間文字', nt.length === 1 && nt[0][0] === 'mgr1' && nt[0][4] === 'Q1' && /QU-1/.test(nt[0][3]) && /TestCo/.test(nt[0][3]) && !/NT\$|600000|100000|2026-|2027-|2026\//.test(nt[0][2] + nt[0][3]) && env.notes.every((n) => n[1] === 'quote_term_changed'), J(env.notes));
     // 權限
@@ -292,12 +296,26 @@ async function groupApi(R) {
         t('A29 權限（' + (stt || '草稿') + '／' + label + '）：PATCH item-terms 被擋，且與 item-notes 同一個結果（狀態碼）；資料不變', a.s === n.s && (a.s === 403 || a.s === 404) && snap() === sx, a.s + '/' + n.s);
       }
     }
-    env = G.mkEnv(R, [mkq('pending')]);
+    // 狀態條件（前端按鈕與後端共用 QT.termEditState）：只有「已核准」可以；草稿、簽核中、退回、已作廢（核准撤銷後 none＋歷程）、已失效（商機作廢）一律 409，且完全不留痕
+    const stRows = [
+      ['草稿', () => mkq(null), 409, 'TERM_STATE'], ['簽核中', () => mkq('pending'), 409, 'TERM_STATE'], ['已核准', () => mkq('approved'), 200, null],
+      ['退回', () => { const q = mkq('pending'); q.approval.state = 'returned'; return q; }, 409, 'TERM_STATE'],
+      ['已作廢（核准被撤銷）', () => { const q = mkq('approved'); q.approval.state = 'none'; q.approval.history.push({ at: '2026-10-09T00:00:00.000Z', by: 'own1', action: 'INVALIDATE', comment: '', tier: '' }); return q; }, 409, 'TERM_STATE'],
+      ['已失效（商機作廢）', () => mkq('approved', { invalid: true }), 409, 'QUOTE_INVALID'],
+    ];
+    for (const [who, label] of [['own1', '擁有者'], ['admin1', '管理員']]) {
+      for (const [nm, mk, want, code] of stRows) {
+        env = G.mkEnv(R, [mk()]);
+        const sx = snap();
+        u = await patch(env, who, { items: [{ lid: 'i1', termTo: '2027-01-31' }] });
+        const mutated = snap() !== sx;
+        t('A30 狀態（' + nm + '／' + label + '）：PATCH item-terms → ' + want + (code ? ' ' + code : '') + (want === 200 ? '，有稽核與通知' : '，資料不變、沒有稽核與通知'),
+          u.s === want && (code ? u.j.code === code : true) && (want === 200 ? (mutated && env.logs.some((l) => l[0] === 'UPDATE_QUOTE_TERM')) : (!mutated && !env.logs.some((l) => l[0] === 'UPDATE_QUOTE_TERM') && env.notes.length === 0)), u.s + J(u.j && u.j.code));
+      }
+    }
+    env = G.mkEnv(R, [mkq('approved')]);
     u = await patch(env, 'admin1', { items: [{ lid: 'i1', termTo: '2027-01-31' }] });
-    t('A30 管理員可改（簽核中）；通知給目前簽核人（一級主管）與業務擁有者（管理員是修改者）；簽核狀態不變', u.s === 200 && stored(env).approval.state === 'pending' && env.notes.filter((n) => n[1] === 'quote_term_changed').map((n) => n[0]).sort().join() === 'mgr1,own1', u.s + J(env.notes.map((n) => n[0])));
-    env = G.mkEnv(R, [mkq(null)]);
-    u = await patch(env, 'own1', { items: [{ lid: 'i1', termTo: '2027-01-31' }] });
-    t('A31 草稿 + 擁有者改自己的單 → 200、有稽核與時間軸，沒有通知（沒有簽核人，修改者就是擁有者）', u.s === 200 && (env.logs.slice(-1)[0] || [])[0] === 'UPDATE_QUOTE_TERM' && env.notes.length === 0);
+    t('A31 已核准 + 管理員改：通知已簽核的一級主管與業務擁有者（管理員是修改者）；簽核狀態不變', u.s === 200 && stored(env).approval.state === 'approved' && env.notes.filter((n) => n[1] === 'quote_term_changed').map((n) => n[0]).sort().join() === 'mgr1,own1', u.s + J(env.notes.map((n) => n[0])));
     // 不合格請求
     env = G.mkEnv(R, [mkq('approved', { items: [{ lid: 't1', kind: 'title', desc: 'T' }].concat(mkQuote().items) })]);
     const rejects = [
@@ -431,7 +449,7 @@ async function groupCompat(R) {
   }
 }
 
-// ═════════════════════════ [server] 真實伺服器（臨時帳號、假資料；3270–3279） ═════════════════════════
+// ═════════════════════════ [server] 真實伺服器（臨時帳號、假資料；3280–3289） ═════════════════════════
 async function groupServer() {
   const H = require('./_b2-harness');
   const { ok, eq } = H;
@@ -478,6 +496,14 @@ async function groupServer() {
     r = await H.http('_s_u2', 'PATCH', `/api/quotations/${qid}/item-terms`, { items: [{ lid: 'x', termTo: '2027-01-01' }] });
     ok(r.status === 403 || r.status === 404, 'S12 別的業務 PATCH → 403/404 ' + r.status);
     const lid = (await H.http('_s_u1', 'GET', `/api/quotations/${qid}`)).json.items[0].lid;
+    r = await H.http('_s_u1', 'PATCH', `/api/quotations/${qid}/item-terms`, { items: [{ lid, termTo: '2027-06-30' }] });
+    ok(r.status === 409 && r.json.code === 'TERM_STATE' && (await reg('UPDATE_QUOTE_TERM')).length === 0, 'S12b 草稿單（擁有者）PATCH item-terms → 409 TERM_STATE，沒有稽核 ' + r.status + r.text.slice(0, 160));
+    // 把這張單改成「已核准」（停機改資料檔、再啟動），其餘照舊
+    await H.stopServer();
+    { const dp = path.join(ROOT, 'data.json'); const dj = JSON.parse(fs.readFileSync(dp, 'utf8')); const qq = dj.quotations.find((x) => x.id === qid); const QAs = require(path.join(ROOT, 'lib/quoteApproval.js'));
+      qq.approval = { state: 'approved', rulesVersion: QAs.RULES_VERSION, hash: QAs.contentHash(qq), submittedAt: '2026-10-08T01:00:00.000Z', submittedBy: '_s_u1', derived: null, steps: [{ tier: 'mgr1', label: '一級主管', status: 'approved', assignee: '_s_admin', by: '_s_admin', at: '2026-10-08T02:00:00.000Z', comment: '' }], cur: 1, board: null, history: [{ at: '2026-10-08T01:00:00.000Z', by: '_s_u1', action: 'SUBMIT', comment: '', tier: '' }, { at: '2026-10-08T02:00:00.000Z', by: '_s_admin', action: 'APPROVE', comment: '', tier: 'mgr1' }] };
+      fs.writeFileSync(dp, JSON.stringify(dj)); }
+    await H.restartKeep({ env: { MA_TRACKING: '1' } });
     r = await H.http('_s_admin', 'PATCH', `/api/quotations/${qid}/item-terms`, { items: [{ lid, termTo: '2027-06-30' }] });
     ok(r.status === 200 && r.json.items[0].termTo === '2027-06-30', 'S13 管理員 PATCH → 200，回應是更新後的報價單 ' + r.text.slice(0, 200));
     logs = await reg('UPDATE_QUOTE_TERM');
@@ -535,6 +561,11 @@ const MUTS = [
   { name: 'M12 PATCH 寫入前不檢查不變量且改到金額欄位（把 qty 設 9）', file: 'lib/quoteRoutes.js', find: "const n = Object.assign({}, it, { termKind: t.kind, termFrom: t.from, termTo: t.to });", rep: "const n = Object.assign({}, it, { termKind: t.kind, termFrom: t.from, termTo: t.to, qty: 9 });", expect: /A25|A26/ },
   { name: 'M13 標題列也存期間欄位', file: 'lib/quoteRoutes.js', find: "return { lid: klid, kind, desc: sanitizeStr(r && r.desc, 200) };", rep: "return { lid: klid, kind, desc: sanitizeStr(r && r.desc, 200), termKind: 'ma', termFrom: '2026-01-01', termTo: '2026-01-02' };", expect: /A2 /, apiOnly: true },
   { name: 'M14 商品目錄類型不正規化（保留任意值）', file: 'lib/productCatalog.js', find: "if (k !== 'none') n.termKind = k; else delete n.termKind;", rep: "if (it.termKind !== undefined) n.termKind = it.termKind; else delete n.termKind;", expect: /U27/ },
+  { name: 'M16 拿掉後端狀態條件（草稿／簽核中也能改期間）', file: 'lib/quoteRoutes.js', find: "if (!QT.termEditState(q)) return fail(res, 409, 'TERM_STATE'", rep: "if (false) return fail(res, 409, 'TERM_STATE'", expect: /A30/ },
+  { name: 'M17 時間軸事件不放舊→新', file: 'lib/quoteRoutes.js', find: "'不影響簽核｜' + lines.map(x => x.split('→').join(' → ')).join('；')", rep: "'不影響簽核'", expect: /A27/ },
+  { name: 'M18 一般編輯儲存的摘要不放期間舊→新', file: 'lib/quoteRoutes.js', find: "if (fields.has('服務期間')) out.push('服務期間：' + termDiffLines(a.items, b.items).join('、'));", rep: '', expect: /A16/ },
+  { name: 'M19 共用的狀態條件永遠為真', file: '_client/quote-terms.js', find: "return !!(q && !q.invalid && q.approval && q.approval.state === 'approved');", rep: 'return !!q;', expect: /U24b|A30/ },
+  { name: 'M20 TERM_EDIT 不是時間軸事件（被丟掉）', file: 'lib/quoteRoutes.js', find: "'COST_REOPEN', 'TERM_EDIT'];", rep: "'COST_REOPEN'];", expect: /A27/ },
   { name: 'M15 稽核差異不含商品類型', file: 'lib/productCatalog.js', find: "if (ov.kind !== nv.kind) out.push(", rep: "if (false) out.push(", expect: /U31/ },
 ];
 function copyTree(dst) {
@@ -578,6 +609,11 @@ const UI_MUTS = [
   { name: 'UM4 儲存前的前端期間驗證拿掉', file: 'quote.js', find: "if (tp) { switchQuoteTab('info');", rep: "if (false) { switchQuoteTab('info');", section: 'edit', expect: /UI-E5/ },
   { name: 'UM5 客戶預覽不顯示服務期間行', file: 'quote-preview.js', find: "const tl = (typeof QTERMS === 'object' && QTERMS) ?", rep: 'const tl = (false) ?', section: 'docs', expect: /UI-V1/ },
   { name: 'UM6 簽核面板不顯示服務期間', file: 'quote-approval.js', find: 'const tlHtml = tl ? `', rep: 'const tlHtml = false ? `', section: 'approved', expect: /UI-A12/ },
+  { name: 'UM8 服務期間按鈕不看簽核狀態（簽核中／草稿也顯示）', file: 'quote.js', find: 'QTERMS.termEditState(q) && quoteHasTermItems(q)', rep: 'quoteHasTermItems(q)', section: 'approved', expect: /UI-A3b|UI-A4b/ },
+  { name: 'UM9 時間軸沒有「修改品項服務期間」動作名稱', file: 'quote-approval.js', find: "TERM_EDIT: '修改品項服務期間',", rep: '', section: 'approved', expect: /UI-A13b/ },
+  { name: 'UM10 一年／三年不放進同一個群組 class', file: 'quote.js', find: "const qk = _qtEl('span', 'qterm-qk');", rep: "const qk = _qtEl('span', 'x-qk');", section: 'edit', expect: /UI-W3|UI-W4/ },
+  { name: 'UM11 modal 不加寬（維持 860px）', file: 'quote.js', find: "(quoteTermsOn() ? '1240px' : '860px')", rep: "'860px'", section: 'edit', expect: /UI-W3/ },
+  { name: 'UM12 簽核面板時間軸不渲染詳情文字（看不到期間舊→新）', file: 'quote-approval.js', find: "e(x.comment || '') + (Number(x.count) > 1", rep: "'' + (Number(x.count) > 1", section: 'edit', expect: /UI-E7b/ },
   { name: 'UM7 牌價簿空白列判斷不看類型', file: 'quote-pricebook.js', find: '  if (it.termKind) return false;', rep: '', section: 'new', expect: /UI-N15|UI-N2[0-9]/ },
 ];
 async function groupMutUi() {
@@ -591,7 +627,7 @@ async function groupMutUi() {
       const src = fs.readFileSync(path.join(ROOT, '_client', m.file), 'utf8').replace(/\r\n/g, '\n');
       if (!src.includes(m.find)) { console.log('  ✗ 變異錨點不存在：' + m.name); undetected++; continue; }
       res = [];
-      try { await U.run({ H, t, ROOT, base: exb.dir, shots: null, cdp: 9571, mut: m.name, mutFiles: { [m.file]: src.replace(m.find, () => m.rep) } }, m.section); } catch (e) { t('(ui 例外) ' + String(e && e.message).slice(0, 100), false); }
+      try { await U.run({ H, t, ROOT, base: exb.dir, shots: null, cdp: CDP_N, mut: m.name, mutFiles: { [m.file]: src.replace(m.find, () => m.rep) } }, m.section); } catch (e) { t('(ui 例外) ' + String(e && e.message).slice(0, 100), false); }
       const failed = res.filter((x) => !x[1]);
       const hit = failed.some((x) => m.expect.test(x[0]));
       console.log((hit ? '  ✓ ' : '  ✗ ') + m.name + '：' + failed.length + ' 項變紅' + (hit ? '' : '（預期的測試沒變紅）') + (failed.length ? '｜例：' + failed[0][0].slice(0, 60) : ''));
@@ -625,7 +661,7 @@ function report(title) {
     res = [];
     try {
       const shots = process.env.CTERM_SHOTS || path.join(ROOT, '..', 'ma1_shots');
-      await U.run({ H, t, ROOT, base: exb.dir, shots, cdp: 9571, mut: null }, process.env.CTERM_UI_ONLY || '');
+      await U.run({ H, t, ROOT, base: exb.dir, shots, cdp: CDP_N, mut: null }, process.env.CTERM_UI_ONLY || '');
     } catch (e) { t('(ui 例外) ' + (e && e.stack || e).toString().slice(0, 400), false); }
     finally { await H.finish(); exb.cleanup(); }
     fails += report('ui');

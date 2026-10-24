@@ -146,7 +146,16 @@
     return '';
   }
 
+  /**
+   * 核准後修改服務期間（item-terms）的狀態條件——前端按鈕與後端端點共用同一條，兩邊不會不一致。
+   * 只有「已核准」且未失效的單可以；草稿、退回、簽核中、已作廢（核准被撤銷後 state 為 none）都不行（那些狀態直接編輯報價單即可）。
+   */
+  function termEditState(q) {
+    return !!(q && !q.invalid && q.approval && q.approval.state === 'approved');
+  }
+
   return {
+    termEditState: termEditState,
     KINDS: KINDS, KIND_LABEL: KIND_LABEL, YEAR_MIN: YEAR_MIN, YEAR_MAX: YEAR_MAX,
     parseKind: parseKind, parseCatalogKind: parseCatalogKind, isRealDate: isRealDate,
     addDays: addDays, addMonths: addMonths, quickEnd: quickEnd, span: span, spanText: spanText,

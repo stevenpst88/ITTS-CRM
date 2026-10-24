@@ -644,8 +644,8 @@ function _qActionButtons(q) {
   if (p.canWithdraw) out.push(b('withdraw', '↩ 撤回', '', '撤回後可修改，已簽的關卡作廢'));
   // 簽核中（整張鎖定）或已核准的單：只修改各品項的「說明／備註」（不影響簽核，會留下紀錄）。擁有者與管理員才有
   if ((p.isOwner || me.isAdmin) && a && (a.state === 'pending' || a.state === 'approved')) out.push(b('notes', '📝 說明／備註', '', '只修改各品項的說明與備註（印在客戶報價單上）：不影響金額與簽核，會留下修改紀錄'));
-  // 簽核中／已核准的單改服務期間（License／MA 的期間常在核准後才確定或延期）：MA_TRACKING=1 且有 License／MA 品項（或品名像）才顯示，擁有者與管理員才有
-  if (quoteTermsOn() && (p.isOwner || me.isAdmin) && a && (a.state === 'pending' || a.state === 'approved') && quoteHasTermItems(q)) out.push(b('terms', '📅 服務期間', '', '只修改 License／MA 品項的服務期間：不影響金額與簽核（不需重新簽核），但客戶報價單上的期間會立即改變，會留下紀錄並通知已簽核的人'));
+  // 已核准的單改服務期間，狀態條件與後端共用 QTERMS.termEditState（License／MA 的期間常在核准後才確定或延期）：MA_TRACKING=1 且有 License／MA 品項（或品名像）才顯示，擁有者與管理員才有
+  if (quoteTermsOn() && (p.isOwner || me.isAdmin) && QTERMS.termEditState(q) && quoteHasTermItems(q)) out.push(b('terms', '📅 服務期間', '', '只修改 License／MA 品項的服務期間：不影響金額與簽核（不需重新簽核），但客戶報價單上的期間會立即改變，會留下紀錄並通知已簽核的人'));
   if (p.canApprove || p.canReturn) {
     out.push(b('approve', '✍ 簽核', 'btn-primary', '開啟簽核面板'));
   } else if ((a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) || (p.canSeePrice !== false && q.timelineCount > 0)) {   // 草稿也有編輯時間軸（q.timeline）可看
@@ -1124,7 +1124,9 @@ function switchQuoteTab(tabName) {
   });
   // 毛利與簽核路徑頁籤放成本明細（欄位多：項目／廠商／說明／單位／數量／單價／小計／控制鈕），表單加寬；報價資訊頁籤維持原寬度
   const modal = document.querySelector('#quoteModalOverlay > .modal');
-  if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : '860px';
+  // 服務期間功能開啟時，報價資訊頁籤加寬到 1240px（視窗窄時仍受 96% 限制）：品項列多了「類型＋起迄日」，新增模式左側又有逐步進度欄，原寬度下品名欄只剩約 150px（長品名被截）
+  if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : (quoteTermsOn() ? '1240px' : '860px');
+  if (modal) modal.classList.toggle('qt-wide', tabName !== 'pnl' && quoteTermsOn());   // 新增模式的逐步填寫規則（quote-steps.js）有 max-width:1000px !important，這個 class 在 style.css 蓋回 1240px
   if (tabName === 'pnl') renderPnlTab();
   if (typeof QSteps === 'object' && QSteps) QSteps.onTab(tabName);   // 逐步填寫：只在新單分步時作用
 }
@@ -2410,6 +2412,8 @@ function quoteTermBlock(it, opts) {
   const from = mk('qterm-from', '起', '服務期間起日', it && it.termFrom);
   const to = mk('qterm-to', '迄', '服務期間迄日', it && it.termTo);
   const changed = function () { quoteTermRefresh(box); if (typeof opts.onChange === 'function') opts.onChange(box); };
+  // 一年／三年／共 N 個月放進同一個不可拆的群組：版面不夠時整組一起換行，不會再出現「一年在迄日旁、三年掉到下一行」（新增與編輯同一個函式、同一組 class）
+  const qk = _qtEl('span', 'qterm-qk');
   [[1, '一年'], [3, '三年']].forEach(function (q) {
     const b = _qtEl('button', 'qterm-quick', q[1]);
     b.type = 'button';
@@ -2419,10 +2423,11 @@ function quoteTermBlock(it, opts) {
       to.value = QTERMS.quickEnd(from.value, q[0]);
       changed();
     });
-    dates.appendChild(b);
+    qk.appendChild(b);
   });
   const span = _qtEl('span', 'qterm-span'); span.setAttribute('aria-live', 'polite');
-  dates.appendChild(span);
+  qk.appendChild(span);
+  dates.appendChild(qk);
   box.appendChild(dates);
   const err = _qtEl('div', 'qterm-err'); err.setAttribute('aria-live', 'polite'); err.hidden = true;
   box.appendChild(err);
@@ -2517,12 +2522,14 @@ function renderQuoteItems(items) {
 
   // 服務期間（License／MA）：每個一般品項在品名欄下方多一組「類型＋起迄日」。要在下面「輸入事件」綁定之前加好，日期欄的輸入才會同步重算合計與逐步進度。
   // 新增列（還沒有 lid）且使用者沒手動選過類型時，品名輸入完（離開欄位）若含 License／MA／維護／授權就預選對應類型（只是建議，可改；改過一次之後不再自動動它）
+  { const tbl = tbody.closest('table'); if (tbl) tbl.classList.toggle('qt-on', quoteTermsOn()); }   // 服務期間開啟時品項表欄寬較緊湊（style.css .qt-on），把寬度讓給品名
   if (quoteTermsOn()) {
     const trs = tbody.querySelectorAll('tr');
     items.forEach(function (it, i) {
       const row = trs[i];
       if (!row || it.kind === 'title' || it.kind === 'subtotal') return;
       if (it.tkTouched === true) row.dataset.tkTouched = '1';
+      { const di = row.querySelector('.qi-desc'); if (di) { di.title = di.value; di.addEventListener('input', function () { di.title = di.value; }); } }   // 長品名被截斷時，滑鼠停留可看全文
       const box = quoteTermBlock(it, {
         onChange: function () { updateQuoteTotals(); },
         onKindChange: function () { row.dataset.tkTouched = '1'; },
@@ -2979,7 +2986,7 @@ async function openQuoteNotesDialog(id) {
   ov.className = 'modal-overlay open';
   ov.id = 'qNotesOverlay';
   ov.style.zIndex = '125';
-  const state = q.approval && q.approval.state === 'pending' ? '簽核中' : '已核准';
+  const state = '已核准';
   ov.innerHTML = '<div class="modal q-dlg q-dlg-wide" role="dialog" aria-modal="true" aria-labelledby="qNotesTitle">' +
     '<div class="modal-header"><h2 id="qNotesTitle">修改品項說明／備註　' + escapeHtml(q.quoteNo || '') + '</h2><button type="button" class="modal-close" data-qn="x" aria-label="關閉">&#10005;</button></div>' +
     '<div class="modal-body q-dlg-body">' +

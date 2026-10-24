@@ -5240,6 +5240,19 @@ body .qterm .qterm-bad { border-color:var(--qt-err); box-shadow:0 0 0 2px color-
 .qterm .qterm-quick { min-height:30px; padding:2px 11px; font-size:12.5px; border-radius:15px; cursor:pointer; border:1px solid var(--qt-accent); background:var(--qt-chip); color:var(--qt-chip-fg); font-weight:600; }
 .qterm .qterm-quick:hover { filter:brightness(.96); }
 .qterm-span { color:var(--qt-sub); font-weight:600; white-space:nowrap; }
+.qterm-qk { display:flex; align-items:center; flex:1 0 100%; flex-wrap:nowrap; gap:6px 8px; }   /* 一年／三年／共 N 個月 不可拆開，且一律獨立一行（在起迄日下方）：排版與欄寬無關，新增與編輯模式完全一致 */
+.qterm-dates { flex:1 0 100%; }
+body #quoteModalOverlay > .modal.qs-mode.qs-info.qt-wide { max-width:1240px !important; }   /* 蓋過 quote-steps.js 的 1000px */   /* 類型一行、起迄日一行、快捷一行 */
+.qterm .qterm-quick { white-space:nowrap; flex:0 0 auto; }   /* 不可一字一行（窄欄曾把「一年」折成直排） */
+/* 品項表欄寬緊湊版（只在服務期間開啟時；table 有 .qt-on）：固定欄略縮，把寬度讓給品名 */
+.quote-items-table.qt-on thead th:nth-child(4) { width:52px !important; }
+.quote-items-table.qt-on thead th:nth-child(5) { width:62px !important; }
+.quote-items-table.qt-on thead th:nth-child(6), .quote-items-table.qt-on thead th:nth-child(7) { width:100px !important; }
+.quote-items-table.qt-on thead th:nth-child(8) { width:80px !important; }
+.quote-items-table.qt-on thead th:nth-child(9) { width:70px !important; }
+.quote-items-table.qt-on .qi-unit { width:46px !important; }
+.quote-items-table.qt-on .qi-qty { width:54px !important; }
+.quote-items-table.qt-on .qi-price { width:92px !important; }
 .qterm-err { flex:1 0 100%; color:var(--qt-err); font-size:12.5px; font-weight:600; }
 .qterm-hint { flex:1 0 100%; color:var(--qt-sub); font-size:12px; }
 .qterm-ovl { z-index:125; }
