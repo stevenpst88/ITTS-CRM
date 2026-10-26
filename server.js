@@ -27,6 +27,7 @@ const secretBox = require('./lib/secretBox');
 const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（與稽核錨點 webhook 共用）
 const productCatalog = require('./lib/productCatalog');
 const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片自動轉客戶（WON_AUTO_CUSTOMER=0 關閉）
+const NTA = require('./lib/notifActions');   // 鈴鐺：清除通知（DELETE /api/notifications）與合約到期提醒「已處理」（POST /api/contract-reminders/:id/dismiss）的純邏輯
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
@@ -7322,27 +7323,8 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // ── 套用與前端相同的 contractStatus 邏輯 ──
-  const calcStatus = (c) => {
-    if (!c.endDate) return null;
-    const end     = new Date(c.endDate);
-    const endDiff = Math.ceil((end - today) / 86400000);
-    let effectiveEnd, isRenewed = false;
-
-    if (endDiff < 0 && c.renewDate) {
-      effectiveEnd = new Date(c.renewDate);
-      isRenewed    = true;
-    } else if (endDiff < 0) {
-      return { key: 'expired', days: Math.abs(endDiff), isRenewed: false };
-    } else {
-      effectiveEnd = end;
-    }
-
-    const diff = Math.ceil((effectiveEnd - today) / 86400000);
-    if (diff <= 25)  return { key: 'urgent',   days: diff, isRenewed };
-    if (diff <= 90)  return { key: 'expiring', days: diff, isRenewed };
-    return null;   // 有效，不需要提醒
-  };
+  // ── 套用與前端相同的 contractStatus 邏輯（共用 lib/notifActions.contractReminderStatus，與 poll-bundle 同一份）──
+  const calcStatus = (c) => NTA.contractReminderStatus(c, today);
 
   const reminders = [];
   contracts.forEach(c => {
@@ -7375,6 +7357,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
       days:       st.days,
       isRenewed:  st.isRenewed,
       contractId: c.id,
+      contractType: c.type || 'ERP_MA',   // 鈴鐺點擊導向用（ERP_MA／SAP_MA／SERVICE_MA 各有自己的合約子頁）
       company:    c.company,
       product:    c.product || '',
       endDate:    c.endDate,
@@ -7387,7 +7370,30 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
   const ORDER = { expired: 0, contract_expired: 0, contract_urgent: 1, contract_expiring: 2 };
   reminders.sort((a, b) => (ORDER[a.type] ?? 9) - (ORDER[b.type] ?? 9) || a.days - b.days);
 
-  res.json(reminders);
+  // 本人已按「已處理」且迄日沒變的合約不再提醒（沒有任何紀錄時原陣列原樣回傳）
+  res.json(NTA.filterDismissed(data.contractReminderDismissals, username, reminders));
+});
+
+// 動態合約到期提醒「已處理」：提醒是每次由合約即時推導的（沒有儲存的通知可刪），所以只記一筆旁路紀錄
+// data.contractReminderDismissals[`${本人}|${合約 id}|${迄日}`] = ISO 時間；GET 端（poll-bundle、/api/contract-reminders）據此過濾。
+// 鍵含迄日：合約續約改了迄日，鍵就對不上，提醒自動重新出現。只有「POST」會寫入與清理（上限 5000 筆、迄日早於今天 400 天以上者清掉）。
+// 可視判斷與提醒本身完全相同（getViewableOwners('contracts')＋MA 開啟時排除 SERVICE_MA）；看不到、不存在、目前沒有提醒的合約一律同樣的 404，不洩漏合約是否存在。
+// 只影響本人（鍵含 username），不改合約、不通知任何人，所以不寫稽核（與「標已讀」同性質的個人偏好）。
+app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
+  const { username, role } = req.session.user;
+  const NOT_FOUND = () => res.status(404).json({ error: '找不到這筆合約提醒（可能已處理、合約已刪除，或你沒有檢視權限）' });
+  if (role === 'secretary') return NOT_FOUND();   // 秘書不看合約，也沒有合約提醒
+  const id = req.params.id;
+  if (!NTA.isValidId(id)) return NOT_FOUND();
+  const data = db.load();
+  const owners = getViewableOwners(req, 'contracts');
+  const c = (data.contracts || []).find(x => x.id === id && owners.includes(x.owner));
+  if (!c) return NOT_FOUND();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (!NTA.contractReminderStatus(c, today)) return NOT_FOUND();   // 目前沒有這筆提醒（已續約、尚未進入 90 天…）
+  NTA.recordDismissal(data, username, c.id, c.endDate, new Date().toISOString());
+  db.save(data);
+  res.json({ success: true });
 });
 
 // ── 通知 API ─────────────────────────────────────────────
@@ -7416,24 +7422,7 @@ app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
     const owners = getViewableOwners(req, 'contracts');
     const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const calcStatus = (c) => {
-      if (!c.endDate) return null;
-      const end     = new Date(c.endDate);
-      const endDiff = Math.ceil((end - today) / 86400000);
-      let effectiveEnd, isRenewed = false;
-      if (endDiff < 0 && c.renewDate) {
-        effectiveEnd = new Date(c.renewDate);
-        isRenewed    = true;
-      } else if (endDiff < 0) {
-        return { key: 'expired', days: Math.abs(endDiff), isRenewed: false };
-      } else {
-        effectiveEnd = end;
-      }
-      const diff = Math.ceil((effectiveEnd - today) / 86400000);
-      if (diff <= 25)  return { key: 'urgent',   days: diff, isRenewed };
-      if (diff <= 90)  return { key: 'expiring', days: diff, isRenewed };
-      return null;
-    };
+    const calcStatus = (c) => NTA.contractReminderStatus(c, today);
     contracts.forEach(c => {
       const st = calcStatus(c);
       if (!st) return;
@@ -7461,6 +7450,7 @@ app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
         days:       st.days,
         isRenewed:  st.isRenewed,
         contractId: c.id,
+        contractType: c.type || 'ERP_MA',   // 同 /api/contract-reminders
         company:    c.company,
         product:    c.product || '',
         endDate:    c.endDate,
@@ -7470,6 +7460,8 @@ app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
     });
     const ORDER = { expired: 0, contract_expired: 0, contract_urgent: 1, contract_expiring: 2 };
     contractReminders.sort((a, b) => (ORDER[a.type] ?? 9) - (ORDER[b.type] ?? 9) || a.days - b.days);
+    // 本人已按「已處理」且迄日沒變的合約不再提醒。必須在序列化與 ETag 計算之前過濾，才不會在處理後被 304 沿用舊內容；沒有任何紀錄時原陣列原樣回傳
+    contractReminders = NTA.filterDismissed(data.contractReminderDismissals, username, contractReminders);
   }
 
   // ── 3. 生日提醒 ──
@@ -7533,6 +7525,25 @@ app.put('/api/notifications/read-all', requireAuth, (req, res) => {
   const data = db.load();
   if (!data.notifications) return res.json({ success: true });
   data.notifications.filter(n => n.to === username).forEach(n => n.read = true);
+  db.save(data);
+  res.json({ success: true });
+});
+
+// 清除（解除）通知：只能動「自己的」。已讀只是取消未讀樣式、項目仍留在清單；使用者要把處理完的通知移走就用這兩支。
+// 不自動刪除已讀（避免誤刪歷史）。通知本身不是稽核資料，所以不寫稽核。注意 /read 必須先於 /:id 註冊（否則 "read" 會被當成通知 id）。
+app.delete('/api/notifications/read', requireAuth, (req, res) => {
+  const username = req.session.user.username;
+  const data = db.load();
+  const removed = NTA.removeRead(data, username);
+  if (removed) db.save(data);
+  res.json({ success: true, removed });
+});
+
+app.delete('/api/notifications/:id', requireAuth, (req, res) => {
+  const username = req.session.user.username;
+  const data = db.load();
+  // 找不到與「不是自己的」回同一個 404，不洩漏他人通知是否存在
+  if (!NTA.removeNotification(data, req.params.id, username)) return res.status(404).json({ error: '找不到這則通知' });
   db.save(data);
   res.json({ success: true });
 });
