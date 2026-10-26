@@ -5174,3 +5174,48 @@ body.glass .scu-box { background: var(--g-surface-strong); --scu-fg: var(--g-tex
   .scu-search { max-width: none; }
   .scu-copy { flex: 1; min-height: 44px; }
 }
+
+/* ══════════════════════════════════════════════════════
+   鈴鐺：清除／已處理／導向（feat/bell-actions；前綴 .nt-*）
+   ✕＝清除一則儲存型通知；「清除已讀」在頁首；合約提醒列的「開啟合約」「已處理」。
+   四種外觀（淺／深 × 玻璃／一般）的文字對比都 ≥ 4.5:1，由 scripts/check-notif-actions.js 以實際算出的顏色驗證；
+   按鈕自己帶不透明底色與字色，不依賴底下玻璃的色彩。無 inline style、無 on* 屬性。
+   ══════════════════════════════════════════════════════ */
+.notif-item .notif-content { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+.nt-clear-read { white-space: nowrap; }
+.nt-x {
+  flex: 0 0 auto; align-self: flex-start; margin: -4px -6px -4px auto;
+  min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: #4a5260; font-size: 15px; line-height: 1; cursor: pointer;
+}
+.nt-x:hover { background: #dfe3ea; color: #9b1c1c; }
+.nt-hint { padding: 6px 16px; font-size: 11px; line-height: 1.5; color: #4a5260; border-bottom: 1px solid #f0f0f0; }
+.nt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nt-btn {
+  min-height: 28px; padding: 3px 12px; border-radius: 6px; border: 1px solid #174ea6;
+  background: #fff; color: #174ea6; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.nt-btn:hover { background: #e8f0fe; }
+.nt-btn.nt-done { background: #174ea6; color: #fff; }
+.nt-btn.nt-done:hover { background: #123f86; }
+.nt-btn:disabled { opacity: .6; cursor: default; }
+.nt-x:focus-visible, .nt-btn:focus-visible, .notif-read-all:focus-visible, #notifList:focus-visible { outline: 2px solid #1a56b8; outline-offset: 2px; }
+#notifList:focus { outline: none; }
+body.dark .nt-x { color: #b4bdc9; }
+body.dark .nt-x:hover { background: #30363d; color: #ff9b94; }
+body.dark .nt-hint { color: #b4bdc9; border-bottom-color: #30363d; }
+body.dark .nt-btn { background: #21262d; color: #8ab8ff; border-color: #4a76b8; }
+body.dark .nt-btn:hover { background: #2d333b; }
+body.dark .nt-btn.nt-done { background: #1d5fd1; color: #fff; border-color: #1d5fd1; }
+body.dark .nt-btn.nt-done:hover { background: #2a6ee0; }
+body.dark .nt-x:focus-visible, body.dark .nt-btn:focus-visible, body.dark .notif-read-all:focus-visible, body.dark #notifList:focus-visible { outline-color: #8ab8ff; }
+body.dark .notif-read-all { color: #8ab8ff; }   /* 原本 #1a73e8 壓在深色頁首底（#21262d）只有約 3.7:1 */
+@media (max-width: 480px) {
+  /* 原本 360px 寬、靠右對齊鈴鐺：在 375px 螢幕左側被切掉 6px、320px 被切掉 40px。與玻璃模式的 6-4 同一做法：貼齊畫面兩側 */
+  .topbar { position: relative; }
+  .notif-bell-wrap { position: static; }
+  .notif-dropdown { position: absolute; left: 8px; right: 8px; top: calc(100% + 6px); width: auto; max-width: none; }
+  .nt-x { min-width: 40px; min-height: 40px; }
+  .nt-btn { min-height: 36px; padding: 4px 14px; }
+  .notif-header { gap: 6px; }
+}
