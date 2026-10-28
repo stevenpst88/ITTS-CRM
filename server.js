@@ -8730,6 +8730,75 @@ app.get('/api/companies', requireAuth, (req, res) => {
   res.json(companies);
 });
 
+// ── 企業主檔「篩選 TA」（EDM 用）：公司條件 → 聯絡人名單；範圍＝呼叫者本來看得到的名片／公司，客戶池排除 ──
+// 查詢（數量）所有看得到企業主檔的人都可用；預覽 Email 與下載要有「可下載客戶名單」權限（與 GET /api/export 同一道）。邏輯在 lib/companyTa.js。
+const companyTa = require('./lib/companyTa');
+function taCanDownload(req) {
+  const u = (loadAuth().users || []).find(x => x.username === req.session.user.username);
+  return !!(u && (u.canDownloadContacts || u.role === 'admin'));
+}
+function taScope(req) {
+  const data = db.load();
+  const usersByName = {};
+  (loadAuth().users || []).forEach(u => { usersByName[u.username] = u; });
+  const owners = new Set(getViewableOwners(req, 'contacts'));
+  let contacts = (data.contacts || []).filter(c => !c.deleted && c.owner !== POOL_USERNAME && owners.has(c.owner));
+  contacts = filterByBu(req, contacts);
+  contacts = filterByViewGroup(req, contacts, c => c.company);
+  const countById = {};
+  contacts.forEach(c => { if (c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
+  const seeAll = isAdminOrMarketing(req);
+  const companies = (data.companies || []).filter(m => seeAll || countById[m.id]);
+  const oOwners = new Set(getViewableOwners(req, 'opportunities'));
+  const opps = filterByBu(req, (data.opportunities || []).filter(o => oOwners.has(o.owner)));
+  return { data, usersByName, contacts, companies, opps, buUnion: (names, imp) => companyBuUnion(names, imp, usersByName) };
+}
+app.get('/api/companies/ta/options', requireAuth, (req, res) => {
+  const s = taScope(req);
+  const tally = key => { const m = new Map(); s.companies.forEach(c => { const v = String(c[key] || '').trim(); if (v) m.set(v, (m.get(v) || 0) + 1); }); return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => a.name.localeCompare(b.name, 'zh-TW')); };
+  const label = un => (s.usersByName[un] ? userLabel(s.usersByName[un]) : un);
+  const svc = new Set(), resp = new Set();
+  s.contacts.forEach(c => { if (!c.isPlaceholder && c.owner) svc.add(c.owner); });
+  s.companies.forEach(c => (Array.isArray(c.responsibleSales) ? c.responsibleSales : []).forEach(u => resp.add(u)));
+  const people = set => [...set].map(username => ({ username, label: label(username) })).sort((a, b) => a.label.localeCompare(b.label, 'zh-TW'));
+  res.json({ industries: tally('industry'), regions: tally('region'), bus: VALID_BUS.slice(), services: people(svc), responsible: people(resp), canDownload: taCanDownload(req), total: s.companies.length });
+});
+app.post('/api/companies/ta/query', requireAuth, (req, res) => {
+  const s = taScope(req);
+  const r = companyTa.run({ companies: s.companies, contacts: s.contacts, opps: s.opps, buUnion: s.buUnion, filters: (req.body || {}).filters, opts: (req.body || {}).opts });
+  const canDownload = taCanDownload(req);
+  const preview = canDownload ? r.rows.slice(0, 20).map(x => ({ company: x.company.name || '', contact: x.contact.name || '', title: x.contact.title || '', email: x.contact.email || '' })) : [];
+  res.json({ stats: r.stats, canDownload, preview });
+});
+app.post('/api/companies/ta/export', requireAuth, (req, res) => {
+  if (!taCanDownload(req)) return res.status(403).json({ error: '您沒有下載客戶名單的權限' });
+  const s = taScope(req);
+  const body = req.body || {};
+  const r = companyTa.run({ companies: s.companies, contacts: s.contacts, opps: s.opps, buUnion: s.buUnion, filters: body.filters, opts: body.opts });
+  const mode = body.mode === 'companies' ? 'companies' : 'contacts';
+  const buOf = new Map(r.matched.map(x => [x.company.id, x.bu.join('/')]));
+  const capOf = m => { const n = Number(m.capital); return Number.isFinite(n) && n > 0 ? n : ''; };
+  let rows;
+  if (mode === 'companies') {
+    const cnt = {}; r.rows.forEach(x => { cnt[x.company.id] = (cnt[x.company.id] || 0) + 1; });
+    rows = r.matched.map(x => ({ '公司名稱': x.company.name || '', '統一編號': x.company.taxId || '', '產業': x.company.industry || '', '區域': x.company.region || '',
+      '資本額': capOf(x.company), 'BU': x.bu.join('/'), '符合條件的聯絡人數': cnt[x.company.id] || 0, '地址': x.company.address || '', '官網': x.company.website || '' }));
+  } else {
+    rows = r.rows.map(x => ({ '公司名稱': x.company.name || '', '統一編號': x.company.taxId || '', '產業': x.company.industry || '', '區域': x.company.region || '',
+      '資本額': capOf(x.company), 'BU': buOf.get(x.company.id) || '', '姓名': x.contact.name || '', '職稱': x.contact.title || '', 'Email': x.contact.email || '',
+      '電話': x.contact.phone || '', '手機': x.contact.mobile || '' }));
+  }
+  if (rows.length > 50000) return res.status(413).json({ error: '符合筆數超過 5 萬，請縮小條件後再下載' });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, mode === 'companies' ? '公司' : '聯絡人');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_TA', rows.length, `篩選TA（${mode === 'companies' ? '公司清單' : '聯絡人名單'}）；${companyTa.summarizeFilters(r.filters)}；${companyTa.summarizeOpts(r.opts)}；符合 ${r.stats.companies} 家公司`);
+  res.setHeader('Content-Disposition', 'attachment; filename="ta-list.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
 // ── 權限：admin 或 marketing（企業主檔匯入匯出、產業分類管理）──
 function isAdminOrMarketing(req) {
   return ['admin', 'marketing'].includes(req.session && req.session.user && req.session.user.role);
