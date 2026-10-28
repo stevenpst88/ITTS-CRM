@@ -467,9 +467,9 @@
     GD.root = root;
     GD.cap = makeCapsule(GD.period, function (k) { GD.period = k; salesRefresh(true); });
     root.querySelector('#gdTfSlot').appendChild(GD.cap.el);
-    // 提醒（殭屍商機／生日／Call-in）：保留原區塊與行為，搬到卡片區上方
+    // 提醒（殭屍商機／生日）：保留原區塊與行為，搬到卡片區上方
     var al = root.querySelector('#gdAlerts');
-    ['zombieAlertCard', 'birthdayReminderCard', 'dashCallinCard'].forEach(function (id) { mv(GD.moves, $(id), al); });
+    ['zombieAlertCard', 'birthdayReminderCard'].forEach(function (id) { mv(GD.moves, $(id), al); });
     // 舞台
     GD.stage = makeStage({
       id: 'gdStage', mods: SALES_MODS,
@@ -495,7 +495,7 @@
     // 舊區塊內容變動 → 重算摘要
     GD.obs = new MutationObserver(scheduleRefresh);
     ['targetAchievementCard', 'quarterCardsWrap', 'monthBudgetWrap', 'buBreakdownWrap', 'statCompanies', 'statContacts', 'statCommit', 'statUpside', 'statPipeline',
-      'dashPipelineCols', 'industryLegend', 'opportunityFunnel', 'zombieAlertCard', 'birthdayReminderCard', 'dashCallinCard'].forEach(function (id) {
+      'dashPipelineCols', 'industryLegend', 'opportunityFunnel', 'zombieAlertCard', 'birthdayReminderCard'].forEach(function (id) {
       var n = $(id); if (n) GD.obs.observe(n, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
     });
     // 首頁顯示／隱藏（showDashboard 設 display）→ 重排

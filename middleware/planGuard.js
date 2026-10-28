@@ -19,7 +19,6 @@ const ROUTE_MODULE_MAP = [
   { prefix: '/api/receivables',        module: 'M5' },
   { prefix: '/api/campaigns',          module: 'M6' },
   { prefix: '/api/leads',              module: 'M6' },
-  { prefix: '/api/callins',            module: 'M6' },
   { prefix: '/api/exec/bu-comparison', module: 'EXEC_DASH' },
 ];
 
