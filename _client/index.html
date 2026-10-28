@@ -557,6 +557,7 @@
               </span>
             </div>
             <div id="cmImportResult" style="font-size:13px;margin-bottom:8px"></div>
+            <div id="cmTaMount" class="cta-mount"></div><!-- 篩選 TA（company-ta.js 填入） -->
             <div id="creqHostCm" class="cct-host" data-creq-host="cm" hidden></div><!-- 建檔申請清單（行銷／管理員） -->
             <div id="cmBatchBar" class="cct-batchbar" hidden>
               <label class="cct-batch-all"><input type="checkbox" id="cmSelAll"> 全選目前列表</label>
@@ -3234,6 +3235,7 @@
   <script src="announcements.js"></script><!-- 公告彈窗：須在 app.js 之前載入（initUser 於非同步後即呼叫 ITTSAnnounce.start） -->
   <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
   <script src="company-requests.js"></script><!-- 統編查無→申請行銷建檔：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCompanyReq.start） -->
+  <script src="company-ta.js"></script><!-- 企業主檔篩選 TA（EDM 名單）：須在 app.js 之前載入 -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
