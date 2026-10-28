@@ -47,7 +47,6 @@ SESSION_BACKEND=memory|jwt
 - 💼 報價單管理（含 PNL 毛利分析 TAB）
 - 📄 合約管理（ERP MA / SAP License MA）
 - 💰 應收帳款追蹤
-- 📞 Call-in Pass 分派
 - 👥 多角色權限（admin / manager1 / manager2 / user / secretary）
 - 📊 視覺化儀表板（Chart.js）
 

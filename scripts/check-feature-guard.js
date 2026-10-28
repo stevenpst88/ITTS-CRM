@@ -65,7 +65,7 @@ function uncovered(mod, srcs) {
 const GOLDEN = [
   ['GET', '/api/receivables', 'accountingGroup'], ['POST', '/api/receivables', 'accountingGroup'], ['GET', '/api/contracts', 'contractGroup'],
   ['GET', '/api/exec/trend', 'execDash'], ['GET', '/api/exec/bu-comparison', 'execDash'], ['GET', '/api/manager-home', 'managerHome'],
-  ['GET', '/api/leads', 'leads'], ['POST', '/api/leads/x/convert', 'leads'], ['GET', '/api/callins', 'callin'], ['POST', '/api/campaigns', 'campaigns'],
+  ['GET', '/api/leads', 'leads'], ['POST', '/api/leads/x/convert', 'leads'], ['POST', '/api/campaigns', 'campaigns'],
   ['GET', '/api/yoy/report', 'yoy'], ['POST', '/api/yoy/import', 'yoy'], ['POST', '/api/transfer-contacts', 'transfer'], ['GET', '/api/contacts-by-owner', 'transfer'],
   ['GET', '/api/companies', 'companyMaster'], ['GET', '/api/companies/export', 'companyMaster'], ['GET', '/api/pipeline-report', 'pipelineReport'],
   ['GET', '/api/manager/business-type-analysis', 'bizAnalysis'], ['GET', '/api/forecast/export', 'forecast'], ['GET', '/api/manager/achievement', 'targets'],
@@ -223,7 +223,7 @@ const MUTANTS = [
   ['對照表：移除 Lead 管理', "add('GET', '/api/leads', ['leads']);", ""],
   ['對照表：高階儀表板放寬成 ANY', "add('GET', '/api/exec/trend', ['execDash']);", "add('GET', '/api/exec/trend', 'ANY');"],
   ['對照表：名單移轉改 ALWAYS', "add('POST', '/api/transfer-contacts', ['transfer']);", "add('POST', '/api/transfer-contacts', 'ALWAYS');"],
-  ['對照表：路徑打錯', "add('GET', '/api/callins', ['callin']);", "add('GET', '/api/callin', ['callin']);"],
+  ['對照表：路徑打錯', "add('GET', '/api/leads', ['leads']);", "add('GET', '/api/lead', ['leads']);"],
 ];
 
 async function partA() {
