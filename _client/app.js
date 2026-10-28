@@ -1011,6 +1011,7 @@ async function loadCompanyMasterView() {
     _cmSel.clear();
     cmPopulateIndustryFilter();
     renderCompanyMasterList();
+    if (window.ITTSCompanyDups && cmCanManage()) window.ITTSCompanyDups.mount();   // 疑似重複主檔（行銷／管理員）
     if (window.ITTSCompanyTa) window.ITTSCompanyTa.mount();   // 篩選 TA（EDM 名單）
   } catch (e) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#e74c3c;padding:28px">${escapeHtml(e.message)}</td></tr>`;
