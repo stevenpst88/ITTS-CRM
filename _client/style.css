@@ -5007,3 +5007,31 @@ body.dark .creq-notice .creq-btn-ghost { background: #21262d; color: #e6edf3; bo
   .creq-row-actions .creq-btn { flex: 1; min-height: 44px; }
   .creq-panel { padding: 12px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   企業主檔「疑似重複」清單（company-dups.js）— .cdup-*
+   每個底色都搭配明確字色（淺色／深色／玻璃）；不使用 inline style。
+   ══════════════════════════════════════════════════════════ */
+.cdup-mount, .cdup-panel { --cdup-bg: #ffffff; --cdup-fg: #1f2937; --cdup-sub: #475569; --cdup-line: #d9dee7; --cdup-soft: #f3f6fb; --cdup-hi: #b3261e; --cdup-hi-bg: #fde7e7; --cdup-lo: #7a3f00; --cdup-lo-bg: #fff1d6; }
+body.dark .cdup-mount, body.dark .cdup-panel { --cdup-bg: #161b22; --cdup-fg: #e6edf3; --cdup-sub: #a9b4c1; --cdup-line: #3a4350; --cdup-soft: #1c232d; --cdup-hi: #ffb4b4; --cdup-hi-bg: #3d1518; --cdup-lo: #ffd48a; --cdup-lo-bg: #3a2a05; }
+.cdup-mount { margin: 0 0 10px; }
+.cdup-panel[hidden] { display: none !important; }
+.cdup-toggle { background: var(--cdup-soft); color: var(--cdup-fg); border: 1px solid var(--cdup-line); border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cdup-panel { background: var(--cdup-bg); color: var(--cdup-fg); border: 1px solid var(--cdup-line); border-radius: 12px; padding: 14px 16px; margin-top: 8px; }
+body.glass .cdup-panel { background: var(--g-surface-strong); color: var(--g-text); --cdup-fg: var(--g-text); --cdup-sub: var(--g-text-2); --cdup-line: var(--g-edge); }
+.cdup-loading { padding: 12px; color: var(--cdup-sub); font-size: 13px; }
+.cdup-summary { font-size: 15px; font-weight: 700; margin-bottom: 6px; color: var(--cdup-fg); }
+.cdup-note { font-size: 12px; color: var(--cdup-sub); margin-bottom: 8px; }
+.cdup-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cdup-fg); min-height: 34px; cursor: pointer; }
+.cdup-card { border: 1px solid var(--cdup-line); border-left: 5px solid var(--cdup-lo); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.cdup-card.cdup-high { border-left-color: var(--cdup-hi); }
+.cdup-hd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.cdup-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--cdup-lo-bg); color: var(--cdup-lo); }
+.cdup-high .cdup-badge { background: var(--cdup-hi-bg); color: var(--cdup-hi); }
+.cdup-reason { font-size: 13px; color: var(--cdup-fg); }
+.cdup-prev-wrap { overflow-x: auto; }
+.cdup-prev-table { border-collapse: collapse; font-size: 12px; min-width: 520px; width: 100%; }
+.cdup-prev-table th, .cdup-prev-table td { border-bottom: 1px solid var(--cdup-line); padding: 4px 10px; text-align: left; color: var(--cdup-fg); white-space: nowrap; }
+.cdup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.cdup-btn { background: var(--cdup-soft); color: var(--cdup-fg); border: 1px solid var(--cdup-line); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 34px; }
+@media (max-width: 640px) { .cdup-panel { padding: 12px; } .cdup-btn { min-height: 44px; } }

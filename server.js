@@ -8906,6 +8906,41 @@ app.get('/api/companies', requireAuth, (req, res) => {
   res.json(companies);
 });
 
+// ── 企業主檔「疑似重複」清單（只讀偵測＋「標記為非重複」；不合併、不刪除）。限行銷／管理員。邏輯在 lib/companyDuplicates.js ──
+// 注意：必須註冊在 GET /api/companies/:id 之前。
+const companyDup = require('./lib/companyDuplicates');
+function dupScan(data) {
+  const r = companyDup.run({ companies: data.companies || [], contacts: data.contacts || [], loose: normalizeCompanyLoose });
+  const ign = data.companyDupIgnores || {};
+  r.groups.forEach(g => { g.dismissed = !!ign[g.key]; if (g.dismissed) g.dismissedBy = ign[g.key].by || ''; });
+  return r;
+}
+app.get('/api/companies/duplicates', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const r = dupScan(db.load());
+  const open = r.groups.filter(g => !g.dismissed);
+  res.json({ groups: r.groups, summary: { open: open.length, high: open.filter(g => g.level === 'high').length, low: open.filter(g => g.level === 'low').length, dismissed: r.groups.length - open.length } });
+});
+app.post('/api/companies/duplicates/dismiss', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const key = companyDup.keyOf((req.body || {}).ids);
+  const undo = !!(req.body || {}).undo;
+  const data = db.load();
+  const g = dupScan(data).groups.find(x => x.key === key);
+  if (!g) return res.status(404).json({ error: '找不到這組疑似重複（資料可能已變動，請重新整理）' });
+  if (!data.companyDupIgnores) data.companyDupIgnores = {};
+  const by = req.session.user.username;
+  if (undo) delete data.companyDupIgnores[key];
+  else {
+    data.companyDupIgnores[key] = { by, at: new Date().toISOString() };
+    const keys = Object.keys(data.companyDupIgnores);
+    if (keys.length > 2000) keys.sort((a, b) => String(data.companyDupIgnores[a].at).localeCompare(String(data.companyDupIgnores[b].at))).slice(0, keys.length - 2000).forEach(k => delete data.companyDupIgnores[k]);
+  }
+  db.save(data);
+  writeLog(undo ? 'RESTORE_COMPANY_DUP' : 'DISMISS_COMPANY_DUP', by, g.members.map(m => m.name).join(' / ').slice(0, 120), (undo ? '還原為疑似重複' : '標記為非重複') + `（${g.members.length} 筆主檔）`, req);
+  res.json({ success: true });
+});
+
 // ── 權限：admin 或 marketing（企業主檔匯入匯出、產業分類管理）──
 function isAdminOrMarketing(req) {
   return ['admin', 'marketing'].includes(req.session && req.session.user && req.session.user.role);
