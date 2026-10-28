@@ -9858,8 +9858,10 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
   // 可見名片（依擁有者 + BU）
   let contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id && owners.has(c.owner));
   contacts = filterByBu(req, contacts);
-  // 權限閘門：至少要有一張可見名片才看得到此公司
-  if (contacts.length === 0) return res.status(403).json({ error: '無權檢視此企業主檔' });
+  // 權限閘門：至少要有一張可見名片才看得到此公司。
+  // 行銷／管理員是企業主檔的維護者，列表本來就看得到「尚無名片」或「只有客戶池待補名片」的主檔，
+  // 明細也要打得開（與 GET /api/companies、respCanTouchCompany 同一規則）；內容仍只含可見範圍內的資料。
+  if (contacts.length === 0 && !isAdminOrMarketing(req)) return res.status(403).json({ error: '無權檢視此企業主檔' });
 
   const contactIds = new Set(contacts.map(c => c.id));
   const names = new Set();
