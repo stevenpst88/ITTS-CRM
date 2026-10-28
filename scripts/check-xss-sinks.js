@@ -435,16 +435,6 @@ async function pageAppCases(P) {
     try { await checkCompanySimilar(); } finally { window.fetch = real; cEl.value = oc; tEl.value = ot; }
     await check('app:checkCompanySimilar', $('companySimDup'), [P.img], []);
   });
-  await run('app:openAssignModal(option value)', async () => {
-    allCallins = [{ id: 'cc1', company: 'c', topic: 't' }];
-    callinUsers = [{ username: P.brk, displayName: P.img, role: 'user' }];
-    await openAssignModal('cc1');
-    const sel = $('assignToUser');
-    await check('app:openAssignModal', sel, [P.img], []);
-    const vals = [...sel.querySelectorAll('option')].map(o => o.getAttribute('value'));
-    out.push({ name: 'app:openAssignModal(option value 原樣保存)', ok: vals.includes(P.brk), why: JSON.stringify(vals).slice(0, 100) });
-    $('callinAssignOverlay').style.display = 'none';
-  });
   await run('app:loadManagerAchievement(inline onclick)', async () => {
     window._myRole = 'admin';
     const real = window.fetch;
@@ -577,7 +567,7 @@ async function secDom() {
   const all = r.app.concat(r.admin);
   DOM_NAMES = all.map(x => x.name);
   all.forEach(x => ok(x.ok, 'DOM ' + x.name, x.why));
-  ok(all.length >= 25, `DOM 案例數量足夠（${all.length} 筆）`);
+  ok(all.length >= 24, `DOM 案例數量足夠（${all.length} 筆）`);
   return r;
 }
 async function secRed() {

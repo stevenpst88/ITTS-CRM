@@ -13,7 +13,7 @@
 
 ## 主資料 blob 的命名空間（`app_data.content` / `data.json`）
 
-CRM 核心：`contacts / companies / opportunities / visits / contracts / receivables / callins / keyAccounts`
+CRM 核心：`contacts / companies / opportunities / visits / contracts / receivables / keyAccounts`（舊的 `callins` 為已移除的 Call-in Pass 遺留資料：仍留在主資料 blob 內但沒有任何 UI／API，程式不得假設它存在或不存在）
 獨立命名空間（勿與核心混寫）：`yoyRevenue`（YoY 報表）、`integrations / integrationMappings / integrationLinks / integrationLogs`（SAP 整合）、`productCatalog`（商品目錄）、`announcements`（公告：含 readBy 已讀回條、shown 送達時間；邏輯在 lib/announcements.js）、`pricebook`（報價牌價簿：顧問人天牌價／成本）、`quoteSplitGuard`（防拆單提醒設定；報價單上另有 `q.splitGuard` 送簽快照，僅 warn 模式寫入；邏輯在 lib/quoteSplitGuard.js，環境變數 QUOTE_SPLIT_GUARD=off|log|warn 預設 off）、`quoteIssuances`／`quoteStampUses`（報價文件發出紀錄＋蓋章憑證使用紀錄：只增不改，邏輯在 lib/quoteIssuance.js；蓋章 `GET /quotations/:id/seal` 需單次使用憑證）、`_auth`（雲端帳號）
 
 ## 高風險紅線

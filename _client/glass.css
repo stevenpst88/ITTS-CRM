@@ -744,7 +744,6 @@ body.glass.dark {
 .gd-alerts:not(:empty) { margin-bottom: 14px; }
 .gd-alerts > div > .zombie-alert-card, .gd-alerts > div > .bday-card { margin-bottom: 0; }
 .gd-alerts .dash-section-title { margin: 4px 0 8px; }
-.gd-alerts .dash-callin-item:last-child { margin-bottom: 0; }
 
 /* 舊首頁原位的殘骸容器（區塊已搬走）隱藏 */
 #dashboardView.gd-on > .stat-cards,
@@ -861,16 +860,14 @@ body.glass.dark .gd-detail .mgr-gauge-pct { color: var(--g-accent); }
 body.glass .gd-detail .q-card { background: var(--g-surface); }
 body.glass.dark .gd-detail .q-card { border-color: var(--g-edge); }
 
-/* 提醒（生日／Call-in）玻璃化 */
-body.glass .bday-card, body.glass .dash-callin-item {
+/* 提醒（生日）玻璃化 */
+body.glass .bday-card {
   background: var(--g-fill); border-top: 1px solid var(--g-border); border-right: 1px solid var(--g-border); border-bottom: 1px solid var(--g-border);
   box-shadow: var(--g-ring), var(--g-shadow); color: var(--g-text);
   -webkit-backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat)); backdrop-filter: blur(var(--g-blur)) saturate(var(--g-sat));
 }
 body.glass .bday-card { border-radius: var(--g-radius); }
-body.glass .dash-callin-item { border-radius: var(--g-radius); }
-body.glass .dash-callin-item.overdue { background: linear-gradient(135deg, rgba(211, 47, 47, .18), rgba(255, 255, 255, .06)); }
-body.glass .dash-callin-info, body.glass .bday-name, body.glass .dash-section-title { color: var(--g-text); }
+body.glass .bday-name, body.glass .dash-section-title { color: var(--g-text); }
 body.glass .bday-item { background: var(--g-surface); }
 body.glass .bday-card-title { color: #b45309; }
 body.glass.dark .bday-card-title { color: #fbbf24; }
@@ -966,7 +963,7 @@ body.glass .gd-detail .mb-table-wrap {
 
 /* ═════════════════════════════════════════════════════════════
  * 階段 3a：列表／表單頁（潛在客戶、我的客戶、企業主檔、Key Account、日報、年度目標、
- *         Lead、行銷活動、Call-in、名單移轉、應收帳款、ERP/SAP 合約）與其彈窗
+ *         Lead、行銷活動、名單移轉、應收帳款、ERP/SAP 合約）與其彈窗
  * 原則：只改樣式；顏色一律走 --g-* / --t-*（隨主題），語意色（紅綠橘、階段、燈號）不動，
  *       只在對比不足時「同色系加深／提亮」。
  * ═════════════════════════════════════════════════════════════ */
@@ -1104,9 +1101,8 @@ body.glass .sap-notice-bar { border-color: rgba(245, 158, 11, .55); }
 body.glass .btn-danger { background: #d32f2f; }
 body.glass .btn-danger:hover { background: #b71c1c; }
 body.glass .btn-xs[style*="#1e8e3e"], body.glass .btn-xs[style*="background:#34a853"] { background: #157a37 !important; }
-body.glass :is(.ct-badge-expiring, .badge-pending, .ci-assigned, .recv-badge.badge-pending) { color: #a84300; }
-body.glass :is(.ct-btn-edit, .campaign-type-badge, .ci-pending) { color: #1243a8; }
-body.glass .ci-contacted { color: #1b6b2a; }
+body.glass :is(.ct-badge-expiring, .badge-pending, .recv-badge.badge-pending) { color: #a84300; }
+body.glass :is(.ct-btn-edit, .campaign-type-badge) { color: #1243a8; }
 body.glass .ct-badge-expired { color: #5f6368; }
 /* 企業主檔的刪除鈕：行內是平面粉紅底（深色下像一塊白斑）→ 紅色半透明玻璃 */
 body.glass .cm-del { background: rgba(220, 38, 38, .14) !important; color: #b91c1c !important; border: 1px solid rgba(220, 38, 38, .34) !important; }
@@ -2786,7 +2782,7 @@ body.glass:not(.dark) .vt-視訊 { background: rgba(147, 51, 234, .12); color: #
 body.glass.dark .vt-視訊 { background: rgba(192, 132, 252, .16); color: #d8b4fe; }
 body.glass .badge-otc, body.glass .ct-btn-delete { background: var(--q4-bad-bg); color: var(--q4-bad); }
 body.glass .primary-badge, body.glass .ovt-type, body.glass .ka-dim-hook { background: var(--q4-info-bg); color: var(--q4-info); }
-body.glass .ci-unqualified, body.glass .ft-filter-clear { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); }   /* 底色與字色成對（深色底色原本仍是淺灰） */
+body.glass .ft-filter-clear { background: color-mix(in srgb, var(--g-text) 12%, transparent); color: var(--g-text-2); }   /* 底色與字色成對（深色底色原本仍是淺灰） */
 body.glass:not(.dark) .input-readonly { color: var(--g-text-2); }   /* 深色版由 style.css 的 body.dark .input-readonly 負責 */
 body.glass:not(.dark) .ovt-date { color: var(--g-text-2); }
 body.glass .nav-badge { background: #c5221f; color: #fff; }       /* 白字壓 #e53935 = 4.23 */

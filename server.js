@@ -440,7 +440,6 @@ const FEATURE_REGISTRY = [
   { key: 'yoy',             label: 'YoY 營收同期比',        icon: '📅', navId: 'navYoy' },
   { key: 'contractGroup',   label: '合約管理',              icon: '📄', navId: 'navContractGroup' },
   { key: 'accountingGroup', label: '帳務管理',              icon: '💰', navId: 'navAccountingGroup' },
-  { key: 'callin',          label: 'Call-in Pass',          icon: '📞', navId: 'navCallin' },
   { key: 'lostOpp',         label: '流失商機',              icon: '🪦', navId: 'navLostOpp' },
   { key: 'keyAccount',      label: 'Key Account（重點客戶）', icon: '⭐', navId: 'navKeyAccount' },
   { key: 'transfer',        label: '名單移轉',              icon: '🔄', navId: 'navTransfer' },
@@ -458,13 +457,13 @@ const CROSS_BU_ROLES = ['admin','executive','accounting_manager','finance_manage
 const DEFAULT_ROLE_PERMISSIONS = {
   admin:              ALL_FEATURES,
   executive:          ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','quotations','keyAccount'],
-  manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','transfer','quotations','keyAccount'],
-  secretary:          ['home','managerHome','targets','forecast','accountingGroup','callin','yoy','quotations'],
+  manager1:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','lostOpp','transfer','quotations','keyAccount'],
+  manager2:           ['home','managerHome','execDash','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','lostOpp','transfer','quotations','keyAccount'],
+  secretary:          ['home','managerHome','targets','forecast','accountingGroup','yoy','quotations'],
   tecopm:             ['forecast','prospects','contacts','visits','pipeline'],
   groupsales:         ['forecast','prospects','contacts','visits','pipeline'],
   marketing:          ['marketingHome','campaigns','leads','contacts','prospects','companyMaster','pipeline'],
-  user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','callin','lostOpp','quotations','keyAccount'],
+  user:               ['home','prospects','contacts','companyMaster','visits','targets','forecast','pipeline','pipelineReport','bizAnalysis','contractGroup','accountingGroup','lostOpp','quotations','keyAccount'],
   accounting_manager: ['home','execDash','accountingGroup','quotations','keyAccount','bizAnalysis'],
   finance_manager:    ['home','execDash','targets','forecast','pipeline','accountingGroup','keyAccount','bizAnalysis'],
   // 南區／北區顧問主管：目前只開「首頁」與「報價單」（主要用途是擔任報價單的成本填寫人，名單在報價單頁的簽核設定維護）。
@@ -7986,181 +7985,6 @@ app.delete('/api/admin/announcements/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Call-in Pass CRUD ─────────────────────────────────────
-// 取得 Call-in 列表（角色可視）
-app.get('/api/callins', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
-  const data = db.load();
-  if (!data.callins) data.callins = [];
-
-  // 逾期自動更新
-  const now = new Date();
-  let changed = false;
-  data.callins.forEach(c => {
-    if (c.status === 'assigned' && c.deadline && new Date(c.deadline) < now) {
-      c.status = 'overdue';
-      changed = true;
-      // 推播通知一二級主管
-      const auth = loadAuth();
-      auth.users.filter(u => u.role === 'manager1' || u.role === 'manager2').forEach(u => {
-        pushNotification(u.username, 'callin_overdue',
-          '⏰ Call-in 逾時未處理',
-          `${c.company || c.contactName} 的 Call-in 已逾時，業務：${c.assignedTo}`, c.id);
-      });
-    }
-  });
-  if (changed) db.save(data);
-
-  let list;
-  if (role === 'secretary' || role === 'admin') {
-    list = data.callins; // 秘書/admin 全部可見
-  } else if (role === 'manager1' || role === 'manager2') {
-    // 主管：pending（待指派）+ 自己 BU 範圍內的
-    const callinViewable = new Set(getViewableOwners(req, 'opportunities'));
-    list = data.callins.filter(c =>
-      c.status === 'pending' ||
-      callinViewable.has(c.assignedTo) ||
-      c.createdBy === username
-    );
-  } else {
-    // user：只看指派給自己的
-    list = data.callins.filter(c => c.assignedTo === username || c.createdBy === username);
-  }
-  res.json(list.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-});
-
-// 秘書建立新 Call-in
-app.post('/api/callins', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
-  if (role !== 'secretary' && role !== 'admin' && role !== 'manager1' && role !== 'manager2') {
-    return res.status(403).json({ error: '只有秘書或主管可以建立 Call-in' });
-  }
-  const data = db.load();
-  if (!data.callins) data.callins = [];
-  const item = {
-    id: uuidv4(), createdBy: username,
-    company:     req.body.company     || '',
-    contactName: req.body.contactName || '',
-    phone:       req.body.phone       || '',
-    topic:       req.body.topic       || '',
-    source:      req.body.source      || '',
-    note:        req.body.note        || '',
-    status:      'pending',
-    assignedTo:  null, assignedBy: null, assignedAt: null,
-    deadline:    null, contactedAt: null, opportunityId: null,
-    createdAt:   new Date().toISOString()
-  };
-  data.callins.push(item);
-  db.save(data);
-  writeLog('CREATE_CALLIN', username, item.company || item.contactName, `來源：${item.source || ''}`, req);
-  // 通知二級主管
-  const auth = loadAuth();
-  auth.users.filter(u => u.role === 'manager2' || u.role === 'manager1').forEach(u => {
-    pushNotification(u.username, 'callin_new', '📞 新 Call-in Pass',
-      `${item.company || item.contactName} 來電，請指派業務`, item.id);
-  });
-  res.status(201).json(item);
-});
-
-// 主管指派 Call-in 給業務
-app.put('/api/callins/:id/assign', requireAuth, (req, res) => {
-  const { username, role } = req.session.user;
-  if (role !== 'manager1' && role !== 'manager2' && role !== 'admin') {
-    return res.status(403).json({ error: '無指派權限' });
-  }
-  const { assignedTo } = req.body;
-  if (!assignedTo) return res.status(400).json({ error: '請指定業務人員' });
-  // 確認被指派的業務在自己 BU 可視範圍內
-  const assignViewable = getViewableOwners(req, 'opportunities');
-  if (!assignViewable.includes(assignedTo)) {
-    return res.status(403).json({ error: '無法指派給此 BU 範圍外的業務' });
-  }
-  const data = db.load();
-  const item = (data.callins || []).find(c => c.id === req.params.id);
-  if (!item) return res.status(404).json({ error: '找不到此 Call-in' });
-
-  const now = new Date();
-  const deadline = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-  item.assignedTo = assignedTo;
-  item.assignedBy = username;
-  item.assignedAt = now.toISOString();
-  item.deadline   = deadline;
-  item.status     = 'assigned';
-  db.save(data);
-  writeLog('ASSIGN_CALLIN', username, item.company || item.contactName, `指派給 ${assignedTo}`, req);
-
-  // 通知被指派的業務
-  pushNotification(assignedTo, 'callin_assigned', '📞 您有新的 Call-in 指派',
-    `${item.company || item.contactName} 來電，請於今日完成聯繫`, item.id);
-
-  // 也同步加入潛在客戶（若公司/聯絡人有填）
-  if (item.company || item.contactName) {
-    const auth = loadAuth();
-    const assignedUser = auth.users.find(u => u.username === assignedTo);
-    if (assignedUser) {
-      if (!data.contacts) data.contacts = [];
-      // 避免重複
-      const exists = data.contacts.find(c => c.owner === assignedTo &&
-        ((item.company && c.company === item.company) || (item.contactName && c.name === item.contactName)));
-      if (!exists) {
-        data.contacts.push({
-          id: uuidv4(), owner: assignedTo, ...creatorFields(req),
-          name: item.contactName || '', company: item.company || '',
-          phone: item.phone || '', email: '', title: '', mobile: '', ext: '',
-          address: '', website: '', taxId: '', industry: '', note: `[Call-in] ${item.topic}`,
-          opportunityStage: 'prospect', isPrimary: false,
-          systemVendor: '', systemProduct: '', cardImage: '',
-          createdAt: new Date().toISOString(), fromCallIn: item.id
-        });
-        db.save(data);
-      }
-    }
-  }
-  res.json(item);
-});
-
-// 業務回應 Call-in（聯繫完成 / 建立商機 / 不合格）
-app.put('/api/callins/:id/respond', requireAuth, (req, res) => {
-  const { username } = req.session.user;
-  const data = db.load();
-  const item = (data.callins || []).find(c => c.id === req.params.id && c.assignedTo === username);
-  if (!item) return res.status(404).json({ error: '找不到此 Call-in 或無權限' });
-
-  const { action, opportunityName, opportunityStage, note } = req.body;
-  item.contactedAt = new Date().toISOString();
-  if (note) item.responseNote = note;
-
-  if (action === 'qualified') {
-    item.status = 'qualified';
-    // 建立商機
-    if (!data.opportunities) data.opportunities = [];
-    const opp = {
-      id: uuidv4(), owner: username,
-      contactId: '', contactName: item.contactName, company: item.company,
-      category: 'Call-in', product: opportunityName || item.topic,
-      amount: '', expectedDate: '', description: item.topic,
-      stage: opportunityStage || 'C', visitId: '',
-      createdAt: new Date().toISOString()
-    };
-    data.opportunities.push(opp);
-    item.opportunityId = opp.id;
-  } else if (action === 'unqualified') {
-    item.status = 'unqualified';
-  } else {
-    item.status = 'contacted';
-  }
-  db.save(data);
-  writeLog('RESPOND_CALLIN', username, item.company || item.contactName, `狀態：${item.status}`, req);
-
-  // 通知指派主管
-  if (item.assignedBy) {
-    const statusLabel = { qualified: '已建立商機 ✅', unqualified: '非合格商機 ❌', contacted: '已完成聯繫' };
-    pushNotification(item.assignedBy, 'callin_responded', '📞 Call-in 已回覆',
-      `${item.company || item.contactName}：${statusLabel[item.status] || ''}`, item.id);
-  }
-  res.json(item);
-});
-
 // ════════════════════════════════════════════════════════
 //  行銷管理：活動（campaigns）& 線索（leads）
 // ════════════════════════════════════════════════════════
@@ -8939,6 +8763,75 @@ app.post('/api/companies/duplicates/dismiss', requireAuth, (req, res) => {
   db.save(data);
   writeLog(undo ? 'RESTORE_COMPANY_DUP' : 'DISMISS_COMPANY_DUP', by, g.members.map(m => m.name).join(' / ').slice(0, 120), (undo ? '還原為疑似重複' : '標記為非重複') + `（${g.members.length} 筆主檔）`, req);
   res.json({ success: true });
+});
+
+// ── 企業主檔「篩選 TA」（EDM 用）：公司條件 → 聯絡人名單；範圍＝呼叫者本來看得到的名片／公司，客戶池排除 ──
+// 查詢（數量）所有看得到企業主檔的人都可用；預覽 Email 與下載要有「可下載客戶名單」權限（與 GET /api/export 同一道）。邏輯在 lib/companyTa.js。
+const companyTa = require('./lib/companyTa');
+function taCanDownload(req) {
+  const u = (loadAuth().users || []).find(x => x.username === req.session.user.username);
+  return !!(u && (u.canDownloadContacts || u.role === 'admin'));
+}
+function taScope(req) {
+  const data = db.load();
+  const usersByName = {};
+  (loadAuth().users || []).forEach(u => { usersByName[u.username] = u; });
+  const owners = new Set(getViewableOwners(req, 'contacts'));
+  let contacts = (data.contacts || []).filter(c => !c.deleted && c.owner !== POOL_USERNAME && owners.has(c.owner));
+  contacts = filterByBu(req, contacts);
+  contacts = filterByViewGroup(req, contacts, c => c.company);
+  const countById = {};
+  contacts.forEach(c => { if (c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
+  const seeAll = isAdminOrMarketing(req);
+  const companies = (data.companies || []).filter(m => seeAll || countById[m.id]);
+  const oOwners = new Set(getViewableOwners(req, 'opportunities'));
+  const opps = filterByBu(req, (data.opportunities || []).filter(o => oOwners.has(o.owner)));
+  return { data, usersByName, contacts, companies, opps, buUnion: (names, imp) => companyBuUnion(names, imp, usersByName) };
+}
+app.get('/api/companies/ta/options', requireAuth, (req, res) => {
+  const s = taScope(req);
+  const tally = key => { const m = new Map(); s.companies.forEach(c => { const v = String(c[key] || '').trim(); if (v) m.set(v, (m.get(v) || 0) + 1); }); return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => a.name.localeCompare(b.name, 'zh-TW')); };
+  const label = un => (s.usersByName[un] ? userLabel(s.usersByName[un]) : un);
+  const svc = new Set(), resp = new Set();
+  s.contacts.forEach(c => { if (!c.isPlaceholder && c.owner) svc.add(c.owner); });
+  s.companies.forEach(c => (Array.isArray(c.responsibleSales) ? c.responsibleSales : []).forEach(u => resp.add(u)));
+  const people = set => [...set].map(username => ({ username, label: label(username) })).sort((a, b) => a.label.localeCompare(b.label, 'zh-TW'));
+  res.json({ industries: tally('industry'), regions: tally('region'), bus: VALID_BUS.slice(), services: people(svc), responsible: people(resp), canDownload: taCanDownload(req), total: s.companies.length });
+});
+app.post('/api/companies/ta/query', requireAuth, (req, res) => {
+  const s = taScope(req);
+  const r = companyTa.run({ companies: s.companies, contacts: s.contacts, opps: s.opps, buUnion: s.buUnion, filters: (req.body || {}).filters, opts: (req.body || {}).opts });
+  const canDownload = taCanDownload(req);
+  const preview = canDownload ? r.rows.slice(0, 20).map(x => ({ company: x.company.name || '', contact: x.contact.name || '', title: x.contact.title || '', email: x.contact.email || '' })) : [];
+  res.json({ stats: r.stats, canDownload, preview });
+});
+app.post('/api/companies/ta/export', requireAuth, (req, res) => {
+  if (!taCanDownload(req)) return res.status(403).json({ error: '您沒有下載客戶名單的權限' });
+  const s = taScope(req);
+  const body = req.body || {};
+  const r = companyTa.run({ companies: s.companies, contacts: s.contacts, opps: s.opps, buUnion: s.buUnion, filters: body.filters, opts: body.opts });
+  const mode = body.mode === 'companies' ? 'companies' : 'contacts';
+  const buOf = new Map(r.matched.map(x => [x.company.id, x.bu.join('/')]));
+  const capOf = m => { const n = Number(m.capital); return Number.isFinite(n) && n > 0 ? n : ''; };
+  let rows;
+  if (mode === 'companies') {
+    const cnt = {}; r.rows.forEach(x => { cnt[x.company.id] = (cnt[x.company.id] || 0) + 1; });
+    rows = r.matched.map(x => ({ '公司名稱': x.company.name || '', '統一編號': x.company.taxId || '', '產業': x.company.industry || '', '區域': x.company.region || '',
+      '資本額': capOf(x.company), 'BU': x.bu.join('/'), '符合條件的聯絡人數': cnt[x.company.id] || 0, '地址': x.company.address || '', '官網': x.company.website || '' }));
+  } else {
+    rows = r.rows.map(x => ({ '公司名稱': x.company.name || '', '統一編號': x.company.taxId || '', '產業': x.company.industry || '', '區域': x.company.region || '',
+      '資本額': capOf(x.company), 'BU': buOf.get(x.company.id) || '', '姓名': x.contact.name || '', '職稱': x.contact.title || '', 'Email': x.contact.email || '',
+      '電話': x.contact.phone || '', '手機': x.contact.mobile || '' }));
+  }
+  if (rows.length > 50000) return res.status(413).json({ error: '符合筆數超過 5 萬，請縮小條件後再下載' });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, mode === 'companies' ? '公司' : '聯絡人');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  auditExport(req, 'EXPORT_TA', rows.length, `篩選TA（${mode === 'companies' ? '公司清單' : '聯絡人名單'}）；${companyTa.summarizeFilters(r.filters)}；${companyTa.summarizeOpts(r.opts)}；符合 ${r.stats.companies} 家公司`);
+  res.setHeader('Content-Disposition', 'attachment; filename="ta-list.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
 });
 
 // ── 權限：admin 或 marketing（企業主檔匯入匯出、產業分類管理）──
@@ -9893,8 +9786,10 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
   // 可見名片（依擁有者 + BU）
   let contacts = (data.contacts || []).filter(c => !c.deleted && c.companyId === company.id && owners.has(c.owner));
   contacts = filterByBu(req, contacts);
-  // 權限閘門：至少要有一張可見名片才看得到此公司
-  if (contacts.length === 0) return res.status(403).json({ error: '無權檢視此企業主檔' });
+  // 權限閘門：至少要有一張可見名片才看得到此公司。
+  // 行銷／管理員是企業主檔的維護者，列表本來就看得到「尚無名片」或「只有客戶池待補名片」的主檔，
+  // 明細也要打得開（與 GET /api/companies、respCanTouchCompany 同一規則）；內容仍只含可見範圍內的資料。
+  if (contacts.length === 0 && !isAdminOrMarketing(req)) return res.status(403).json({ error: '無權檢視此企業主檔' });
 
   const contactIds = new Set(contacts.map(c => c.id));
   const names = new Set();
@@ -10604,7 +10499,6 @@ app.get('/api/admin/storage', requireAdmin, (req, res) => {
       { key: 'visits',             label: '業務日報',     icon: '📋' },
       { key: 'contracts',          label: '合約管理',     icon: '📄' },
       { key: 'receivables',        label: '應收帳款',     icon: '💰' },
-      { key: 'callin',             label: 'Call-in Pass', icon: '📞' },
       { key: 'targets',            label: '業績目標',     icon: '🎯' },
     ].map(c => ({
       ...c,

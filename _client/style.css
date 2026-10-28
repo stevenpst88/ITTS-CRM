@@ -2090,9 +2090,6 @@ body.dark .card-company { color: #8b949e; }
   .view-tab-group { flex-wrap: wrap; gap: 4px; }
   .view-tab { padding: 6px 12px; font-size: 12px; }
 
-  /* ── Call-in ── */
-  #callinView .view-toolbar { flex-wrap: wrap; gap: 8px; }
-
   /* ── Modal：從底部滑入 ── */
   .modal-overlay { align-items: flex-end; padding: 0; }
   .modal {
@@ -2238,7 +2235,7 @@ body.dark .card-company { color: #8b949e; }
 .notif-bday.unread.notif-bday-upcoming { background: #f3e5f5; }
 
 /* ══════════════════════════════════════════════════════
-   側欄 Badge（Call-in 待辦數）
+   側欄 Badge（Lead 待辦數等）
 ══════════════════════════════════════════════════════ */
 .nav-badge {
   margin-left: auto; background: #e53935; color: #fff;
@@ -2292,31 +2289,11 @@ body.dark .card-company { color: #8b949e; }
 .badge-pending  { background: #fff3e0; color: #e65100; }
 .badge-paid     { background: #e6f4ea; color: #1e7e34; }
 
-/* ══════════════════════════════════════════════════════
-   Call-in Pass
-══════════════════════════════════════════════════════ */
-.ci-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
-.ci-pending     { background: #e8f0fe; color: #1a73e8; }
-.ci-assigned    { background: #fff3e0; color: #e65100; }
-.ci-contacted   { background: #e8f5e9; color: #388e3c; }
-.ci-qualified   { background: #e6f4ea; color: #1e7e34; }
-.ci-unqualified { background: #f0f2f5; color: #888; }
-.ci-overdue     { background: #fce8e6; color: #c62828; }
-
-/* Dashboard Call-in 卡 */
+/* 首頁區段標題（生日／殭屍商機提醒共用） */
 .dash-section-title {
   font-size: 15px; font-weight: 700; color: #1a2d52;
   margin: 20px 0 12px; padding-left: 4px;
 }
-.dash-callin-item {
-  display: flex; align-items: center; gap: 14px;
-  background: #fff; border-radius: 12px; padding: 14px 18px;
-  margin-bottom: 10px; box-shadow: 0 1px 5px rgba(0,0,0,.07);
-  border-left: 4px solid #1a73e8;
-}
-.dash-callin-item.overdue { border-left-color: #d32f2f; background: #fff8f8; }
-.dash-callin-ico { font-size: 22px; }
-.dash-callin-info { flex: 1; font-size: 13px; color: #333; }
 
 /* radio btn */
 .radio-btn { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 14px; border-radius: 8px; border: 1.5px solid #e0e2e5; transition: all .15s; }
@@ -4285,8 +4262,6 @@ body.dark #lostOppTableWrap thead tr { background: #21262d !important; border-bo
 body.dark #lostOppTableWrap th { color: #8b949e !important; border-bottom-color: #30363d !important; padding: 10px 14px; }
 body.dark #lostOppTableWrap td { color: #c9d1d9 !important; border-bottom-color: #30363d !important; }
 body.dark #lostOppTableWrap tbody tr:hover td { background: #21262d !important; }
-body.dark .dash-callin-item { background: #161b22; border-color: #30363d; color: #c9d1d9; }
-body.dark .dash-callin-item:hover { background: #21262d; }
 body.dark .radio-btn { background: #21262d; border-color: #30363d; color: #c9d1d9; }
 body.dark .radio-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 body.dark .billing-card { background: #161b22; border-color: #30363d; }
@@ -5035,3 +5010,48 @@ body.glass .cdup-panel { background: var(--g-surface-strong); color: var(--g-tex
 .cdup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .cdup-btn { background: var(--cdup-soft); color: var(--cdup-fg); border: 1px solid var(--cdup-line); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 34px; }
 @media (max-width: 640px) { .cdup-panel { padding: 12px; } .cdup-btn { min-height: 44px; } }
+
+
+/* ══════════════════════════════════════════════════════════
+   企業主檔「篩選 TA」（company-ta.js）— .cta-*
+   每個底色都搭配明確字色（淺色／深色／玻璃）；不使用 inline style。
+   ══════════════════════════════════════════════════════════ */
+.cta-mount, .cta-panel { --cta-bg: #ffffff; --cta-fg: #1f2937; --cta-sub: #475569; --cta-line: #d9dee7; --cta-soft: #f3f6fb; --cta-accent: #1a56c8; --cta-accent-fg: #ffffff; }
+body.dark .cta-mount, body.dark .cta-panel { --cta-bg: #161b22; --cta-fg: #e6edf3; --cta-sub: #a9b4c1; --cta-line: #3a4350; --cta-soft: #1c232d; --cta-accent: #1f6feb; --cta-accent-fg: #ffffff; }
+.cta-mount { margin: 0 0 10px; }
+.cta-panel[hidden], .cta-multi-row[hidden] { display: none !important; }
+.cta-toggle { background: var(--cta-soft); color: var(--cta-fg); border: 1px solid var(--cta-line); border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cta-toggle:hover { border-color: var(--cta-accent); }
+.cta-panel { background: var(--cta-bg); color: var(--cta-fg); border: 1px solid var(--cta-line); border-radius: 12px; padding: 14px 16px; margin-top: 8px; }
+body.glass .cta-panel { background: var(--g-surface-strong); color: var(--g-text); --cta-fg: var(--g-text); --cta-sub: var(--g-text-2); --cta-line: var(--g-edge); }
+.cta-group { border: 1px solid var(--cta-line); border-radius: 10px; margin: 0 0 12px; padding: 8px 12px 12px; min-width: 0; }
+.cta-legend { font-size: 13px; font-weight: 700; padding: 0 6px; color: var(--cta-fg); }
+.cta-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 14px; align-items: start; }
+.cta-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cta-label { font-size: 12px; color: var(--cta-sub); }
+.cta-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--cta-line); border-radius: 7px; background: var(--cta-bg); color: var(--cta-fg); font-size: 13px; min-height: 34px; }
+.cta-cap { display: flex; align-items: center; gap: 6px; }
+.cta-cap .cta-input { min-width: 0; }
+.cta-cap-sep, .cta-cap-unit { color: var(--cta-sub); font-size: 12px; white-space: nowrap; }
+.cta-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--cta-fg); min-height: 34px; cursor: pointer; }
+.cta-multi { position: relative; border: 1px solid var(--cta-line); border-radius: 7px; background: var(--cta-bg); color: var(--cta-fg); }
+.cta-multi-sum { padding: 6px 8px; font-size: 13px; cursor: pointer; min-height: 22px; list-style: none; }
+.cta-multi-sum::-webkit-details-marker { display: none; }
+.cta-multi-body { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; padding: 6px 8px 8px; background: var(--cta-bg); color: var(--cta-fg); border: 1px solid var(--cta-line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.cta-multi-list { max-height: 200px; overflow: auto; margin-top: 6px; }
+.cta-multi-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; cursor: pointer; color: var(--cta-fg); }
+.cta-result { border-top: 1px dashed var(--cta-line); padding-top: 10px; }
+.cta-summary { font-size: 15px; font-weight: 700; margin-bottom: 6px; color: var(--cta-fg); }
+.cta-note { font-size: 12px; color: var(--cta-sub); margin-bottom: 6px; }
+.cta-note:empty { display: none; }
+.cta-prev-title { font-size: 12px; color: var(--cta-sub); margin: 8px 0 4px; }
+.cta-prev-wrap { overflow-x: auto; }
+.cta-prev-table { border-collapse: collapse; font-size: 12px; min-width: 420px; }
+.cta-prev-table th, .cta-prev-table td { border-bottom: 1px solid var(--cta-line); padding: 4px 10px; text-align: left; color: var(--cta-fg); white-space: nowrap; }
+.cta-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cta-btn { background: var(--cta-soft); color: var(--cta-fg); border: 1px solid var(--cta-line); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 38px; }
+.cta-btn-primary { background: var(--cta-accent); color: var(--cta-accent-fg); border-color: var(--cta-accent); }
+.cta-btn-ghost { background: transparent; }
+.cta-btn:disabled { opacity: .5; cursor: not-allowed; }
+.cta-loading { padding: 12px; color: var(--cta-sub); font-size: 13px; }
+@media (max-width: 640px) { .cta-actions .cta-btn { flex: 1; min-height: 44px; } .cta-panel { padding: 12px; } }

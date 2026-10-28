@@ -107,7 +107,6 @@ function applyPermissions() {
         body.role-tecopm #addContractBtn,
         body.role-tecopm #addSapContractBtn,
         body.role-tecopm #addReceivableBtn,
-        body.role-tecopm #addCallinBtn,
         body.role-tecopm #newContactBtn,
         body.role-tecopm #exportBtn,
         body.role-tecopm #forecastExportBtn,
@@ -137,7 +136,7 @@ function applyPermissions() {
      // 所有「新增」按鈕（tecopm 不可寫入）
      'addContactBtn','addBtn','addVisitBtn','addOppBtn','addProspectBtn','addCampaignBtn','addLeadBtn',
      'addQuotationBtn','addQuoteBtn','addContractBtn','addSapContractBtn','addReceivableBtn',
-     'addCallinBtn','newContactBtn',
+     'newContactBtn',
      // 所有「儲存 / 編輯 / 刪除」按鈕（modal 內）
      'viewEditBtn','viewDeleteBtn','visitViewEditBtn','visitViewDeleteBtn',
      'cOppSaveBtn','visitSaveBtn','contractSaveBtn','leadModalSaveBtn','campaignModalSaveBtn',
@@ -211,7 +210,6 @@ function applyPermissions() {
     bizAnalysis: 'navBizAnalysis',
     contractGroup: 'navContractGroup',
     accountingGroup: 'navAccountingGroup',
-    callin: 'navCallin',
     lostOpp: 'navLostOpp',
     keyAccount: 'navKeyAccount',
     transfer: 'navTransfer',
@@ -779,11 +777,11 @@ function getWonContactIds() {
 }
 
 function setActiveNav(section) {
-  ['navHome','navManagerHome','navMarketingHome','navConsultHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navCallin','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
-  const map = { null:'navHome', managerHome:'navManagerHome', marketingHome:'navMarketingHome', consultHome:'navConsultHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', callin:'navCallin', transfer:'navTransfer' };
+  ['navHome','navManagerHome','navMarketingHome','navConsultHome','navProspects','navContacts','navCompanyMaster','navKeyAccount','navVisits','navTargets','navPipeline','navForecast','navLostOpp','navExecDash','navYoy','navCampaigns','navLeads','navQuotations','navPipelineReport','navBizAnalysis','navErpMa','navSapMa','navReceivables','navTransfer'].forEach(id => { const el=$(id); if(el) el.classList.remove('active'); });
+  const map = { null:'navHome', managerHome:'navManagerHome', marketingHome:'navMarketingHome', consultHome:'navConsultHome', prospects:'navProspects', contacts:'navContacts', companyMaster:'navCompanyMaster', keyAccount:'navKeyAccount', visits:'navVisits', targets:'navTargets', pipeline:'navPipeline', forecast:'navForecast', lostOpp:'navLostOpp', execDash:'navExecDash', yoy:'navYoy', campaigns:'navCampaigns', leads:'navLeads', quotations:'navQuotations', pipelineReport:'navPipelineReport', bizAnalysis:'navBizAnalysis', 'erp-ma':'navErpMa', 'sap-ma':'navSapMa', receivables:'navReceivables', transfer:'navTransfer' };
   const el = $(map[section]);
   if (el) el.classList.add('active');
-  const titles = { null:'首頁', managerHome:'主管首頁', marketingHome:'行銷首頁', consultHome:'顧問首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', callin:'Call-in Pass 管理', transfer:'責任業務名單移轉' };
+  const titles = { null:'首頁', managerHome:'主管首頁', marketingHome:'行銷首頁', consultHome:'顧問首頁', prospects:'潛在客戶', contacts:'我的客戶', companyMaster:'企業主檔', keyAccount:'Key Account', visits:'業務日報', targets:'業務年度目標', pipeline:'商機推進進度', forecast:'銷售預測報表', lostOpp:'流失商機分析', execDash:'管理儀表板', yoy:'YoY 營收同期比', campaigns:'行銷活動', leads:'Lead 管理', quotations:'報價單管理', pipelineReport:'商機動態報表', bizAnalysis:'商機分析', 'erp-ma':'ERP MA 合約管理', 'sap-ma':'SAP License MA 管理', receivables:'應收帳款逾期', transfer:'責任業務名單移轉' };
   $('topbarTitle').textContent = titles[section] ?? '首頁';
   if (section === 'erp-ma' || section === 'sap-ma') {
     $('subMenuContract').classList.add('open');
@@ -804,7 +802,7 @@ function showDashboard() {
   ['prospectsView','contactsView','companyMasterView','keyAccountView','visitsView','targetsView','pipelineView',
    'forecastView','lostOppView','execDashView','yoyView','managerHomeView','marketingHomeView','consultHomeView','campaignsView','leadsView',
    'quotationsView','pipelineReportView','bizAnalysisView','erpMaView','sapMaView',
-   'receivablesView','callinView','transferView'].forEach(id => {
+   'receivablesView','transferView'].forEach(id => {
     const el = $(id); if (el) el.style.display = 'none';
   });
   $('prospectsToolbar').style.display = 'none';
@@ -866,6 +864,13 @@ function _whenScriptsReady(section, fn) {
     fn();
   }
 }
+// 已下架的區段（Call-in Pass 已移除）：上次停在這裡的人 F5／登入後回首頁，不能落到全空白頁。函式宣告會被提升，解析期的 restoreLastSection 也能用
+function _savedSection() {
+  let last = null;
+  try { last = localStorage.getItem('lastSection'); } catch (e) { /* 無痕等 */ }
+  if (last === 'callin') { try { localStorage.removeItem('lastSection'); } catch (e) { /* ignore */ } return null; }
+  return last;
+}
 function showSection(section) {
   currentSection = section;
   localStorage.setItem('lastSection', section);
@@ -892,7 +897,6 @@ function showSection(section) {
   $('erpMaView').style.display        = section === 'erp-ma'      ? '' : 'none';
   $('sapMaView').style.display        = section === 'sap-ma'      ? '' : 'none';
   $('receivablesView').style.display  = section === 'receivables' ? '' : 'none';
-  $('callinView').style.display       = section === 'callin'      ? '' : 'none';
   $('transferView').style.display     = section === 'transfer'    ? '' : 'none';
   $('prospectsToolbar').style.display = section === 'prospects' ? 'flex' : 'none';
   $('contactsToolbar').style.display  = section === 'contacts'  ? 'flex' : 'none';
@@ -922,7 +926,6 @@ function showSection(section) {
   if (section === 'erp-ma')      loadErpMaView();
   if (section === 'sap-ma')      loadSapMaView();
   if (section === 'receivables') loadReceivablesView();
-  if (section === 'callin')      loadCallinView();
   if (section === 'transfer')    loadTransferView();
 }
 
@@ -1009,6 +1012,7 @@ async function loadCompanyMasterView() {
     cmPopulateIndustryFilter();
     renderCompanyMasterList();
     if (window.ITTSCompanyDups && cmCanManage()) window.ITTSCompanyDups.mount();   // 疑似重複主檔（行銷／管理員）
+    if (window.ITTSCompanyTa) window.ITTSCompanyTa.mount();   // 篩選 TA（EDM 名單）
   } catch (e) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#e74c3c;padding:28px">${escapeHtml(e.message)}</td></tr>`;
   }
@@ -1511,7 +1515,6 @@ if ($('navBizAnalysis')) $('navBizAnalysis').addEventListener('click', () => sho
 $('navErpMa').addEventListener('click',     () => showSection('erp-ma'));
 $('navSapMa').addEventListener('click',     () => showSection('sap-ma'));
 $('navReceivables').addEventListener('click',() => showSection('receivables'));
-$('navCallin').addEventListener('click',    () => showSection('callin'));
 if ($('navTransfer')) $('navTransfer').addEventListener('click', () => showSection('transfer'));  // 名單移轉（主管/admin）
 $('goSetTargetBtn').addEventListener('click', () => showSection('targets'));
 
@@ -3905,7 +3908,7 @@ async function initUser() {
       } else {
         // 其他角色（業務、秘書、行銷、admin 等）→ 一般首頁
         // 若有上次記錄則還原，否則顯示首頁
-        const last = localStorage.getItem('lastSection');
+        const last = _savedSection();
         if (last && last !== 'dashboard') {
           showSection(last);
         } else {
@@ -9060,7 +9063,7 @@ window.NavGroups = (function initNavGroups() {
 // 若是剛登入（sessionStorage.justLoggedIn），暫不還原，讓 initUser 依角色決定
 (function restoreLastSection() {
   if (sessionStorage.getItem('justLoggedIn')) return; // initUser 接手
-  const last = localStorage.getItem('lastSection');
+  const last = _savedSection();
   if (!last || last === 'dashboard') {
     showDashboard();
   } else {
@@ -9168,7 +9171,6 @@ function renderNotifList(list) {
   if (!list.length) { el.innerHTML = '<div class="notif-empty">暫無通知</div>'; return; }
 
   const typeIcon = {
-    callin_new:'📞', callin_assigned:'📋', callin_overdue:'⏰', callin_responded:'✅',
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
     quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
@@ -9499,220 +9501,6 @@ async function deleteReceivable(id) {
   showToast('✅ 已刪除');
   loadReceivablesView();
 }
-
-// ════════════════════════════════════════════════════════
-// ── Call-in Pass 管理 ─────────────────────────────────────
-// ════════════════════════════════════════════════════════
-let allCallins = [];
-let currentCtab = 'all';
-let callinUsers = []; // 可指派的業務清單
-
-async function loadCallinView() {
-  try {
-    const r = await fetch(`${API}/callins`);
-    if (!r.ok) return;
-    allCallins = await r.json();
-  } catch { showToast('無法載入 Call-in 資料'); return; }
-
-  // 判斷角色決定是否顯示新增按鈕
-  const role = userPermissions.role;
-  $('addCallinBtn').style.display = (role === 'secretary' || role === 'admin' || role === 'manager1' || role === 'manager2') ? '' : 'none';
-
-  renderCallins();
-  updateCallinDashCard();
-  updateCallinBadge();
-}
-
-function renderCallins() {
-  const STATUS_LABEL = { pending:'待指派', assigned:'待聯繫', contacted:'已聯繫', qualified:'合格商機', unqualified:'非合格', overdue:'逾時' };
-  const STATUS_CLS   = { pending:'ci-pending', assigned:'ci-assigned', contacted:'ci-contacted', qualified:'ci-qualified', unqualified:'ci-unqualified', overdue:'ci-overdue' };
-  const role = userPermissions.role;
-  const search = ($('callinSearch') ? $('callinSearch').value : '').toLowerCase();
-
-  const list = allCallins.filter(c => {
-    if (currentCtab === 'done' && !['contacted','qualified','unqualified'].includes(c.status)) return false;
-    if (currentCtab !== 'all' && currentCtab !== 'done' && c.status !== currentCtab) return false;
-    if (search) {
-      const hay = ((c.company || '') + ' ' + (c.contactName || '') + ' ' + (c.phone || '')).toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
-
-  $('callinTbody').innerHTML = list.map(c => {
-    const canAssign  = (role === 'manager1' || role === 'manager2' || role === 'admin') && c.status === 'pending';
-    const canRespond = role === 'user' && c.status === 'assigned';
-    const dl = c.deadline ? new Date(c.deadline).toLocaleString('zh-TW', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
-    return `<tr>
-      <td>${escapeHtml(new Date(c.createdAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}))}</td>
-      <td><strong>${escapeHtml(c.company) || ''}</strong>${c.contactName ? '<br><span style="color:#888;font-size:12px">'+escapeHtml(c.contactName)+'</span>' : ''}</td>
-      <td>${escapeHtml(c.phone) || '-'}</td>
-      <td style="max-width:180px;white-space:normal">${escapeHtml(c.topic) || '-'}</td>
-      <td>${escapeHtml(c.assignedTo) || '<span style="color:#bbb">未指派</span>'}</td>
-      <td>${escapeHtml(dl)}</td>
-      <td><span class="ci-badge ${STATUS_CLS[c.status] || ''}">${STATUS_LABEL[c.status] || escapeHtml(c.status)}</span></td>
-      <td>
-        ${canAssign  ? `<button class="btn btn-sm btn-primary" onclick="openAssignModal('${escapeHtml(c.id)}')">指派</button>` : ''}
-        ${canRespond ? `<button class="btn btn-sm btn-success" onclick="openRespondModal('${escapeHtml(c.id)}')">回應</button>` : ''}
-        ${(!canAssign && !canRespond) ? '<span style="color:#bbb;font-size:12px">-</span>' : ''}
-      </td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="8" style="text-align:center;color:#bbb;padding:32px">暫無資料</td></tr>`;
-}
-
-// Tab 切換
-document.querySelectorAll('[data-ctab]').forEach(btn => {
-  btn.addEventListener('click', function() {
-    document.querySelectorAll('[data-ctab]').forEach(b => b.classList.remove('active'));
-    this.classList.add('active');
-    currentCtab = this.dataset.ctab;
-    renderCallins();
-  });
-});
-
-// Call-in 搜尋
-const _callinSearchEl = $('callinSearch');
-if (_callinSearchEl) _callinSearchEl.addEventListener('input', renderCallins);
-
-// 新增 Call-in
-$('addCallinBtn').addEventListener('click', () => {
-  $('ciCompany').value = $('ciContact').value = $('ciPhone').value = $('ciTopic').value = $('ciNote').value = '';
-  $('ciSource').value = '電話';
-  $('callinModalOverlay').style.display = 'flex';
-});
-$('callinModalClose').addEventListener('click', () => $('callinModalOverlay').style.display = 'none');
-$('callinModalCancel').addEventListener('click', () => $('callinModalOverlay').style.display = 'none');
-
-$('callinModalSave').addEventListener('click', async () => {
-  const topic = $('ciTopic').value.trim();
-  if (!topic) { showToast('請填入來電事由'); return; }
-  const payload = { company:$('ciCompany').value.trim(), contactName:$('ciContact').value.trim(), phone:$('ciPhone').value.trim(), topic, source:$('ciSource').value, note:$('ciNote').value.trim() };
-  try {
-    const r = await fetch(`${API}/callins`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    if (!r.ok) { const e = await r.json(); showToast(e.error || '建立失敗'); return; }
-    showToast('✅ Call-in 已建立，已通知主管');
-    $('callinModalOverlay').style.display = 'none';
-    loadCallinView();
-  } catch { showToast('操作失敗'); }
-});
-
-// 指派 Modal
-async function openAssignModal(id) {
-  const item = allCallins.find(c => c.id === id);
-  if (!item) return;
-  $('assignCallinId').value = id;
-  $('assignCallinInfo').innerHTML = `<b>${escapeHtml(item.company || item.contactName)}</b> — ${escapeHtml(item.topic)}`;
-
-  // 取得可指派業務清單
-  if (!callinUsers.length) {
-    try {
-      const r = await fetch(`${API}/admin/users`);
-      if (r.ok) callinUsers = (await r.json()).filter(u => u.role === 'user' || u.role === 'manager2');
-    } catch {}
-  }
-  const sel = $('assignToUser');
-  sel.innerHTML = '<option value="">請選擇業務...</option>' +
-    callinUsers.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.displayName || u.username)}</option>`).join('');
-  $('callinAssignOverlay').style.display = 'flex';
-}
-$('callinAssignClose').addEventListener('click', () => $('callinAssignOverlay').style.display = 'none');
-$('callinAssignCancel').addEventListener('click', () => $('callinAssignOverlay').style.display = 'none');
-
-$('callinAssignSave').addEventListener('click', async () => {
-  const id = $('assignCallinId').value;
-  const assignedTo = $('assignToUser').value;
-  if (!assignedTo) { showToast('請選擇業務'); return; }
-  try {
-    const r = await fetch(`${API}/callins/${id}/assign`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ assignedTo }) });
-    if (!r.ok) { const e = await r.json(); showToast(e.error || '指派失敗'); return; }
-    showToast('✅ 已指派，業務已收到通知');
-    $('callinAssignOverlay').style.display = 'none';
-    loadCallinView();
-    pollNotifications();
-  } catch { showToast('操作失敗'); }
-});
-
-// 業務回應 Modal
-function openRespondModal(id) {
-  const item = allCallins.find(c => c.id === id);
-  if (!item) return;
-  $('respondCallinId').value = id;
-  $('respondCallinInfo').innerHTML = `<b>${escapeHtml(item.company || item.contactName)}</b> — ${escapeHtml(item.topic)}<br><span style="color:#e65100">截止：${item.deadline ? escapeHtml(new Date(item.deadline).toLocaleString('zh-TW')) : '-'}</span>`;
-  $('oppName').value = $('respondNote').value = '';
-  $('oppStage').value = 'C';
-  document.querySelectorAll('input[name="respondAction"]').forEach(r => r.checked = false);
-  $('qualifiedSection').style.display = 'none';
-  $('callinRespondOverlay').style.display = 'flex';
-}
-$('callinRespondClose').addEventListener('click', () => $('callinRespondOverlay').style.display = 'none');
-$('callinRespondCancel').addEventListener('click', () => $('callinRespondOverlay').style.display = 'none');
-
-document.querySelectorAll('input[name="respondAction"]').forEach(r => {
-  r.addEventListener('change', () => {
-    $('qualifiedSection').style.display = $('raQualified').checked ? '' : 'none';
-  });
-});
-
-$('callinRespondSave').addEventListener('click', async () => {
-  const id = $('respondCallinId').value;
-  const action = document.querySelector('input[name="respondAction"]:checked')?.value;
-  if (!action) { showToast('請選擇聯繫結果'); return; }
-  if (action === 'qualified' && !$('oppName').value.trim()) { showToast('請填入商機名稱'); return; }
-  const payload = { action, opportunityName:$('oppName').value.trim(), opportunityStage:$('oppStage').value, note:$('respondNote').value.trim() };
-  try {
-    const r = await fetch(`${API}/callins/${id}/respond`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    if (!r.ok) { const e = await r.json(); showToast(e.error || '回應失敗'); return; }
-    showToast('✅ 已回應，主管已收到通知');
-    $('callinRespondOverlay').style.display = 'none';
-    loadCallinView();
-    pollNotifications();
-  } catch { showToast('操作失敗'); }
-});
-
-// Dashboard Call-in 待辦卡
-function updateCallinDashCard() {
-  const role = userPermissions.role;
-  const pending = allCallins.filter(c => c.status === 'assigned' || c.status === 'overdue');
-  const card = $('dashCallinCard');
-  if (!pending.length || (role !== 'user')) { card.style.display = 'none'; return; }
-  card.style.display = '';
-  $('dashCallinList').innerHTML = pending.map(c => {
-    const isOverdue = c.status === 'overdue';
-    return `<div class="dash-callin-item ${isOverdue ? 'overdue' : ''}">
-      <div class="dash-callin-ico">${isOverdue ? '⏰' : '📞'}</div>
-      <div class="dash-callin-info">
-        <strong>${escapeHtml(c.company || c.contactName)}</strong> — ${escapeHtml(c.topic)}
-        <div style="font-size:11px;color:${isOverdue?'#d32f2f':'#e65100'}">截止：${c.deadline ? escapeHtml(new Date(c.deadline).toLocaleString('zh-TW')) : '-'}</div>
-      </div>
-      <button class="btn btn-sm btn-primary" onclick="showSection('callin')">處理</button>
-    </div>`;
-  }).join('');
-}
-
-function updateCallinBadge() {
-  const pending = allCallins.filter(c => c.status === 'pending' || c.status === 'assigned' || c.status === 'overdue');
-  const badge = $('callinBadge');
-  if (pending.length > 0) {
-    badge.textContent = pending.length > 9 ? '9+' : pending.length;
-    badge.style.display = '';
-  } else {
-    badge.style.display = 'none';
-  }
-}
-
-// 也在 dashboard 載入時更新 Call-in
-const _origShowDashboard = showDashboard;
-// 擴展 showDashboard 以載入 callin
-const _dashCallinInit = async () => {
-  try {
-    const r = await fetch(`${API}/callins`);
-    if (r.ok) {
-      allCallins = await r.json();
-      updateCallinDashCard();
-      updateCallinBadge();
-    }
-  } catch {}
-};
 
 // ════════════════════════════════════════════════════════
 // ── 責任業務名單移轉 ──────────────────────────────────────

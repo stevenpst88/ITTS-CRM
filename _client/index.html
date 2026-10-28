@@ -132,12 +132,6 @@
                     <span class="nav-icon">&#11088;</span>
                     <span class="nav-label">Key Account</span>
                   </div>
-          <!-- Call-in Pass -->
-          <div class="sidebar-nav-item" id="navCallin" data-section="callin">
-                    <span class="nav-icon">&#128222;</span>
-                    <span class="nav-label">Call-in Pass</span>
-                    <span class="nav-badge" id="callinBadge" style="display:none">0</span>
-                  </div>
           <!-- 名單移轉（主管專用） -->
           <div class="sidebar-nav-item" id="navTransfer" data-section="transfer" style="display:none">
                     <span class="nav-icon">&#128260;</span>
@@ -463,12 +457,6 @@
             <div class="dash-pipeline-title">商機推進進度 <span class="chart-title-sub">（點擊欄位前往看板）</span></div>
             <div class="dash-pipeline-cols" id="dashPipelineCols"></div>
           </div>
-
-          <!-- Call-in Pass 待辦提醒（業務看到被指派的） -->
-          <div id="dashCallinCard" style="display:none">
-            <div class="dash-section-title">&#128222; 今日 Call-in 待處理</div>
-            <div id="dashCallinList"></div>
-          </div>
         </div>
 
         <!-- ── 潛在客戶 ── -->
@@ -558,6 +546,7 @@
             </div>
             <div id="cmImportResult" style="font-size:13px;margin-bottom:8px"></div>
             <div id="cmDupMount" class="cdup-mount"></div><!-- 疑似重複主檔（company-dups.js 填入；僅行銷／管理員） -->
+            <div id="cmTaMount" class="cta-mount"></div><!-- 篩選 TA（company-ta.js 填入） -->
             <div id="creqHostCm" class="cct-host" data-creq-host="cm" hidden></div><!-- 建檔申請清單（行銷／管理員） -->
             <div id="cmBatchBar" class="cct-batchbar" hidden>
               <label class="cct-batch-all"><input type="checkbox" id="cmSelAll"> 全選目前列表</label>
@@ -1713,31 +1702,6 @@
           </div>
         </div>
 
-        <!-- ── Call-in Pass 管理 ── -->
-        <div id="callinView" style="display:none">
-          <div class="view-toolbar">
-            <div class="view-tab-group">
-              <button class="view-tab active" data-ctab="all">全部</button>
-              <button class="view-tab" data-ctab="pending">待指派</button>
-              <button class="view-tab" data-ctab="assigned">待聯繫</button>
-              <button class="view-tab" data-ctab="overdue">逾時</button>
-              <button class="view-tab" data-ctab="done">已完成</button>
-            </div>
-            <input type="search" id="callinSearch" class="form-control" placeholder="搜尋公司 / 聯絡人…" style="width:200px;margin:0 8px">
-            <button class="btn btn-primary" id="addCallinBtn" style="display:none">&#43; 新增 Call-in</button>
-          </div>
-          <div class="table-wrap">
-            <table class="data-table" id="callinTable">
-              <thead><tr>
-                <th>建立時間</th><th>公司 / 聯絡人</th><th>電話</th>
-                <th>來電事由</th><th>負責業務</th><th>截止時間</th>
-                <th>狀態</th><th>操作</th>
-              </tr></thead>
-              <tbody id="callinTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
         <!-- ── 名單移轉 View（須在 main 內，否則會渲染到畫面外變空白）── -->
         <div id="transferView" style="display:none;padding:24px">
           <div style="font-size:20px;font-weight:800;color:#1a2d52;margin-bottom:6px">🔄 責任業務名單移轉</div>
@@ -1810,93 +1774,6 @@
       <div class="modal-footer">
         <button class="btn" id="receivableModalCancel">取消</button>
         <button class="btn btn-primary" id="receivableModalSave">儲存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Call-in 新增 Modal（秘書用） ── -->
-  <div class="modal-overlay" id="callinModalOverlay" style="display:none">
-    <div class="modal" style="max-width:500px">
-      <div class="modal-header">
-        <h2>新增 Call-in Pass</h2>
-        <button class="modal-close" id="callinModalClose">&#10005;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group"><label>公司名稱</label><input type="text" id="ciCompany" placeholder="來電公司"></div>
-          <div class="form-group"><label>聯絡人</label><input type="text" id="ciContact" placeholder="來電者姓名"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>電話</label><input type="text" id="ciPhone" placeholder="來電號碼"></div>
-          <div class="form-group"><label>來源</label>
-            <select id="ciSource"><option value="電話">電話</option><option value="官網">官網</option><option value="展覽">展覽</option><option value="介紹">介紹</option><option value="其他">其他</option></select>
-          </div>
-        </div>
-        <div class="form-group"><label>來電事由 *</label><textarea id="ciTopic" rows="3" placeholder="客戶需求 / 問題說明"></textarea></div>
-        <div class="form-group"><label>備註</label><textarea id="ciNote" rows="2" placeholder="補充說明"></textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" id="callinModalCancel">取消</button>
-        <button class="btn btn-primary" id="callinModalSave">建立 Call-in</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Call-in 指派 Modal（主管用） ── -->
-  <div class="modal-overlay" id="callinAssignOverlay" style="display:none">
-    <div class="modal" style="max-width:420px">
-      <div class="modal-header">
-        <h2>指派業務</h2>
-        <button class="modal-close" id="callinAssignClose">&#10005;</button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="assignCallinId">
-        <div id="assignCallinInfo" class="info-card-soft" style="border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
-        <div class="form-group">
-          <label>指派給業務</label>
-          <select id="assignToUser"><option value="">請選擇業務...</option></select>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" id="callinAssignCancel">取消</button>
-        <button class="btn btn-primary" id="callinAssignSave">確認指派</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Call-in 業務回應 Modal ── -->
-  <div class="modal-overlay" id="callinRespondOverlay" style="display:none">
-    <div class="modal" style="max-width:460px">
-      <div class="modal-header">
-        <h2>Call-in 回應</h2>
-        <button class="modal-close" id="callinRespondClose">&#10005;</button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="respondCallinId">
-        <div id="respondCallinInfo" class="info-card-soft" style="border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
-        <div class="form-group">
-          <label>聯繫結果</label>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-            <label class="radio-btn"><input type="radio" name="respondAction" value="qualified" id="raQualified"> &#9989; 合格商機</label>
-            <label class="radio-btn"><input type="radio" name="respondAction" value="unqualified" id="raUnqualified"> &#10060; 非合格商機</label>
-            <label class="radio-btn"><input type="radio" name="respondAction" value="contacted" id="raContacted"> &#128222; 已聯繫（待確認）</label>
-          </div>
-        </div>
-        <div id="qualifiedSection" style="display:none">
-          <div class="form-group"><label>商機名稱 *</label><input type="text" id="oppName" placeholder="請輸入商機名稱"></div>
-          <div class="form-group"><label>商機等級</label>
-            <select id="oppStage">
-              <option value="A">A - Commit</option>
-              <option value="B">B - Upside</option>
-              <option value="C" selected>C - Pipeline</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group"><label>備註說明</label><textarea id="respondNote" rows="2" placeholder="補充說明..."></textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" id="callinRespondCancel">取消</button>
-        <button class="btn btn-primary" id="callinRespondSave">確認送出</button>
       </div>
     </div>
   </div>
@@ -3236,6 +3113,7 @@
   <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
   <script src="company-requests.js"></script><!-- 統編查無→申請行銷建檔：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCompanyReq.start） -->
   <script src="company-dups.js"></script><!-- 企業主檔疑似重複清單：須在 app.js 之前載入 -->
+  <script src="company-ta.js"></script><!-- 企業主檔篩選 TA（EDM 名單）：須在 app.js 之前載入 -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
