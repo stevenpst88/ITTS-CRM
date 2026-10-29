@@ -1045,7 +1045,7 @@ function renderCompanyMasterList() {
   const canAssign = cmCanAssign();
   const rowHtml = (c, isNew) => `
     <tr class="cm-row" data-id="${escapeHtml(c.id)}"${isNew ? ' style="background:rgba(59,130,246,0.07)"' : ''}>
-      <td>${canAssign ? `<input type="checkbox" class="cm-sel" data-id="${escapeHtml(c.id)}" aria-label="選取「${escapeHtml(c.name)}」"${_cmSel.has(c.id) ? ' checked' : ''}> ` : ''}<strong>${escapeHtml(c.name)}</strong>${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
+      <td>${canAssign ? `<input type="checkbox" class="cm-sel" data-id="${escapeHtml(c.id)}" aria-label="選取「${escapeHtml(c.name)}」"${_cmSel.has(c.id) ? ' checked' : ''}> ` : ''}<strong>${escapeHtml(c.name)}</strong>${c.foreign ? ' <span class="cm-foreign" title="境外公司（無統編）">境外</span>' : ''}${isNew ? ' <span style="display:inline-block;background:#dbeafe;color:#1d4ed8;border-radius:4px;font-size:10px;padding:1px 5px;vertical-align:middle">新匯入</span>' : ''} <span class="cm-label">›</span></td>
       <td>${c.taxId ? escapeHtml(c.taxId) : '<span class="cm-label">無</span>'}</td>
       <td>${c.contactCount || 0}</td>
       <td>${(c.owners && c.owners.length) ? `<span style="font-size:12px">${c.owners.map(escapeHtml).join('、')}</span>` : '<span class="cm-label">-</span>'}</td>
@@ -1112,6 +1112,18 @@ function renderCompanyMasterList() {
       } catch (err) { alert('❌ ' + err.message); inp.value = comp.region || ''; }
     });
   });
+  tbody.querySelectorAll('.cm-for-chk').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation());
+    cb.addEventListener('change', async () => {
+      const comp = _cmData.find(x => x.id === cb.dataset.id); if (!comp) return;
+      try {
+        const r = await fetch(`${API}/companies/${encodeURIComponent(comp.id)}/set-foreign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ foreign: cb.checked }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || ('儲存失敗 (' + r.status + ')'));
+        comp.foreign = cb.checked; renderCompanyMasterList(); showToast(cb.checked ? '✓ 已標為境外' : '✓ 已取消境外');
+      } catch (err) { alert('❌ ' + err.message); cb.checked = !!comp.foreign; }
+    });
+  });
   tbody.querySelectorAll('.cm-ind-sel').forEach(sel => {
     sel.addEventListener('click', e => e.stopPropagation());
     sel.addEventListener('change', async e => {
@@ -1137,7 +1149,9 @@ function renderCompanyMasterList() {
 // 區域欄：admin/行銷 → 可直接編輯（離開欄位即存）；其他角色 → 純文字
 function cmRegionCell(c) {
   if (!cmCanManage()) return c.region ? escapeHtml(c.region) : '<span class="cm-label">-</span>';
-  return `<input class="cm-reg-inp" data-id="${escapeHtml(c.id)}" value="${escapeHtml(c.region || '')}" maxlength="40" placeholder="—" aria-label="區域" style="width:80px;font-size:13px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px">`;
+  const hasTax = /^\d{8}$/.test(c.taxId || '');
+  const fchk = `<label class="cm-foreign-tog" title="標為境外公司（有統編者不可）"><input type="checkbox" class="cm-for-chk" data-id="${escapeHtml(c.id)}"${c.foreign ? ' checked' : ''}${hasTax ? ' disabled' : ''}> 境外</label>`;
+  return `<input class="cm-reg-inp" data-id="${escapeHtml(c.id)}" value="${escapeHtml(c.region || '')}" maxlength="40" placeholder="—" aria-label="區域" style="width:80px;font-size:13px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px"> ${fchk}`;
 }
 
 // 企業主檔列表的產業欄：admin/行銷 → 下拉可選；其他角色 → 純文字
@@ -1186,7 +1200,7 @@ function renderCompanyMasterDetail(d) {
     ['統一編號', escapeHtml(c.taxId || '無')],
     ['資本額', cmFmtCap(c.capital)],
     ['產業', escapeHtml(c.industry || '—')],
-    ['區域', escapeHtml(c.region || '—')],
+    ['區域', escapeHtml(c.region || '—') + (c.foreign ? ' <span class="cm-foreign">境外</span>' : '')],
     ['負責人', escapeHtml(c.representative || '—')],
     ['地址', escapeHtml(c.address || '—')],
     ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],

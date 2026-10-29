@@ -5077,3 +5077,9 @@ body.dark .ccr-input { background: #0d1117; border-color: #3a4350; }
 body.dark .ccr-hint { color: #a9b4c1; }
 body.dark .ccr-sim { background: #3b2f12; color: #fde68a; }
 body.dark .ccr-msg { color: #fca5a5; }
+
+/* 企業主檔「境外」標記 */
+.cm-foreign { display: inline-block; background: #ede9fe; color: #5b21b6; border-radius: 4px; font-size: 10px; padding: 1px 5px; vertical-align: middle; }
+.cm-foreign-tog { font-size: 11px; color: #6b7280; margin-left: 4px; cursor: pointer; white-space: nowrap; }
+body.dark .cm-foreign { background: #3b2a6b; color: #ddd6fe; }
+body.dark .cm-foreign-tog { color: #a9b4c1; }

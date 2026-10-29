@@ -975,6 +975,8 @@ function runCompanyImport(working, rows, COL, ctx) {
     const industry = COL.industry >= 0 ? String(r[COL.industry] ?? '').trim() : '';
     const region = (COL.region >= 0) ? String(r[COL.region] ?? '').trim() : '';
     const customerCode = (COL.customerCode >= 0) ? String(r[COL.customerCode] ?? '').trim() : '';
+    const foreignRaw = (COL.foreign >= 0) ? String(r[COL.foreign] ?? '').trim().toLowerCase() : '';
+    const foreignSet = /^(是|y|yes|true|1|境外|v|✓)$/.test(foreignRaw) ? true : (/^(否|n|no|false|0|國內|境內)$/.test(foreignRaw) ? false : null);   // 其他／空白＝不變更
     const serviceOwnerRaw = (COL.serviceOwner >= 0) ? String(r[COL.serviceOwner] ?? '').trim() : '';
     if (!name && !taxId) { skipped++; return; }
     const key = companyMatchKey(taxId, name);
@@ -1000,7 +1002,7 @@ function runCompanyImport(working, rows, COL, ctx) {
       } else {
         created++;
         // 無統編的新公司（如國外客戶）→ 列入警示（仍可匯入，只是改以公司名比對、無法用統編去重）
-        if (!taxId) {
+        if (!taxId && foreignSet !== true) {
           noTaxId++;
           if (noTaxIdList.length < 200) noTaxIdList.push({ rowNum, name });
         }
@@ -1029,6 +1031,7 @@ function runCompanyImport(working, rows, COL, ctx) {
     }
     if (region) m.region = region;
     if (customerCode) m.customerCode = customerCode;
+    if (foreignSet !== null) m.foreign = foreignSet;
     // 服務業務欄 → 對應到該業務帳號的 BU，累加進 buImport（可多位，逗號/頓號/斜線分隔）
     if (serviceOwnerRaw && ctx && ctx.usersByName) {
       const bus = new Set(Array.isArray(m.buImport) ? m.buImport : []);
@@ -8724,6 +8727,7 @@ app.get('/api/companies', requireAuth, (req, res) => {
       owners: [...(ownersById[m.id] || [])],
       bu: companyBuUnion([...(ownerUserById[m.id] || [])], m.buImport, usersByName),
       region: m.region || '',
+      ...(m.foreign ? { foreign: true } : {}),
       customerCode: m.customerCode || '',
     }))
     .sort((a, b) => (b.contactCount - a.contactCount) || (a.name || '').localeCompare(b.name || '', 'zh-TW'));
@@ -8943,14 +8947,14 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
   const data = db.load();
   const countById = {};
   (data.contacts || []).forEach(c => { if (!c.deleted && c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
-  const headers = ['公司名稱', '統一編號', '產業', '區域', '客戶代號', '資本額', '名片數', '資料來源'];
+  const headers = ['公司名稱', '統一編號', '產業', '區域', '客戶代號', '境外', '資本額', '名片數', '資料來源'];
   const rows = (data.companies || []).map(m => [
-    m.name || '', m.taxId || '', m.industry || '', m.region || '', m.customerCode || '',
+    m.name || '', m.taxId || '', m.industry || '', m.region || '', m.customerCode || '', m.foreign ? '是' : '',
     (m.capital != null && m.capital !== '') ? m.capital : '',
     countById[m.id] || 0, m.industrySource || ''
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '企業主檔');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -8976,7 +8980,7 @@ app.post('/api/companies/import', requireAuth,
     if (rows.length < 2) return res.status(400).json({ error: '檔案無資料列' });
     const header = rows[0].map(h => String(h).trim());
     const find = (...keys) => { for (const k of keys) { const i = header.findIndex(h => h.includes(k)); if (i >= 0) return i; } return -1; };
-    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業'), serviceOwner: find('服務業務'), region: find('區域', '地區'), customerCode: find('客戶代號', '客戶編號') };
+    const COL = { name: find('公司名稱', '公司'), taxId: find('統一編號', '統編'), industry: find('產業'), serviceOwner: find('服務業務'), region: find('區域', '地區'), customerCode: find('客戶代號', '客戶編號'), foreign: find('境外') };
     if (COL.name < 0 && COL.taxId < 0) return res.status(400).json({ error: '缺少「公司名稱」或「統一編號」欄位' });
 
     const dryRun = req.query.dryRun === '1';
@@ -9055,7 +9059,9 @@ app.post('/api/companies', requireAuth, (req, res) => {
   const b = req.body || {};
   const cl = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
   const name = cl(b.name, 120), taxId = cl(b.taxId, 8), industry = cl(b.industry, 60), region = cl(b.region, 40), customerCode = cl(b.customerCode, 40);
+  const foreign = b.foreign === true;
   if (!name) return res.status(400).json({ error: '請輸入公司名稱' });
+  if (foreign && taxId) return res.status(400).json({ error: '境外公司不填統一編號（若有統編請取消勾選境外）' });
   if (taxId && !/^\d{8}$/.test(taxId)) return res.status(400).json({ error: '統一編號須為 8 碼數字（無統編請留空）' });
   const data = db.load();
   if (industry && !(data.industries || []).includes(industry)) return res.status(400).json({ error: '產業不在分類清單內，請先到「產業分類」新增' });
@@ -9065,13 +9071,13 @@ app.post('/api/companies', requireAuth, (req, res) => {
   const nn = normalizeCompanyLoose(name);
   const twins = nn.length >= 2 ? (data.companies || []).filter(c => !c.deleted && normalizeCompanyLoose(c.name) === nn).slice(0, 5) : [];
   if (twins.length && b.force !== true) return res.status(409).json({ code: 'SIMILAR', error: '已有名稱相近的企業主檔，確認不是同一家才可繼續建立', similar: twins.map(c => ({ id: c.id, name: c.name || '', taxId: c.taxId || '' })) });
-  const out = runCompanyImport(data, [[name, taxId, industry, region, customerCode]], { name: 0, taxId: 1, industry: 2, region: 3, customerCode: 4, serviceOwner: -1 }, { usersByName: {}, displayToUser: {}, responsible: null });
+  const out = runCompanyImport(data, [[name, taxId, industry, region, customerCode, foreign ? '是' : '']], { name: 0, taxId: 1, industry: 2, region: 3, customerCode: 4, foreign: 5, serviceOwner: -1 }, { usersByName: {}, displayToUser: {}, responsible: null });
   const t = (out.touched || [])[0];
   if (!t || !(out.created + out.duplicates)) return res.status(400).json({ error: '無法建立（資料不完整）' });
   let poolCreated = 0;
   if (b.toPool === true) { createPoolPlaceholder(data, { company: t.name, taxId: t.taxId, companyId: t.id }, req); poolCreated = 1; }
   db.save(data);
-  writeLog('CREATE_COMPANY', req.session.user.username, t.name, `單筆新增企業主檔｜統編=${t.taxId || '無'}${industry ? '｜產業=' + industry : ''}${region ? '｜區域=' + region : ''}${poolCreated ? '｜放入客戶池' : ''}${twins.length ? '｜已確認非重複（' + twins.length + ' 筆同名）' : ''}`, req);
+  writeLog('CREATE_COMPANY', req.session.user.username, t.name, `單筆新增企業主檔｜統編=${t.taxId || '無'}${foreign ? '｜境外' : ''}${industry ? '｜產業=' + industry : ''}${region ? '｜區域=' + region : ''}${poolCreated ? '｜放入客戶池' : ''}${twins.length ? '｜已確認非重複（' + twins.length + ' 筆同名）' : ''}`, req);
   res.json({ success: true, id: t.id, name: t.name, poolCreated });
 });
 
@@ -9080,11 +9086,11 @@ app.post('/api/companies', requireAuth, (req, res) => {
 // 匯入只讀「第一個工作表」，所以說明頁一定要放第二張，否則會被當成資料列。
 app.get('/api/companies/import-template', requireAuth, (req, res) => {
   if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
-  const headers = ['公司名稱', '統一編號', '產業', '服務業務', '區域', '客戶代號'];
-  const sample1 = ['台灣積體電路製造股份有限公司', '22099131', '半導體', 'David', '新竹', 'C0001'];
-  const sample2 = ['中國砂輪企業股份有限公司', '03089008', '製造業', 'David、Peter', '台北', ''];
+  const headers = ['公司名稱', '統一編號', '產業', '服務業務', '區域', '客戶代號', '境外'];
+  const sample1 = ['台灣積體電路製造股份有限公司', '22099131', '半導體', 'David', '新竹', 'C0001', ''];
+  const sample2 = ['中國砂輪企業股份有限公司', '03089008', '製造業', 'David、Peter', '台北', '', ''];
   const ws = XLSX.utils.aoa_to_sheet([headers, sample1, sample2]);
-  ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 12 }];
+  ws['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
 
   const guide = [
     ['欄位', '必填', '說明'],
@@ -9100,6 +9106,7 @@ app.get('/api/companies/import-template', requireAuth, (req, res) => {
         '注意：這不是指定名片擁有者——列表上「服務業務」欄的人名，是由該公司名下名片的擁有者自動帶出。名字在系統中找不到時會被忽略，不會報錯。'],
     ['區域', '否', '自由文字（例：北區、新竹）。'],
     ['客戶代號', '否', 'ERP／客戶端的代號，自由文字。'],
+    ['境外', '否', '境外（無統編）公司填「是」；國內填「否」；留空＝不變更。境外公司不會出現在匯入預覽的「無統編」警示，之後也可在 EDM 篩選用「境外」條件。'],
     ['通用規則', '', '格子留空＝不變更既有資料（不會清空）。「範例」兩列請先刪除再匯入。'],
   ];
   const wsGuide = XLSX.utils.aoa_to_sheet(guide);
@@ -9449,6 +9456,22 @@ app.post('/api/companies/:id/set-region', requireAuth, (req, res) => {
   db.save(data);
   writeLog('SET_COMPANY_REGION', req.session.user.username, m.name || m.id, `區域=${m.region || '(清空)'}`, req);
   res.json({ success: true, region: m.region });
+});
+
+// 設定企業主檔「境外」旗標（限管理員/行銷；已有統編的公司不能標為境外）
+app.post('/api/companies/:id/set-foreign', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const data = db.load();
+  const m = (data.companies || []).find(c => c.id === req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此企業主檔' });
+  const foreign = !!(req.body && req.body.foreign === true);
+  if (foreign && /^\d{8}$/.test(String(m.taxId || ''))) return res.status(400).json({ error: '已有統一編號的公司不能標為境外' });
+  if (!!m.foreign === foreign) return res.json({ success: true, foreign });
+  m.foreign = foreign;
+  m.updatedAt = new Date().toISOString();
+  db.save(data);
+  writeLog('SET_COMPANY_FOREIGN', req.session.user.username, m.name || m.id, `境外=${foreign ? '是' : '否'}`, req);
+  res.json({ success: true, foreign });
 });
 
 // 設定企業主檔「客戶代號」（自由文字，限管理員/行銷；對應 ERP 客戶代號，潛客可留空）
@@ -9839,6 +9862,7 @@ app.get('/api/companies/:id', requireAuth, (req, res) => {
       representative: company.representative || '', gcisEnriched: !!company.gcisEnriched,
       bu: companyBuUnion([...new Set(contacts.filter(c => !c.isPlaceholder).map(c => c.owner))], company.buImport, usersByName),
       region: company.region || '',
+      ...(company.foreign ? { foreign: true } : {}),
       customerCode: company.customerCode || '',
       ...(RC ? respFields(company, RC) : {}),
     },

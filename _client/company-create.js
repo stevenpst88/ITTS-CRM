@@ -24,6 +24,10 @@
     var sel = el('select', 'ccr-input');
     sel.appendChild(new Option('— 未分類 —', ''));
     (opts.industries || []).forEach(function (n) { sel.appendChild(new Option(n, n)); });
+    var fw = el('label', 'ccr-check'); var fchk = el('input'); fchk.type = 'checkbox';
+    fw.appendChild(fchk); fw.appendChild(el('span', null, ' 境外公司（無統編，例如國外客戶；將標示「境外」）'));
+    form.insertBefore(fw, tax.parentNode.nextSibling);
+    fchk.addEventListener('change', function () { tax.disabled = fchk.checked; if (fchk.checked) tax.value = ''; });
     field('industry', '產業', sel);
     field('region', '區域', text('例：台北、新竹', 40));
     field('customerCode', '客戶代號', text('對應 ERP 客戶代號，潛客可留空', 40));
@@ -48,7 +52,7 @@
     var force = false;
     function submit() {
       msg.textContent = '';
-      var body = { name: inputs.name.value.trim(), taxId: inputs.taxId.value.trim(), industry: sel.value, region: inputs.region.value.trim(), customerCode: inputs.customerCode.value.trim(), toPool: pool.checked, force: force };
+      var body = { name: inputs.name.value.trim(), taxId: inputs.taxId.value.trim(), industry: sel.value, region: inputs.region.value.trim(), customerCode: inputs.customerCode.value.trim(), toPool: pool.checked, force: force, foreign: fchk.checked };
       if (!body.name) { msg.textContent = '請輸入公司名稱'; inputs.name.focus(); return; }
       if (body.taxId && !/^\d{8}$/.test(body.taxId)) { msg.textContent = '統一編號須為 8 碼數字（無統編請留空）'; inputs.taxId.focus(); return; }
       ok.disabled = true;

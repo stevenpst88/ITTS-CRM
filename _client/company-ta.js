@@ -24,7 +24,7 @@
 
   function freshF() {
     return { keyword: '', industries: [], regions: [], capMinWan: '', capMaxWan: '', capNone: '', bus: [], statuses: [], responsible: [], services: [],
-      hasTaxId: '', gcis: '', createdFrom: '', createdTo: '' };
+      hasTaxId: '', gcis: '', foreign: '', createdFrom: '', createdTo: '' };
   }
   function freshO() { return { requireEmail: true, activeOnly: true, dedupeEmail: true, onePerCompany: false, titleKeyword: '' }; }
 
@@ -107,6 +107,7 @@
       field('責任業務', track(multi('責任業務', people(opts.responsible, true), F.responsible))),
       field('服務業務（名片擁有者）', track(multi('服務業務', people(opts.services, false), F.services))),
       field('有無統編', selectInput([['', '不限'], ['yes', '有統編'], ['no', '無統編']], function () { return F.hasTaxId; }, function (v) { F.hasTaxId = v; })),
+      field('境外公司', selectInput([['', '不限'], ['yes', '僅境外'], ['no', '僅國內']], function () { return F.foreign; }, function (v) { F.foreign = v; })),
       field('GCIS 補全', selectInput([['', '不限'], ['yes', '已補全'], ['no', '未補全']], function () { return F.gcis; }, function (v) { F.gcis = v; })),
       field('建立時間（起）', textInput(function () { return F.createdFrom; }, function (v) { F.createdFrom = v; }, '', 'date')),
       field('建立時間（迄）', textInput(function () { return F.createdTo; }, function (v) { F.createdTo = v; }, '', 'date')),
