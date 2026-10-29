@@ -1,6 +1,6 @@
 {
   "name": "business-card-crm",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "名片管理 CRM 系統",
   "main": "server.js",
   "scripts": {
