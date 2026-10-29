@@ -951,8 +951,8 @@ function runCompanyImport(working, rows, COL, ctx) {
   // 既有主檔索引：正規化公司名 → [主檔...]（偵測同名但不同鍵的疑似重複）
   const byNorm = new Map();
   const addNorm = (c) => {
-    const nn = normalizeCompanyName(c.name);
-    if (!nn) return;
+    const nn = normalizeCompanyLoose(c.name);
+    if (nn.length < 2) return;
     if (!byNorm.has(nn)) byNorm.set(nn, []);
     byNorm.get(nn).push(c);
   };
@@ -987,8 +987,8 @@ function runCompanyImport(working, rows, COL, ctx) {
     const isCreate = working.companies.length > before;
 
     if (isCreate) {
-      const nn = normalizeCompanyName(name);
-      const twins = nn ? (byNorm.get(nn) || []).filter(c => c !== m && c.matchKey !== key) : [];
+      const nn = normalizeCompanyLoose(name);
+      const twins = nn.length >= 2 ? (byNorm.get(nn) || []).filter(c => c !== m && c.matchKey !== key) : [];
       if (twins.length) {
         duplicates++;
         const t = twins[0];
@@ -8943,14 +8943,14 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
   const data = db.load();
   const countById = {};
   (data.contacts || []).forEach(c => { if (!c.deleted && c.companyId) countById[c.companyId] = (countById[c.companyId] || 0) + 1; });
-  const headers = ['公司名稱', '統一編號', '產業', '資本額', '名片數', '資料來源'];
+  const headers = ['公司名稱', '統一編號', '產業', '區域', '客戶代號', '資本額', '名片數', '資料來源'];
   const rows = (data.companies || []).map(m => [
-    m.name || '', m.taxId || '', m.industry || '',
+    m.name || '', m.taxId || '', m.industry || '', m.region || '', m.customerCode || '',
     (m.capital != null && m.capital !== '') ? m.capital : '',
     countById[m.id] || 0, m.industrySource || ''
   ]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 8 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '企業主檔');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -9047,6 +9047,33 @@ app.post('/api/companies/import', requireAuth,
     res.json({ success: true, created: out.created, updated: out.updated, duplicates: out.duplicates, skipped: out.skipped, industriesAdded: out.industriesAdded, poolCreated,
       ...(_respOut ? { responsible: Object.assign({}, _respOut, { notifiedUsers: _respNotified }) } : {}) });
   });
+
+// ── 企業主檔單筆新增（admin + 行銷）──
+// 與匯入共用 runCompanyImport（唯一建檔邏輯）；已存在同比對鍵 → 409 EXISTS；同名不同鍵（疑似重複）→ 409 SIMILAR，帶 force 才建
+app.post('/api/companies', requireAuth, (req, res) => {
+  if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
+  const b = req.body || {};
+  const cl = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
+  const name = cl(b.name, 120), taxId = cl(b.taxId, 8), industry = cl(b.industry, 60), region = cl(b.region, 40), customerCode = cl(b.customerCode, 40);
+  if (!name) return res.status(400).json({ error: '請輸入公司名稱' });
+  if (taxId && !/^\d{8}$/.test(taxId)) return res.status(400).json({ error: '統一編號須為 8 碼數字（無統編請留空）' });
+  const data = db.load();
+  if (industry && !(data.industries || []).includes(industry)) return res.status(400).json({ error: '產業不在分類清單內，請先到「產業分類」新增' });
+  const key = companyMatchKey(taxId, name);
+  const exist = (data.companies || []).find(c => c.matchKey === key);
+  if (exist) return res.status(409).json({ code: 'EXISTS', error: '此企業主檔已存在：' + (exist.name || ''), existing: { id: exist.id, name: exist.name || '', taxId: exist.taxId || '' } });
+  const nn = normalizeCompanyLoose(name);
+  const twins = nn.length >= 2 ? (data.companies || []).filter(c => !c.deleted && normalizeCompanyLoose(c.name) === nn).slice(0, 5) : [];
+  if (twins.length && b.force !== true) return res.status(409).json({ code: 'SIMILAR', error: '已有名稱相近的企業主檔，確認不是同一家才可繼續建立', similar: twins.map(c => ({ id: c.id, name: c.name || '', taxId: c.taxId || '' })) });
+  const out = runCompanyImport(data, [[name, taxId, industry, region, customerCode]], { name: 0, taxId: 1, industry: 2, region: 3, customerCode: 4, serviceOwner: -1 }, { usersByName: {}, displayToUser: {}, responsible: null });
+  const t = (out.touched || [])[0];
+  if (!t || !(out.created + out.duplicates)) return res.status(400).json({ error: '無法建立（資料不完整）' });
+  let poolCreated = 0;
+  if (b.toPool === true) { createPoolPlaceholder(data, { company: t.name, taxId: t.taxId, companyId: t.id }, req); poolCreated = 1; }
+  db.save(data);
+  writeLog('CREATE_COMPANY', req.session.user.username, t.name, `單筆新增企業主檔｜統編=${t.taxId || '無'}${industry ? '｜產業=' + industry : ''}${region ? '｜區域=' + region : ''}${poolCreated ? '｜放入客戶池' : ''}${twins.length ? '｜已確認非重複（' + twins.length + ' 筆同名）' : ''}`, req);
+  res.json({ success: true, id: t.id, name: t.name, poolCreated });
+});
 
 // ── 企業主檔匯入範本下載（admin + 行銷）──
 // 欄位須與 POST /api/companies/import 實際解析的欄位一致（見該處的 COL）；

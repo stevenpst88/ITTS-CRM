@@ -531,6 +531,7 @@
               <input id="cmSearchInput" type="text" placeholder="🔍 搜尋公司 / 統編" autocomplete="off" class="cm-search">
               <select id="cmIndustryFilter" title="依產業篩選" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;cursor:pointer;max-width:200px"><option value="">🏷️ 全部產業</option></select>
               <span id="cmAdminTools" style="display:none;gap:8px;align-items:center">
+                <button id="cmCreateBtn" class="cm-back-btn" title="單筆新增企業主檔">＋ 新增</button>
                 <button id="cmIndustryBtn" class="cm-back-btn" title="管理產業分類">🏷️ 產業分類</button>
                 <button id="cmTemplateBtn" class="cm-back-btn" title="下載匯入範本">⬇ 範本</button>
                 <button id="cmExportBtn" class="cm-back-btn" title="匯出 Excel">⬇ 匯出</button>
@@ -566,6 +567,7 @@
                     <th id="cmRespTh" hidden>責任業務</th>
                     <th>資本額</th>
                     <th>產業</th>
+                    <th>區域</th>
                     <th id="cmActionTh" style="display:none">操作</th>
                   </tr>
                 </thead>
@@ -3113,6 +3115,7 @@
   <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
   <script src="company-requests.js"></script><!-- 統編查無→申請行銷建檔：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCompanyReq.start） -->
   <script src="company-dups.js"></script><!-- 企業主檔疑似重複清單：須在 app.js 之前載入 -->
+  <script src="company-create.js"></script><!-- 企業主檔單筆新增對話框：須在 app.js 之前載入 -->
   <script src="company-ta.js"></script><!-- 企業主檔篩選 TA（EDM 名單）：須在 app.js 之前載入 -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>

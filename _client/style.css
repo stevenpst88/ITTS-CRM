@@ -5055,3 +5055,25 @@ body.glass .cta-panel { background: var(--g-surface-strong); color: var(--g-text
 .cta-btn:disabled { opacity: .5; cursor: not-allowed; }
 .cta-loading { padding: 12px; color: var(--cta-sub); font-size: 13px; }
 @media (max-width: 640px) { .cta-actions .cta-btn { flex: 1; min-height: 44px; } .cta-panel { padding: 12px; } }
+
+/* 企業主檔單筆新增對話框（company-create.js） */
+.ccr-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ccr-box { background: #fff; color: #1f2937; border-radius: 12px; width: 100%; max-width: 440px; max-height: 92vh; overflow: auto; padding: 18px 20px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+.ccr-title { margin: 0 0 12px; font-size: 17px; }
+.ccr-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.ccr-label { font-size: 13px; font-weight: 600; }
+.ccr-hint { font-size: 11px; color: #6b7280; }
+.ccr-input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; color: inherit; min-height: 38px; }
+.ccr-check { display: block; font-size: 13px; margin: 4px 0 8px; cursor: pointer; }
+.ccr-msg { color: #b91c1c; font-size: 13px; min-height: 18px; }
+.ccr-sim { background: #fef3c7; color: #78350f; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin: 6px 0; }
+.ccr-sim-t { font-weight: 600; margin-bottom: 2px; }
+.ccr-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ccr-btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #d1d5db; background: transparent; color: inherit; font-size: 14px; cursor: pointer; min-height: 38px; }
+.ccr-btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.ccr-btn:disabled { opacity: .5; cursor: not-allowed; }
+body.dark .ccr-box { background: #161b22; color: #e6edf3; }
+body.dark .ccr-input { background: #0d1117; border-color: #3a4350; }
+body.dark .ccr-hint { color: #a9b4c1; }
+body.dark .ccr-sim { background: #3b2f12; color: #fde68a; }
+body.dark .ccr-msg { color: #fca5a5; }

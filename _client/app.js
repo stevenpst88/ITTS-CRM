@@ -1035,7 +1035,7 @@ function renderCompanyMasterList() {
   const canManage = cmCanManage();
   const respTh = $('cmRespTh'); if (respTh) respTh.hidden = !_cmRespOn;
   const owTog = document.querySelector('.cct-import-ow'); if (owTog) owTog.hidden = !_cmRespOn;
-  const colspan = 6 + (canManage ? 1 : 0) + (_cmRespOn ? 1 : 0);
+  const colspan = 7 + (canManage ? 1 : 0) + (_cmRespOn ? 1 : 0);
   _cmVisibleIds = list.map(c => c.id);
   if (!list.length) {
     tbody.innerHTML = `<tr><td colspan="${colspan}" class="cm-empty">${hasFilter ? '查無符合' : '目前沒有可顯示的客戶公司'}</td></tr>`;
@@ -1052,6 +1052,7 @@ function renderCompanyMasterList() {
       ${_cmRespOn ? `<td class="cct-resp-td">${cmRespCell(c)}</td>` : ''}
       <td>${cmFmtCap(c.capital)}</td>
       <td>${cmIndustryCell(c)}</td>
+      <td>${cmRegionCell(c)}</td>
       ${canManage ? `<td><button class="cm-del" data-id="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" style="background:#fde2e2;color:#b91c1c;border:none;border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer">🗑️</button></td>` : ''}
     </tr>`;
   const groupHeader = (icon, text, n, bg) => `<tr class="cm-group-hd"><td colspan="${colspan}" style="background:${bg};font-weight:700;font-size:13px;padding:8px 10px">${icon} ${text} · ${n} 家</td></tr>`;
@@ -1099,6 +1100,18 @@ function renderCompanyMasterList() {
     });
   });
   // 產業下拉：admin/行銷 可直接選取即存
+  tbody.querySelectorAll('.cm-reg-inp').forEach(inp => {
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('change', async () => {
+      const comp = _cmData.find(x => x.id === inp.dataset.id); if (!comp) return;
+      const region = inp.value.trim();
+      try {
+        const r = await fetch(`${API}/companies/${encodeURIComponent(comp.id)}/set-region`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ region }) });
+        if (!r.ok) throw new Error('儲存失敗 (' + r.status + ')');
+        comp.region = region; showToast('✓ 區域已更新');
+      } catch (err) { alert('❌ ' + err.message); inp.value = comp.region || ''; }
+    });
+  });
   tbody.querySelectorAll('.cm-ind-sel').forEach(sel => {
     sel.addEventListener('click', e => e.stopPropagation());
     sel.addEventListener('change', async e => {
@@ -1119,6 +1132,12 @@ function renderCompanyMasterList() {
       finally { sel.disabled = false; }
     });
   });
+}
+
+// 區域欄：admin/行銷 → 可直接編輯（離開欄位即存）；其他角色 → 純文字
+function cmRegionCell(c) {
+  if (!cmCanManage()) return c.region ? escapeHtml(c.region) : '<span class="cm-label">-</span>';
+  return `<input class="cm-reg-inp" data-id="${escapeHtml(c.id)}" value="${escapeHtml(c.region || '')}" maxlength="40" placeholder="—" aria-label="區域" style="width:80px;font-size:13px;padding:3px 6px;border:1px solid #d1d5db;border-radius:6px">`;
 }
 
 // 企業主檔列表的產業欄：admin/行銷 → 下拉可選；其他角色 → 純文字
@@ -1167,6 +1186,7 @@ function renderCompanyMasterDetail(d) {
     ['統一編號', escapeHtml(c.taxId || '無')],
     ['資本額', cmFmtCap(c.capital)],
     ['產業', escapeHtml(c.industry || '—')],
+    ['區域', escapeHtml(c.region || '—')],
     ['負責人', escapeHtml(c.representative || '—')],
     ['地址', escapeHtml(c.address || '—')],
     ['官網', c.website ? `<a href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(c.website)}</a>` : '—'],
@@ -1437,6 +1457,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // 下載匯入範本
   const tplBtn = document.getElementById('cmTemplateBtn');
   if (tplBtn) tplBtn.addEventListener('click', () => { window.location.href = `${API}/companies/import-template`; });
+
+  // 單筆新增
+  const crBtn = document.getElementById('cmCreateBtn');
+  if (crBtn) crBtn.addEventListener('click', async () => {
+    if (!window.ITTSCompanyCreate) return;
+    if (!_industryList.length) { try { await loadIndustryOptions(); } catch {} }
+    window.ITTSCompanyCreate.open({ industries: _industryList.slice(), onDone: () => loadCompanyMasterView() });
+  });
 
   // 匯出
   const expBtn = document.getElementById('cmExportBtn');
