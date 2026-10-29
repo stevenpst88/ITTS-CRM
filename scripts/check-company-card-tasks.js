@@ -513,7 +513,8 @@ async function groupOff() {
     out.pool = JSON.stringify(poolMsgs);
     const tpl = await httpAt(base, jr, '_s_mkt', 'GET', '/api/companies/import-template');
     const wb = XLSX.read(tpl.buf, { type: 'buffer' });
-    out.tpl = JSON.stringify(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]], { header: 1 }));
+    // 「境外」說明列是後續功能（feat/company-foreign）新增的，與責任業務開關無關 → 不納入逐位元比對
+    out.tpl = JSON.stringify(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]], { header: 1 }).filter((r) => r[0] !== '境外'));
     const raw = JSON.parse(fs.readFileSync(path.join(root, 'data.json'), 'utf8'));
     out.companyKeys = JSON.stringify(raw.companies.map((c) => Object.keys(c).sort().filter((k) => !['updatedAt', 'createdAt', 'id'].includes(k))));
     out.contactCount = String(raw.contacts.length);
