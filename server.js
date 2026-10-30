@@ -66,16 +66,44 @@ if (cspReportOn) cspRep.register(app, express);
 
 // ── Postgres backend：每個 API 請求前 ready()（會做輕量 stale check 確保跨實例新鮮）──
 // 只套用在 /api/：靜態檔（JS/CSS/圖）不需要 DB，跳過以免每個資產都打一次 DB 拖慢載入。
-if (process.env.DB_BACKEND === 'postgres') {
-  app.use(async (req, res, next) => {
-    if (!req.path.startsWith('/api/')) return next();
+// 啟動預熱改成「懶載入」：模組載入時不碰資料庫（Vercel 一次載入約 40 個靜態檔、各起一個冷實例，
+// 原本每個實例都在 import 時 db.ready()＋遷移＋apiMonitor.ready()，造成連線風暴與多實例同時讀改寫）。
+// 實例內第一次 ready 成功之後，遷移與到期提醒只跑一次（見 startInstanceTasksOnce）。
+let _instanceTasksStarted = false;   // 只在 db.ready() 成功後才設；ready 失敗時保持 false，下個請求會重試
+let _apiMonitorLoading = false;
+let _apiMonitorLoaded = false;
+function startInstanceTasksOnce() {
+  if (!_instanceTasksStarted) {
+    _instanceTasksStarted = true;
+    // 不阻塞請求、失敗只記 console；順序與原本啟動預熱相同
     try {
-      await db.ready();
-      next();
-    } catch (err) {
-      console.error('[db] ready middleware error:', err);
-      res.status(503).json({ error: '資料庫初始化失敗，請稍後再試' });
-    }
+      migrateOwner();
+      migrateStage成交ToWon();
+      checkOverdueReminders();
+    } catch (e) { console.error('[db] post-ready tasks failed:', e); }
+  }
+  if (!_apiMonitorLoaded && !_apiMonitorLoading) {
+    _apiMonitorLoading = true;
+    apiMonitor.ready()
+      .then(() => { _apiMonitorLoaded = true; })
+      .catch((e) => console.error('[apiMonitor] preload failed:', e))
+      .finally(() => { _apiMonitorLoading = false; });
+  }
+}
+// 共用：等 db.ready()；成功後觸發一次性工作；失敗回 503
+function dbReadyMiddleware(req, res, next) {
+  db.ready().then(() => {
+    startInstanceTasksOnce();
+    next();
+  }).catch((err) => {
+    console.error('[db] ready middleware error:', err);
+    res.status(503).json({ error: '資料庫初始化失敗，請稍後再試' });
+  });
+}
+if (process.env.DB_BACKEND === 'postgres') {
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
+    return dbReadyMiddleware(req, res, next);
   });
 }
 
@@ -1434,7 +1462,7 @@ app.get('/help.html', requireAuth, (req, res) => {
 app.use('/help-img', requireAuth, express.static(path.join(__dirname, '_client', 'help-img'), STATIC_NO_CACHE));
 
 // admin.html：需登入且需 admin 角色，且帳號必須為啟用狀態
-app.get('/admin.html', requireAuth, (req, res) => {
+app.get('/admin.html', requireAuth, ...(process.env.DB_BACKEND === 'postgres' ? [dbReadyMiddleware] : []), (req, res) => {
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
@@ -11471,6 +11499,7 @@ if (require.main === module) {
     try { await db.ready(); } catch (e) { console.error('[db] ready failed:', e); }
     try { await apiMonitor.ready(); } catch (e) { console.error('[apiMonitor] ready failed:', e); }
     app.listen(PORT, () => {
+      _instanceTasksStarted = true; _apiMonitorLoaded = true;   // 本機直接執行：下面已跑過，避免第一個 API 請求再跑一次
       migrateOwner();
       migrateStage成交ToWon();
       checkOverdueReminders();
@@ -11480,18 +11509,8 @@ if (require.main === module) {
   })();
 } else {
   // 被 import（如 api/index.js）：只 export app，由 serverless 呼叫
-  // Postgres 模式需要先 preload data 才能同步 load()
-  if (process.env.DB_BACKEND === 'postgres') {
-    // 背景預熱 + 遷移（不阻塞 cold start；首個 request 會等 ready）
-    db.ready()
-      .then(() => {
-        migrateOwner();
-        migrateStage成交ToWon();
-        checkOverdueReminders();
-      })
-      .catch((e) => console.error('[db] preload failed:', e));
-    apiMonitor.ready().catch((e) => console.error('[apiMonitor] preload failed:', e));
-  }
+  // Postgres 模式：import 時不預熱（會造成冷啟動連線風暴）；
+  // db.ready()／遷移／apiMonitor.ready() 改由實例內第一次 /api/ 請求觸發（見上方 dbReadyMiddleware）
 }
 
 module.exports = app;
