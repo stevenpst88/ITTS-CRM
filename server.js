@@ -1140,6 +1140,19 @@ function findDuplicateContact(data, owner, name, company, taxId) {
 // Static assets：圖片快取 1 天；HTML/JS/CSS 不快取（確保部署後立即生效）
 const STATIC_CACHE      = { maxAge: '1d' };
 const STATIC_NO_CACHE   = { maxAge: 0, etag: false, lastModified: false };
+// 測試環境標示（APP_ENV_LABEL；未設定時整段不註冊、HTML 不改寫＝與沒有此功能時逐位元相同）。邏輯與說明見 lib/envLabel.js
+const envLabel = require('./lib/envLabel');
+const ENV_LABEL = envLabel.getEnvLabel(process.env);
+if (ENV_LABEL) {
+  app.get('/env-label.js', (req, res) => { res.setHeader('Content-Type', 'application/javascript; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.send(envLabel.CLIENT_JS); });
+  app.get('/login.html', (req, res, next) => {
+    fs.readFile(path.join(__dirname, '_client', 'login.html'), 'utf8', (err, html) => {
+      if (err) return next();
+      res.setHeader('Cache-Control', 'public, max-age=0'); res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+      res.send(envLabel.injectEnvLabel(html, ENV_LABEL));
+    });
+  });
+}
 app.use('/login.html', express.static(path.join(__dirname, '_client', 'login.html'), STATIC_NO_CACHE));
 // 登入頁的外部樣式／腳本（登入前就要能載入，所以必須公開；不可放進 requireAuth 之後的 _client 靜態檔）
 app.use('/login-cinematic.css', express.static(path.join(__dirname, '_client', 'login-cinematic.css'), STATIC_NO_CACHE));
@@ -1402,7 +1415,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="admin\.js"/g,      `src="admin.js?v=${BUILD_VERSION}"`);
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(versioned);
+    res.send(ENV_LABEL ? envLabel.injectEnvLabel(versioned, ENV_LABEL) : versioned);
   });
 }
 
