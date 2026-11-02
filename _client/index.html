@@ -2018,9 +2018,9 @@
                 </select>
               </div>
               <div class="form-group full-width deal-id-group" id="cOppDealIdGroup" hidden>
-                <label for="cOppDealId">Deal ID <span class="required" id="cOppDealIdStar">*</span></label>
+                <label for="cOppDealId">SAP Deal ID <span class="required" id="cOppDealIdStar">*</span></label>
                 <div class="deal-id-box">
-                  <input type="text" id="cOppDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="cOppDealIdHint cOppDealIdErr" placeholder="貼上外部網站的商機代碼">
+                  <input type="text" id="cOppDealId" class="deal-id-input" inputmode="numeric" maxlength="9" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="cOppDealIdHint cOppDealIdErr" placeholder="貼上 SAP Deal ID（9 碼數字）">
                   <a id="cOppDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
                 </div>
                 <div class="deal-id-hint" id="cOppDealIdHint"></div>
@@ -2289,9 +2289,9 @@
               </select>
             </div>
             <div class="form-group full-width deal-id-group" id="oppDealIdGroup" hidden>
-              <label for="oppDealId">Deal ID <span class="required" id="oppDealIdStar">*</span></label>
+              <label for="oppDealId">SAP Deal ID <span class="required" id="oppDealIdStar">*</span></label>
               <div class="deal-id-box">
-                <input type="text" id="oppDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppDealIdHint oppDealIdErr" placeholder="貼上外部網站的商機代碼">
+                <input type="text" id="oppDealId" class="deal-id-input" inputmode="numeric" maxlength="9" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppDealIdHint oppDealIdErr" placeholder="貼上 SAP Deal ID（9 碼數字）">
                 <a id="oppDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
               </div>
               <div class="deal-id-hint" id="oppDealIdHint"></div>
@@ -2409,9 +2409,9 @@
             </select>
           </div>
           <div class="form-group full-width deal-id-group" id="oppEditDealIdGroup" hidden>
-            <label for="oppEditDealId">Deal ID <span class="required" id="oppEditDealIdStar">*</span></label>
+            <label for="oppEditDealId">SAP Deal ID <span class="required" id="oppEditDealIdStar">*</span></label>
             <div class="deal-id-box">
-              <input type="text" id="oppEditDealId" class="deal-id-input" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppEditDealIdHint oppEditDealIdErr" placeholder="貼上外部網站的商機代碼">
+              <input type="text" id="oppEditDealId" class="deal-id-input" inputmode="numeric" maxlength="9" autocomplete="off" spellcheck="false" aria-required="true" aria-describedby="oppEditDealIdHint oppEditDealIdErr" placeholder="貼上 SAP Deal ID（9 碼數字）">
               <a id="oppEditDealIdLink" class="deal-id-link" href="#" target="_blank" rel="noopener noreferrer" hidden>🔗 前往註冊商機</a>
             </div>
             <div class="deal-id-hint" id="oppEditDealIdHint"></div>
@@ -3111,6 +3111,7 @@
   <script src="idle-timeout.js"></script><!-- 閒置 30 分鐘自動登出（偵測操作、逾時前提醒、登入失效導回登入頁） -->
   <script src="glass-theme.js"></script>
   <script src="taxid-guard.js"></script>
+  <script src="deal-id-format.js"></script><!-- SAP Deal ID 9 碼規則（前後端單一來源）：須在 app.js 之前載入 -->
   <script src="announcements.js"></script><!-- 公告彈窗：須在 app.js 之前載入（initUser 於非同步後即呼叫 ITTSAnnounce.start） -->
   <script src="company-card-tasks.js"></script><!-- 待補名片待辦：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCardTasks.start） -->
   <script src="company-requests.js"></script><!-- 統編查無→申請行銷建檔：須在 app.js 之前載入（initUser 結尾呼叫 ITTSCompanyReq.start） -->
