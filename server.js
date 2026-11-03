@@ -767,7 +767,8 @@ const FIELD_LABELS = {
   industry:'產業屬性', opportunityStage:'商機分類',
   isPrimary:'主要聯繫窗口', isResigned:'離職狀態', employmentStatus:'人員狀態',
   systemVendor:'系統廠商',
-  systemProduct:'系統產品', note:'備註', jobFunction:'職能分類'
+  systemProduct:'系統產品', note:'備註', jobFunction:'職能分類',
+  mailingAddress:'郵寄地址', mailingSameAsCompany:'郵寄地址同公司地址'
 };
 
 // ── 聯絡人稽核日誌（欄位級異動）：與一般稽核同一個只增不改的事件表（kind='contact'）。
@@ -803,7 +804,16 @@ function pickFields(obj, fields) {
 const CARD_IMAGE_RE = /^\/uploads\/[0-9a-fA-F-]{36}\.[A-Za-z0-9]{1,10}$/;
 function isValidCardImage(v) { return !v || (typeof v === 'string' && CARD_IMAGE_RE.test(v)); }
 const CARD_IMAGE_ERR = '名片圖片網址格式不正確（僅接受系統上傳的圖片）';
-const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu'];
+const CONTACT_FIELDS   = ['name','nameEn','company','title','phone','mobile','ext','email','address','website','taxId','isForeign','industry','opportunityStage','isPrimary','isResigned','employmentStatus','systemVendor','systemProduct','note','cardImage','jobFunction','customerType','productLine','personalDrink','personalHobbies','personalDiet','personalBirthday','personalMemo','bu','mailingAddress','mailingSameAsCompany'];
+// 郵寄地址（秘書寄信用）：旗標為 true 時 mailingAddress 一律等於該名片的 address（存算好的結果）；舊名片沒有這兩個鍵
+const MAILING_MAX_LEN = 200;
+function mailingFlag(v) { return v === true || v === 'true'; }
+function mailingLenError(v) {
+  if (v === undefined || v === null) return '';
+  if (typeof v !== 'string') return '郵寄地址格式不正確';
+  if ([...v.trim()].length > MAILING_MAX_LEN) return '郵寄地址不可超過 ' + MAILING_MAX_LEN + ' 字';
+  return '';
+}
 const VISIT_FIELDS     = ['contactId','contactName','visitDate','visitType','topic','content','nextAction','bu','oppId'];
 const quoteOppLink = require('./lib/quoteOppLink');   // 報價單 ↔ 商機連結（q.oppId）的共用純函式
 const OPP_FIELDS       = ['contactId','contactName','company','category','product','amount','expectedDate','description','stage','visitId','achievedDate','grossMarginRate','bu','businessType','kpiExcluded','dealId'];
@@ -854,7 +864,10 @@ function syncCompanyFields(data, contact) {
     const val = contact[field];
     if (!val) return;          // 來源欄位是空的，無需同步
     siblings.forEach(c => {
-      if (!c[field]) c[field] = val;  // 只補空白，不蓋掉已有值
+      if (!c[field]) {
+        c[field] = val;  // 只補空白，不蓋掉已有值
+        if (field === 'address' && c.mailingSameAsCompany === true) c.mailingAddress = c.address;   // 已勾「同公司地址」的名片：郵寄地址跟著補上的地址
+      }
     });
   });
 }
@@ -3565,6 +3578,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
   if (!isValidCardImage(req.body.cardImage)) return res.status(400).json({ error: CARD_IMAGE_ERR });
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
+  if (!mailingFlag(req.body.mailingSameAsCompany)) { const _me = mailingLenError(req.body.mailingAddress); if (_me) return res.status(400).json({ error: _me }); }
   const gScopeC = checkGroupScopeWrite(req, req.body.company);   // 集團範圍角色：公司須在自己的集團內
   if (gScopeC.error) return res.status(403).json({ error: gScopeC.error });
   const data = db.load();
@@ -3606,6 +3620,9 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     cardImage: req.body.cardImage || '',
     createdAt: new Date().toISOString()
   };
+  // 郵寄地址：只在有值／勾選時才寫入鍵（沒送的請求產出與舊版逐位元相同）
+  if (mailingFlag(req.body.mailingSameAsCompany)) { contact.mailingSameAsCompany = true; contact.mailingAddress = contact.address; }
+  else if (typeof req.body.mailingAddress === 'string' && req.body.mailingAddress.trim()) contact.mailingAddress = req.body.mailingAddress.trim();
   // 若設為主要聯繫窗口，取消同公司（同擁有者）其他人的主要狀態
   if (contact.isPrimary && contact.company) {
     data.contacts.forEach(c => {
@@ -3673,6 +3690,9 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   if (safeBody.cardImage !== undefined && String(safeBody.cardImage || '') !== String(old.cardImage || '') && !isValidCardImage(safeBody.cardImage)) {
     return res.status(400).json({ error: CARD_IMAGE_ERR });
   }
+  // 郵寄地址：勾「同公司地址」時以 address 為準（不檢查長度）；否則限 200 字
+  const _mFlagIn = safeBody.mailingSameAsCompany !== undefined ? mailingFlag(safeBody.mailingSameAsCompany) : !!old.mailingSameAsCompany;
+  if (!_mFlagIn && safeBody.mailingAddress !== undefined) { const _me = mailingLenError(safeBody.mailingAddress); if (_me) return res.status(400).json({ error: _me }); }
   // 統一編號：非境外時，若有動到 taxId 就必須是 8 碼（清空或格式錯都擋）；不帶 taxId 的偏更新（看板拖曳等）不受影響
   if (req.body.taxId !== undefined) {
     const effForeign = req.body.isForeign !== undefined ? (req.body.isForeign === true || req.body.isForeign === 'true') : !!old.isForeign;
@@ -3721,6 +3741,16 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   }
   const updated = { ...old, ...safeBody, id: req.params.id, owner };
   updated.isPrimary = req.body.isPrimary === true || req.body.isPrimary === 'true';
+  // 郵寄地址同步：旗標沒送沿用舊值；舊名片且送空值／false 時不憑空新增鍵
+  if (safeBody.mailingSameAsCompany !== undefined) {
+    const f = mailingFlag(safeBody.mailingSameAsCompany);
+    if (f || 'mailingSameAsCompany' in old) updated.mailingSameAsCompany = f; else delete updated.mailingSameAsCompany;
+  }
+  if (safeBody.mailingAddress !== undefined) {
+    const m = String(safeBody.mailingAddress == null ? '' : safeBody.mailingAddress).trim();
+    if (m || 'mailingAddress' in old) updated.mailingAddress = m; else delete updated.mailingAddress;
+  }
+  if (updated.mailingSameAsCompany === true) updated.mailingAddress = updated.address || '';
   // 人員狀態：只在前端有送 employmentStatus 時才正規化，並同步回寫 isResigned（向下相容）
   if (safeBody.employmentStatus !== undefined) {
     const effStatus = ['active','pending','resigned'].includes(safeBody.employmentStatus) ? safeBody.employmentStatus : 'active';
@@ -3906,6 +3936,7 @@ app.get('/api/export', requireAuth, (req, res, next) => {
     '手機': c.mobile,
     'Email': c.email,
     '地址': c.address,
+    '郵寄地址': c.mailingAddress || '',
     '網站': c.website,
     '統一編號': c.taxId,
     '產業屬性': c.industry,
@@ -3916,7 +3947,7 @@ app.get('/api/export', requireAuth, (req, res, next) => {
     '建立時間': c.createdAt ? new Date(c.createdAt).toLocaleString('zh-TW') : ''
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [14,20,12,14,14,24,30,20,16,12,14,14,20,16].map(w => ({ wch: w }));
+  ws['!cols'] = [14,20,12,14,14,24,30,20,16,30,12,14,14,20,16].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '聯絡人');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -5311,7 +5342,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
 
   const headers = [
     '姓名', '英文名稱', '公司', '職稱', '電話', '分機', '手機', 'Email',
-    '地址', '網站', '統一編號', '產業屬性', '商機分類', '使用中系統', '系統產品',
+    '地址', '郵寄地址', '網站', '統一編號', '產業屬性', '商機分類', '使用中系統', '系統產品',
     '備註', '業務帳號(owner)', '業務姓名', '建立時間', '聯絡人ID'
   ];
 
@@ -5325,6 +5356,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
     c.mobile      || '',
     c.email       || '',
     c.address     || '',
+    c.mailingAddress || '',
     c.website     || '',
     c.taxId       || '',
     c.industry    || '',
@@ -5343,7 +5375,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
   ws['!cols'] = [
     { wch: 14 }, { wch: 18 }, { wch: 26 }, { wch: 14 },
     { wch: 14 }, { wch: 8  }, { wch: 14 }, { wch: 28 },
-    { wch: 30 }, { wch: 24 }, { wch: 12 }, { wch: 14 },
+    { wch: 30 }, { wch: 30 }, { wch: 24 }, { wch: 12 }, { wch: 14 },
     { wch: 12 }, { wch: 16 }, { wch: 16 },
     { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 36 }
   ];
@@ -5387,7 +5419,8 @@ app.post('/api/admin/contacts/import', requireAdmin,
         ext:            col('分機'),
         mobile:         col('手機'),
         email:          col('Email'),
-        address:        col('地址'),
+        address:        header.findIndex(h => h.includes('地址') && !h.includes('郵寄')),
+        mailingAddress: col('郵寄地址'),
         website:        col('網站'),
         taxId:          col('統一編號'),
         industry:       col('產業屬性'),
@@ -5455,6 +5488,7 @@ app.post('/api/admin/contacts/import', requireAdmin,
           note: get(COL.note), isPrimary: false, cardImage: '',
           deleted: false
         };
+        { const _ma = [...get(COL.mailingAddress)].slice(0, MAILING_MAX_LEN).join(''); if (_ma) contact.mailingAddress = _ma; }
         // 企業主檔：自動掛勾（統編沒見過則自動建立主檔）
         const _m = ensureCompanyMaster(data, contact);
         if (_m) contact.companyId = _m.id;
@@ -10113,10 +10147,10 @@ app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
 
 // ── 客戶名單匯入：下載範本 ────────────────────────────────────
 app.get('/api/admin/import-template', requireAdmin, (req, res) => {
-  const headers = ['姓名','英文名稱','公司','職稱','電話','分機','手機','Email','地址','網站','統一編號','產業屬性','備註'];
-  const sample  = ['王大明','David Wang','東捷資訊','業務經理','02-12345678','123','0912-345678','david@itts.com.tw','台北市信義區','https://www.itts.com.tw','12345678','資訊服務','重要客戶'];
+  const headers = ['姓名','英文名稱','公司','職稱','電話','分機','手機','Email','地址','郵寄地址','網站','統一編號','產業屬性','備註'];
+  const sample  = ['王大明','David Wang','東捷資訊','業務經理','02-12345678','123','0912-345678','david@itts.com.tw','台北市信義區','台北市信義區','https://www.itts.com.tw','12345678','資訊服務','重要客戶'];
   const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
-  ws['!cols'] = [10,12,18,12,14,6,14,24,24,28,10,12,16].map(w => ({ wch: w }));
+  ws['!cols'] = [10,12,18,12,14,6,14,24,24,24,28,10,12,16].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '客戶名單');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -10199,7 +10233,7 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
   const COL_MAP = {
     '姓名': 'name', '英文名稱': 'nameEn', '公司': 'company', '職稱': 'title',
     '電話': 'phone', '分機': 'ext', '手機': 'mobile', 'Email': 'email',
-    '地址': 'address', '網站': 'website', '統一編號': 'taxId',
+    '地址': 'address', '郵寄地址': 'mailingAddress', '網站': 'website', '統一編號': 'taxId',
     '產業屬性': 'industry', '備註': 'note'
   };
 
@@ -10221,6 +10255,7 @@ app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file')
         if (row[col] !== undefined && row[col] !== '') contact[field] = String(row[col]).trim();
       });
 
+      if (contact.mailingAddress !== undefined) { contact.mailingAddress = [...contact.mailingAddress].slice(0, MAILING_MAX_LEN).join(''); }
       if (!contact.name && !contact.company) { skipped++; return; }
 
       // 驗證網址
