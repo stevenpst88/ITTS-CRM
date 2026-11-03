@@ -808,6 +808,7 @@ function showDashboard() {
   $('prospectsToolbar').style.display = 'none';
   $('contactsToolbar').style.display  = 'none';
   $('visitsToolbar').style.display    = 'none';
+  if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);
   setActiveNav(null);
   updateStatCards();
   Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget(), loadUserBu(), loadPureSupervisors()]).then(() => {
@@ -927,6 +928,9 @@ function showSection(section) {
   if (section === 'sap-ma')      loadSapMaView();
   if (section === 'receivables') loadReceivablesView();
   if (section === 'transfer')    loadTransferView();
+  // 秘書唯讀客戶視圖（secretary-customers.js，後載 script；後端 SECRETARY_CUSTOMERS 關閉或非秘書時 show() 會退回首頁）
+  if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);
+  if (section === 'secretaryCustomers') _whenScriptsReady(section, () => { if (window.ITTSSecCust) window.ITTSSecCust.show(); else showDashboard(); });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -4009,6 +4013,7 @@ async function initUser() {
     // 待補名片待辦（company-card-tasks.js）：不 await、自帶錯誤處理；isFirstLoad＝剛登入的第一次載入才跳彙總視窗
     try { if (window.ITTSCardTasks) window.ITTSCardTasks.start(user, { login: isFirstLoad }); } catch (_) { /* ignore */ }
     try { if (window.ITTSCompanyReq) window.ITTSCompanyReq.start(user); } catch (_) { /* ignore */ }
+    try { if (window.ITTSSecCust) window.ITTSSecCust.start(user); } catch (_) { /* ignore */ }
   } catch { window.location.href = '/login.html'; }
 }
 
