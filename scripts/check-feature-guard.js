@@ -57,6 +57,7 @@ function knownRolesFromServer() {
 }
 /** 未對照的非管理員路由 */
 function uncovered(mod, srcs) {
+// SECRETARY_CUSTOMERS 的路由（entry.onlyIf）只在開關開啟時存在：行為／輸出的比對一律只看「目前生效」的路由；靜態比對（原始碼 vs 對照表）仍看全部
   const have = new Set(mod.ROUTES.map(e => mod.keyOf(e.method, e.path)));
   return parseRoutes(srcs).filter(r => !r.admin && !have.has(mod.keyOf(r.method, r.path))).map(r => mod.keyOf(r.method, r.path));
 }
@@ -135,7 +136,7 @@ function featureSuite(mod, T) {
   let mismatches = 0, cells = 0, alwaysBlocked = 0;
   for (const [, feats] of matrices) {
     const g = mod.create({ mode: 'enforce', getFeatures: () => feats });
-    for (const e of mod.ROUTES) {
+    for (const e of mod.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf()))) {
       const concrete = e.path.replace(/:[A-Za-z]+/g, 'x1');
       const d = g.decide(e.method, concrete, 'any');
       const kind = mod.kindOf(e);
@@ -145,7 +146,7 @@ function featureSuite(mod, T) {
       if (['ALWAYS', 'SELF', 'ADMIN', 'UNCLASSIFIED'].includes(kind) && !d.allow) alwaysBlocked++;
     }
   }
-  eq(mismatches, 0, `矩陣：${matrices.length} 種功能組合 × ${mod.ROUTES.length} 條路由（${cells} 格）判定與規格一致`);
+  eq(mismatches, 0, `矩陣：${matrices.length} 種功能組合 × ${mod.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf())).length} 條路由（${cells} 格）判定與規格一致`);
   eq(alwaysBlocked, 0, 'ALWAYS／SELF／ADMIN／UNCLASSIFIED 在任何功能組合下都不被擋');
   ok(mod.create({ mode: 'enforce', getFeatures: () => [] }).decide('GET', '/api/admin/users', 'x').allow, '/api/admin/* 未列入對照表者交給 requireAdmin（守門放行）');
 
@@ -203,7 +204,7 @@ function featureSuite(mod, T) {
   }
   eq([mod.readMode({}), mod.readMode({ FEATURE_GUARD_MODE: 'ENFORCE' }), mod.readMode({ FEATURE_GUARD_MODE: 'off' }), mod.readMode({ FEATURE_GUARD_MODE: 'garbage' }), mod.readMode({ FEATURE_GUARD_MODE: ' log ' })], ['log', 'enforce', 'off', 'log', 'log'], '模式解析：預設 log、不分大小寫、無效值退回 log');
   const desc = mod.describe(keys.map(k => ({ key: k, label: 'L-' + k })));
-  ok(desc.length === mod.ROUTES.length && desc.filter(x => x.kind === 'FEATURES').every(x => x.featureLabels.length === x.features.length && x.featureLabels[0].startsWith('L-')), 'describe 輸出含功能中文名');
+  ok(desc.length === mod.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf())).length && desc.filter(x => x.kind === 'FEATURES').every(x => x.featureLabels.length === x.features.length && x.featureLabels[0].startsWith('L-')), 'describe 輸出含功能中文名');
 }
 
 const MUTANTS = [
@@ -295,7 +296,7 @@ function users() {
 const DATA = () => ({ groups: [{ id: 'g1', name: '沙盒集團', memberCompanies: [] }], contacts: [{ id: 'c1', name: '測試甲', company: '沙盒公司甲', owner: '_s_u1', bu: 'ERP', createdAt: new Date().toISOString() }] });
 
 async function setMatrix(m) { const r = await ph('_s_admin', 'PUT', '/api/admin/role-permissions', { matrix: m }); eq(r.status, 200, '管理員更新功能矩陣'); }
-const sweepRoutes = () => FG.ROUTES.filter(e => ['FEATURES', 'ANY'].includes(FG.kindOf(e)));
+const sweepRoutes = () => FG.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf())).filter(e => ['FEATURES', 'ANY'].includes(FG.kindOf(e)));
 const BODY = (m) => (m === 'GET' ? undefined : {});
 
 /** 用 who 掃全部 FEATURES/ANY 路由；expectedAllow(entry)→bool；回傳不一致清單 */
@@ -340,7 +341,7 @@ async function e2eLog() {
   const m = await ph('_s_admin', 'GET', '/api/admin/feature-route-map');
   eq(m.status, 200, 'feature-route-map 可讀');
   eq(m.json.unmappedRegistered, [], '已註冊的非管理員 /api 路由（Express 路由堆疊）全都在對照表');
-  eq(m.json.routes.length, FG.ROUTES.length, '輸出路由數與對照表一致');
+  eq(m.json.routes.length, FG.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf())).length, '輸出路由數與對照表一致');
   ok(m.json.routes.find(x => x.path === '/api/receivables' && x.method === 'GET').featureLabels[0] === '帳務管理', '輸出含功能中文名');
   const u = await ph('_s_mk', 'GET', '/api/admin/feature-route-map'); eq(u.status, 403, '非管理員不可讀路由表');
   // 堆疊與原始碼解析數量交叉驗證
@@ -409,7 +410,7 @@ async function e2eEnforce() {
   // ALWAYS／SELF 類 GET 路由：任何角色（零功能）都不被守門擋
   await setMatrix({ marketing: [] });
   const bad = [];
-  for (const e of FG.ROUTES.filter(x => ['ALWAYS', 'SELF', 'UNCLASSIFIED'].includes(FG.kindOf(x)) && x.method === 'GET' && !/cron|vapid|sw\.js/.test(x.path))) {
+  for (const e of FG.ROUTES.filter(e => !(e.onlyIf && !e.onlyIf())).filter(x => ['ALWAYS', 'SELF', 'UNCLASSIFIED'].includes(FG.kindOf(x)) && x.method === 'GET' && !/cron|vapid|sw\.js/.test(x.path))) {
     const rr = await ph('_s_mk', 'GET', concrete(e.path));
     if (rr.json && rr.json.code === 'FEATURE_DENIED') bad.push(e.path);
   }

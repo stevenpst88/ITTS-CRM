@@ -455,6 +455,9 @@ const FEATURE_REGISTRY = [
   { key: 'marketingHome',   label: '行銷首頁',              icon: '🎣', navId: 'navMarketingHome' },
   { key: 'consultHome',     label: '顧問首頁（報價成本）',  icon: '🧮', navId: 'navConsultHome' },
 ];
+// 秘書唯讀客戶視圖（SECRETARY_CUSTOMERS=1 才登錄功能鍵；關閉時 FEATURE_REGISTRY／DEFAULT_ROLE_PERMISSIONS 與原本完全相同）
+const SCU = require('./lib/secretaryCustomers');
+if (SCU.enabled()) FEATURE_REGISTRY.push({ key: 'secretaryCustomers', label: '我的客戶（唯讀・秘書）', icon: '📮', navId: 'navSecretaryCustomers' });
 const KNOWN_ROLES = ['admin','executive','manager1','manager2','secretary','tecopm','groupsales','marketing','user','accounting_manager','finance_manager','consult_manager_south','consult_manager_north'];
 const ALL_FEATURES = FEATURE_REGISTRY.map(f => f.key);
 // 跨 BU 全公司視角的角色（不受 BU 隔離限制）
@@ -476,6 +479,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
   consult_manager_south: ['home','consultHome','quotations'],
   consult_manager_north: ['home','consultHome','quotations'],
 };
+// 預設只給秘書。已存過權限矩陣的環境，getRolePermissions 會把「DEFAULT 含它、且儲存時尚未知道」的全新功能自動補上
+if (SCU.enabled()) DEFAULT_ROLE_PERMISSIONS.secretary = DEFAULT_ROLE_PERMISSIONS.secretary.concat([SCU.FEATURE_KEY]);
 
 function getRolePermissions() {
   const data = db.load();
@@ -3560,6 +3565,40 @@ app.get('/api/contacts', requireAuth, (req, res) => {
   contacts.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));
   res.json(contacts);
 });
+
+// ── 秘書唯讀客戶視圖（SECRETARY_CUSTOMERS=1 才註冊；關閉時這兩條路由不存在＝404）──
+// 只有 role=secretary 且擁有 secretaryCustomers 功能者可用；回應一律走 lib/secretaryCustomers 的白名單（不輸出電話／Email／備註等）。
+if (SCU.enabled()) {
+  const _scuViewAudit = new Map();   // 'user|contactId' → t（同一人同一客戶 10 分鐘內只記一筆）
+  const _scuGate = (req, res) => {
+    const u = req.session.user;
+    if (u.role !== 'secretary' || !getUserFeatures(u.role).includes(SCU.FEATURE_KEY)) { res.status(403).json({ error: '無權限' }); return null; }
+    const auth = loadAuth();
+    return { auth, me: (auth.users || []).find(x => x.username === u.username) };
+  };
+  const _scuList = (g) => {
+    const labelOf = (name) => userLabel((g.auth.users || []).find(x => x.username === name), name);
+    return SCU.listFor(db.load(), g.auth.users || [], g.me, labelOf);
+  };
+  app.get('/api/secretary/customers', requireAuth, (req, res) => {
+    const g = _scuGate(req, res); if (!g) return;
+    const customers = _scuList(g);
+    res.json({ piiMasked: true, count: customers.length, customers });
+  });
+  // 開啟單一客戶詳情：回傳白名單內容並記稽核（只記聯絡人 id 與公司名，不記任何個資）。用 POST 因為會寫稽核（GET 不寫入原則）
+  app.post('/api/secretary/customers/:id/view', requireAuth, (req, res) => {
+    const g = _scuGate(req, res); if (!g) return;
+    const c = _scuList(g).find(x => x.id === req.params.id);
+    if (!c) return res.status(404).json({ error: '找不到客戶' });
+    const k = req.session.user.username + '|' + c.id, now = Date.now();
+    if (!(_scuViewAudit.get(k) > now - 10 * 60 * 1000)) {
+      _scuViewAudit.set(k, now);
+      if (_scuViewAudit.size > 5000) for (const [kk, t] of _scuViewAudit) if (t < now - 10 * 60 * 1000) _scuViewAudit.delete(kk);
+      writeLog('SECRETARY_VIEW_CUSTOMER', req.session.user.username, c.id, `秘書開啟客戶詳情：${c.company}`, req);
+    }
+    res.json({ piiMasked: true, customer: c });
+  });
+}
 
 // ── 新增聯絡人 ──────────────────────────────────────────
 app.post('/api/contacts', requireAuth, (req, res) => {

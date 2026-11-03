@@ -138,7 +138,7 @@ function groupUnit() {
   ok(/mailingAddress:'郵寄地址'/.test(srv) && /mailingSameAsCompany:'郵寄地址同公司地址'/.test(srv), 'U2 FIELD_LABELS 有中文標籤');
   ok(/id="mailingAddress"/.test(html) && /id="mailingSameAsCompany"/.test(html), 'U3 表單有郵寄地址輸入框與核取方塊');
   ok(/mailingSameAsCompany: \$\('mailingSameAsCompany'\)\.checked/.test(app) && /mailingAddress: \$\('mailingSameAsCompany'\)/.test(app), 'U4 前端儲存 payload 帶兩個欄位');
-  ok(/itts-crm-v38'/.test(sw) && /v38：名片郵寄地址/.test(sw), 'U5 SW_VERSION v38 且註解有說明');
+  ok(/itts-crm-v(3[89]|[4-9][0-9])'/.test(sw) && /v38：名片郵寄地址/.test(sw), 'U5 SW_VERSION 不低於 v38 且 v38 註解有說明（後續版本如秘書唯讀客戶視圖 v39 會往上加）');
   ok(!/mailing[A-Za-z]*\s*[:=][^\n]*innerHTML/.test(app), 'U6 郵寄地址沒有被塞進 innerHTML 賦值');
   const view = (app.match(/<span class="view-label">郵寄地址<\/span>[^\n]*/) || [''])[0];
   ok(/escapeHtml\(c\.mailingAddress\)/.test(view), 'U7 詳情檢視郵寄地址經 escapeHtml');
