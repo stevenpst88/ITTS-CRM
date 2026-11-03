@@ -2337,6 +2337,7 @@ function buildCompanyGroupEl(company, members, recentIdx) {
     const ref = primary;
     openModalAddContact({
       company, phone: ref.phone || '', ext: '', address: ref.address || '',
+      mailingAddress: ref.mailingAddress || '', mailingSameAsCompany: !!ref.mailingSameAsCompany,
       website: ref.website || '', taxId: ref.taxId || '',
       industry: ref.industry || (members.find(c => c.industry)?.industry || ''),
       systemVendor: ref.systemVendor || (members.find(c => c.systemVendor)?.systemVendor || ''),
@@ -2908,7 +2909,7 @@ function tgApply(r) {
   if (r.status !== 'matched') return;
   const cur = $('company').value.trim();
   if (!cur || TG.isDigitsOnly(cur)) $('company').value = r.officialName;
-  if (r.address && $('address')) $('address').value = r.address;
+  if (r.address && $('address')) { $('address').value = r.address; mailingSyncUi(); }
   if (r.industry && !$('industry').disabled) {
     $('industry').value = r.industry;
     $('industry').dataset.manual = 'true';
@@ -2994,7 +2995,7 @@ $('lookupBtn').addEventListener('click', async () => {
     renderCompanyInfo(d);
     // 自動回填 Tab1 欄位（如果是空的）
     if (d.companyName && !$('company').value) $('company').value = d.companyName;
-    if (d.address   && !$('address').value)   $('address').value = d.address;
+    if (d.address   && !$('address').value)   { $('address').value = d.address; mailingSyncUi(); }
     if (d.website   && !$('website').value)   $('website').value = d.website;
     // 同步更新 AI 公司分析的網址欄位
     if (d.website) $('companyInsightUrl').value = d.website;
@@ -3249,6 +3250,27 @@ function setupBuSelector(selectId, groupId, presetBu) {
   sel.value = presetBu || options[0] || '';
 }
 
+// ── 郵寄地址：勾「同公司地址」時郵寄地址欄唯讀並跟著公司地址欄走（伺服器端存檔時也會再算一次）──
+function mailingSyncUi() {
+  const chk = $('mailingSameAsCompany'), inp = $('mailingAddress');
+  if (!chk || !inp) return;
+  if (chk.checked) { inp.value = $('address') ? $('address').value : ''; inp.readOnly = true; }
+  else inp.readOnly = false;
+}
+function mailingFormLoad(src) {
+  const chk = $('mailingSameAsCompany'), inp = $('mailingAddress');
+  if (!chk || !inp) return;
+  chk.checked = !!(src && src.mailingSameAsCompany);
+  inp.value = (src && src.mailingAddress) || '';
+  mailingSyncUi();
+}
+function mailingBindUi() {
+  const chk = $('mailingSameAsCompany'), addr = $('address');
+  if (chk) chk.addEventListener('change', mailingSyncUi);
+  if (addr) addr.addEventListener('input', mailingSyncUi);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mailingBindUi, { once: true }); else mailingBindUi();
+
 function openModal(contact = null) {
   $('contactForm').reset();
   $('contactId').value = '';
@@ -3273,6 +3295,7 @@ function openModal(contact = null) {
     $('ext').value = contact.ext || '';
     $('email').value = contact.email || '';
     $('address').value = contact.address || '';
+    mailingFormLoad(contact);
     $('website').value = contact.website || '';
     $('taxId').value = contact.taxId || '';
     if ($('isForeignChk')) $('isForeignChk').checked = !!contact.isForeign;
@@ -3305,6 +3328,7 @@ function openModal(contact = null) {
     renderJfSelector(jfKey);
   } else {
     $('modalTitle').textContent = currentSection === 'prospects' ? '新增潛在客戶' : '新增名片';
+    mailingFormLoad(null);
     if ($('isForeignChk')) $('isForeignChk').checked = false;
     rebuildIndustrySelect('');
     $('industry').dataset.manual = 'false';
@@ -3422,6 +3446,7 @@ function openModalAddContact(prefill = {}) {
   $('phone').value    = prefill.phone    || '';
   $('ext').value      = ''; // 分機不帶入，由使用者填寫
   $('address').value  = prefill.address  || '';
+  mailingFormLoad({ mailingAddress: prefill.mailingAddress, mailingSameAsCompany: prefill.mailingSameAsCompany });
   $('website').value  = prefill.website  || '';
   $('taxId').value    = prefill.taxId    || '';
   if ($('isForeignChk')) $('isForeignChk').checked = !!prefill.isForeign;
@@ -3474,6 +3499,11 @@ function triggerCompanyFill() {
     fill('phone',   match.phone);
     fill('ext',     match.ext);
     fill('address', match.address);
+    if (!$('mailingAddress').value && !$('mailingSameAsCompany').checked) {
+      if (match.mailingSameAsCompany) $('mailingSameAsCompany').checked = true;
+      else if (match.mailingAddress) $('mailingAddress').value = match.mailingAddress;
+    }
+    mailingSyncUi();
     fill('website', match.website);
     fill('taxId',   match.taxId);
     // 產業
@@ -3674,6 +3704,8 @@ $('saveBtn').addEventListener('click', async () => {
     ext: $('ext').value.trim(),
     email: $('email').value.trim(),
     address: $('address').value.trim(),
+    mailingAddress: $('mailingSameAsCompany').checked ? $('address').value.trim() : $('mailingAddress').value.trim(),
+    mailingSameAsCompany: $('mailingSameAsCompany').checked,
     website: $('website').value.trim(),
     taxId: taxIdVal,
     isForeign,
@@ -3754,6 +3786,7 @@ function openView(id) {
       <div class="view-row"><span class="view-label">手機</span><span class="view-value">${c.mobile ? `<a href="tel:${escapeHtml(c.mobile)}">${escapeHtml(c.mobile)}</a>` : '-'}</span></div>
       <div class="view-row"><span class="view-label">Email</span><span class="view-value">${c.email ? `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>` : '-'}</span></div>
       <div class="view-row"><span class="view-label">地址</span><span class="view-value">${escapeHtml(c.address) || '-'}</span></div>
+      <div class="view-row"><span class="view-label">郵寄地址</span><span class="view-value">${escapeHtml(c.mailingAddress) || '-'}${c.mailingSameAsCompany ? '<span class="muted-13" style="margin-left:8px">（同公司地址）</span>' : ''}</span></div>
       <div class="view-row"><span class="view-label">網站</span><span class="view-value">${c.website ? `<a href="${safeHref(c.website)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.website)}</a>` : '-'}</span></div>
     </div>
     ${(c.systemVendor || c.systemProduct) ? `
@@ -9798,6 +9831,7 @@ async function doAppTransfer() {
       fill('ext',     c.ext);
       fill('email',   c.email);
       fill('address', c.address);
+      mailingSyncUi();
       fill('website', c.website);
       fill('taxId',   c.taxId);
       if ($('isForeignChk')) $('isForeignChk').checked = false;
