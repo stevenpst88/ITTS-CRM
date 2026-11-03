@@ -141,9 +141,14 @@ function _logSessionRejected(req, username, reason) {
       `已登入的連線被拒絕：${reason}（請求 ${req.method} ${String(req.path).slice(0, 80)}）；連線已強制登出`, req);
   } catch (e) { console.error('[session-reject log]', e); }
 }
+// 純靜態資產（GET/HEAD＋_client 內實際存在的檔案）不做「帳號不存在／停用／密碼已變更 → 強制登出」判斷：
+// 這類請求不經過 db.ready()（只套 /api/），跨實例時記憶體快取可能過期，會把剛建立／剛改密碼的帳號誤踢（載入畫面約 40 個靜態檔幾乎必中）。
+// 靜態檔不含資料，存取仍由後面的 requireAuth 把關；/api/ 開頭的請求、/uploads、/admin.html、其他動態路由維持原判斷。（lib/staticAssets.js）
+const staticAssets = require('./lib/staticAssets').create(path.join(__dirname, '_client'));
 app.use((req, res, next) => {
   const su = req.session && req.session.user;
   if (!su || !su.username) return next();
+  if (staticAssets.isStaticAsset(req)) return next();
   let acct;
   try { acct = lookupAccountForSession(su.username); } catch (e) { console.error('[session-refresh]', e); return next(); }
   // 資安審查 M6：登入憑證綁密碼版本。舊 token（部署前簽發、沒有 pwa 欄位）一律放行（寬限，最長 8 小時自然汰換）；SESSION_PWD_BINDING=off 可整個關掉
