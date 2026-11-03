@@ -810,12 +810,16 @@ const OPP_FIELDS       = ['contactId','contactName','company','category','produc
 // ── 商機 Deal ID（商品目錄標記「需要 Deal ID」的商品，商機必填；規則在 lib/productCatalog.js）──
 // 回 { error?, status?, code?, dealId? }：呼叫端 res.status(r.status).json({ error, code })。
 // effProduct／effDealId 為「這次寫入後」的有效值；只有呼叫端判斷「這次請求動到 product 或 dealId」才會呼叫（偏更新 {stage} 不呼叫）。
-function checkOppDealId(data, effProduct, rawDealId) {
-  const n = productCatalog.normalizeDealId(rawDealId);
+// legacyDealId：商機資料裡「現有」的 dealId（只有 PUT 會傳）。這次送的值與它完全相同（舊資料不是 9 碼）→ 放行不重驗（grandfather）；改成別的值才驗 9 碼數字。
+function checkOppDealId(data, effProduct, rawDealId, legacyDealId) {
+  let n;
+  const legacy = typeof legacyDealId === 'string' ? legacyDealId : '';
+  if (legacy && typeof rawDealId === 'string' && rawDealId.trim() === legacy.trim()) n = { ok: true, value: legacy.trim() };
+  else n = productCatalog.normalizeDealId(rawDealId);
   if (!n.ok) return { status: 400, code: n.code, error: n.error };
   const rule = productCatalog.resolveDealIdRule(data.productCatalog, effProduct);
   if (rule.requires && !n.value) {
-    return { status: 400, code: 'DEAL_ID_REQUIRED', error: '此商品需要填寫 Deal ID（請先到外部網站註冊商機，再把商機代碼貼到 Deal ID 欄位）' };
+    return { status: 400, code: 'DEAL_ID_REQUIRED', error: '此商品需要填寫 SAP Deal ID（請先到外部網站註冊商機，再把取得的 SAP Deal ID 貼到欄位）' };
   }
   return { dealId: n.value, rule };
 }
@@ -4611,7 +4615,7 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   if (req.body.product !== undefined || req.body.dealId !== undefined) {
     const _dl = checkOppDealId(data,
       req.body.product !== undefined ? req.body.product : data.opportunities[idx].product,
-      req.body.dealId !== undefined ? req.body.dealId : oldDealId);
+      req.body.dealId !== undefined ? req.body.dealId : oldDealId, oldDealId);
     if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
     if (req.body.dealId !== undefined) req.body.dealId = _dl.dealId;   // 存正規化後的值（去控制字元／前後空白）
   }
@@ -5254,7 +5258,7 @@ app.get('/api/admin/opportunities/export', requireAdmin, (req, res) => {
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
     '合約金額(K)', '預估毛利率(%)', '備註(description)',
     '建立日期', '成交日期', '歷史紀錄(Y/N)',
-    '商機ID', 'Deal ID'
+    '商機ID', 'SAP Deal ID'
   ];
 
   const rows = (data.opportunities || []).map(o => [
@@ -5497,7 +5501,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       createdAt:    header.findIndex(h => h.includes('建立日期') || h.includes('建立時間')),
       achievedDate: header.findIndex(h => h.includes('成交日期')),
       kpiExcluded:  header.findIndex(h => h.includes('歷史紀錄')),
-      dealId:       header.findIndex(h => h.replace(/\s+/g, '').toLowerCase() === 'dealid'),   // 選填欄；匯入不強制（避免批次被擋）
+      dealId:       header.findIndex(h => /^(sap)?dealid(?![a-z0-9])/.test(h.replace(/\s+/g, '').toLowerCase())),   // 選填欄；匯入不強制（避免批次被擋）
     };
 
     const auth = loadAuth();
@@ -5539,7 +5543,7 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
 
     const dryRun = String(req.body?.dryRun || '') === '1';   // 預檢模式：只驗證不寫入
     let created = 0, linkedContacts = 0, createdPoolContacts = 0;
-    let missingDealId = 0, invalidDealId = 0;   // 商品要求 Deal ID 但匯入列沒填（只統計，不擋）／Deal ID 欄位值不合格（丟棄該欄值）
+    let missingDealId = 0, invalidDealId = 0;   // 商品要求 Deal ID 但匯入列沒填（只統計，不擋）／SAP Deal ID 欄位值不合格（非 9 碼數字，丟棄該欄值）
     const errors = [];
     const unmatchedCompanies = new Map();   // 預檢：真實業務 + 公司名對不到既有名片（可能名稱不一致）
     const fieldErrors = [];                 // 欄位異常（如缺預計簽約日）→ 略過該列
@@ -10127,19 +10131,19 @@ app.get('/api/admin/opportunity-import-template', requireAdmin, (req, res) => {
     '業務帳號(owner)', '業務姓名', '把握度階段(A/B/C/Won)',
     '合約金額(K)', '預估毛利率(%)', '備註(description)',
     '建立日期', '成交日期', '歷史紀錄(Y/N)',
-    '商機ID'
+    '商機ID', 'SAP Deal ID(選填，9碼數字)'
   ];
   // 示範列 1：歷史補登 + 暫放客戶池等 Manager 分配
   const sample1 = [
     '東捷資訊', '王大明', 'ERP 顧問導入 PE', 'ERP', '2024-08-15',
     '_pool', '', 'Won', 1500, 30, '已驗收結案（歷史補登）',
-    '2024-01-10', '2024-08-15', 'Y', ''
+    '2024-01-10', '2024-08-15', 'Y', '', ''
   ];
   // 示範列 2：目前進行中的正常商機
   const sample2 = [
     '台積電股份有限公司', '李小美', 'CRM 二期擴充', 'CRM', '2026-09-30',
     'Stevenlee', '', 'B', 800, 25, '報價中',
-    '', '', '', ''
+    '', '', '', '', '306538617'
   ];
   const ws = XLSX.utils.aoa_to_sheet([headers, sample1, sample2]);
   ws['!cols'] = [
@@ -10147,7 +10151,7 @@ app.get('/api/admin/opportunity-import-template', requireAdmin, (req, res) => {
     { wch: 14 }, { wch: 12 }, { wch: 18 },
     { wch: 14 }, { wch: 14 }, { wch: 30 },
     { wch: 12 }, { wch: 12 }, { wch: 14 },
-    { wch: 36 }
+    { wch: 36 }, { wch: 26 }
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '商機匯入範本');

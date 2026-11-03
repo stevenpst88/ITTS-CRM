@@ -1531,7 +1531,8 @@
             ▸ <b>建立日期</b>：填 YYYY-MM-DD → 還原為該日創建（影響業績歸屬月份）。空白用當下時間。<br>
             ▸ <b>成交日期</b>：Won 階段才需要，YYYY-MM-DD。會被「業績達成」計算引用。<br>
             ▸ <b>歷史紀錄</b>：填 <b>Y</b> 表示「只記錄不算業績」（純歷史檔案，不影響 KPI）。空白＝正常列入。<br>
-            ▸ <b>業務帳號</b>：可填 <code>_pool</code> 把商機放進客戶池暫存，等 Manager 分配。
+            ▸ <b>業務帳號</b>：可填 <code>_pool</code> 把商機放進客戶池暫存，等 Manager 分配。<br>
+            ▸ <b>SAP Deal ID</b>（選填；舊版範本的欄位標題也認得）：9 碼數字；不是 9 碼數字的值匯入時不會擋，但該欄值會被捨棄並在結果提示筆數。
           </div>
 
           <div class="import-drop-zone" id="oppImportDropZone">
@@ -3887,10 +3888,10 @@
       const err = pcDealUrlError(p.dealRegisterUrl);
       if (err) return { bad: true, text: '⚠ ' + err };
       if (!String(p.dealRegisterUrl || '').trim()) return { bad: false, text: '尚未設定註冊網址：業務填單時只會看到「請洽管理員設定註冊網址」提示' };
-      return { bad: false, text: '業務選此商品時，Deal ID 為必填，並可從欄位旁的連結在新分頁開啟此網址' };
+      return { bad: false, text: '業務選此商品時，SAP Deal ID 為必填，並可從欄位旁的連結在新分頁開啟此網址' };
     }
     function pcDealRowHtml(p, gi, pi) {
-      let h = '<div class="pc-deal-row"><label class="pc-deal-chk"><input type="checkbox" data-pcfld="req" data-gi="' + gi + '" data-pi="' + pi + '"' + (p.requiresDealId ? ' checked' : '') + '> 需要 Deal ID</label>';
+      let h = '<div class="pc-deal-row"><label class="pc-deal-chk"><input type="checkbox" data-pcfld="req" data-gi="' + gi + '" data-pi="' + pi + '"' + (p.requiresDealId ? ' checked' : '') + '> 需要 SAP Deal ID</label>';
       if (p.requiresDealId) {
         const ht = pcDealHintText(p);
         h += '<input class="pc-deal-url' + (pcDealUrlError(p.dealRegisterUrl) ? ' pc-deal-bad' : '') + '" data-pcfld="durl" data-gi="' + gi + '" data-pi="' + pi + '" value="' + pcEsc(p.dealRegisterUrl) + '" placeholder="Deal 註冊網址（https://…）" maxlength="500" aria-label="Deal 註冊網址：' + pcEsc(p.name) + '">'
@@ -4039,7 +4040,7 @@
             group: (g.group || '').trim(), enabled: !!g.enabled,
             items: g.items.map(p => {
               const o = { name: (p.name || '').trim(), enabled: !!p.enabled, subs: p.subs.map(s => (s.name || '').trim()).filter(Boolean) };
-              if (p.requiresDealId) { o.requiresDealId = true; const u = String(p.dealRegisterUrl || '').trim(); if (u) o.dealRegisterUrl = u; }   // 不需要 Deal ID 的商品不存網址
+              if (p.requiresDealId) { o.requiresDealId = true; const u = String(p.dealRegisterUrl || '').trim(); if (u) o.dealRegisterUrl = u; }   // 不需要 SAP Deal ID 的商品不存網址
               return o;
             }).filter(p => p.name),
           }))
@@ -7628,10 +7629,10 @@
           h += `<div class="ax-bad-mt8">⚠ ${d.fieldErrors.length} 列欄位異常（缺必填）、會被略過：<br>${d.fieldErrors.slice(0, 15).map(escH).join('<br>')}${d.fieldErrors.length > 15 ? '<br>…' : ''}</div>`;
         }
         if (d.missingDealId) {
-          h += `<div class="ax-bad-mt8">ℹ ${escH(String(d.missingDealId))} 筆的商品要求 Deal ID 但檔案沒填（匯入不會被擋，之後業務編輯該商機時需補填）；Excel 欄位標題請用「Deal ID」</div>`;
+          h += `<div class="ax-bad-mt8">ℹ ${escH(String(d.missingDealId))} 筆的商品要求 SAP Deal ID 但檔案沒填（匯入不會被擋，之後業務編輯該商機時需補填）；Excel 欄位標題請用「SAP Deal ID」</div>`;
         }
         if (d.invalidDealId) {
-          h += `<div class="ax-bad-mt8">⚠ ${escH(String(d.invalidDealId))} 筆的 Deal ID 超過 64 字或格式不合，該欄值會被捨棄</div>`;
+          h += `<div class="ax-bad-mt8">⚠ ${escH(String(d.invalidDealId))} 筆的 SAP Deal ID 不是 9 碼數字，該欄值會被捨棄</div>`;
         }
         if (d.unmatchedCompanies && d.unmatchedCompanies.length) {
           h += `<div style="color:#b45309;margin-top:8px">⚠ ${d.unmatchedCompanies.length} 家公司在系統找不到相符名片（會建成孤立商機，可能名稱不一致）：<br>`;
@@ -7685,10 +7686,10 @@
           html += `<div class="import-result-detail">⚠ ${data.errors.length} 列業務對不到略過：<br>${data.errors.slice(0,10).map(e => escH(e)).join('<br>')}${data.errors.length > 10 ? '<br>...' : ''}</div>`;
         }
         if (data.missingDealId) {
-          html += `<div class="import-result-detail">ℹ ${escH(String(data.missingDealId))} 筆缺 Deal ID（商品要求但檔案沒填）：已匯入，之後編輯該商機時需補填</div>`;
+          html += `<div class="import-result-detail">ℹ ${escH(String(data.missingDealId))} 筆缺 SAP Deal ID（商品要求但檔案沒填）：已匯入，之後編輯該商機時需補填</div>`;
         }
         if (data.invalidDealId) {
-          html += `<div class="import-result-detail">⚠ ${escH(String(data.invalidDealId))} 筆 Deal ID 不合格（超過 64 字）已捨棄該欄值</div>`;
+          html += `<div class="import-result-detail">⚠ ${escH(String(data.invalidDealId))} 筆 SAP Deal ID 不合格（非 9 碼數字）已捨棄該欄值</div>`;
         }
         if (data.fieldErrors && data.fieldErrors.length) {
           html += `<div class="import-result-detail">⚠ ${data.fieldErrors.length} 列欄位異常略過：<br>${data.fieldErrors.slice(0,10).map(e => escH(e)).join('<br>')}${data.fieldErrors.length > 10 ? '<br>...' : ''}</div>`;

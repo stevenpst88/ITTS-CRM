@@ -4997,8 +4997,8 @@ function buildKanbanCard(o) {
   if (o.dealId) {
     const di = document.createElement('div');
     di.className = 'kanban-card-dealid';
-    di.title = 'Deal ID：' + o.dealId;
-    di.textContent = 'Deal ID：' + o.dealId;
+    di.title = 'SAP Deal ID：' + o.dealId;
+    di.textContent = 'SAP Deal ID：' + o.dealId;
     card.insertBefore(di, card.querySelector('.kanban-card-edit-hint'));
   }
 
@@ -5254,7 +5254,8 @@ $('oppEditCategory').addEventListener('change', function () {
 // ── Deal ID（商品目錄標記「需要 Deal ID」的商品必填；規則與伺服器 lib/productCatalog.js 一致，伺服器仍會強制檢查）──
 // 三個建立／編輯表單共用：opp＝拜訪視窗的商機頁籤、cOpp＝名片視窗的商機頁籤、oppEdit＝商機視窗（新增／編輯）。
 // 所有使用者輸入（Deal ID、網址）只經 value／textContent／href 屬性寫入，不拼 HTML。
-const DEAL_ID_MAX = 64;
+// SAP Deal ID 格式規則（9 碼數字）的單一來源是 deal-id-format.js（window.DealIdFormat，與伺服器共用）
+const DealIdFmt = window.DealIdFormat;   // index.html 在 app.js 之前載入 deal-id-format.js
 const DEAL_FORMS = {
   opp:     { sel: 'oppProduct',     custom: 'oppProductCustom',     sub: 'oppProductSub' },
   cOpp:    { sel: 'cOppProduct',    custom: 'cOppProductCustom',    sub: 'cOppProductSub' },
@@ -5303,13 +5304,13 @@ function dealIdRefresh(k, opts) {
   if (href) { e.link.href = href; e.link.hidden = false; } else { e.link.removeAttribute('href'); e.link.hidden = true; }
   e.grp.classList.toggle('deal-id-has-link', !!href);
   if (rule.requires) {
-    e.hint.dataset.base = href ? '請先到外部網站註冊商機，再把取得的商機代碼貼到這裡' : '請洽管理員設定註冊網址（此商品需要 Deal ID，可先向管理員取得註冊網站）';
+    e.hint.dataset.base = href ? '請先到外部網站註冊商機，再把取得的 SAP Deal ID（9 碼數字）貼到這裡' : '請洽管理員設定註冊網址（此商品需要 SAP Deal ID，可先向管理員取得註冊網站）';
   } else {
-    e.hint.dataset.base = show ? '此商品不強制填寫 Deal ID（可留空或清除）' : '';
+    e.hint.dataset.base = show ? '此商品不強制填寫 SAP Deal ID（9 碼數字，可留空或清除）' : '';
   }
   dealIdPaintHint(k);
-  if (!rule.requires || dealIdClean(e.inp.value)) dealIdSetError(k, dealIdClean(e.inp.value).length > DEAL_ID_MAX ? ('Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + dealIdClean(e.inp.value).length + ' 字）') : '');
-  else if (opts && opts.nag) dealIdSetError(k, '此商機的商品需要 Deal ID，請補填後才能儲存');
+  if (!rule.requires || dealIdClean(e.inp.value)) dealIdSetError(k, dealIdFormatError(k));
+  else if (opts && opts.nag) dealIdSetError(k, '此商機的商品需要 SAP Deal ID，請補填後才能儲存');
 }
 // 軟性重複提醒（不擋存檔）：同一個 Deal ID 已出現在其他商機（只比對目前載入、看得到的商機；不分大小寫）
 function dealIdDuplicateOf(k) {
@@ -5321,15 +5322,39 @@ function dealIdDuplicateOf(k) {
 function dealIdPaintHint(k) {
   const e = dealIdEls(k); if (!e.hint) return;
   const dup = dealIdDuplicateOf(k);
-  e.hint.textContent = (e.hint.dataset.base || '') + (dup ? (e.hint.dataset.base ? ' ' : '') + '⚠ 提醒：此 Deal ID 已用於「' + (dup.company || '（未填公司）') + '／' + (dup.product || '（未填商品）') + '」，仍可儲存。' : '');
+  e.hint.textContent = (e.hint.dataset.base || '') + (dup ? (e.hint.dataset.base ? ' ' : '') + '⚠ 提醒：此 SAP Deal ID 已用於「' + (dup.company || '（未填公司）') + '／' + (dup.product || '（未填商品）') + '」，仍可儲存。' : '');
+}
+// 欄位目前內容的格式錯誤訊息（'' 表示沒問題）。沿用舊商機的非 9 碼值（與開啟時完全相同）不算錯（grandfather，伺服器同規則）。
+function dealIdFormatError(k) {
+  const e = dealIdEls(k), v = dealIdClean(e.inp.value);
+  if (!v) return '';
+  if (e.inp.dataset.orig && v === e.inp.dataset.orig) return '';
+  if (DealIdFmt.RE.test(v)) return '';
+  return DealIdFmt.MESSAGE + (/^[0-9]*$/.test(v) ? '（目前 ' + v.length + ' 碼）' : '');
 }
 function dealIdOnInput(k) {
-  const e = dealIdEls(k), v = dealIdClean(e.inp.value);
+  const e = dealIdEls(k);
+  // 即時濾掉非數字（全形數字先轉半形）、超過 9 碼截斷；沿用舊值時不動它，使用者一改動就套用新規則
+  if (!(e.inp.dataset.orig && dealIdClean(e.inp.value) === e.inp.dataset.orig)) {
+    const f = DealIdFmt.sanitizeInput(e.inp.value);
+    if (f !== e.inp.value) e.inp.value = f;
+  }
+  const v = dealIdClean(e.inp.value);
   dealIdPaintHint(k);
   const rule = dealIdRuleFor(dealIdProduct(k));
-  if (v.length > DEAL_ID_MAX) dealIdSetError(k, 'Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + v.length + ' 字）');
-  else if (!v && rule.requires && e.err.textContent) dealIdSetError(k, '請填寫 Deal ID');
-  else dealIdSetError(k, '');
+  if (!v && rule.requires && e.err.textContent) dealIdSetError(k, '請填寫 SAP Deal ID');
+  else dealIdSetError(k, dealIdFormatError(k));
+}
+// 貼上：先正規化（306-538-617、全形數字、前後空白）再插入，避免 maxlength 在濾除前就把後面的數字截掉
+function dealIdOnPaste(k, ev) {
+  const e = dealIdEls(k);
+  const cd = ev.clipboardData || window.clipboardData;
+  if (!cd) return;
+  ev.preventDefault();
+  const t = DealIdFmt.sanitizeInput(cd.getData('text'));
+  const i = e.inp, st = i.selectionStart == null ? i.value.length : i.selectionStart, en = i.selectionEnd == null ? i.value.length : i.selectionEnd;
+  i.value = DealIdFmt.sanitizeInput(i.value.slice(0, st) + t + i.value.slice(en));
+  dealIdOnInput(k);
 }
 // 送出前檢查：回 true＝可送出。失敗時在欄位旁顯示錯誤、聚焦、並跳 toast。
 function dealIdValidate(k) {
@@ -5337,8 +5362,8 @@ function dealIdValidate(k) {
   const rule = dealIdRuleFor(dealIdProduct(k));
   const v = dealIdClean(e.inp.value);
   let msg = '';
-  if (rule.requires && !v) msg = '請填寫 Deal ID（此商品必填）';
-  else if (v.length > DEAL_ID_MAX) msg = 'Deal ID 長度不可超過 ' + DEAL_ID_MAX + ' 字（目前 ' + v.length + ' 字）';
+  if (rule.requires && !v) msg = '請填寫 SAP Deal ID（此商品必填）';
+  else msg = dealIdFormatError(k);
   if (!msg) { dealIdSetError(k, ''); return true; }
   e.grp.hidden = false;
   dealIdSetError(k, msg);
@@ -5356,6 +5381,7 @@ function dealIdSet(k, value, opts) {
   const e = dealIdEls(k); if (!e.grp) return;
   const v = dealIdClean(value);
   e.inp.value = v;
+  e.inp.dataset.orig = (v && !DealIdFmt.RE.test(v)) ? v : '';   // 舊資料非 9 碼：原值照舊可存（grandfather）
   e.grp.dataset.keep = v ? '1' : '';
   dealIdSetError(k, '');
   dealIdRefresh(k, opts);
@@ -5364,7 +5390,7 @@ Object.keys(DEAL_FORMS).forEach(k => {
   const f = DEAL_FORMS[k], e = dealIdEls(k);
   [f.sel, f.sub].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => dealIdRefresh(k)); });
   const c = $(f.custom); if (c) c.addEventListener('input', () => dealIdRefresh(k));
-  if (e.inp) e.inp.addEventListener('input', () => dealIdOnInput(k));
+  if (e.inp) { e.inp.addEventListener('input', () => dealIdOnInput(k)); e.inp.addEventListener('paste', (ev) => dealIdOnPaste(k, ev)); }
 });
 // 類別一變商品下拉會被清空（程式改值不會觸發 change）→ 另外聽類別
 [['opp', 'oppCategory'], ['cOpp', 'cOppCategory'], ['oppEdit', 'oppEditCategory']].forEach(([k, id]) => {
@@ -5510,9 +5536,9 @@ $('oppEditSave').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (!_rE.ok) {   // 伺服器擋下（例如 Deal ID 必填）：留在視窗內、顯示原因，不要假裝已更新
+    if (!_rE.ok) {   // 伺服器擋下（例如 SAP Deal ID 必填）：留在視窗內、顯示原因，不要假裝已更新
       const _eE = await _rE.json().catch(() => ({}));
-      if (_eE.code === 'DEAL_ID_REQUIRED' || _eE.code === 'DEAL_ID_TOO_LONG' || _eE.code === 'DEAL_ID_INVALID') { const _g = $('oppEditDealIdGroup'); if (_g) _g.hidden = false; dealIdSetError('oppEdit', _eE.error); }
+      if (_eE.code === 'DEAL_ID_REQUIRED' || _eE.code === 'DEAL_ID_FORMAT' || _eE.code === 'DEAL_ID_INVALID') { const _g = $('oppEditDealIdGroup'); if (_g) _g.hidden = false; dealIdSetError('oppEdit', _eE.error); }
       showToast(_eE.error || '儲存失敗，請重試');
       return;
     }
@@ -6998,7 +7024,7 @@ function renderOppTable() {
       <td data-label="客戶公司">${zombieBadge}${kaCompanyMark(o.company)}${escapeHtml(o.company||'-')}</td>
       <td data-label="聯絡人">${escapeHtml(o.contactName||'-')}</td>
       <td data-label="商機類別">${escapeHtml(o.category||'-')}</td>
-      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product||'-')}${o.dealId ? `<div class="opp-dealid-line" title="Deal ID：${escapeHtml(o.dealId)}">Deal ID：${escapeHtml(o.dealId)}</div>` : ''}</td>
+      <td data-label="商品項目" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(o.product||'')}">${escapeHtml(o.product||'-')}${o.dealId ? `<div class="opp-dealid-line" title="SAP Deal ID：${escapeHtml(o.dealId)}">SAP Deal ID：${escapeHtml(o.dealId)}</div>` : ''}</td>
       <td data-label="預估金額（K）" style="text-align:right;font-weight:700">${o.amount ? Number(o.amount).toLocaleString() : '-'}</td>
       <td data-label="預計成交日">${escapeHtml(o.expectedDate || '-')}</td>
       <td data-label="狀態">

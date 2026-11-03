@@ -35,6 +35,7 @@ async function theme(b, mode) {   // mode: 'glass-dark' | 'glass-light' | 'plain
   await b.ev(`(()=>{const c=document.body.classList; const g=${J(mode.startsWith('glass'))}; const d=${J(mode.endsWith('dark'))}; c.toggle('glass',g); c.toggle('dark',d); return true})()`);
   await b.sleep(250);
 }
+const VISIBLE_SCAN = `(()=>{ const bad=[]; const re=/(?<!SAP )Deal ?ID/; const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT); let n; while(n=w.nextNode()){ const p=n.parentElement; if(!p||/^(SCRIPT|STYLE|NOSCRIPT)$/.test(p.tagName)) continue; if(re.test(n.nodeValue)) bad.push(n.nodeValue.trim().slice(0,60)); } document.querySelectorAll('[placeholder],[title],[aria-label]').forEach(e=>{ for(const a of ['placeholder','title','aria-label']){ const v=e.getAttribute(a); if(v&&re.test(v)) bad.push(a+':'+v.slice(0,60)); } }); return bad; })()`;
 const shot = async (b, C, name) => { if (C.SHOTS) await b.shot(path.join(C.SHOTS, name)); };
 
 // ───── 建立（商機視窗新增模式）─────
@@ -50,6 +51,11 @@ async function uiCreate(b, C) {
   await selSet(b, 'oppEditProduct', 'SAP Public Cloud License');
   eq(await b.ev(DISPLAY('oppEditDealIdGroup')), true, 'UI3 選「需要」的商品：欄位出現');
   eq(await b.ev(DISPLAY('oppEditDealIdStar')), true, 'UI4 必填星號顯示');
+  eq(await b.ev(`document.querySelector('label[for="oppEditDealId"]').textContent.replace(/\\s+/g,' ').trim()`), 'SAP Deal ID *', 'UIL1 標籤顯示「SAP Deal ID」＋必填星號');
+  eq(await b.ev(`(()=>{const i=document.getElementById('oppEditDealId'); return [i.getAttribute('inputmode'), i.getAttribute('maxlength')]})()`), ['numeric', '9'], 'UIL2 inputmode=numeric、maxlength=9');
+  ok(/SAP Deal ID（9 碼數字）/.test(await b.ev(`document.getElementById('oppEditDealId').placeholder + document.getElementById('oppEditDealIdHint').textContent`)), 'UIL3 說明／placeholder 含「SAP Deal ID（9 碼數字）」', await b.ev(TEXT('oppEditDealIdHint')));
+  eq(await b.ev(`document.getElementById('oppEditDealIdErr').getAttribute('role')`), 'alert', 'UIL4 錯誤區 role=alert');
+  eq(await b.ev(VISIBLE_SCAN), [], 'UIL5 使用者端畫面（商機視窗開啟中）沒有單獨的「Deal ID」字樣');
   eq(await b.ev(`document.getElementById('oppEditDealId').getAttribute('aria-required')`), 'true', 'UI5 輸入框 aria-required=true');
   const lk = await b.ev(`(()=>{const a=document.getElementById('oppEditDealIdLink'); return {shown:!a.hidden && getComputedStyle(a).display!=='none', href:a.getAttribute('href'), target:a.target, rel:a.rel, text:a.textContent.trim(), inBox: !!a.closest('.deal-id-box')}})()`);
   eq([lk.shown, lk.href, lk.target, lk.inBox], [true, C.REG_URL, '_blank', true], 'UI6 「前往註冊商機」連結顯示、指向商品設定的網址、新分頁、位於輸入框容器內');
@@ -57,7 +63,7 @@ async function uiCreate(b, C) {
   ok(/前往註冊商機/.test(lk.text), 'UI8 連結文字', lk.text);
   await selSet(b, 'oppEditProduct', 'SAP CCFLEX');
   eq(await b.ev(DISPLAY('oppEditDealIdLink')), false, 'UI9 沒設註冊網址的商品：不顯示連結');
-  ok(/請洽管理員設定註冊網址/.test(await b.ev(TEXT('oppEditDealIdHint'))), 'UI10 沒設網址但需要 Deal ID：提示「請洽管理員設定註冊網址」');
+  ok(/請洽管理員設定註冊網址/.test(await b.ev(TEXT('oppEditDealIdHint'))), 'UI10 沒設網址但需要 SAP Deal ID：提示「請洽管理員設定註冊網址」');
   await selSet(b, 'oppEditProductSub', 'C&S');
   eq(await b.ev(DISPLAY('oppEditDealIdGroup')), true, 'UI11 選了明細（SAP CCFLEX C&S）仍需要 Deal ID');
   await selSet(b, 'oppEditProduct', 'SAP Public Cloud License');
@@ -81,28 +87,50 @@ async function uiCreate(b, C) {
   ok(/noreferrer/.test((lc[0] || {}).rel || ''), 'UI18 點擊當下 rel 含 noreferrer');
   eq((await reqs(b, '/\\/api\\/opportunities/')).length, 0, 'UI19 點連結不會送出表單');
 
-  // 貼上 65 字 → 即時錯誤、仍擋
-  await valSet(b, 'oppEditDealId', 'z'.repeat(65));
-  ok(/64/.test(await b.ev(TEXT('oppEditDealIdErr'))), 'UI20 貼上 65 字：即時顯示長度錯誤（不靜默截斷）', await b.ev(TEXT('oppEditDealIdErr')));
+  // 真實鍵盤：字母被濾掉、未滿 9 碼即時行內錯誤、存檔被擋、焦點回欄位
+  await b.click('#oppEditDealId');
+  await b.type('ab12cd');
+  eq(await b.ev(`document.getElementById('oppEditDealId').value`), '12', 'UIF1 真實輸入英文字母被濾掉（abc12cd → 12）');
+  ok(/9 碼數字/.test(await b.ev(TEXT('oppEditDealIdErr'))) && /目前 2 碼/.test(await b.ev(TEXT('oppEditDealIdErr'))), 'UIF2 未滿 9 碼：行內錯誤「SAP Deal ID 必須是 9 碼數字（目前 2 碼）」', await b.ev(TEXT('oppEditDealIdErr')));
+  eq(await b.ev(`document.getElementById('oppEditDealId').getAttribute('aria-invalid')`), 'true', 'UIF3 aria-invalid=true（不只靠顏色）');
+  await shot(b, C, 'sapdeal_create_short_error_1440.png');
+  await clearReqs(b);
+  await b.ev(`document.getElementById('oppEditSave').focus(); 0`);
   await b.click('#oppEditSave'); await b.sleep(300);
-  eq((await reqs(b, '/\\/api\\/opportunities/')).length, 0, 'UI21 65 字存檔被擋');
-  await valSet(b, 'oppEditDealId', 'exist-1');
-  ok(/已用於「沙盒公司A／SAP Public Cloud License」/.test(await b.ev(TEXT('oppEditDealIdHint'))), 'UI21b 軟性提醒：Deal ID（不分大小寫）已用於其他商機 → 提示但不擋', await b.ev(TEXT('oppEditDealIdHint')));
+  eq((await reqs(b, '/\\/api\\/opportunities/')).length, 0, 'UIF4 未滿 9 碼存檔被擋（沒有送出任何請求）');
+  eq(await b.ev(`document.activeElement && document.activeElement.id`), 'oppEditDealId', 'UIF5 焦點移回 SAP Deal ID 欄位');
+  await valSet(b, 'oppEditDealId', '1234567890123');
+  eq(await b.ev(`document.getElementById('oppEditDealId').value`), '123456789', 'UIF6 超過 9 碼被截斷為 9 碼');
+  eq(await b.ev(TEXT('oppEditDealIdErr')), '', 'UIF7 9 碼時錯誤消失');
+  await valSet(b, 'oppEditDealId', '３０６５３８６１７');
+  eq(await b.ev(`document.getElementById('oppEditDealId').value`), '306538617', 'UIF8 全形數字轉半形');
+  // 貼上（含分隔符、全形）：用真的 paste 事件＋剪貼簿資料，maxlength 不能在濾除前就截掉
+  const pasteTest = async (txt) => b.ev(`(()=>{const i=document.getElementById('oppEditDealId'); i.value=''; i.focus(); const dt=new DataTransfer(); dt.setData('text/plain', ${J(txt)}); const ev=new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}); i.dispatchEvent(ev); return [i.value, ev.defaultPrevented]})()`);
+  eq((await pasteTest('306-538-617'))[0], '306538617', 'UIF9 貼上「306-538-617」→ 306538617（不會被 maxlength 提前截成 306-538-6）');
+  eq((await pasteTest('３０６５３８６１７'))[0], '306538617', 'UIF10 貼上全形數字 → 半形');
+  eq((await pasteTest('  SAP 306 538 617  '))[0], '306538617', 'UIF11 貼上前後空白／文字夾雜 → 只留數字');
+  eq((await pasteTest('12345678901234'))[0], '123456789', 'UIF12 貼上超過 9 碼 → 截斷');
+  await valSet(b, 'oppEditDealId', '');
+  await b.click('#oppEditSave'); await b.sleep(300);
+  eq((await reqs(b, '/\\/api\\/opportunities/')).length, 0, 'UI21 空白（必填）存檔被擋');
+  await valSet(b, 'oppEditDealId', '123456789');
+  ok(/已用於「沙盒公司A／SAP Public Cloud License」/.test(await b.ev(TEXT('oppEditDealIdHint'))), 'UI21b 軟性提醒：SAP Deal ID 已用於其他商機 → 提示但不擋', await b.ev(TEXT('oppEditDealIdHint')));
   eq(await b.ev(`dealIdValidate('oppEdit')`), true, 'UI21c 重複只是提醒，驗證仍通過（不硬擋）');
   await valSet(b, 'oppEditDealId', '');
   ok(!/已用於/.test(await b.ev(TEXT('oppEditDealIdHint'))), 'UI21d 改掉後重複提醒消失');
 
-  // 真實鍵盤輸入（含前後空白）→ 錯誤消失 → 存檔
+  // 真實鍵盤輸入（含前後空白與分隔符）→ 錯誤消失 → 存檔
   await b.click('#oppEditDealId');
-  await b.type('  DL-UI-1  ');
-  eq(await b.ev(TEXT('oppEditDealIdErr')), '', 'UI22 開始輸入後錯誤訊息清除');
-  await shot(b, C, 'dealid_create_filled_glassdark_1440.png');
+  await b.type('  306 538 617  ');
+  eq(await b.ev(`document.getElementById('oppEditDealId').value`), '306538617', 'UI22 真實輸入（含空白）→ 只留 9 碼數字');
+  eq(await b.ev(TEXT('oppEditDealIdErr')), '', 'UI22b 9 碼後錯誤訊息清除');
+  await shot(b, C, 'sapdeal_create_filled_1440.png');
   await b.click('#oppEditSave');
   await b.waitFor(`!document.getElementById('oppEditOverlay').classList.contains('open')`, 8000);
   const posted = await reqs(b, '/\\/api\\/opportunities$/');
   const pb = posted.find((x) => x.m === 'POST');
-  eq(pb && JSON.parse(pb.b).dealId, 'DL-UI-1', 'UI23 送出的 dealId 已去前後空白');
-  const made = (await C.listOpps('_s_u1')).find((o) => o.dealId === 'DL-UI-1');
+  eq(pb && JSON.parse(pb.b).dealId, '306538617', 'UI23 送出的 dealId 是 9 碼數字');
+  const made = (await C.listOpps('_s_u1')).find((o) => o.dealId === '306538617');
   ok(!!made, 'UI24 伺服器已建立該商機並保存 dealId');
 
   // 再開一次：選不需要的商品 → 隱藏，且不送 dealId
@@ -111,7 +139,7 @@ async function uiCreate(b, C) {
   eq(await b.ev(`document.getElementById('oppEditDealId').value`), '', 'UI25 重新開啟新增視窗：Deal ID 欄位已清空');
   await selSet(b, 'oppEditCategory', 'ERP');
   await selSet(b, 'oppEditProduct', 'SAP Public Cloud License');
-  await valSet(b, 'oppEditDealId', 'TEMP-1');
+  await valSet(b, 'oppEditDealId', '999999999');
   await selSet(b, 'oppEditProduct', 'ERP 顧問導入專案 PE');
   eq(await b.ev(DISPLAY('oppEditDealIdGroup')), false, 'UI26 改選不需要的商品：欄位隱藏');
   { const dv = await b.ev(`dealIdValue('oppEdit')`); ok(dv === undefined || dv === null, 'UI27 隱藏時不送值（dealIdValue 為 undefined）', dv); }
@@ -133,12 +161,12 @@ async function uiEdit(b, C) {
   eq((await reqs(b, '/\\/api\\/opportunities\\//')).filter((x) => x.m === 'PUT').length, 0, 'UE3 沒補填就儲存：前端擋下，沒有送 PUT');
   eq(await b.ev(`document.getElementById('oppEditOverlay').classList.contains('open')`), true, 'UE4 視窗維持開啟');
   await b.click('#oppEditDealId');
-  await b.type('FIX-UI-2');
+  await b.type('800000001');
   await b.click('#oppEditSave');
   await b.waitFor(`!document.getElementById('oppEditOverlay').classList.contains('open')`, 8000);
   const put = (await reqs(b, '/\\/api\\/opportunities\\/o-legacy$/')).find((x) => x.m === 'PUT');
-  eq(put && JSON.parse(put.b).dealId, 'FIX-UI-2', 'UE5 補填後送出 dealId');
-  eq((await serverOpp(C, 'o-legacy') || {}).dealId, 'FIX-UI-2', 'UE6 伺服器保存');
+  eq(put && JSON.parse(put.b).dealId, '800000001', 'UE5 補填後送出 dealId');
+  eq((await serverOpp(C, 'o-legacy') || {}).dealId, '800000001', 'UE6 伺服器保存');
 
   await clearReqs(b);
   await b.ev(`(async()=>{await loadOpportunities(); return 1})()`);
@@ -155,6 +183,21 @@ async function uiEdit(b, C) {
   eq(await b.ev(`document.getElementById('oppEditDealId').value`), 'EXIST-1', 'UE9 已有 Deal ID：欄位帶出既有值');
   await selSet(b, 'oppEditProduct', 'ERP 顧問導入專案 PE');
   eq([await b.ev(DISPLAY('oppEditDealIdGroup')), await b.ev(DISPLAY('oppEditDealIdStar')), await b.ev(`document.getElementById('oppEditDealId').getAttribute('aria-required')`)], [true, false, 'false'], 'UE10 改成不需要的商品：因為已有值仍顯示，但改為選填（無星號、aria-required=false）');
+  // grandfather：舊商機的非 9 碼值照原樣顯示，沒改動就能儲存（前端不擋、後端放行）
+  await clearReqs(b);
+  eq(await b.ev(TEXT('oppEditDealIdErr')), '', 'UE10b 舊的非 9 碼值：開啟時不顯示格式錯誤');
+  await b.click('#oppEditSave');
+  await b.waitFor(`!document.getElementById('oppEditOverlay').classList.contains('open')`, 8000);
+  const put3 = (await reqs(b, '/\\/api\\/opportunities\\/o-has$/')).find((x) => x.m === 'PUT');
+  eq(put3 && JSON.parse(put3.b).dealId, 'EXIST-1', 'UE10c 沒動舊值就儲存：送出原值');
+  eq((await serverOpp(C, 'o-has') || {}).dealId, 'EXIST-1', 'UE10d 伺服器放行並保留舊值（不追溯修改）');
+  // 一旦動它：套用 9 碼規則
+  await b.ev(`openOppEdit('o-has'); 0`);
+  await b.sleep(450);
+  await b.click('#oppEditDealId');
+  await b.type('7');
+  ok(/^(17|71)$/.test(await b.ev(`document.getElementById('oppEditDealId').value`)), 'UE10e 動到舊值：改套用數字過濾（EXIST-1 加 7 → 只剩數字）');
+  ok(/9 碼數字/.test(await b.ev(TEXT('oppEditDealIdErr'))), 'UE10f 動到舊值後未滿 9 碼：顯示錯誤', await b.ev(TEXT('oppEditDealIdErr')));
   await b.ev(`closeOppEdit(); 0`);
 
   // 看板拖曳：只送 {stage}，不被 Deal ID 擋
@@ -177,14 +220,14 @@ async function uiDisplay(b, C) {
   console.log('  [UI] 顯示與 XSS');
   const { ok, eq } = C;
   await b.ev(`(async()=>{await loadOpportunities(); renderKanban(); renderOppTable(); return 1})()`);
-  eq(await b.ev(`(document.querySelector('.kanban-card[data-id="o-has"] .kanban-card-dealid')||{}).textContent`), 'Deal ID：EXIST-1', 'UD1 看板卡片顯示 Deal ID');
+  eq(await b.ev(`(document.querySelector('.kanban-card[data-id="o-has"] .kanban-card-dealid')||{}).textContent`), 'SAP Deal ID：EXIST-1', 'UD1 看板卡片顯示 Deal ID');
   eq(await b.ev(`!!document.querySelector('.kanban-card[data-id="o-free"] .kanban-card-dealid')`), false, 'UD2 沒有 Deal ID 的卡片不多一行');
   const xc = await b.ev(`(()=>{const c=document.querySelector('.kanban-card[data-id="o-xss"]'); if(!c) return null; const d=c.querySelector('.kanban-card-dealid'); return {text:d&&d.textContent, imgs:c.querySelectorAll('img').length, xss: window.__xss===1}})()`);
-  eq(xc && xc.text, 'Deal ID：' + C.XSS, 'UD3 XSS 酬載在看板卡片以純文字顯示（逐字相同）');
+  eq(xc && xc.text, 'SAP Deal ID：' + C.XSS, 'UD3 XSS 酬載在看板卡片以純文字顯示（逐字相同）');
   eq(xc && [xc.imgs, xc.xss], [0, false], 'UD4 沒有建出 <img>、onerror 沒執行');
   const tr = await b.ev(`(()=>{const r=document.querySelector('#oppTableBody tr[data-id="o-xss"]'); if(!r) return null; const d=r.querySelector('.opp-dealid-line'); return {text:d&&d.textContent, imgs:r.querySelectorAll('img').length, xss: window.__xss===1}})()`);
   ok(!!tr, 'UD5 清單（表格）有該商機列');
-  eq(tr && tr.text, 'Deal ID：' + C.XSS, 'UD6 XSS 酬載在清單以純文字顯示');
+  eq(tr && tr.text, 'SAP Deal ID：' + C.XSS, 'UD6 XSS 酬載在清單以純文字顯示');
   eq(tr && [tr.imgs, tr.xss], [0, false], 'UD7 清單沒有建出 <img>、onerror 沒執行');
   await b.ev(`openOppEdit('o-xss'); 0`);
   await b.sleep(450);   // 等開啟動畫結束再操作
@@ -192,6 +235,7 @@ async function uiDisplay(b, C) {
   eq(await b.ev(`document.querySelectorAll('#oppEditOverlay img').length`), 0, 'UD9 編輯視窗沒有建出 <img>');
   eq(await b.ev(`window.__xss===1`), false, 'UD10 全程 onerror 沒執行');
   await b.ev(`closeOppEdit(); 0`);
+  eq(await b.ev(VISIBLE_SCAN), [], 'UD13 看板＋清單頁面沒有單獨的「Deal ID」字樣');
   // 被竄改成 javascript: 的註冊網址：前端不渲染成連結
   await b.ev(`(()=>{DEAL_ID_RULES['SAP Public Cloud License'].url='javascript:alert(1)'; openOppCreate('沙盒公司A'); const c=document.getElementById('oppEditCategory'); c.value='ERP'; c.dispatchEvent(new Event('change',{bubbles:true})); const p=document.getElementById('oppEditProduct'); p.value='SAP Public Cloud License'; p.dispatchEvent(new Event('change',{bubbles:true})); return 0})()`);
   eq(await b.ev(DISPLAY('oppEditDealIdLink')), false, 'UD11 網址若是 javascript:（資料被竄改）→ 前端不顯示連結');
@@ -212,9 +256,12 @@ async function uiOthers(b, C) {
     eq(await b.ev(`document.getElementById('${k}DealIdLink').getAttribute('href')`), C.REG_URL, `UO3 ${k}：連結指向設定的網址`);
     eq(await b.ev(`dealIdValidate('${k}')`), false, `UO4 ${k}：沒填 → 驗證不通過`);
     ok((await b.ev(TEXT(k + 'DealIdErr'))).length > 0, `UO5 ${k}：欄位旁有錯誤訊息`);
-    await valSet(b, k + 'DealId', ' OK-' + k + ' ');
+    await valSet(b, k + 'DealId', k === 'cOpp' ? ' 123 456 789 ' : '987654321');
+    eq(await b.ev(`document.getElementById('${k}DealId').value`), k === 'cOpp' ? '123456789' : '987654321', `UO5b ${k}：輸入即時正規化`);
     eq(await b.ev(`dealIdValidate('${k}')`), true, `UO6 ${k}：填了 → 通過`);
-    eq(await b.ev(`dealIdValue('${k}')`), 'OK-' + k, `UO7 ${k}：取值已去前後空白`);
+    eq(await b.ev(`dealIdValue('${k}')`), k === 'cOpp' ? '123456789' : '987654321', `UO7 ${k}：取值已去前後空白`);
+    await valSet(b, k + 'DealId', '12345');
+    eq(await b.ev(`dealIdValidate('${k}')`), false, `UO6b ${k}：未滿 9 碼 → 驗證不通過`);
     await b.ev(`dealIdSet('${k}', ''); 0`);
   }
   // 拜訪視窗：選了商機類別但商機要 Deal ID 沒填 → 拜訪也不會被儲存（先擋）
@@ -274,7 +321,9 @@ async function uiAdmin(b, C) {
   await b.waitFor(`document.querySelector('[data-sec="product-catalog"]')`, 20000);
   await b.ev(`(()=>{ window.__reqs=[]; const of=window.fetch; window.fetch=function(u,o){ if(o&&o.method&&o.method!=='GET') window.__reqs.push({u:String(u),m:o.method,b:typeof o.body==='string'?o.body:''}); return of.apply(this,arguments); }; return 0})()`);
   await b.ev(`document.querySelector('[data-sec="product-catalog"]').click(); 0`);   // 側欄群組預設收合，直接觸發導覽
-  ok(await b.waitFor(`document.querySelectorAll('#pcPanel [data-pcfld="req"]').length>0`, 10000), 'UA1 商品目錄載入，每個商品有「需要 Deal ID」勾選');
+  ok(await b.waitFor(`document.querySelectorAll('#pcPanel [data-pcfld="req"]').length>0`, 10000), 'UA1 商品目錄載入，每個商品有「需要 SAP Deal ID」勾選');
+  ok(/需要 SAP Deal ID/.test(await b.ev(`document.querySelector('#pcPanel .pc-deal-chk').textContent`)), 'UA1b 後台勾選標籤為「需要 SAP Deal ID」');
+  eq(await b.ev(VISIBLE_SCAN), [], 'UA1c 後台商品維護頁沒有單獨的「Deal ID」字樣');
   const info = await b.ev(`(()=>{const q=(gi,pi)=>document.querySelector('#pcPanel [data-pcfld="req"][data-gi="'+gi+'"][data-pi="'+pi+'"]'); return {r0:q(0,0).checked, r2:q(0,2).checked, urlRows:document.querySelectorAll('#pcPanel .pc-deal-url').length}})()`);
   eq([info.r0, info.r2], [true, false], 'UA2 既有設定帶出（Public Cloud 勾選、顧問導入專案不勾）');
   eq(info.urlRows, 2, 'UA3 只有已勾選的商品才顯示網址輸入框（2 個）');
