@@ -3406,7 +3406,8 @@ function kaCompanySet(data) {
 // 回傳 viewer 因「KA 跨部門共享」而『額外』看得到的資料（不含自己本來就看得到的）。
 //   - type='opportunities'：只開放給「該商機類別部門」，且類別 ≠ 建立者部門（跨部門）才加
 //   - type='contacts'/'visits'：跨部門（viewer 部門 ∩ owner 部門為空）才加
-//   - secretary：支援角色，KA 公司資料全看得到（不分部門）
+//   - secretary：支援角色，只加 KA 公司的『商機』（不分部門）。聯絡人／拜訪一律不加：
+//     秘書刻意看不到聯絡人與拜訪（基底清單為 []），KA 合併不得繞過（會帶出 phone/mobile/email/note/cardImage）
 //   僅 BU 制角色（user/manager1/manager2/secretary）適用；cross-BU/唯讀角色另有規則，不在此加。
 function crossDeptKaVisible(req, data, auth, items, type) {
   const role = req.session && req.session.user && req.session.user.role;
@@ -3415,6 +3416,7 @@ function crossDeptKaVisible(req, data, auth, items, type) {
   if (!kaSet.size) return [];
   const me = req.session.user.username;
   const isSecretary = role === 'secretary';
+  if (isSecretary && type !== 'opportunities') return [];   // 秘書不看聯絡人／拜訪（個資）：KA 共享不得繞過
   const myBus = getMyBus(req);
   if (!isSecretary && !myBus.length) return [];
   const buCache = new Map();
