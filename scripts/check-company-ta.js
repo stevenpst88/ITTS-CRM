@@ -42,8 +42,9 @@ function unit(ok) {
   ok(ids(go({ regions: [NONE] })) === 'C', 'U8 區域未填');
   ok(ids(go({ industries: ['製造業'], regions: ['北區'] })) === 'A', 'U9 不同欄位 AND');
   ok(ids(go({ bus: ['ITS'] })) === 'B' && ids(go({ bus: ['ERP', 'ITS'] })) === 'AB', 'U10 BU');
-  ok(ids(go({ statuses: ['won'] })) === 'A' && ids(go({ statuses: ['open'] })) === 'B', 'U11 客戶狀態 已成交／已開商機');
-  ok(ids(go({ statuses: ['newImport'] })) === 'CD' && ids(go({ statuses: ['noOpp'] })) === 'CD', 'U12 新匯入／尚無商機');
+  ok(ids(go({ statuses: ['customer'] })) === 'A' && ids(go({ statuses: ['prospect'] })) === 'BCD', 'U11 客戶狀態 我的客戶＝已成交；潛在客戶＝其餘三種（已開商機未成交／尚無商機／新匯入）');
+  ok(ids(go({ statuses: ['customer', 'prospect'] })) === 'ABCD' && ids(go({ statuses: [] })) === 'ABCD', 'U12 兩類都勾＝不限，與不勾等價');
+  ok(ids(go({ statuses: ['won'] })) === 'A' && ids(go({ statuses: ['open'] })) === 'BCD' && ids(go({ statuses: ['noOpp'] })) === 'BCD' && ids(go({ statuses: ['newImport'] })) === 'BCD' && ids(go({ statuses: ['won', 'open'] })) === 'ABCD' && ids(go({ statuses: ['bogus'] })) === 'ABCD', 'U12b 舊四值安全對應（won→我的客戶；其餘→潛在客戶；未知值忽略）');
   ok(ids(go({ hasTaxId: 'no' })) === 'C' && ids(go({ gcis: 'yes' })) === 'A', 'U13 統編／GCIS');
   ok(ids(go({ createdFrom: '2026-03-01', createdTo: '2026-05-31' })) === 'BC', 'U14 建立時間區間');
   ok(ids(go({ keyword: '金融' })) === 'B' && ids(go({ keyword: '1111' })) === 'A', 'U15 關鍵字（名稱／統編）');
@@ -71,8 +72,8 @@ async function api(ok) {
   ok(r.status === 200 && r.json.total === 4 && r.json.industries.find(x => x.name === '製造業').n === 2 && r.json.canDownload === true, 'A1 options：行銷看全部 4 家、產業計數、可下載');
   r = await q('_s_mkt', { industries: ['製造業'] });
   ok(r.status === 200 && r.json.stats.companies === 2 && r.json.stats.contacts === 1 && r.json.preview.length === 1, 'A2 行銷查產業：2 家公司、1 位聯絡人、有預覽');
-  r = await q('_s_mkt', { statuses: ['newImport'] }, { requireEmail: false });
-  ok(r.json.stats.companies === 2 && r.json.stats.contacts === 0, 'A3 客戶池待補名片不算聯絡人（新匯入 2 家、聯絡人 0）');
+  r = await q('_s_mkt', { statuses: ['prospect'] }, { requireEmail: false });
+  ok(r.json.stats.companies === 3 && r.json.stats.contacts === 1, 'A3 潛在客戶 3 家（乙已開商機、丙新匯入、丁待補）；客戶池待補名片不算聯絡人（只有乙的 1 位）');
   r = await q('_s_mkt2', {});
   ok(r.status === 200 && r.json.canDownload === false && r.json.preview.length === 0 && r.json.stats.companies === 4, 'A4 無下載權限：看得到數量、預覽為空');
   r = await H.http('_s_mkt2', 'POST', '/api/companies/ta/export', { filters: {} });
@@ -95,6 +96,18 @@ async function api(ok) {
   const logs = await H.getLogs('_s_adm');
   const lg = logs.find(l => l.action === 'EXPORT_TA');
   ok(!!lg && /資料匯出|篩選TA/.test(JSON.stringify(lg)) && !/a@x\.com/.test(JSON.stringify(lg)), 'A12 稽核 EXPORT_TA 有紀錄且不含 Email');
+  // 客戶狀態兩類：畫面（/ta）與下載（/ta/export）同一組條件、同一結果；舊值不報錯
+  const coNames = async (st) => { const x = await H.http('_s_mkt', 'POST', '/api/companies/ta/export', { filters: { statuses: st }, opts: { requireEmail: false }, mode: 'companies' }); return x.status === 200 ? XLSX.utils.sheet_to_json(XLSX.read(x.buf).Sheets['公司']).map(y => y['公司名稱']).sort().join() : 'HTTP' + x.status; };
+  r = await q('_s_mkt', { statuses: ['customer'] }, { requireEmail: false });
+  ok(r.status === 200 && r.json.stats.companies === 1 && await coNames(['customer']) === '甲製造', 'A15 我的客戶＝只有已成交的甲（畫面 1 家、下載清單一致）');
+  r = await q('_s_mkt', { statuses: ['prospect'] }, { requireEmail: false });
+  ok(r.json.stats.companies === 3 && await coNames(['prospect']) === [ '丁待補', '丙新匯入', '乙金融' ].sort().join(), 'A16 潛在客戶＝乙／丙／丁（畫面 3 家、下載清單一致）');
+  r = await q('_s_mkt', { statuses: ['customer', 'prospect'] }, { requireEmail: false });
+  ok(r.json.stats.companies === 4 && (await coNames(['customer', 'prospect'])).split(',').length === 4, 'A17 兩類都勾＝全部 4 家（畫面與下載一致）');
+  r = await q('_s_mkt', { statuses: ['won', 'noOpp', 'zzz'] }, { requireEmail: false });
+  ok(r.status === 200 && r.json.stats.companies === 4 && (await coNames(['open'])).split(',').length === 3, 'A18 舊值不報錯：won+noOpp＝兩類皆有＝全部；open→潛在客戶 3 家');
+  const lg2 = (await H.getLogs('_s_adm')).filter(l => l.action === 'EXPORT_TA').map(l => JSON.stringify(l)).join('');
+  ok(/狀態=我的客戶/.test(lg2) && /狀態=潛在客戶/.test(lg2), 'A19 稽核摘要寫中文狀態名');
   r = await q('_s_mkt', { industries: 'x', capMinWan: 'abc', statuses: ['zzz'] }, { requireEmail: 'x' });
   ok(r.status === 200 && r.json.stats.companies === 4, 'A13 畸形輸入不當機');
   r = await H.http(null, 'POST', '/api/companies/ta/query', {});
