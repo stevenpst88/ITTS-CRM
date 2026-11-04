@@ -10,7 +10,7 @@
   if (window.ITTSCompanyTa) return;
 
   var NONE = '__none__';
-  var STATUS_LABELS = [['won', '已成交客戶'], ['open', '已開商機（未成交）'], ['noOpp', '尚無商機'], ['newImport', '新匯入（尚無名片）']];
+  var STATUS_LABELS = [['prospect', '潛在客戶'], ['customer', '我的客戶']];
   var host = null, panel = null, toggleBtn = null, built = false, opened = false;
   var opts = null;               // /ta/options 結果
   var F = null, O = null;        // 目前條件
