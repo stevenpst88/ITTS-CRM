@@ -5100,6 +5100,10 @@ body.dark .cm-foreign-tog { color: #a9b4c1; }
 .scu-lbl { display: none; font-size: 11px; color: var(--scu-sub); }
 .scu-co { font-weight: 600; }
 .scu-nm { font-size: 13px; color: var(--scu-sub); }
+.scu-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1.5; vertical-align: middle; white-space: nowrap; background: #fef3c7; color: #78350f; border: 1px solid #fcd34d; }
+.scu-tag-multi { background: #e0e7ff; color: #312e81; border-color: #a5b4fc; }
+body.dark .scu-tag { background: #78350f; color: #fef3c7; border-color: #b45309; }
+body.dark .scu-tag-multi { background: #312e81; color: #e0e7ff; border-color: #6366f1; }
 .scu-muted { color: var(--scu-sub); font-size: 13px; }
 .scu-fallback { display: block; font-size: 11px; color: #92400e; margin-top: 2px; }
 .scu-empty { padding: 24px; text-align: center; color: var(--scu-sub); border: 1px dashed var(--scu-line); border-radius: 10px; }

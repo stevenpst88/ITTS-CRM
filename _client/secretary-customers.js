@@ -1,9 +1,10 @@
 /* 秘書唯讀客戶視圖（後端 SECRETARY_CUSTOMERS=1 才有；關閉時探測回 404，本檔不建立任何畫面元素）。
- * 同 BU、已成交的客戶：公司／聯絡人／職稱／BU／負責業務／郵寄地址；電話、Email、備註等個資由後端遮蔽，這裡只顯示「（個資已遮蔽）」。
+ * 同 BU、已成交的客戶（一家公司只列一列＝主要聯絡人）：公司／聯絡人／職稱／BU／負責業務／郵寄地址；電話、Email、備註等個資由後端遮蔽，這裡只顯示「（個資已遮蔽）」。
  * 全部用 createElement／textContent，不使用 innerHTML。樣式 style.css 的 .scu-*。 */
 (function () {
   'use strict';
   var API = '/api/secretary/customers';
+  var FLAG_TXT = { unset: '未設主要', multi: '其他業務也有主要' };
   var MASK = '（個資已遮蔽）', EMPTY = '（未填）', FALLBACK_NOTE = '（公司登記地址，未另填郵寄地址）';
   var probeP = null, available = false, list = [], navEl = null, viewEl = null, listEl = null, countEl = null, searchEl = null, errEl = null, panel = null;
 
@@ -47,7 +48,7 @@
       viewEl = el('div', 'scu-view'); viewEl.id = 'secretaryCustomersView'; viewEl.style.display = 'none';
       var head = el('div', 'scu-head');
       head.appendChild(el('h2', 'scu-title', '我的客戶（唯讀）'));
-      head.appendChild(el('div', 'scu-sub', '同 BU、已成交的客戶。協助業務寄信用：可查看並複製郵寄地址；電話、Email、備註等個資已遮蔽。'));
+      head.appendChild(el('div', 'scu-sub', '同 BU、已成交的客戶，每家公司只列主要聯絡人一列。協助業務寄信用：可查看並複製郵寄地址；電話、Email、備註等個資已遮蔽。'));
       var bar = el('div', 'scu-bar');
       searchEl = el('input', 'scu-search'); searchEl.type = 'search'; searchEl.placeholder = '搜尋公司／聯絡人／職稱／業務／地址'; searchEl.setAttribute('aria-label', '搜尋客戶');
       searchEl.addEventListener('input', render);
@@ -85,13 +86,15 @@
     var kw = searchEl ? searchEl.value.trim().toLowerCase() : '';
     var rows = list.filter(function (c) { return matches(c, kw); });
     while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
-    countEl.textContent = '共 ' + rows.length + ' 筆' + (kw ? '（全部 ' + list.length + '）' : '');
+    countEl.textContent = '共 ' + rows.length + ' 家公司' + (kw ? '（全部 ' + list.length + '）' : '');
     if (!rows.length) { listEl.appendChild(el('div', 'scu-empty', kw ? '沒有符合的客戶' : '目前沒有同 BU 的已成交客戶')); return; }
     rows.forEach(function (c) {
       var r = el('div', 'scu-row'); r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', '查看 ' + c.company + ' ' + c.name + ' 詳情');
       r.dataset.id = c.id;
       var who = el('div', 'scu-cell scu-who');
-      who.appendChild(el('span', 'scu-co', c.company || EMPTY));
+      var co = el('span', 'scu-co', c.company || EMPTY);
+      if (FLAG_TXT[c.primaryFlag]) { var tag = el('span', 'scu-tag scu-tag-' + c.primaryFlag, FLAG_TXT[c.primaryFlag]); tag.title = c.primaryFlag === 'unset' ? '此公司有多位聯絡人但都沒設主要，顯示最早建立者' : '此公司有多位業務各設了主要聯絡人，顯示最早建立者'; co.appendChild(tag); }
+      who.appendChild(co);
       who.appendChild(el('span', 'scu-nm', (c.name || EMPTY) + (c.title ? '・' + c.title : '')));
       r.appendChild(who);
       r.appendChild(cell('負責業務', (c.ownerDisplayName || EMPTY) + ((c.bu && c.bu.length) ? '（' + c.bu.join('/') + '）' : '')));
@@ -145,7 +148,7 @@
     function fill(c) {
       while (body.firstChild) body.removeChild(body.firstChild);
       var kv = function (k, v, cls) { var r = el('div', 'scu-kv'); r.appendChild(el('span', 'scu-k', k)); r.appendChild(el('span', 'scu-v' + (cls ? ' ' + cls : ''), v)); body.appendChild(r); };
-      kv('公司', c.company || EMPTY); kv('聯絡人', c.name || EMPTY); kv('職稱', c.title || EMPTY);
+      kv('公司', c.company || EMPTY); kv('聯絡人', (c.name || EMPTY) + (FLAG_TXT[c.primaryFlag] ? '（' + FLAG_TXT[c.primaryFlag] + '）' : '')); kv('職稱', c.title || EMPTY);
       kv('BU', (c.bu && c.bu.length) ? c.bu.join(' / ') : EMPTY); kv('負責業務', c.ownerDisplayName || EMPTY);
       kv('電話', MASK, 'scu-muted'); kv('手機', MASK, 'scu-muted'); kv('Email', MASK, 'scu-muted'); kv('備註', MASK, 'scu-muted');
       var m = el('div', 'scu-mail');

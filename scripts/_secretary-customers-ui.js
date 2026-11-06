@@ -42,14 +42,14 @@ async function uiFlow(b, C) {
   ok(/我的客戶（唯讀）/.test(await b.ev(`document.getElementById('navSecretaryCustomers').textContent`)), 'UI1b 導覽文字');
   await openNav(b);
   ok(await b.waitFor(VIEW_VIS, 8000), 'UI2 真實點擊側欄 → 區段顯示');
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI3 顯示 5 筆（同 BU 已成交）', await b.ev(ROWS));
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI3 顯示 4 家公司（同 BU 已成交）', await b.ev(ROWS));
   eq(await b.ev(`document.getElementById('topbarTitle').textContent`), '我的客戶（唯讀）', 'UI3b 頁首標題');
   eq(await b.ev(`document.getElementById('dashboardView').style.display`), 'none', 'UI3c 首頁已隱藏');
   const txt = await b.ev(VIEW_TEXT);
   ok(/甲公司/.test(txt) && /乙公司/.test(txt) && /丙公司/.test(txt) && /丁公司/.test(txt), 'UI4 清單含各公司');
   ok(!/庚公司|戊公司|己公司|辛公司|壬公司|癸公司|子公司|跨公司|KA公司/.test(txt), 'UI5 清單沒有未成交／其他 BU／刪除／待補客戶');
   ok(!/_PII_|@pii\.example\.test/.test(txt), 'UI6 畫面文字完全沒有 PII 哨兵', (txt.match(/\S*_PII_\S*/) || [])[0]);
-  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 10, 'UI7 電話／Email 欄顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
+  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 8, 'UI7 電話／Email 欄顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
   ok(/<img src=x/.test(txt) && /ADDR-B路2號/.test(txt) && /ADDR-C路3號/.test(txt), 'UI8 郵寄地址欄顯示三種情境（w1 的郵寄地址在此被換成 XSS 酬載字串，以純文字顯示）');
   ok(/（公司登記地址，未另填郵寄地址）/.test(txt), 'UI9 舊資料 fallback 加註「（公司登記地址，未另填郵寄地址）」');
   ok(/（未填）/.test(txt), 'UI9b 兩種地址都沒填 → 顯示「（未填）」');
@@ -61,7 +61,7 @@ async function uiFlow(b, C) {
   await b.ev(`(()=>{const e=document.querySelector('#secretaryCustomersView .scu-search'); e.value='不存在的字串'; e.dispatchEvent(new Event('input',{bubbles:true})); return 0})()`);
   ok(await b.waitFor(`!!document.querySelector('#secretaryCustomersView .scu-empty')`, 3000), 'UI11 無結果 → 顯示空狀態');
   await b.ev(`(()=>{const e=document.querySelector('#secretaryCustomersView .scu-search'); e.value=''; e.dispatchEvent(new Event('input',{bubbles:true})); return 0})()`);
-  ok(await b.waitFor(`${ROWS}===5`, 3000), 'UI12 清空搜尋 → 回 5 筆');
+  ok(await b.waitFor(`${ROWS}===4`, 3000), 'UI12 清空搜尋 → 回 4 家公司');
   // 詳情（fallback 那筆）
   await b.click(`#secretaryCustomersView .scu-row[data-id="w3"]`);
   ok(await b.waitFor(`!!document.querySelector('.scu-overlay .scu-mail')`, 5000), 'UI13 點列 → 開詳情（唯讀）');
@@ -91,9 +91,9 @@ async function uiFlow(b, C) {
   ok(await b.waitFor(`!(${VIEW_VIS}) && document.getElementById('dashboardView').style.display===''`, 4000), 'UI24 回首頁 → 本區段隱藏');
   // F5 還原
   await openNav(b);
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI25 進入本區段');
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI25 進入本區段');
   await b.nav(C.BASE + '/');
-  ok(await b.waitFor(`${VIEW_VIS} && ${ROWS}===5`, 15000), 'UI26 F5 重新整理 → 還原在本區段並載入清單（沒有 loader 未定義例外）');
+  ok(await b.waitFor(`${VIEW_VIS} && ${ROWS}===4`, 15000), 'UI26 F5 重新整理 → 還原在本區段並載入清單（沒有 loader 未定義例外）');
   eq(await b.ev(`localStorage.getItem('lastSection')`), 'secretaryCustomers', 'UI26b lastSection 為 secretaryCustomers');
   // 稽核
   await C.login('_s_adm');
@@ -114,7 +114,7 @@ async function uiXss(b, C) {
   const { ok, eq } = C;
   await openAs(b, C, '_s_sec', 1440, 1000);
   await openNav(b);
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI40 載入');
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI40 載入');
   eq(await b.ev(`window.__xss||0`), 0, 'UI41 含 <img onerror> 的郵寄地址：酬載沒被執行');
   eq(await b.ev(`document.querySelectorAll('#secretaryCustomersView img').length`), 0, 'UI42 沒有變成 <img> 元素');
   ok((await b.ev(VIEW_TEXT)).includes('<img src=x'), 'UI43 以純文字顯示');
@@ -131,7 +131,7 @@ async function uiLayout(b, C) {
   for (const [w, h] of [[375, 800], [1440, 900]]) {
     await openAs(b, C, '_s_sec', w, h);
     await b.ev(`showSection('secretaryCustomers'); 0`);
-    ok(await b.waitFor(`${ROWS}===5`, 8000), `UI50 ${w}px 載入`);
+    ok(await b.waitFor(`${ROWS}===4`, 8000), `UI50 ${w}px 載入`);
     for (const mode of ['plain-light', 'plain-dark', 'glass-dark', 'glass-light']) {
       await b.ev(`(()=>{const c=document.body.classList; c.toggle('glass',${J(mode.startsWith('glass'))}); c.toggle('dark',${J(mode.endsWith('dark'))}); return true})()`);
       await b.sleep(200);

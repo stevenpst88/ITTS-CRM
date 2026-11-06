@@ -105,7 +105,7 @@ function seedData() {
 }
 // 第一階段(基準)的 23 個功能鍵：模擬「管理員在新功能出現前就存過權限矩陣」
 const KNOWN_BASE_FEATURES = ['home', 'managerHome', 'execDash', 'prospects', 'contacts', 'companyMaster', 'visits', 'targets', 'forecast', 'pipeline', 'pipelineReport', 'bizAnalysis', 'yoy', 'contractGroup', 'accountingGroup', 'lostOpp', 'keyAccount', 'transfer', 'campaigns', 'leads', 'quotations', 'marketingHome', 'consultHome'];
-const EXP = { ERP: ['w1', 'w2', 'w3', 'w3b', 'w4'], BOTH: ['n3', 'n8', 'w1', 'w2', 'w3', 'w3b', 'w4', 'x1', 'x2'], ITS: ['n3', 'n8', 'x2'] };
+const EXP = { ERP: ['w1', 'w2', 'w3', 'w4'], BOTH: ['n3', 'n8', 'w1', 'w2', 'w3', 'w4', 'x1'], ITS: ['n3', 'n8', 'x2'] };   // 一家公司一列：丙公司 w3/w3b、跨公司 x1/x2 各留 id 最小者（建立時間相同、都沒設主要）
 function seedFiles(dir, over) {
   dir = dir || ROOT;
   let users = ACCTS.map((a) => mkUser(a[0], a[1], a[2])).concat([mkUser('_s_seco', 'secretary', { bu: ['ERP'], active: false })]);
@@ -251,7 +251,7 @@ function groupUnit() {
   const html = read('_client/index.html');
   const scripts = [...html.matchAll(/<script\s+src="([^"]+\.js)"/g)].map((m) => m[1]);
   ok(scripts.indexOf('secretary-customers.js') > scripts.indexOf('app.js') && scripts.indexOf('secretary-customers.js') > 0, 'U15 index.html：secretary-customers.js 在 app.js 之後');
-  ok(/itts-crm-v40'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v40');
+  ok(/itts-crm-v41'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v41');
   ok(/#SECRETARY_CUSTOMERS=1/.test(read('.env.example')), 'U17 .env.example 有記載 SECRETARY_CUSTOMERS');
   ok(/if \(SCU\.enabled\(\)\) FEATURE_REGISTRY\.push/.test(server) && /if \(SCU\.enabled\(\)\) DEFAULT_ROLE_PERMISSIONS\.secretary/.test(server), 'U18 功能鍵與預設權限只在開關開啟時登錄');
   // getViewableOwners 與基準逐字相同（不得改動：getEditableOwners 重用它）
@@ -259,6 +259,40 @@ function groupUnit() {
   const baseSrv = spawnSync('git', ['show', BASE_REF + ':server.js'], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }).stdout.toString('utf8');
   ok(gv(server).length > 500 && gv(server) === gv(baseSrv), 'U19 getViewableOwners 與基準版逐字相同');
   ok(/app\.get\('\/api\/secretary\/customers'/.test(server) && !/app\.(put|delete|patch)\('\/api\/secretary/.test(server), 'U20 只有 GET 清單與 POST view 兩條路由，沒有寫入型路由');
+  // 一家公司一列（主要聯絡人）
+  const pk = (cards) => { const r = L.pickPrimary(cards); return r && [r.card.id, r.flag]; };
+  const cc = (id, extra) => Object.assign({ id, owner: '_s_u1', company: '某公司', createdAt: '2026-01-02T00:00:00.000Z' }, extra || {});
+  eq(pk([cc('a')]), ['a', 'single'], 'U21 單張 → 視為主要（single，即使 isPrimary 未設）');
+  eq(pk([cc('a', { isPrimary: false })]), ['a', 'single'], 'U21b 單張且 isPrimary=false 仍是 single');
+  eq(pk([cc('a'), cc('b', { isPrimary: true }), cc('c')]), ['b', 'primary'], 'U22 多張恰一個主要 → 取它（即使不是最早）');
+  eq(pk([cc('b', { createdAt: '2026-03-01T00:00:00.000Z' }), cc('a', { createdAt: '2026-02-01T00:00:00.000Z' }), cc('c', { createdAt: '2026-01-15T00:00:00.000Z' })]), ['c', 'unset'], 'U23 多張都沒主要 → 最早建立者＋unset（最早者排中間，避免剛好靠輸入順序）');
+  eq(pk([cc('x', { isPrimary: true, createdAt: '2026-05-01T00:00:00.000Z' }), cc('y', { createdAt: '2026-01-01T00:00:00.000Z' }), cc('z', { isPrimary: true, createdAt: '2026-04-01T00:00:00.000Z' })]), ['z', 'multi'], 'U24 多張兩個以上主要 → 最早建立的主要＋multi（不選更早但非主要的 y）');
+  eq(pk([cc('b', { createdAt: undefined }), cc('a', { createdAt: undefined })]), ['a', 'unset'], 'U25 時間全缺失 → 以 id 排序，穩定');
+  eq(pk([cc('b', { createdAt: 'garbage' }), cc('c', { createdAt: '2026-09-09T00:00:00.000Z' })]), ['c', 'unset'], 'U25b 有時間者先於缺失／無法解析者');
+  eq([pk([cc('b'), cc('a'), cc('c')]), pk([cc('c'), cc('b'), cc('a')])], [['a', 'unset'], ['a', 'unset']], 'U26 時間相同 → id 當 tie-break，與輸入順序無關');
+  eq(pk([cc('q', { isPrimary: true }), cc('p', { isPrimary: true })]), ['p', 'multi'], 'U26b 多主要且時間相同 → id 小者');
+  eq(pk([]), null, 'U26c 空集合 → null');
+  {
+    // 範圍：只在秘書可視範圍內選；範圍外（其他 BU／刪除／待補／非業務）名片不影響選擇
+    const d = seedData();
+    d.contacts = [
+      mkCard('s1', '_s_u1', '丙公司', { createdAt: '2026-03-01T00:00:00.000Z', customerType: 'customer' }),
+      mkCard('s2', '_s_u2', '丙公司', { createdAt: '2026-04-01T00:00:00.000Z' }),
+      mkCard('o1', '_s_u3', '丙公司', { bu: 'ITS', createdAt: '2026-01-01T00:00:00.000Z', isPrimary: true }),   // 其他 BU：ERP 秘書看不到
+      mkCard('o2', '_s_u1', '丙公司', { deleted: true, createdAt: '2026-01-01T00:00:00.000Z', isPrimary: true }),
+      mkCard('o3', '_pool', '丙公司', { isPlaceholder: true, createdAt: '2026-01-01T00:00:00.000Z', isPrimary: true }),
+      mkCard('o4', '_s_mkt', '丙公司', { createdAt: '2026-01-01T00:00:00.000Z', isPrimary: true }),
+      mkCard('e1', '_s_u1', '', { customerType: 'customer' }), mkCard('e2', '_s_u2', '', { customerType: 'customer' }),
+    ];
+    d.opportunities = [];
+    const row = (me) => L.listFor(d, users, users.find((u) => u.username === me), (n) => n).filter((x) => x.company === '丙公司').map((x) => [x.id, x.primaryFlag]);
+    eq(row('_s_sec'), [['s1', 'unset']], 'U27 ERP 秘書：範圍外的主要名片（其他 BU／刪除／待補／行銷）不被選中、也不影響旗標');
+    eq(row('_s_sec2'), [['o1', 'primary']], 'U28 ERP+ITS 秘書：其他 BU 名片進入範圍後才可能被選（且只有它是主要）');
+    eq(L.listFor(d, users, users.find((u) => u.username === '_s_sec'), (n) => n).filter((x) => !x.company).map((x) => x.id).sort(), ['e1', 'e2'], 'U29 company 為空的名片不歸併，各自一列');
+    eq(L.listFor(d, users, users.find((u) => u.username === '_s_sec'), (n) => n).every((x) => ['single', 'primary', 'unset', 'multi'].includes(x.primaryFlag)), true, 'U30 每列都有合法 primaryFlag');
+    const cos = L.listFor(seedData(), users, users.find((u) => u.username === '_s_sec2'), (n) => n).map((x) => x.company);
+    eq(cos.length, new Set(cos).size, 'U31 同一份清單中公司不重複');
+  }
 }
 
 // ═════════════ api ═════════════
@@ -269,7 +303,8 @@ async function groupApi() {
   const L = loadLib([]);
   const r = await http('_s_sec', 'GET', '/api/secretary/customers');
   eq(r.status, 200, 'A1 秘書 GET /api/secretary/customers = 200');
-  eq(idsOf(r), EXP.ERP, 'A2 ERP 秘書的清單 = 同 BU 已成交客戶（w1,w2,w3,w3b,w4）');
+  eq(idsOf(r), EXP.ERP, 'A2 ERP 秘書的清單 = 同 BU 已成交客戶（一家公司一列：w1,w2,w3,w4）');
+  { const m = Object.fromEntries((r.json.customers || []).map((c) => [c.id, c.primaryFlag])); eq([m.w1, m.w3, m.w4], ['single', 'unset', 'single'], 'A2b 旗標：單張 single、丙公司兩張無主要 unset'); const cs = r.json.customers.map((c) => c.company); eq(cs.length, new Set(cs).size, 'A2c 每家公司只有一列'); }
   const text = r.text;
   ok(!PII_RE.test(text), 'A3 秘書回應整串 JSON 沒有任何 PII 哨兵（電話／手機／Email／備註／名片圖／偏好）', (text.match(PII_RE) || [])[0]);
   ok(r.json && r.json.piiMasked === true && r.json.customers.every((c) => c.piiMasked === true), 'A4 回 piiMasked:true（外層與每筆）');
@@ -514,6 +549,11 @@ const MUTANTS = [
   { name: 'M8 稽核寫進個資（detail 帶姓名）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: '`秘書開啟客戶詳情：${c.company}`', rep: '`秘書開啟客戶詳情：${c.company} ${c.name}`' }] }] },
   { name: 'M9 已成交判定與前端分歧（後端漏掉同公司規則）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "(c.company && customerCompanies.has(c.company))", rep: 'false' }] }] },
   { name: 'M10 GET 清單也寫稽核（違反 GET 不寫入）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: "    const customers = _scuList(g);\n", rep: "    const customers = _scuList(g);\n    writeLog('SECRETARY_VIEW_CUSTOMER', req.session.user.username, 'list', 'x', req);\n" }] }] },
+  { name: 'M11 拿掉「單張視為主要」', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "if (arr.length === 1) return { card: arr[0], flag: 'single' };", rep: '' }] }] },
+  { name: 'M12 拿掉「無主要退回最早建立」（改取最後）', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: "card: arr.slice().sort(earliestCmp)[0], flag: 'unset'", rep: "card: arr.slice().sort(earliestCmp)[arr.length - 1], flag: 'unset'" }] }] },
+  { name: 'M13 拿掉「多主要取最早」（改取最後）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "card: prim[0], flag: 'multi'", rep: "card: prim[prim.length - 1], flag: 'multi'" }] }] },
+  { name: 'M14 拿掉 id tie-break', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: 'return ia < ib ? -1 : ia > ib ? 1 : 0;', rep: 'return 0;' }] }] },
+  { name: 'M15 選主要不限範圍（改用全部名片分組）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "scoped.filter((c) => won.has(c.id)).forEach", rep: "(data.contacts || []).filter((c) => c && !c.deleted && won.has(c.id) || (c && !c.deleted && c.isPrimary)).forEach" }] }] },
 ];
 async function runMutants() {
   console.log('[變異] 每個變異都必須讓對應群組變紅');
