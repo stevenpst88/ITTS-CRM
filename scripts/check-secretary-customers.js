@@ -8,6 +8,7 @@
  *   roles  23 個帳號（13 種 role）× 唯讀端點電池：基準版(SCU_BASE_REF，預設 4ef32a9＝郵寄地址 PR 合併後、本功能加入前的 main)／開關關／開關開 三方逐位元比對，
  *          開啟時只允許登錄的差異；新端點只有 secretary 200
  *   off    開關關：新端點 404、功能鍵不登錄、featureGuard 對照表不含新路由（含 enforce 模式）
+ *   client _client/secretary-customers.js 以 vm 載入（假 fetch／DOM）：探測失敗可重試、404 才永久不可用、晚載入補呼叫；index.html 載入順序
  *   ui     headless Edge + CDP（見 _secretary-customers-ui.js）
  *
  *   node scripts/check-secretary-customers.js              unit + api + roles + off
@@ -38,6 +39,7 @@ const FILES = ['auth.json', 'data.json', 'audit.log.json', 'mail-outbox.json', '
 }
 const ONLY = (process.env.SCU_ONLY || '').split(',').map((s) => s.trim()).filter(Boolean);
 const want = (k) => !ONLY.length ? k !== 'ui' : ONLY.includes(k);
+const CLOCK = path.join(os.tmpdir(), 'scu_clock_' + process.pid + '.txt');   // 測試用：伺服器 Date.now 的偏移（毫秒），驗證節流到期
 const SHOTS = process.env.SCU_SHOTS || '';
 const BASE_REF = process.env.SCU_BASE_REF || '4ef32a9';
 const bcrypt = require(path.join(ROOT, 'node_modules', 'bcryptjs'));
@@ -127,6 +129,7 @@ fs.writeFileSync(PRELOAD, [
   "Module.prototype._compile=function(content,filename){const raw=process.env.SCU_MUT_SPEC;",
   "if(raw){const specs=JSON.parse(raw);for(const m of specs){if(path.resolve(filename)===path.resolve(process.env.SCU_ROOT,m.file)){for(const e of m.edits){if(!content.includes(e.find))throw new Error('MUTATION ANCHOR MISSING: '+e.find.slice(0,60));content=content.replace(e.find,()=>e.rep);}}}}",
   "return orig.call(this,content,filename);};",
+  "if(process.env.SCU_CLOCK){const fs=require('fs'),real=Date.now;Date.now=()=>{let o=0;try{o=Number(fs.readFileSync(process.env.SCU_CLOCK,'utf8'))||0}catch(e){}return real()+o};}",
 ].join('\n') + '\n');
 let child = null, childPid = null, MUT_CUR = null;
 async function startServer(opts) {
@@ -139,7 +142,7 @@ async function startServer(opts) {
   // 全域 API 速率限制（300/分鐘/IP）會讓大量比對吃 429：測試行程一律把上限調高（基準版與受測版同樣處理，只影響限流本身）
   const spec = (mut || []).slice();
   spec.push({ file: 'server.js', edits: [{ find: '  max: 300,\n  standardHeaders', rep: '  max: 1e9,\n  standardHeaders' }] });
-  env.SCU_MUT_SPEC = JSON.stringify(spec); env.SCU_ROOT = root;
+  env.SCU_MUT_SPEC = JSON.stringify(spec); env.SCU_ROOT = root; env.SCU_CLOCK = CLOCK;
   await assertPortFree(PORT);
   child = spawn(process.execPath, ['-r', PRELOAD, path.join(root, 'server.js')], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   childPid = child.pid;
@@ -254,8 +257,8 @@ function groupUnit() {
   ok(!/innerHTML|insertAdjacentHTML|document\.write|outerHTML/.test(read('_client/secretary-customers.js').replace(/\/\*[\s\S]*?\*\//, '')), 'U14 前端新檔沒有 innerHTML 等危險寫法');
   const html = read('_client/index.html');
   const scripts = [...html.matchAll(/<script\s+src="([^"]+\.js)"/g)].map((m) => m[1]);
-  ok(scripts.indexOf('secretary-customers.js') > scripts.indexOf('app.js') && scripts.indexOf('secretary-customers.js') > 0, 'U15 index.html：secretary-customers.js 在 app.js 之後');
-  ok(/itts-crm-v42'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v42');
+  ok(scripts.indexOf('secretary-customers.js') < scripts.indexOf('app.js') && scripts.indexOf('secretary-customers.js') > 0, 'U15 index.html：secretary-customers.js 在 app.js 之前（首次載入競態修正）');
+  ok(/itts-crm-v43'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v43');
   ok(/#SECRETARY_CUSTOMERS=1/.test(read('.env.example')), 'U17 .env.example 有記載 SECRETARY_CUSTOMERS');
   ok(/if \(SCU\.enabled\(\)\) FEATURE_REGISTRY\.push/.test(server) && /if \(SCU\.enabled\(\)\) DEFAULT_ROLE_PERMISSIONS\.secretary/.test(server), 'U18 功能鍵與預設權限只在開關開啟時登錄');
   // getViewableOwners 與基準逐字相同（不得改動：getEditableOwners 重用它）
@@ -362,6 +365,27 @@ async function groupApi() {
   eq((await http('_s_sec', 'POST', '/api/secretary/customers/n1/view', {})).status, 404, 'A23 不在範圍內的客戶（未成交）詳情 404');
   eq((await http('_s_sec', 'POST', '/api/secretary/customers/n3/view', {})).status, 404, 'A24 其他 BU 的客戶詳情 404（不能憑 id 猜）');
   eq((await logsOf()).filter((l) => l.action === 'SECRETARY_VIEW_CUSTOMER').length, 2, 'A25 404 不寫稽核');
+  // 列表彙總稽核：一次載入記一筆（筆數＋是否含電話欄位）、10 分鐘節流、不逐筆、不含客戶名／電話
+  {
+    const listLogs = async (who) => (await logsOf()).filter((l) => l.action === 'SECRETARY_LIST_CUSTOMERS' && (!who || l.operator === who));
+    const l1 = await listLogs('_s_sec');
+    eq(l1.length, 1, 'A30 同一秘書多次 GET 清單（節流內）只寫 1 筆彙總稽核');
+    const e1 = l1[0] || {};
+    ok(e1.target === 'list' && /4 家公司/.test(e1.detail || '') && /電話/.test(e1.detail || ''), 'A31 彙總稽核記筆數（4 家公司）與「含電話欄位」', JSON.stringify(e1));
+    ok(!/甲|乙|丙|丁|TEL_|EXT_|MOB_|@|w\d/.test(String(e1.detail || '').replace(/家公司/g, '')) && !PII_RE.test(JSON.stringify(e1)), 'A32 彙總稽核不含客戶名／電話／id／個資', JSON.stringify(e1));
+    ok((await logsOf()).filter((l) => l.action === 'SECRETARY_LIST_CUSTOMERS' && l.target !== 'list').length === 0, 'A33 不逐筆寫（沒有以客戶 id 為 target 的清單稽核）');
+    const sec2 = await listLogs('_s_sec2');
+    ok(sec2.length <= 1, 'A34 不同秘書帳號各自節流（每人至多 1 筆）', sec2.length);
+    ok((await http('_s_u1', 'GET', '/api/secretary/customers')).status === 403 && (await listLogs('_s_u1')).length === 0, 'A35 非秘書 403 不寫彙總稽核');
+    const total0 = (await listLogs()).length;
+    fs.writeFileSync(CLOCK, String(11 * 60 * 1000));   // 伺服器時間快轉 11 分鐘 → 節流到期
+    await http('_s_sec', 'GET', '/api/secretary/customers');
+    eq((await listLogs('_s_sec')).length, 2, 'A36 節流到期（10 分鐘後）再載入會再寫 1 筆');
+    await http('_s_sec', 'GET', '/api/secretary/customers');
+    eq((await listLogs('_s_sec')).length, 2, 'A37 到期後的第二次載入又被節流');
+    eq((await listLogs()).length, total0 + 1, 'A38 全程只多寫 1 筆（不逐筆）');
+    fs.writeFileSync(CLOCK, '0');
+  }
   for (const [m, u] of [['PUT', '/api/secretary/customers/w1'], ['DELETE', '/api/secretary/customers/w1'], ['POST', '/api/secretary/customers'], ['GET', '/api/secretary/customers/w1']]) {
     const x = await http('_s_sec', m, u, m === 'GET' || m === 'DELETE' ? undefined : {});
     ok([404, 405].includes(x.status), `A26 ${m} ${u} 不存在（${x.status}）`);
@@ -544,7 +568,7 @@ async function groupOff() {
     const fm = await http('_s_adm', 'GET', '/api/admin/feature-route-map');
     ok(!JSON.stringify(fm.json.routes).includes('secretary/customers') && !fm.json.unmappedRegistered.length, `O5 [${mode || '預設'}] featureGuard 對照表輸出沒有新路由`);
     const lg = await logsOf();
-    ok(!lg.some((l) => /SECRETARY_VIEW_CUSTOMER|FEATURE_GUARD_(WOULD_)?DENY/.test(l.action || '')), `O6 [${mode || '預設'}] 探測新路徑沒有產生 SECRETARY_VIEW_CUSTOMER／FEATURE_GUARD_DENY 稽核（與基準版對未知路徑相同，最多一筆 UNCLASSIFIED）`);
+    ok(!lg.some((l) => /SECRETARY_(VIEW|LIST)_CUSTOMERS?|FEATURE_GUARD_(WOULD_)?DENY/.test(l.action || '')), `O6 [${mode || '預設'}] 探測新路徑沒有產生 SECRETARY_VIEW_CUSTOMER／FEATURE_GUARD_DENY 稽核（與基準版對未知路徑相同，最多一筆 UNCLASSIFIED）`);
     await stopServer();
   }
   cleanupFiles();
@@ -563,6 +587,10 @@ const MUTANTS = [
   { name: 'M8 稽核寫進個資（detail 帶姓名）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: '`秘書開啟客戶詳情：${c.company}`', rep: '`秘書開啟客戶詳情：${c.company} ${c.name}`' }] }] },
   { name: 'M9 已成交判定與前端分歧（後端漏掉同公司規則）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "(c.company && customerCompanies.has(c.company))", rep: 'false' }] }] },
   { name: 'M10 GET 清單也寫稽核（違反 GET 不寫入）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: "    const customers = _scuList(g);\n", rep: "    const customers = _scuList(g);\n    writeLog('SECRETARY_VIEW_CUSTOMER', req.session.user.username, 'list', 'x', req);\n" }] }] },
+  { name: 'M19 列表稽核拿掉節流（每次載入都寫）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: 'if (!(_scuListAudit.get(uk) > now - 10 * 60 * 1000)) {', rep: 'if (true) {' }] }] },
+  { name: 'M20 列表稽核逐筆寫（每家公司一筆）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: "writeLog('SECRETARY_LIST_CUSTOMERS', uk, 'list',", rep: "customers.forEach((cc) => writeLog('SECRETARY_LIST_CUSTOMERS', uk, cc.id, 'x', req)); writeLog('SECRETARY_LIST_CUSTOMERS', uk, 'list'," }] }] },
+  { name: 'M21 列表稽核帶客戶名（detail 含公司名）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: '${customers.length} 家公司，含電話', rep: '${customers.length} 家公司（${customers.map((cc) => cc.company).join(",")}），含電話' }] }] },
+  { name: 'M22 列表稽核拿掉（不寫）', groups: ['api'], mut: [{ file: SRV, edits: [{ find: "writeLog('SECRETARY_LIST_CUSTOMERS', uk, 'list',", rep: "(0 ? writeLog : () => {})('SECRETARY_LIST_CUSTOMERS', uk, 'list'," }] }] },
   { name: 'M11 拿掉「單張視為主要」', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "if (arr.length === 1) return { card: arr[0], flag: 'single' };", rep: '' }] }] },
   { name: 'M12 拿掉「無主要退回最早建立」（改取最後）', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: "card: arr.slice().sort(earliestCmp)[0], flag: 'unset'", rep: "card: arr.slice().sort(earliestCmp)[arr.length - 1], flag: 'unset'" }] }] },
   { name: 'M13 拿掉「多主要取最早」（改取最後）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "card: prim[0], flag: 'multi'", rep: "card: prim[prim.length - 1], flag: 'multi'" }] }] },
@@ -572,6 +600,64 @@ const MUTANTS = [
   { name: 'M17 電話取成同公司非主要聯絡人的', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: '    v.bu = contactBus(c, byName.get(c.owner));', rep: "    v.bu = contactBus(c, byName.get(c.owner));\n    { const o = scoped.find((x) => x.company && x.company === c.company && x.id !== c.id); if (o) v.phone = str(o.phone); }" }] }] },
   { name: 'M18 備註也被放進輸出', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: '    phone: str(c.phone),', rep: '    phone: str(c.phone),\n    note: str(c.note),' }] }] },
 ];
+// ───────────────── 前端腳本（vm，假 fetch／DOM）─────────────────
+const CLIENT_JS = path.join(ROOT, '_client', 'secretary-customers.js');
+const CLIENT_HTML = path.join(ROOT, '_client', 'index.html');
+let CLIENT_MUT = null, CLIENT_HTML_MUT = false;
+function loadClient(role, responses) {
+  let src = fs.readFileSync(CLIENT_JS, 'utf8');
+  for (const e of CLIENT_MUT || []) { if (!src.includes(e.find)) throw new Error('CLIENT MUTATION ANCHOR MISSING: ' + e.find.slice(0, 50)); src = src.replace(e.find, () => e.rep); }
+  const calls = { fetch: 0 };
+  const stubEl = () => ({ style: {}, dataset: {}, appendChild() {}, setAttribute() {}, addEventListener() {}, classList: { add() {}, remove() {} }, insertBefore() {} });
+  const window = { _myRole: role };
+  const ctx = {
+    window, document: { getElementById: () => null, createElement: stubEl, body: stubEl(), addEventListener() {}, removeEventListener() {} }, console,
+    fetch: () => { const r = responses[Math.min(calls.fetch, responses.length - 1)]; calls.fetch++; return r.reject ? Promise.reject(new Error('net')) : Promise.resolve({ ok: r.status === 200, status: r.status, json: () => Promise.resolve(r.body) }); },
+  };
+  vm.createContext(ctx); vm.runInContext(src, ctx);
+  return { S: window.ITTSSecCust, calls };
+}
+const OKB = { customers: [{ id: 'x1' }] };
+async function groupClient() {
+  console.log('[client] 前端腳本：探測重試／404 永久／補呼叫／載入順序');
+  const tick = () => new Promise((r) => setTimeout(r, 20));
+  const sec = { role: 'secretary' };
+  { const c = loadClient('user', [{ status: 200, body: OKB }]); await tick(); c.S.start({ role: 'user' }); await tick(); eq(c.calls.fetch, 0, 'C1 非秘書載入／start 不探測'); }
+  { const c = loadClient(undefined, [{ reject: true }, { status: 200, body: OKB }]); c.S.start(sec); await tick(); eq(c.S._debug().available, false, 'C2 網路錯誤 → 暫不可用');
+    c.S.start(sec); await tick(); eq([c.calls.fetch, c.S._debug().available], [2, true], 'C3 網路錯誤後下次 start 會重試並成功（不 memoize 失敗）'); }
+  { const c = loadClient(undefined, [{ status: 500 }, { status: 503 }, { status: 200, body: OKB }]); c.S.start(sec); await tick(); c.S.start(sec); await tick(); eq(c.S._debug().available, false, 'C4 5xx 重試仍失敗');
+    c.S.start(sec); await tick(); eq([c.calls.fetch, c.S._debug().available], [3, true], 'C4b 5xx 之後可重試成功'); }
+  { const c = loadClient(undefined, [{ status: 404 }, { status: 200, body: OKB }]); c.S.start(sec); await tick(); c.S.start(sec); await tick(); eq([c.calls.fetch, c.S._debug().available], [1, false], 'C5 404（開關關閉）→ 永久不可用，不再探測'); }
+  { const c = loadClient(undefined, [{ status: 200, body: OKB }]); c.S.start(sec); c.S.start(sec); await tick(); c.S.start(sec); await tick(); eq([c.calls.fetch, c.S._debug().available], [1, true], 'C6 成功後 memoize、進行中的探測共用（只打 1 次）'); }
+  { const c = loadClient('secretary', [{ status: 200, body: OKB }]); await tick(); eq([c.calls.fetch, c.S._debug().available], [1, true], 'C7 腳本晚於 initUser 載入（window._myRole 已是 secretary）→ 載入時自動補呼叫，入口仍會建立'); }
+  {
+    let html = fs.readFileSync(CLIENT_HTML, 'utf8');
+    if (CLIENT_HTML_MUT) { const t = html.match(/ *<script src="secretary-customers\.js"><\/script>[^\n]*\n/)[0]; html = html.replace(t, '').replace(/( *<script src="app\.js"><\/script>[^\n]*\n)/, (m) => m + t); }
+    const a = html.indexOf('<script src="secretary-customers.js">'), b = html.indexOf('<script src="app.js">');
+    ok(a > 0 && b > 0 && a < b, 'C8 index.html：secretary-customers.js 在 app.js 之前載入');
+  }
+}
+const CLIENT_MUTANTS = [
+  { name: 'CM1 探測失敗也 memoize（拿掉不記住失敗）', edits: [{ find: 'if (res.status !== 404) probeP = null;', rep: '' }], expect: ['C3', 'C4b'] },
+  { name: 'CM2 連 404 也重試（永久不可用失效）', edits: [{ find: 'if (res.status !== 404) probeP = null;', rep: 'probeP = null;' }], expect: ['C5'] },
+  { name: 'CM3 拿掉晚載入的補呼叫', edits: [{ find: "if (window._myRole === 'secretary') window.ITTSSecCust.start({ role: window._myRole });", rep: '' }], expect: ['C7'] },
+  { name: 'CM4 index.html 把腳本移回 app.js 之後', edits: [], html: true, expect: ['C8'] },
+];
+async function runClientMutants() {
+  console.log('[變異·client] 每個變異都必須讓對應斷言變紅');
+  for (const m of CLIENT_MUTANTS) {
+    if (process.env.SCU_MUT_PICK && !new RegExp(process.env.SCU_MUT_PICK).test(m.name)) continue;
+    const snap = { pass, fail, n: failures.length };
+    quiet = true; CLIENT_MUT = m.edits; CLIENT_HTML_MUT = !!m.html;
+    try { await groupClient(); } catch (e) { fail++; failures.push('變異執行例外：' + e.message); }
+    quiet = false; CLIENT_MUT = null; CLIENT_HTML_MUT = false;
+    const nf = failures.slice(snap.n);
+    pass = snap.pass; fail = snap.fail; failures.length = snap.n;
+    const hit = m.expect.every((k) => nf.some((x) => x.startsWith(k)));
+    ok(nf.length > 0 && hit, `${m.name} → 對應斷言（${m.expect.join('/')}）變紅（${nf.length} 項：${nf.slice(0, 2).join(' / ').slice(0, 80)}）`);
+    console.log('  ' + (nf.length > 0 && hit ? '✓ 變紅' : '✗ 沒變紅') + '：' + m.name + '（' + nf.length + ' 項）');
+  }
+}
 async function runMutants() {
   console.log('[變異] 每個變異都必須讓對應群組變紅');
   const G = { unit: async () => groupUnit(), api: groupApi, roles: groupRoles, off: groupOff };
@@ -602,9 +688,11 @@ if (require.main === module) {
       if (want('api')) await groupApi();
       if (want('roles')) await groupRoles();
       if (want('off')) await groupOff();
+      if (want('client')) await groupClient();
       if (want('ui')) await require('./_secretary-customers-ui.js').run(api);
       if (process.env.SCU_MUT === '1') {
         await runMutants();
+        if (want('client')) await runClientMutants();
         if (want('ui')) await require('./_secretary-customers-ui.js').mutants(api);
       }
     } catch (e) {
@@ -612,6 +700,7 @@ if (require.main === module) {
     } finally {
       await stopServer(); cleanupFiles();
       try { fs.unlinkSync(PRELOAD); } catch { /* 不存在 */ }
+      try { fs.unlinkSync(CLOCK); } catch { /* 不存在 */ }
     }
     console.log(`\n秘書唯讀客戶視圖檢查：PASS ${pass} / FAIL ${fail}`);
     if (fail) console.log('失敗項目：\n  ' + failures.join('\n  '));

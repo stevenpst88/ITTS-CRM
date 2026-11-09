@@ -11,21 +11,25 @@
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function $(id) { return document.getElementById(id); }
 
+  /** 回傳 Promise<{status, rows}>：status＝HTTP 狀態（網路錯誤為 0）；rows＝200 且格式正確時的陣列，否則 null */
   function fetchList() {
     return fetch(API, { credentials: 'include' }).then(function (r) {
-      if (!r.ok) return null;
-      return r.json().then(function (j) { return (j && Array.isArray(j.customers)) ? j.customers : null; });
-    }).catch(function () { return null; });
+      if (!r.ok) return { status: r.status, rows: null };
+      return r.json().then(function (j) { return { status: r.status, rows: (j && Array.isArray(j.customers)) ? j.customers : null }; });
+    }).catch(function () { return { status: 0, rows: null }; });
   }
 
-  /** 探測：只有 200 才建立導覽與畫面；回傳 Promise<boolean>（memoize） */
+  /** 探測：只有 200 才建立導覽與畫面；回傳 Promise<boolean>。
+   *  200（可用）與 404（後端開關關閉＝確定不可用）才記住結果；網路錯誤／5xx／其他狀態不記，下次呼叫會重試。 */
   function probe() {
     if (probeP) return probeP;
-    probeP = fetchList().then(function (rows) {
-      if (!rows) return false;
-      available = true; list = rows; build(); return true;
+    var p = fetchList().then(function (res) {
+      if (res.rows) { available = true; list = res.rows; build(); return true; }
+      if (res.status !== 404) probeP = null;   // 暫時性失敗：不 memoize
+      return false;
     });
-    return probeP;
+    probeP = p;
+    return p;
   }
 
   function build() {
@@ -177,7 +181,8 @@
   }
 
   function load() {
-    return fetchList().then(function (rows) {
+    return fetchList().then(function (res) {
+      var rows = res.rows;
       if (!errEl) return;
       if (rows) { list = rows; errEl.style.display = 'none'; }
       else { errEl.textContent = '載入失敗，顯示的是上次載入的內容'; errEl.style.display = ''; }
@@ -206,4 +211,7 @@
     },
     _debug: function () { return { available: available, count: list.length }; }
   };
+  // 補呼叫：本檔若比 app.js 的 initUser 晚就緒（首次載入無快取、腳本下載較慢），initUser 當時 window.ITTSSecCust 尚不存在而跳過了 start；
+  // initUser 取得使用者後會先設 window._myRole，這裡據此補一次（probe 本身 memoize 成功結果，重複呼叫安全）。
+  if (window._myRole === 'secretary') window.ITTSSecCust.start({ role: window._myRole });
 })();

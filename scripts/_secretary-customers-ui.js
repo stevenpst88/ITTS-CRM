@@ -102,6 +102,18 @@ async function uiFlow(b, C) {
   ok(lg.length >= 2 && lg.every((l) => !/_PII_|@pii/.test(JSON.stringify(l))), 'UI27 開啟詳情有寫 SECRETARY_VIEW_CUSTOMER 稽核（不含 PII）', lg.length);
 }
 
+// 首次載入競態：secretary-customers.js 下載很慢（延遲 2.5 秒）時，入口仍必須出現（不需 F5）
+async function uiLate(b, C) {
+  console.log('  [UI] 腳本晚到：入口仍出現（不需 F5）');
+  const { ok } = C;
+  await b.interceptOn();
+  b.delay['/secretary-customers.js'] = 2500;
+  try {
+    await openAs(b, C, '_s_sec', 1440, 900);
+    ok(await b.waitFor(`!!document.getElementById('navSecretaryCustomers')`, 12000), 'UI70 secretary-customers.js 延遲 2.5 秒載入 → 首次載入側欄仍出現「我的客戶（唯讀）」（沒有 F5）');
+  } finally { delete b.delay['/secretary-customers.js']; }
+}
+
 async function uiOthers(b, C) {
   console.log('  [UI] 非秘書／殘留的 lastSection 不建立元素、不出現空白頁');
   const { ok, eq } = C;
@@ -163,13 +175,13 @@ async function uiOff(b, C) {
 }
 
 async function runOnce(C, mut, which) {
-  const fns = { flow: uiFlow, others: uiOthers, xss: uiXss, layout: uiLayout };
-  const run = (mut && mut.sections) || which || ['flow', 'others', 'xss', 'layout', 'off'];
+  const fns = { flow: uiFlow, others: uiOthers, xss: uiXss, layout: uiLayout, late: uiLate };
+  const run = (mut && mut.sections) || which || ['flow', 'others', 'xss', 'layout', 'late', 'off'];
   const sections = [];
   const server = async (env, seed) => { await C.freshServer({ env, seed }); };
   await server({ SECRETARY_CUSTOMERS: '1' }, XSS_SEED);
   await withBrowser({ cdpPort: C.CDP, maxMs: 560000 }, async (b) => {
-    if (mut) { b.replace[mut.urlTail] = mut.mutated; await b.interceptOn(); }
+    if (mut) { b.replace[mut.urlTail] = mut.mutated; for (const x of mut.extra || []) b.replace[x.urlTail] = x.mutated; await b.interceptOn(); }
     const guard = async (s, fn) => {
       try { await fn(b, C); } catch (e) { C.ok(false, `UI 區段 ${s} 例外：${e.message}`); }
       if (b.errors.length) { console.log('    頁面錯誤：', b.errors.slice(0, 3).join(' | ')); C.ok(false, `UI 區段 ${s}：頁面沒有 JS 例外／console.error`, b.errors[0]); b.errors.length = 0; }
@@ -204,6 +216,8 @@ async function mutants(C) {
     { name: 'UM3 fallback 不加註', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: 'if (t && c.mailingFallback) wrap.appendChild', rep: 'if (false) wrap.appendChild', sections: ['flow'] },
     { name: 'UM4 地址以 innerHTML 顯示（XSS）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "wrap.appendChild(el('span', t ? 'scu-addr-text' : 'scu-muted', t || EMPTY));", rep: "{ const sp = el('span', t ? 'scu-addr-text' : 'scu-muted'); sp.innerHTML = t || EMPTY; wrap.appendChild(sp); }", sections: ['xss'] },
     { name: 'UM5 F5 還原不處理（拿掉 _whenScriptsReady 的 show 呼叫）', file: '_client/app.js', urlTail: '/app.js', find: "if (section === 'secretaryCustomers') _whenScriptsReady(section, () => { if (window.ITTSSecCust) window.ITTSSecCust.show(); else showDashboard(); });", rep: '', sections: ['flow'] },
+    { name: 'UM6 載入順序還原（腳本在 app.js 之後）＋拿掉補呼叫 → 腳本晚到時入口不出現', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (window._myRole === 'secretary') window.ITTSSecCust.start({ role: window._myRole });", rep: '', sections: ['late'],
+      extraFn: (read) => { const NL = String.fromCharCode(10); let h = read('_client/index.html'); const a = h.indexOf('  <script src="secretary-customers.js">'), a2 = h.indexOf(NL, a) + 1; const t = h.slice(a, a2); h = h.slice(0, a) + h.slice(a2); const b = h.indexOf('  <script src="app.js">'), b2 = h.indexOf(NL, b) + 1; h = h.slice(0, b2) + t + h.slice(b2); return [{ urlTail: '/', mutated: h }]; } },
   ];
   for (const m of defs) {
     if (process.env.SCU_MUT_PICK && !new RegExp(process.env.SCU_MUT_PICK).test(m.name)) continue;
@@ -212,7 +226,7 @@ async function mutants(C) {
     const mutated = src.replace(m.find, () => m.rep);
     const snap = C.snap();
     C.setQuiet(true);
-    try { await runOnce(C, { urlTail: m.urlTail, mutated, sections: m.sections }); } catch (e) { C.ok(false, '變異執行例外：' + e.message); }
+    try { await runOnce(C, { urlTail: m.urlTail, mutated, sections: m.sections, extra: m.extraFn ? m.extraFn(read) : [] }); } catch (e) { C.ok(false, '變異執行例外：' + e.message); }
     C.setQuiet(false);
     const fs2 = C.newFails(snap);
     C.restore(snap);
