@@ -5094,7 +5094,7 @@ body.dark .cm-foreign-tog { color: #a9b4c1; }
 .scu-count { font-size: 13px; color: var(--scu-sub); }
 .scu-err { background: #fef3c7; color: #78350f; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 8px; }
 .scu-list { display: flex; flex-direction: column; gap: 8px; }
-.scu-row { display: grid; grid-template-columns: minmax(160px, 1.3fr) minmax(120px, .9fr) minmax(100px, .7fr) minmax(100px, .7fr) minmax(200px, 1.6fr); gap: 12px; align-items: start; padding: 10px 12px; border: 1px solid var(--scu-line); border-radius: 10px; background: var(--scu-bg); cursor: pointer; }
+.scu-row { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(110px, .8fr) minmax(120px, .9fr) minmax(100px, .7fr) minmax(90px, .6fr) minmax(180px, 1.4fr); gap: 12px; align-items: start; padding: 10px 12px; border: 1px solid var(--scu-line); border-radius: 10px; background: var(--scu-bg); cursor: pointer; }
 .scu-row:hover, .scu-row:focus-visible { border-color: var(--scu-accent); outline: none; }
 .scu-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
 .scu-lbl { display: none; font-size: 11px; color: var(--scu-sub); }

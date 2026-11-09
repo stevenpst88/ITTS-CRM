@@ -55,7 +55,9 @@ const PW = 'Sc' + crypto.randomBytes(9).toString('hex') + '!Z';
 const HASH = bcrypt.hashSync(PW, 6);
 const BASE = `http://localhost:${PORT}`;
 const nowIso = new Date().toISOString();
-const PII_RE = /(_PII_|@pii\.example\.test)/;
+// 嚴格 PII 哨兵：Email／備註／偏好／名片圖等仍不得出現在任何秘書回應。電話／分機／手機（TEL／EXT／MOB）已開放，只准出現在被選中的主要聯絡人（PHONE_RE 另行精確斷言）
+const PII_RE = /(NOTE_PII_|MEMO_PII_|HOBBY_PII_|CARD_PII_|EVIL_PII_|@pii\.example\.test)/;
+const PHONE_RE = /(?:TEL|EXT|MOB)_PII_[A-Za-z0-9]+/g;
 const mkUser = (username, role, extra) => Object.assign({ username, displayName: username, role, active: true, password: HASH, createdAt: nowIso, passwordChangedAt: nowIso, mustChangePassword: false, canDownloadContacts: false, canSetTargets: false, accessMode: 'edit', bu: [] }, extra || {});
 // 23 個帳號、13 種 role（KNOWN_ROLES 全部）
 const ACCTS = [
@@ -73,7 +75,7 @@ const ACCTS = [
 const ALL_ACCTS = ACCTS.map((a) => a[0]);
 const mkCard = (id, owner, company, extra) => Object.assign({
   id, owner, name: '名片' + id, company, title: '職稱' + id, bu: 'ERP', createdAt: nowIso,
-  phone: 'TEL_PII_' + id, mobile: 'MOB_PII_' + id, email: 'pii_' + id + '@pii.example.test', note: 'NOTE_PII_' + id,
+  phone: 'TEL_PII_' + id, ext: 'EXT_PII_' + id, mobile: 'MOB_PII_' + id, email: 'pii_' + id + '@pii.example.test', note: 'NOTE_PII_' + id,
   personalMemo: 'MEMO_PII_' + id, personalHobbies: 'HOBBY_PII_' + id, cardImage: 'CARD_PII_' + id, address: '', taxId: '', customerType: '',
 }, extra || {});
 const mkCo = (id, name, tax) => ({ id, taxId: tax, matchKey: 'tax:' + tax, name, shortName: '', capital: null, industry: '', address: '', phone: '', website: '', region: '', customerCode: '', buImport: [], groupId: null, createdAt: nowIso });
@@ -84,7 +86,7 @@ function seedData() {
     mkCard('w2', '_s_u2', '乙公司', { address: 'ADDR-B路2號', mailingAddress: 'ADDR-B路2號', mailingSameAsCompany: true }),
     mkCard('w3', '_s_u1', '丙公司', { address: 'ADDR-C路3號' }),
     mkCard('w3b', '_s_u2', '丙公司', { customerType: 'customer', address: 'ADDR-C路3號' }),
-    mkCard('w4', '_s_u1', '丁公司', { customerType: 'customer' }),
+    mkCard('w4', '_s_u1', '丁公司', { customerType: 'customer', phone: '', ext: '', mobile: '' }),
     mkCard('n1', '_s_u1', '戊公司', { address: 'ADDR-N1' }),
     mkCard('n2', '_s_u1', '己公司', { address: 'ADDR-N2' }),
     mkCard('n3', '_s_u3', '庚公司', { bu: 'ITS', customerType: 'customer', address: 'ADDR-N3路' }),
@@ -229,6 +231,8 @@ function groupUnit() {
   const raw = mkCard('t1', '_s_u1', '測試公司', { customerType: 'customer', address: 'A路', mailingAddress: '' });
   const v = L.viewOf(raw, '業務名');
   eq(Object.keys(v).sort(), L.VIEW_KEYS.slice().sort(), 'U3 viewOf 只輸出白名單鍵');
+  eq(L.VIEW_KEYS.filter((k) => /phone|ext|mobile|tel|email|note|card|memo/i.test(k)).sort(), ['ext', 'mobile', 'phone'], 'U3b 白名單裡與聯絡方式有關的鍵只有 phone／ext／mobile（Email／備註／名片圖仍不在）');
+  eq([L.viewOf(Object.assign({}, raw, { phone: ' 02-0000-0000 ', ext: 123, mobile: null }), 'x')].map((q) => [q.phone, q.ext, q.mobile])[0], ['02-0000-0000', '123', ''], 'U3c 電話欄位字串化＋trim、缺值為空字串');
   ok(!PII_RE.test(JSON.stringify(v)), 'U4 viewOf 輸出不含任何 PII 哨兵', JSON.stringify(v));
   const monster = Object.assign({}, raw, { evilKey: 'EVIL_PII_', password: 'x', cardImage: 'CARD_PII_' });
   ok(!JSON.stringify(L.viewOf(monster, 'x')).includes('EVIL_PII_'), 'U5 未知欄位不會被帶出（白名單而非黑名單）');
@@ -251,7 +255,7 @@ function groupUnit() {
   const html = read('_client/index.html');
   const scripts = [...html.matchAll(/<script\s+src="([^"]+\.js)"/g)].map((m) => m[1]);
   ok(scripts.indexOf('secretary-customers.js') > scripts.indexOf('app.js') && scripts.indexOf('secretary-customers.js') > 0, 'U15 index.html：secretary-customers.js 在 app.js 之後');
-  ok(/itts-crm-v41'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v41');
+  ok(/itts-crm-v42'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v42');
   ok(/#SECRETARY_CUSTOMERS=1/.test(read('.env.example')), 'U17 .env.example 有記載 SECRETARY_CUSTOMERS');
   ok(/if \(SCU\.enabled\(\)\) FEATURE_REGISTRY\.push/.test(server) && /if \(SCU\.enabled\(\)\) DEFAULT_ROLE_PERMISSIONS\.secretary/.test(server), 'U18 功能鍵與預設權限只在開關開啟時登錄');
   // getViewableOwners 與基準逐字相同（不得改動：getEditableOwners 重用它）
@@ -288,6 +292,7 @@ function groupUnit() {
     const row = (me) => L.listFor(d, users, users.find((u) => u.username === me), (n) => n).filter((x) => x.company === '丙公司').map((x) => [x.id, x.primaryFlag]);
     eq(row('_s_sec'), [['s1', 'unset']], 'U27 ERP 秘書：範圍外的主要名片（其他 BU／刪除／待補／行銷）不被選中、也不影響旗標');
     eq(row('_s_sec2'), [['o1', 'primary']], 'U28 ERP+ITS 秘書：其他 BU 名片進入範圍後才可能被選（且只有它是主要）');
+    { const r1 = L.listFor(d, users, users.find((u) => u.username === '_s_sec'), (n) => n).find((x) => x.company === '丙公司'); eq([r1.phone, r1.ext, r1.mobile], ['TEL_PII_s1', 'EXT_PII_s1', 'MOB_PII_s1'], 'U27b 電話三欄是被選中的主要聯絡人 s1 自己的，不混入同公司 s2'); ok(!JSON.stringify(r1).includes('_PII_s2'), 'U27c 同公司其他人的電話不在輸出'); }
     eq(L.listFor(d, users, users.find((u) => u.username === '_s_sec'), (n) => n).filter((x) => !x.company).map((x) => x.id).sort(), ['e1', 'e2'], 'U29 company 為空的名片不歸併，各自一列');
     eq(L.listFor(d, users, users.find((u) => u.username === '_s_sec'), (n) => n).every((x) => ['single', 'primary', 'unset', 'multi'].includes(x.primaryFlag)), true, 'U30 每列都有合法 primaryFlag');
     const cos = L.listFor(seedData(), users, users.find((u) => u.username === '_s_sec2'), (n) => n).map((x) => x.company);
@@ -306,7 +311,16 @@ async function groupApi() {
   eq(idsOf(r), EXP.ERP, 'A2 ERP 秘書的清單 = 同 BU 已成交客戶（一家公司一列：w1,w2,w3,w4）');
   { const m = Object.fromEntries((r.json.customers || []).map((c) => [c.id, c.primaryFlag])); eq([m.w1, m.w3, m.w4], ['single', 'unset', 'single'], 'A2b 旗標：單張 single、丙公司兩張無主要 unset'); const cs = r.json.customers.map((c) => c.company); eq(cs.length, new Set(cs).size, 'A2c 每家公司只有一列'); }
   const text = r.text;
-  ok(!PII_RE.test(text), 'A3 秘書回應整串 JSON 沒有任何 PII 哨兵（電話／手機／Email／備註／名片圖／偏好）', (text.match(PII_RE) || [])[0]);
+  ok(!PII_RE.test(text), 'A3 秘書回應整串 JSON 沒有 Email／備註／名片圖／偏好等 PII 哨兵', (text.match(PII_RE) || [])[0]);
+  {
+    const found = [...new Set(text.match(PHONE_RE) || [])].sort();
+    eq(found, ['EXT_PII_w1', 'EXT_PII_w2', 'EXT_PII_w3', 'MOB_PII_w1', 'MOB_PII_w2', 'MOB_PII_w3', 'TEL_PII_w1', 'TEL_PII_w2', 'TEL_PII_w3'], 'A3b 電話／分機／手機只出現在被選中的主要聯絡人（w1,w2,w3）；同公司非主要（w3b）與其他人的電話不得出現');
+    ok(!/_PII_w3b|_PII_x|_PII_n/.test(text), 'A3c 同公司非主要聯絡人 w3b 的電話／分機／手機不在回應中');
+    const by = Object.fromEntries(r.json.customers.map((c) => [c.id, c]));
+    eq([by.w3.phone, by.w3.ext, by.w3.mobile], ['TEL_PII_w3', 'EXT_PII_w3', 'MOB_PII_w3'], 'A3d 丙公司列的電話三欄＝主要聯絡人 w3 自己的值');
+    eq([by.w4.phone, by.w4.ext, by.w4.mobile], ['', '', ''], 'A3e 缺值時三欄皆為空字串');
+    ok(r.json.customers.every((c) => ['phone', 'ext', 'mobile'].every((k) => typeof c[k] === 'string')), 'A3f 三欄一律為字串');
+  }
   ok(r.json && r.json.piiMasked === true && r.json.customers.every((c) => c.piiMasked === true), 'A4 回 piiMasked:true（外層與每筆）');
   ok(r.json.customers.every((c) => JSON.stringify(Object.keys(c).sort()) === JSON.stringify(L.VIEW_KEYS.slice().sort())), 'A5 每筆只有白名單鍵');
   eq(Object.keys(r.json).sort(), ['count', 'customers', 'piiMasked'], 'A5b 外層鍵');
@@ -337,7 +351,7 @@ async function groupApi() {
   eq(before, 0, 'A18 只 GET 清單不寫稽核');
   const v1 = await http('_s_sec', 'POST', '/api/secretary/customers/w1/view', {});
   eq(v1.status, 200, 'A19 開啟詳情 200');
-  ok(v1.json && v1.json.customer && v1.json.customer.id === 'w1' && !PII_RE.test(v1.text), 'A19b 詳情回白名單內容、無 PII');
+  ok(v1.json && v1.json.customer && v1.json.customer.id === 'w1' && !PII_RE.test(v1.text) && v1.json.customer.phone === 'TEL_PII_w1' && v1.json.customer.mobile === 'MOB_PII_w1', 'A19b 詳情回白名單內容：電話／手機＝本人、無其他 PII');
   await http('_s_sec', 'POST', '/api/secretary/customers/w1/view', {});
   await http('_s_sec', 'POST', '/api/secretary/customers/w2/view', {});
   const lg = (await logsOf()).filter((l) => l.action === 'SECRETARY_VIEW_CUSTOMER');
@@ -554,6 +568,9 @@ const MUTANTS = [
   { name: 'M13 拿掉「多主要取最早」（改取最後）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "card: prim[0], flag: 'multi'", rep: "card: prim[prim.length - 1], flag: 'multi'" }] }] },
   { name: 'M14 拿掉 id tie-break', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: 'return ia < ib ? -1 : ia > ib ? 1 : 0;', rep: 'return 0;' }] }] },
   { name: 'M15 選主要不限範圍（改用全部名片分組）', groups: ['unit'], mut: [{ file: LIBF, edits: [{ find: "scoped.filter((c) => won.has(c.id)).forEach", rep: "(data.contacts || []).filter((c) => c && !c.deleted && won.has(c.id) || (c && !c.deleted && c.isPrimary)).forEach" }] }] },
+  { name: 'M16 Email 也被放進輸出', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: '    phone: str(c.phone),', rep: '    phone: str(c.phone),\n    email: str(c.email),' }] }] },
+  { name: 'M17 電話取成同公司非主要聯絡人的', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: '    v.bu = contactBus(c, byName.get(c.owner));', rep: "    v.bu = contactBus(c, byName.get(c.owner));\n    { const o = scoped.find((x) => x.company && x.company === c.company && x.id !== c.id); if (o) v.phone = str(o.phone); }" }] }] },
+  { name: 'M18 備註也被放進輸出', groups: ['unit', 'api'], mut: [{ file: LIBF, edits: [{ find: '    phone: str(c.phone),', rep: '    phone: str(c.phone),\n    note: str(c.note),' }] }] },
 ];
 async function runMutants() {
   console.log('[變異] 每個變異都必須讓對應群組變紅');

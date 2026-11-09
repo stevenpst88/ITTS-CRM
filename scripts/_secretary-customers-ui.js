@@ -48,8 +48,9 @@ async function uiFlow(b, C) {
   const txt = await b.ev(VIEW_TEXT);
   ok(/甲公司/.test(txt) && /乙公司/.test(txt) && /丙公司/.test(txt) && /丁公司/.test(txt), 'UI4 清單含各公司');
   ok(!/庚公司|戊公司|己公司|辛公司|壬公司|癸公司|子公司|跨公司|KA公司/.test(txt), 'UI5 清單沒有未成交／其他 BU／刪除／待補客戶');
-  ok(!/_PII_|@pii\.example\.test/.test(txt), 'UI6 畫面文字完全沒有 PII 哨兵', (txt.match(/\S*_PII_\S*/) || [])[0]);
-  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 8, 'UI7 電話／Email 欄顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
+  ok(!/(NOTE_PII_|MEMO_PII_|HOBBY_PII_|CARD_PII_|EVIL_PII_|@pii\.example\.test)/.test(txt), 'UI6 畫面文字沒有 Email／備註／名片圖等 PII 哨兵', (txt.match(/\S*_PII_\S*/) || [])[0]);
+  ok(/TEL_PII_w1 \(分機 EXT_PII_w1\)/.test(txt) && /MOB_PII_w1/.test(txt) && /TEL_PII_w3 \(分機 EXT_PII_w3\)/.test(txt) && !/_PII_w3b/.test(txt), 'UI6b 列表顯示主要聯絡人的「電話 (分機 N)」與手機，不含同公司非主要者');
+  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 4, 'UI7 列表每列 Email 欄仍顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
   ok(/<img src=x/.test(txt) && /ADDR-B路2號/.test(txt) && /ADDR-C路3號/.test(txt), 'UI8 郵寄地址欄顯示三種情境（w1 的郵寄地址在此被換成 XSS 酬載字串，以純文字顯示）');
   ok(/（公司登記地址，未另填郵寄地址）/.test(txt), 'UI9 舊資料 fallback 加註「（公司登記地址，未另填郵寄地址）」');
   ok(/（未填）/.test(txt), 'UI9b 兩種地址都沒填 → 顯示「（未填）」');
@@ -66,8 +67,8 @@ async function uiFlow(b, C) {
   await b.click(`#secretaryCustomersView .scu-row[data-id="w3"]`);
   ok(await b.waitFor(`!!document.querySelector('.scu-overlay .scu-mail')`, 5000), 'UI13 點列 → 開詳情（唯讀）');
   const dt = await b.ev(`document.querySelector('.scu-overlay').innerText`);
-  ok(/ADDR-C路3號/.test(dt) && /（公司登記地址，未另填郵寄地址）/.test(dt) && !/_PII_|@pii\.example\.test/.test(dt), 'UI14 詳情：郵寄地址高亮區含 fallback 註記、無 PII', dt.slice(0, 200));
-  ok((dt.match(/（個資已遮蔽）/g) || []).length === 4, 'UI15 詳情的電話／手機／Email／備註皆為「（個資已遮蔽）」');
+  ok(/ADDR-C路3號/.test(dt) && /（公司登記地址，未另填郵寄地址）/.test(dt) && !/(NOTE_PII_|MEMO_PII_|HOBBY_PII_|CARD_PII_|EVIL_PII_|@pii\.example\.test)/.test(dt), 'UI14 詳情：郵寄地址高亮區含 fallback 註記、無 PII', dt.slice(0, 200));
+  ok((dt.match(/（個資已遮蔽）/g) || []).length === 2 && /TEL_PII_w3 \(分機 EXT_PII_w3\)/.test(dt) && /MOB_PII_w3/.test(dt), 'UI15 詳情：電話（含分機）／手機顯示，Email／備註仍為「（個資已遮蔽）」');
   eq(await b.ev(`document.querySelectorAll('.scu-overlay input, .scu-overlay textarea, .scu-overlay select').length`), 0, 'UI16 詳情沒有任何可編輯欄位（唯讀）');
   await shot(b, C, 'scu_detail_1440_light.png');
   await b.click('.scu-overlay .scu-copy');
