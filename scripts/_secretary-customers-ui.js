@@ -211,7 +211,7 @@ async function mutants(C) {
   console.log('[變異·前端] 把前端檔換成改壞的版本，對應斷言必須變紅');
   const read = (rel) => fs.readFileSync(path.join(C.ROOT, rel), 'utf8');
   const defs = [
-    { name: 'UM1 探測失敗也建立元素（開關關仍建側欄／區段）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (!rows) return false;\n      available = true;", rep: 'rows = rows || [];\n      available = true;', sections: ['off'] },
+    { name: 'UM1 探測失敗也建立元素（開關關仍建側欄／區段）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (res.rows) { available = true;", rep: 'if (true) { res.rows = res.rows || []; available = true;', sections: ['off'] },
     { name: 'UM2 切換區段不隱藏本區段（拿掉 showSection 的 setActive(false)）', file: '_client/app.js', urlTail: '/app.js', find: "  if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);\n  if (section === 'secretaryCustomers')", rep: "  if (section === 'secretaryCustomers')", sections: ['flow'] },
     { name: 'UM3 fallback 不加註', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: 'if (t && c.mailingFallback) wrap.appendChild', rep: 'if (false) wrap.appendChild', sections: ['flow'] },
     { name: 'UM4 地址以 innerHTML 顯示（XSS）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "wrap.appendChild(el('span', t ? 'scu-addr-text' : 'scu-muted', t || EMPTY));", rep: "{ const sp = el('span', t ? 'scu-addr-text' : 'scu-muted'); sp.innerHTML = t || EMPTY; wrap.appendChild(sp); }", sections: ['xss'] },
