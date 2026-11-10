@@ -3662,7 +3662,11 @@ $('cardImageInput').addEventListener('change', async function () {
     const data = await res.json();
     if (data.url) {
       $('cardImageUrl').value = data.url;
-      $('previewImg').src = data.url;
+      // SEC-02：/uploads/:key 只有「已被名片引用」才能下載（還沒存成名片的新上傳會是 404），
+      // 所以存檔前的預覽改用本機檔案的 blob URL，不再用剛上傳的伺服器網址。
+      if (window._cardPreviewBlob) { try { URL.revokeObjectURL(window._cardPreviewBlob); } catch {} }
+      window._cardPreviewBlob = URL.createObjectURL(file);
+      $('previewImg').src = window._cardPreviewBlob;
       $('previewImg').style.display = 'block';
       $('cardImagePreview').querySelector('.upload-hint').style.display = 'none';
       $('imageActions').style.display = 'flex';
