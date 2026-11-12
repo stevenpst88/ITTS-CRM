@@ -26,10 +26,14 @@ CREATE INDEX IF NOT EXISTS idx_app_data_updated_at
   ON public.app_data (updated_at DESC);
 
 -- ════════════════════════════════════════════════════════════
---  RLS (Row Level Security)：關閉，因為我們用 service_role 連線
---  server.js 自己做權限控制（getViewableOwners）
+--  RLS (Row Level Security)：開啟且不建任何 policy＋撤銷 anon／authenticated 權限
+--  應用程式用 DATABASE_URL 直連 Postgres（owner／bypass RLS），前端不用 Supabase client，
+--  所以 Data API（anon key）一律不該讀寫這張表。server.js 自己做權限控制（getViewableOwners）。
+--  既有環境請執行 supabase/revoke_app_data_public.sql（SEC-01）。
 -- ════════════════════════════════════════════════════════════
-ALTER TABLE public.app_data DISABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.app_data FROM PUBLIC;
+REVOKE ALL ON public.app_data FROM anon, authenticated;
+ALTER TABLE public.app_data ENABLE ROW LEVEL SECURITY;
 
 -- ════════════════════════════════════════════════════════════
 --  Storage Bucket：名片圖片
