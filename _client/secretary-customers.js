@@ -1,30 +1,35 @@
 /* 秘書唯讀客戶視圖（後端 SECRETARY_CUSTOMERS=1 才有；關閉時探測回 404，本檔不建立任何畫面元素）。
- * 同 BU、已成交的客戶：公司／聯絡人／職稱／BU／負責業務／郵寄地址；電話、Email、備註等個資由後端遮蔽，這裡只顯示「（個資已遮蔽）」。
+ * 同 BU、已成交的客戶（一家公司只列一列＝主要聯絡人）：公司／聯絡人／職稱／BU／負責業務／郵寄地址；Email、備註等個資由後端遮蔽，這裡只顯示「（個資已遮蔽）」；電話／分機／手機已開放給秘書（只有主要聯絡人本人的值）。
  * 全部用 createElement／textContent，不使用 innerHTML。樣式 style.css 的 .scu-*。 */
 (function () {
   'use strict';
   var API = '/api/secretary/customers';
+  var FLAG_TXT = { unset: '未設主要', multi: '其他業務也有主要' };
   var MASK = '（個資已遮蔽）', EMPTY = '（未填）', FALLBACK_NOTE = '（公司登記地址，未另填郵寄地址）';
   var probeP = null, available = false, list = [], navEl = null, viewEl = null, listEl = null, countEl = null, searchEl = null, errEl = null, panel = null;
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function $(id) { return document.getElementById(id); }
 
+  /** 回傳 Promise<{status, rows}>：status＝HTTP 狀態（網路錯誤為 0）；rows＝200 且格式正確時的陣列，否則 null */
   function fetchList() {
     return fetch(API, { credentials: 'include' }).then(function (r) {
-      if (!r.ok) return null;
-      return r.json().then(function (j) { return (j && Array.isArray(j.customers)) ? j.customers : null; });
-    }).catch(function () { return null; });
+      if (!r.ok) return { status: r.status, rows: null };
+      return r.json().then(function (j) { return { status: r.status, rows: (j && Array.isArray(j.customers)) ? j.customers : null }; });
+    }).catch(function () { return { status: 0, rows: null }; });
   }
 
-  /** 探測：只有 200 才建立導覽與畫面；回傳 Promise<boolean>（memoize） */
+  /** 探測：只有 200 才建立導覽與畫面；回傳 Promise<boolean>。
+   *  200（可用）與 404（後端開關關閉＝確定不可用）才記住結果；網路錯誤／5xx／其他狀態不記，下次呼叫會重試。 */
   function probe() {
     if (probeP) return probeP;
-    probeP = fetchList().then(function (rows) {
-      if (!rows) return false;
-      available = true; list = rows; build(); return true;
+    var p = fetchList().then(function (res) {
+      if (res.rows) { available = true; list = res.rows; build(); return true; }
+      if (res.status !== 404) probeP = null;   // 暫時性失敗：不 memoize
+      return false;
     });
-    return probeP;
+    probeP = p;
+    return p;
   }
 
   function build() {
@@ -47,7 +52,7 @@
       viewEl = el('div', 'scu-view'); viewEl.id = 'secretaryCustomersView'; viewEl.style.display = 'none';
       var head = el('div', 'scu-head');
       head.appendChild(el('h2', 'scu-title', '我的客戶（唯讀）'));
-      head.appendChild(el('div', 'scu-sub', '同 BU、已成交的客戶。協助業務寄信用：可查看並複製郵寄地址；電話、Email、備註等個資已遮蔽。'));
+      head.appendChild(el('div', 'scu-sub', '同 BU、已成交的客戶，每家公司只列主要聯絡人一列。協助業務寄信用：可查看並複製郵寄地址；Email、備註等個資已遮蔽。'));
       var bar = el('div', 'scu-bar');
       searchEl = el('input', 'scu-search'); searchEl.type = 'search'; searchEl.placeholder = '搜尋公司／聯絡人／職稱／業務／地址'; searchEl.setAttribute('aria-label', '搜尋客戶');
       searchEl.addEventListener('input', render);
@@ -60,6 +65,13 @@
     }
   }
 
+  /** 室內電話＋分機合併：「02-0000-0000 (分機 123)」；只有分機時「分機 123」；都沒有回空字串 */
+  function phoneText(c) {
+    var p = c.phone || '', x = c.ext || '';
+    if (p && x) return p + ' (分機 ' + x + ')';
+    return p || (x ? '分機 ' + x : '');
+  }
+  function valNode(t) { return t ? el('span', 'scu-val', t) : el('span', 'scu-muted', EMPTY); }
   function mailText(c) { return c.mailingAddress || ''; }
   function matches(c, kw) {
     if (!kw) return true;
@@ -85,17 +97,20 @@
     var kw = searchEl ? searchEl.value.trim().toLowerCase() : '';
     var rows = list.filter(function (c) { return matches(c, kw); });
     while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
-    countEl.textContent = '共 ' + rows.length + ' 筆' + (kw ? '（全部 ' + list.length + '）' : '');
+    countEl.textContent = '共 ' + rows.length + ' 家公司' + (kw ? '（全部 ' + list.length + '）' : '');
     if (!rows.length) { listEl.appendChild(el('div', 'scu-empty', kw ? '沒有符合的客戶' : '目前沒有同 BU 的已成交客戶')); return; }
     rows.forEach(function (c) {
       var r = el('div', 'scu-row'); r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', '查看 ' + c.company + ' ' + c.name + ' 詳情');
       r.dataset.id = c.id;
       var who = el('div', 'scu-cell scu-who');
-      who.appendChild(el('span', 'scu-co', c.company || EMPTY));
+      var co = el('span', 'scu-co', c.company || EMPTY);
+      if (FLAG_TXT[c.primaryFlag]) { var tag = el('span', 'scu-tag scu-tag-' + c.primaryFlag, FLAG_TXT[c.primaryFlag]); tag.title = c.primaryFlag === 'unset' ? '此公司有多位聯絡人但都沒設主要，顯示最早建立者' : '此公司有多位業務各設了主要聯絡人，顯示最早建立者'; co.appendChild(tag); }
+      who.appendChild(co);
       who.appendChild(el('span', 'scu-nm', (c.name || EMPTY) + (c.title ? '・' + c.title : '')));
       r.appendChild(who);
       r.appendChild(cell('負責業務', (c.ownerDisplayName || EMPTY) + ((c.bu && c.bu.length) ? '（' + c.bu.join('/') + '）' : '')));
-      r.appendChild(cell('電話', el('span', 'scu-muted', MASK)));
+      r.appendChild(cell('電話', valNode(phoneText(c))));
+      r.appendChild(cell('手機', valNode(c.mobile || '')));
       r.appendChild(cell('Email', el('span', 'scu-muted', MASK)));
       r.appendChild(cell('郵寄地址', addrNode(c, false)));
       var open = function () { openDetail(c); };
@@ -145,9 +160,9 @@
     function fill(c) {
       while (body.firstChild) body.removeChild(body.firstChild);
       var kv = function (k, v, cls) { var r = el('div', 'scu-kv'); r.appendChild(el('span', 'scu-k', k)); r.appendChild(el('span', 'scu-v' + (cls ? ' ' + cls : ''), v)); body.appendChild(r); };
-      kv('公司', c.company || EMPTY); kv('聯絡人', c.name || EMPTY); kv('職稱', c.title || EMPTY);
+      kv('公司', c.company || EMPTY); kv('聯絡人', (c.name || EMPTY) + (FLAG_TXT[c.primaryFlag] ? '（' + FLAG_TXT[c.primaryFlag] + '）' : '')); kv('職稱', c.title || EMPTY);
       kv('BU', (c.bu && c.bu.length) ? c.bu.join(' / ') : EMPTY); kv('負責業務', c.ownerDisplayName || EMPTY);
-      kv('電話', MASK, 'scu-muted'); kv('手機', MASK, 'scu-muted'); kv('Email', MASK, 'scu-muted'); kv('備註', MASK, 'scu-muted');
+      kv('電話', phoneText(c) || EMPTY, phoneText(c) ? '' : 'scu-muted'); kv('手機', c.mobile || EMPTY, c.mobile ? '' : 'scu-muted'); kv('Email', MASK, 'scu-muted'); kv('備註', MASK, 'scu-muted');
       var m = el('div', 'scu-mail');
       m.appendChild(el('div', 'scu-mail-h', '郵寄地址'));
       m.appendChild(addrNode(c, true));
@@ -166,7 +181,8 @@
   }
 
   function load() {
-    return fetchList().then(function (rows) {
+    return fetchList().then(function (res) {
+      var rows = res.rows;
       if (!errEl) return;
       if (rows) { list = rows; errEl.style.display = 'none'; }
       else { errEl.textContent = '載入失敗，顯示的是上次載入的內容'; errEl.style.display = ''; }
@@ -195,4 +211,7 @@
     },
     _debug: function () { return { available: available, count: list.length }; }
   };
+  // 補呼叫：本檔若比 app.js 的 initUser 晚就緒（首次載入無快取、腳本下載較慢），initUser 當時 window.ITTSSecCust 尚不存在而跳過了 start；
+  // initUser 取得使用者後會先設 window._myRole，這裡據此補一次（probe 本身 memoize 成功結果，重複呼叫安全）。
+  if (window._myRole === 'secretary') window.ITTSSecCust.start({ role: window._myRole });
 })();

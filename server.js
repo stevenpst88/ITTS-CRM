@@ -3598,6 +3598,7 @@ app.get('/api/contacts', requireAuth, (req, res) => {
 // 只有 role=secretary 且擁有 secretaryCustomers 功能者可用；回應一律走 lib/secretaryCustomers 的白名單（不輸出電話／Email／備註等）。
 if (SCU.enabled()) {
   const _scuViewAudit = new Map();   // 'user|contactId' → t（同一人同一客戶 10 分鐘內只記一筆）
+  const _scuListAudit = new Map();   // user → t（同一秘書 10 分鐘內載入清單只記一筆彙總；記憶體＝serverless 實例重啟或多實例時各自計，可能多記幾筆，不會漏記）
   const _scuGate = (req, res) => {
     const u = req.session.user;
     if (u.role !== 'secretary' || !getUserFeatures(u.role).includes(SCU.FEATURE_KEY)) { res.status(403).json({ error: '無權限' }); return null; }
@@ -3611,6 +3612,15 @@ if (SCU.enabled()) {
   app.get('/api/secretary/customers', requireAuth, (req, res) => {
     const g = _scuGate(req, res); if (!g) return;
     const customers = _scuList(g);
+    // 彙總稽核：整份清單（含電話／分機／手機）一次交出，記一筆「筆數＋是否含電話欄位」；不逐筆、不記任何客戶名／電話／內容。10 分鐘節流
+    {
+      const uk = req.session.user.username, now = Date.now();
+      if (!(_scuListAudit.get(uk) > now - 10 * 60 * 1000)) {
+        _scuListAudit.set(uk, now);
+        if (_scuListAudit.size > 1000) for (const [kk, t] of _scuListAudit) if (t < now - 10 * 60 * 1000) _scuListAudit.delete(kk);
+        writeLog('SECRETARY_LIST_CUSTOMERS', uk, 'list', `秘書載入客戶清單：${customers.length} 家公司，含電話／分機／手機欄位`, req);
+      }
+    }
     res.json({ piiMasked: true, count: customers.length, customers });
   });
   // 開啟單一客戶詳情：回傳白名單內容並記稽核（只記聯絡人 id 與公司名，不記任何個資）。用 POST 因為會寫稽核（GET 不寫入原則）

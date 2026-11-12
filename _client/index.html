@@ -3125,10 +3125,10 @@
   <script src="company-dups.js"></script><!-- 企業主檔疑似重複清單：須在 app.js 之前載入 -->
   <script src="company-create.js"></script><!-- 企業主檔單筆新增對話框：須在 app.js 之前載入 -->
   <script src="company-ta.js"></script><!-- 企業主檔篩選 TA（EDM 名單）：須在 app.js 之前載入 -->
+  <script src="secretary-customers.js"></script><!-- 秘書唯讀客戶視圖：須在 app.js 之前載入（initUser 結尾以 window.ITTSSecCust 守衛呼叫 start，放後面會在首次載入無快取時錯過）；本檔只在呼叫時才用 showSection 等全域；後端未啟用時不建立任何畫面元素 -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
-  <script src="secretary-customers.js"></script><!-- 秘書唯讀客戶視圖：須在 app.js 之後（showSection／initUser 以 window.ITTSSecCust 守衛呼叫）；後端未啟用時不建立任何畫面元素 -->
   <script src="tw-workdays.js"></script>
   <script src="quote-pricebook.js"></script>
   <script src="quote-costlines.js"></script>

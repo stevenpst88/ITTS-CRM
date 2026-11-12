@@ -42,14 +42,15 @@ async function uiFlow(b, C) {
   ok(/我的客戶（唯讀）/.test(await b.ev(`document.getElementById('navSecretaryCustomers').textContent`)), 'UI1b 導覽文字');
   await openNav(b);
   ok(await b.waitFor(VIEW_VIS, 8000), 'UI2 真實點擊側欄 → 區段顯示');
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI3 顯示 5 筆（同 BU 已成交）', await b.ev(ROWS));
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI3 顯示 4 家公司（同 BU 已成交）', await b.ev(ROWS));
   eq(await b.ev(`document.getElementById('topbarTitle').textContent`), '我的客戶（唯讀）', 'UI3b 頁首標題');
   eq(await b.ev(`document.getElementById('dashboardView').style.display`), 'none', 'UI3c 首頁已隱藏');
   const txt = await b.ev(VIEW_TEXT);
   ok(/甲公司/.test(txt) && /乙公司/.test(txt) && /丙公司/.test(txt) && /丁公司/.test(txt), 'UI4 清單含各公司');
   ok(!/庚公司|戊公司|己公司|辛公司|壬公司|癸公司|子公司|跨公司|KA公司/.test(txt), 'UI5 清單沒有未成交／其他 BU／刪除／待補客戶');
-  ok(!/_PII_|@pii\.example\.test/.test(txt), 'UI6 畫面文字完全沒有 PII 哨兵', (txt.match(/\S*_PII_\S*/) || [])[0]);
-  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 10, 'UI7 電話／Email 欄顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
+  ok(!/(NOTE_PII_|MEMO_PII_|HOBBY_PII_|CARD_PII_|EVIL_PII_|@pii\.example\.test)/.test(txt), 'UI6 畫面文字沒有 Email／備註／名片圖等 PII 哨兵', (txt.match(/\S*_PII_\S*/) || [])[0]);
+  ok(/TEL_PII_w1 \(分機 EXT_PII_w1\)/.test(txt) && /MOB_PII_w1/.test(txt) && /TEL_PII_w3 \(分機 EXT_PII_w3\)/.test(txt) && !/_PII_w3b/.test(txt), 'UI6b 列表顯示主要聯絡人的「電話 (分機 N)」與手機，不含同公司非主要者');
+  ok((txt.match(/（個資已遮蔽）/g) || []).length >= 4, 'UI7 列表每列 Email 欄仍顯示「（個資已遮蔽）」', (txt.match(/（個資已遮蔽）/g) || []).length);
   ok(/<img src=x/.test(txt) && /ADDR-B路2號/.test(txt) && /ADDR-C路3號/.test(txt), 'UI8 郵寄地址欄顯示三種情境（w1 的郵寄地址在此被換成 XSS 酬載字串，以純文字顯示）');
   ok(/（公司登記地址，未另填郵寄地址）/.test(txt), 'UI9 舊資料 fallback 加註「（公司登記地址，未另填郵寄地址）」');
   ok(/（未填）/.test(txt), 'UI9b 兩種地址都沒填 → 顯示「（未填）」');
@@ -61,13 +62,13 @@ async function uiFlow(b, C) {
   await b.ev(`(()=>{const e=document.querySelector('#secretaryCustomersView .scu-search'); e.value='不存在的字串'; e.dispatchEvent(new Event('input',{bubbles:true})); return 0})()`);
   ok(await b.waitFor(`!!document.querySelector('#secretaryCustomersView .scu-empty')`, 3000), 'UI11 無結果 → 顯示空狀態');
   await b.ev(`(()=>{const e=document.querySelector('#secretaryCustomersView .scu-search'); e.value=''; e.dispatchEvent(new Event('input',{bubbles:true})); return 0})()`);
-  ok(await b.waitFor(`${ROWS}===5`, 3000), 'UI12 清空搜尋 → 回 5 筆');
+  ok(await b.waitFor(`${ROWS}===4`, 3000), 'UI12 清空搜尋 → 回 4 家公司');
   // 詳情（fallback 那筆）
   await b.click(`#secretaryCustomersView .scu-row[data-id="w3"]`);
   ok(await b.waitFor(`!!document.querySelector('.scu-overlay .scu-mail')`, 5000), 'UI13 點列 → 開詳情（唯讀）');
   const dt = await b.ev(`document.querySelector('.scu-overlay').innerText`);
-  ok(/ADDR-C路3號/.test(dt) && /（公司登記地址，未另填郵寄地址）/.test(dt) && !/_PII_|@pii\.example\.test/.test(dt), 'UI14 詳情：郵寄地址高亮區含 fallback 註記、無 PII', dt.slice(0, 200));
-  ok((dt.match(/（個資已遮蔽）/g) || []).length === 4, 'UI15 詳情的電話／手機／Email／備註皆為「（個資已遮蔽）」');
+  ok(/ADDR-C路3號/.test(dt) && /（公司登記地址，未另填郵寄地址）/.test(dt) && !/(NOTE_PII_|MEMO_PII_|HOBBY_PII_|CARD_PII_|EVIL_PII_|@pii\.example\.test)/.test(dt), 'UI14 詳情：郵寄地址高亮區含 fallback 註記、無 PII', dt.slice(0, 200));
+  ok((dt.match(/（個資已遮蔽）/g) || []).length === 2 && /TEL_PII_w3 \(分機 EXT_PII_w3\)/.test(dt) && /MOB_PII_w3/.test(dt), 'UI15 詳情：電話（含分機）／手機顯示，Email／備註仍為「（個資已遮蔽）」');
   eq(await b.ev(`document.querySelectorAll('.scu-overlay input, .scu-overlay textarea, .scu-overlay select').length`), 0, 'UI16 詳情沒有任何可編輯欄位（唯讀）');
   await shot(b, C, 'scu_detail_1440_light.png');
   await b.click('.scu-overlay .scu-copy');
@@ -91,14 +92,26 @@ async function uiFlow(b, C) {
   ok(await b.waitFor(`!(${VIEW_VIS}) && document.getElementById('dashboardView').style.display===''`, 4000), 'UI24 回首頁 → 本區段隱藏');
   // F5 還原
   await openNav(b);
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI25 進入本區段');
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI25 進入本區段');
   await b.nav(C.BASE + '/');
-  ok(await b.waitFor(`${VIEW_VIS} && ${ROWS}===5`, 15000), 'UI26 F5 重新整理 → 還原在本區段並載入清單（沒有 loader 未定義例外）');
+  ok(await b.waitFor(`${VIEW_VIS} && ${ROWS}===4`, 15000), 'UI26 F5 重新整理 → 還原在本區段並載入清單（沒有 loader 未定義例外）');
   eq(await b.ev(`localStorage.getItem('lastSection')`), 'secretaryCustomers', 'UI26b lastSection 為 secretaryCustomers');
   // 稽核
   await C.login('_s_adm');
   const lg = (await C.logsOf()).filter((l) => l.action === 'SECRETARY_VIEW_CUSTOMER');
   ok(lg.length >= 2 && lg.every((l) => !/_PII_|@pii/.test(JSON.stringify(l))), 'UI27 開啟詳情有寫 SECRETARY_VIEW_CUSTOMER 稽核（不含 PII）', lg.length);
+}
+
+// 首次載入競態：secretary-customers.js 下載很慢（延遲 2.5 秒）時，入口仍必須出現（不需 F5）
+async function uiLate(b, C) {
+  console.log('  [UI] 腳本晚到：入口仍出現（不需 F5）');
+  const { ok } = C;
+  await b.interceptOn();
+  b.delay['/secretary-customers.js'] = 2500;
+  try {
+    await openAs(b, C, '_s_sec', 1440, 900);
+    ok(await b.waitFor(`!!document.getElementById('navSecretaryCustomers')`, 12000), 'UI70 secretary-customers.js 延遲 2.5 秒載入 → 首次載入側欄仍出現「我的客戶（唯讀）」（沒有 F5）');
+  } finally { delete b.delay['/secretary-customers.js']; }
 }
 
 async function uiOthers(b, C) {
@@ -114,7 +127,7 @@ async function uiXss(b, C) {
   const { ok, eq } = C;
   await openAs(b, C, '_s_sec', 1440, 1000);
   await openNav(b);
-  ok(await b.waitFor(`${ROWS}===5`, 8000), 'UI40 載入');
+  ok(await b.waitFor(`${ROWS}===4`, 8000), 'UI40 載入');
   eq(await b.ev(`window.__xss||0`), 0, 'UI41 含 <img onerror> 的郵寄地址：酬載沒被執行');
   eq(await b.ev(`document.querySelectorAll('#secretaryCustomersView img').length`), 0, 'UI42 沒有變成 <img> 元素');
   ok((await b.ev(VIEW_TEXT)).includes('<img src=x'), 'UI43 以純文字顯示');
@@ -131,7 +144,7 @@ async function uiLayout(b, C) {
   for (const [w, h] of [[375, 800], [1440, 900]]) {
     await openAs(b, C, '_s_sec', w, h);
     await b.ev(`showSection('secretaryCustomers'); 0`);
-    ok(await b.waitFor(`${ROWS}===5`, 8000), `UI50 ${w}px 載入`);
+    ok(await b.waitFor(`${ROWS}===4`, 8000), `UI50 ${w}px 載入`);
     for (const mode of ['plain-light', 'plain-dark', 'glass-dark', 'glass-light']) {
       await b.ev(`(()=>{const c=document.body.classList; c.toggle('glass',${J(mode.startsWith('glass'))}); c.toggle('dark',${J(mode.endsWith('dark'))}); return true})()`);
       await b.sleep(200);
@@ -162,13 +175,13 @@ async function uiOff(b, C) {
 }
 
 async function runOnce(C, mut, which) {
-  const fns = { flow: uiFlow, others: uiOthers, xss: uiXss, layout: uiLayout };
-  const run = (mut && mut.sections) || which || ['flow', 'others', 'xss', 'layout', 'off'];
+  const fns = { flow: uiFlow, others: uiOthers, xss: uiXss, layout: uiLayout, late: uiLate };
+  const run = (mut && mut.sections) || which || ['flow', 'others', 'xss', 'layout', 'late', 'off'];
   const sections = [];
   const server = async (env, seed) => { await C.freshServer({ env, seed }); };
   await server({ SECRETARY_CUSTOMERS: '1' }, XSS_SEED);
   await withBrowser({ cdpPort: C.CDP, maxMs: 560000 }, async (b) => {
-    if (mut) { b.replace[mut.urlTail] = mut.mutated; await b.interceptOn(); }
+    if (mut) { b.replace[mut.urlTail] = mut.mutated; for (const x of mut.extra || []) b.replace[x.urlTail] = x.mutated; await b.interceptOn(); }
     const guard = async (s, fn) => {
       try { await fn(b, C); } catch (e) { C.ok(false, `UI 區段 ${s} 例外：${e.message}`); }
       if (b.errors.length) { console.log('    頁面錯誤：', b.errors.slice(0, 3).join(' | ')); C.ok(false, `UI 區段 ${s}：頁面沒有 JS 例外／console.error`, b.errors[0]); b.errors.length = 0; }
@@ -198,11 +211,13 @@ async function mutants(C) {
   console.log('[變異·前端] 把前端檔換成改壞的版本，對應斷言必須變紅');
   const read = (rel) => fs.readFileSync(path.join(C.ROOT, rel), 'utf8');
   const defs = [
-    { name: 'UM1 探測失敗也建立元素（開關關仍建側欄／區段）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (!rows) return false;\n      available = true;", rep: 'rows = rows || [];\n      available = true;', sections: ['off'] },
+    { name: 'UM1 探測失敗也建立元素（開關關仍建側欄／區段）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (res.rows) { available = true;", rep: 'if (true) { res.rows = res.rows || []; available = true;', sections: ['off'] },
     { name: 'UM2 切換區段不隱藏本區段（拿掉 showSection 的 setActive(false)）', file: '_client/app.js', urlTail: '/app.js', find: "  if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);\n  if (section === 'secretaryCustomers')", rep: "  if (section === 'secretaryCustomers')", sections: ['flow'] },
     { name: 'UM3 fallback 不加註', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: 'if (t && c.mailingFallback) wrap.appendChild', rep: 'if (false) wrap.appendChild', sections: ['flow'] },
     { name: 'UM4 地址以 innerHTML 顯示（XSS）', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "wrap.appendChild(el('span', t ? 'scu-addr-text' : 'scu-muted', t || EMPTY));", rep: "{ const sp = el('span', t ? 'scu-addr-text' : 'scu-muted'); sp.innerHTML = t || EMPTY; wrap.appendChild(sp); }", sections: ['xss'] },
     { name: 'UM5 F5 還原不處理（拿掉 _whenScriptsReady 的 show 呼叫）', file: '_client/app.js', urlTail: '/app.js', find: "if (section === 'secretaryCustomers') _whenScriptsReady(section, () => { if (window.ITTSSecCust) window.ITTSSecCust.show(); else showDashboard(); });", rep: '', sections: ['flow'] },
+    { name: 'UM6 載入順序還原（腳本在 app.js 之後）＋拿掉補呼叫 → 腳本晚到時入口不出現', file: '_client/secretary-customers.js', urlTail: '/secretary-customers.js', find: "if (window._myRole === 'secretary') window.ITTSSecCust.start({ role: window._myRole });", rep: '', sections: ['late'],
+      extraFn: (read) => { const NL = String.fromCharCode(10); let h = read('_client/index.html'); const a = h.indexOf('  <script src="secretary-customers.js">'), a2 = h.indexOf(NL, a) + 1; const t = h.slice(a, a2); h = h.slice(0, a) + h.slice(a2); const b = h.indexOf('  <script src="app.js">'), b2 = h.indexOf(NL, b) + 1; h = h.slice(0, b2) + t + h.slice(b2); return [{ urlTail: '/', mutated: h }]; } },
   ];
   for (const m of defs) {
     if (process.env.SCU_MUT_PICK && !new RegExp(process.env.SCU_MUT_PICK).test(m.name)) continue;
@@ -211,7 +226,7 @@ async function mutants(C) {
     const mutated = src.replace(m.find, () => m.rep);
     const snap = C.snap();
     C.setQuiet(true);
-    try { await runOnce(C, { urlTail: m.urlTail, mutated, sections: m.sections }); } catch (e) { C.ok(false, '變異執行例外：' + e.message); }
+    try { await runOnce(C, { urlTail: m.urlTail, mutated, sections: m.sections, extra: m.extraFn ? m.extraFn(read) : [] }); } catch (e) { C.ok(false, '變異執行例外：' + e.message); }
     C.setQuiet(false);
     const fs2 = C.newFails(snap);
     C.restore(snap);

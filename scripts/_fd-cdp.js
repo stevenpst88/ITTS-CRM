@@ -91,18 +91,20 @@ async function withBrowser(opts, fn) {
     const focus = (sel) => ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)return false;e.focus();return document.activeElement===e})()`);
     // 以「網址片段 → 內容」攔截並替換頁面資源（變異測試：把前端檔換成改壞的版本，不動磁碟上的檔案）
     const replace = {};
+    const delay = {};   // 網址片段 → 延遲毫秒（模擬某個資源下載很慢）
     handlers.push(async (d) => {
       if (d.method !== 'Fetch.requestPaused') return;
       const url = d.params.request.url.split('?')[0];
       const k = Object.keys(replace).find((x) => url.endsWith(x));
-      if (k) await send('Fetch.fulfillRequest', { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: k.endsWith('.css') ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }], body: Buffer.from(replace[k], 'utf8').toString('base64') });
+      { const dk = Object.keys(delay).find((x) => url.endsWith(x)); if (dk) await new Promise((r) => setTimeout(r, delay[dk])); }
+      if (k) await send('Fetch.fulfillRequest', { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: k.endsWith('.css') ? 'text/css; charset=utf-8' : k === '/' ? 'text/html; charset=utf-8' : 'application/javascript; charset=utf-8' }, { name: 'Cache-Control', value: 'no-store' }], body: Buffer.from(replace[k], 'utf8').toString('base64') });
       else await send('Fetch.continueRequest', { requestId: d.params.requestId });
     });
     const interceptOn = async () => { await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] }); };
     const media = async (features) => send('Emulation.setEmulatedMedia', { features });
     // beforeunload／alert 之類的對話框一律接受（頁面有「未儲存變更」離開提示）
     handlers.push(async (d) => { if (d.method === 'Page.javascriptDialogOpening') await send('Page.handleJavaScriptDialog', { accept: true }); });
-    const ctx = { replace, interceptOn, media, send, ev, waitFor, nav, sleep, shot, viewport, move, down, up, click, dblclick, drag, dragTo, rectOf, key, type, focus, errors, logs, port: opts.cdpPort };
+    const ctx = { replace, delay, interceptOn, media, send, ev, waitFor, nav, sleep, shot, viewport, move, down, up, click, dblclick, drag, dragTo, rectOf, key, type, focus, errors, logs, port: opts.cdpPort };
     return await fn(ctx);
   } finally {
     clearTimeout(dog);
