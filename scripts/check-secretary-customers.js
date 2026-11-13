@@ -464,7 +464,8 @@ const WRITES = [
   ['PUT', '/api/contacts/w1', { note: 'HACK' }], ['DELETE', '/api/contacts/w1'], ['PUT', '/api/contacts/w2', { name: 'HACK', company: '乙公司' }],
   ['POST', '/api/transfer-contacts', { fromOwner: '_s_u1', toOwner: '_s_u2', contactIds: ['w1'] }], ['POST', '/api/groups', { name: 'G' }], ['PUT', '/api/groups/g1', { name: 'G2' }],
   ['POST', '/api/key-accounts', { company: '甲公司' }], ['DELETE', '/api/key-accounts/ka-1'], ['POST', '/api/companies/c1/set-industry', { industry: '製造' }],
-  ['POST', '/api/admin/pool/assign', { ids: ['w1'], owner: '_s_u2' }], ['POST', '/api/upload', {}], ['PUT', '/api/contacts/n3', { note: 'HACK' }],
+  ['POST', '/api/admin/pool/assign', { ids: ['w1'], owner: '_s_u2' }], ['PUT', '/api/contacts/n3', { note: 'HACK' }],
+  // 註：原本還有 ['POST', '/api/upload', {}]——名片圖不再儲存後該入口一律 410（基準為 400），已不具權限意義，故移除；其餘電池與斷言不變
 ];
 const NEW_RE = /^\/api\/secretary\//;
 async function runBattery(mode, root, batch) {

@@ -1502,7 +1502,7 @@ app.get('/admin.html', requireAuth, ...(process.env.DB_BACKEND === 'postgres' ? 
 //   · 找不到任何聯絡人引用這個 key（含上傳了但還沒存成名片、已被永久刪除的）→ 一律 404
 //   · 引用它的聯絡人都不在目前使用者的可視範圍 → 404（刻意不用 403，避免洩漏「這個檔案存在」）
 //   · 管理員（role=admin）維持可看全部「有被引用」的名片圖（含已軟刪除、客戶池的聯絡人）
-// 目前系統只有「名片圖片」這一種上傳類型（唯一的上傳入口是 POST /api/upload，值只會存進 contacts[].cardImage），
+// 目前經 /uploads 提供的只有「既有的名片舊圖」（值存在 contacts[].cardImage；上傳入口 POST /api/upload 已停用，名片圖不再儲存），
 // 沒有任何「全員共用」的檔案（公告附件、公司 logo 等都不走 /uploads）。日後若新增別種經 /uploads 提供的檔案，
 // 必須在 canViewUpload 明確加上它的授權規則——沒有被任何規則認領的 key 一律 404（預設拒絕）。
 // 未登入回 401（不是導向登入頁：這是圖片資源，不是頁面）。postgres 模式要先 db.ready()（/uploads 不在 /api/ 底下，
@@ -2998,23 +2998,6 @@ app.delete('/api/admin/role-permissions', requireAdmin, (req, res) => {
   res.json({ success: true, ...(qmMissingR.length ? { quoteModeMissing: qmMissingR } : {}) });
 });
 
-// ── 名片圖片上傳設定（使用 storage 模組的 engine）─────────
-const upload = multer({
-  storage: storage.getMulterStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowedExt  = /jpeg|jpg|png|gif|webp/;
-    const allowedMime = /^image\/(jpeg|png|gif|webp)$/;
-    const extOk  = allowedExt.test(path.extname(file.originalname).toLowerCase());
-    const mimeOk = allowedMime.test(file.mimetype);
-    if (extOk && mimeOk) {
-      cb(null, true);
-    } else {
-      cb(new Error('只允許上傳圖片檔案（jpg/png/gif/webp）'));
-    }
-  }
-});
-
 // ── 角色可視範圍：取得此用戶可見的 owner 清單 ──────────────
 // 將 bu 欄位正規化為陣列（向下相容舊的 string 格式）
 function normalizeBu(bu) {
@@ -3686,7 +3669,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     if (!_tax) return res.status(400).json({ error: '統一編號為必填（境外公司請勾選「境外公司（無統一編號）」）' });
     if (!/^\d{8}$/.test(_tax)) return res.status(400).json({ error: '統一編號需為 8 碼數字' });
   }
-  if (!isValidCardImage(req.body.cardImage)) return res.status(400).json({ error: CARD_IMAGE_ERR });
+  // 名片圖不再儲存：新建名片的 cardImage 一律 ''（忽略請求值，不報錯）
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
   if (buCheck.error) return res.status(400).json({ error: buCheck.error });
   if (!mailingFlag(req.body.mailingSameAsCompany)) { const _me = mailingLenError(req.body.mailingAddress); if (_me) return res.status(400).json({ error: _me }); }
@@ -3728,7 +3711,7 @@ app.post('/api/contacts', requireAuth, (req, res) => {
     systemVendor: req.body.systemVendor || '',
     systemProduct: req.body.systemProduct || '',
     note: req.body.note || '',
-    cardImage: req.body.cardImage || '',
+    cardImage: '',
     createdAt: new Date().toISOString()
   };
   // 郵寄地址：只在有值／勾選時才寫入鍵（沒送的請求產出與舊版逐位元相同）
@@ -3797,9 +3780,12 @@ app.put('/api/contacts/:id', requireAuth, (req, res) => {
   const safeBody = pickFields(req.body, CONTACT_FIELDS);
   // 產業屬性僅行銷／管理員可改；其餘角色即使前端送出也一律忽略（後端雙保險，維持 industry 由行銷維護）
   if (!isAdminOrMarketing(req) && 'industry' in safeBody) delete safeBody.industry;
-  // 名片圖片：只在「有帶且與目前儲存值不同」時驗證，舊資料中不合規的值不會擋住其他欄位的編輯
-  if (safeBody.cardImage !== undefined && String(safeBody.cardImage || '') !== String(old.cardImage || '') && !isValidCardImage(safeBody.cardImage)) {
-    return res.status(400).json({ error: CARD_IMAGE_ERR });
+  // 名片圖不再儲存：cardImage 只允許「維持原值」或「清空」。
+  // 相同→放行不變（舊前端會把現有值原樣送回，含舊資料中不合規的值）；非空且不同→忽略（維持原值，不報錯）；'' →清掉舊圖；沒送→不變。
+  if (safeBody.cardImage !== undefined) {
+    const _ci = safeBody.cardImage;
+    if (_ci === null || _ci === '') safeBody.cardImage = '';
+    else if (typeof _ci !== 'string' || _ci !== String(old.cardImage || '')) delete safeBody.cardImage;
   }
   // 郵寄地址：勾「同公司地址」時以 address 為準（不檢查長度）；否則限 200 字
   const _mFlagIn = safeBody.mailingSameAsCompany !== undefined ? mailingFlag(safeBody.mailingSameAsCompany) : !!old.mailingSameAsCompany;
@@ -4018,10 +4004,12 @@ app.delete('/api/groups/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-// ── 上傳名片圖片 ────────────────────────────────────────
-app.post('/api/upload', requireAuth, upload.single('card'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '未收到圖片' });
-  res.json({ url: `/uploads/${req.file.filename}` });
+// ── 名片圖片上傳：已停用（名片圖不再儲存於伺服器；名片只用 AI 辨識取欄位後即丟棄）──
+// 刻意不掛 multer：不解析 multipart、不寫任何檔案（舊分頁／舊快取的前端送來也不會寫檔、不會 500）。
+// 未登入仍由 requireAuth 回 401。/uploads/:key 的讀取（既有舊圖）與刪名片時刪檔仍由 storage 模組處理。
+const CARD_UPLOAD_GONE_MSG = '名片圖片已不再儲存於伺服器；請使用「AI 辨識」讀取名片資料';
+app.post('/api/upload', requireAuth, (req, res) => {
+  res.status(410).json({ error: CARD_UPLOAD_GONE_MSG, code: 'CARD_UPLOAD_DISABLED' });
 });
 
 // ── 匯出 Excel ──────────────────────────────────────────

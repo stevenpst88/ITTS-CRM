@@ -1797,14 +1797,13 @@
       </div>
       <div class="modal-body">
         <div class="tab-content" id="tab-card">
-          <div class="card-image-section">
-            <div class="card-image-preview" id="cardImagePreview">
-              <span class="upload-hint">&#128247; 點擊上傳名片圖片</span>
-              <img id="previewImg" src="" alt="名片圖片" style="display:none">
+          <!-- 名片圖不再上傳儲存；只有「既有舊圖」才顯示（唯讀預覽＋移除鈕，移除後儲存即清掉舊圖） -->
+          <div class="card-image-section" id="cardImageLegacy" style="display:none">
+            <div class="card-image-preview" style="cursor:default;border-style:solid">
+              <img id="previewImg" src="" alt="名片圖片">
             </div>
-            <input type="file" id="cardImageInput" accept="image/*" style="display:none">
-            <div class="image-actions" id="imageActions" style="display:none">
-              <button class="btn-sm btn-danger" id="removeImage">移除圖片</button>
+            <div class="image-actions" id="imageActions">
+              <button type="button" class="btn-sm btn-danger" id="removeImage">移除圖片</button>
             </div>
           </div>
           <!-- AI 名片辨識 -->
