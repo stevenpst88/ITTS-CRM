@@ -60,7 +60,9 @@ function mkXlsx(sheets) {
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(aoa.length - 1, 0), c: maxc - 1 } });
     XLSX.utils.book_append_sheet(wb, ws, name);
   }
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  // bookSST：像 Excel 一樣把字串存成共用字串（t="s"）。SheetJS 預設寫 t="str"，0.20.3 讀回時會把其中的實體（如 &amp;lt;）多解一次，
+  // 與 0.18.5 不同（SEC-05 實測；Excel 產的檔案用共用字串，不受影響）。測試檔要貼近真實上傳檔，所以用 bookSST。
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', bookSST: true });
 }
 const HDR4 = ['項目名稱', '牌價（元/人天）', '成本（元/人天）', '啟用'];   // 舊格式（沒有「說明」欄）：舊檔必須仍可匯入
 const HDR = HDR4.concat(['說明']);

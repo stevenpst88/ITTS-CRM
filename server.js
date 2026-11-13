@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
+const xlsxGuard = require('./lib/xlsxSafe').uploadGuard();   // SEC-05：匯入檔先過安全閘門（xlsx 有界解壓＋重新封裝）再交給 SheetJS
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
@@ -5469,7 +5470,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
 
 // ── 客戶資料批次匯入（Admin）────────────────────────────
 app.post('/api/admin/contacts/import', requireAdmin,
-  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard,
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -5587,7 +5588,7 @@ app.post('/api/admin/contacts/import', requireAdmin,
 );
 
 // ── 商機批次匯入（Admin）─────────────────────────────────
-app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), async (req, res) => {
+app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
 
@@ -5890,7 +5891,7 @@ app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
 
 // ── 日報（拜訪記錄）批次匯入（Admin）──────────────────────
 app.post('/api/admin/visits/import', requireAdmin,
-  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard,
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -6016,7 +6017,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
 
 // ── 合約管理批次匯入（Admin）─────────────────────────────
 app.post('/api/admin/contracts/import', requireAdmin,
-  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard,
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -9103,7 +9104,7 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
 // 最基本：公司名稱 + 統一編號（可含產業）；upsert by 統編；新產業自動加入清單
 // ?dryRun=1：只試算不寫入，回傳將新增/更新/疑似重複的明細供前端預覽確認
 app.post('/api/companies/import', requireAuth,
-  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard,
   (req, res) => {
     if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -9340,7 +9341,7 @@ function yoyImportPlan(parsedYears, existing) {
 // 匯入（admin）：?dryRun=1 乾跑預覽；否則寫入。
 // 累計快照模式 → 以「年度×部門」為單位整批取代：只動檔案裡出現的部門×年度，其餘（其他部門/其他年度）原封不動。
 app.post('/api/yoy/import', requireAuth,
-  (req, res, next) => uploadImport.single('file')(req, res, next),
+  (req, res, next) => uploadImport.single('file')(req, res, next), xlsxGuard,
   (req, res) => {
     if (!canImportYoy(req)) return res.status(403).json({ error: '無權限（限系統管理員）' });
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -10286,7 +10287,7 @@ const uploadImport = multer({
   }
 });
 
-app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file'), (req, res) => {
+app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file'), xlsxGuard, (req, res) => {
   if (!req.file) return res.status(400).json({ error: '未收到檔案' });
   const { targetOwner, skipDuplicates } = req.body;
   if (!targetOwner) return res.status(400).json({ error: '請指定匯入對象' });
