@@ -12,9 +12,8 @@
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <title>管理者後台 - 業務名片管理系統</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
-          integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
-          crossorigin="anonymous"></script>
+  <!-- SheetJS 0.20.3（官方修補版，npm 上沒有；自架於 _client/vendor，與伺服器端 vendor/xlsx-0.20.3.tgz 同版）。授權見 vendor/xlsx.LICENSE.txt -->
+  <script src="/vendor/xlsx-0.20.3.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
