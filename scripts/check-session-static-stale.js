@@ -215,8 +215,9 @@ function assertFixed(T, R, tag) {
     const a = R.api[k];
     T.eq([a.status, a.json && a.json.code, a.expired], [401, 'SESSION_INVALID', '1'], `${tag}[B2] ${k}：/api/me → 401 SESSION_INVALID＋X-Session-Expired`);
     const d = R.dyn[k];
-    T.eq(d.uploads.status, 302, `${tag}[B2] ${k}：/uploads/* 仍照舊被拒（302）`);
-    T.eq(d.uploadsJs.status, 302, `${tag}[B2] ${k}：/uploads/*.js 仍照舊被拒（302，不能只看副檔名）`);
+    // SEC-02：/uploads 是圖片資源，過期／無效登入一律 401（不再 302 導向登入頁），且不得洩漏內容、不得有 Location
+    T.eq([d.uploads.status, d.uploads.location || ''], [401, ''], `${tag}[B2] ${k}：/uploads/* 仍被拒（SEC-02 起為 401、無 Location 導向）`);
+    T.eq([d.uploadsJs.status, d.uploadsJs.location || ''], [401, ''], `${tag}[B2] ${k}：/uploads/*.js 仍被拒（401、無 Location；不能只看副檔名）`);
     T.eq(d.ghostJs.status, 302, `${tag}[B2] ${k}：不存在的 .js 仍照舊被拒（302）`);
     T.eq(d.admin.status, 302, `${tag}[B2] ${k}：/admin.html 仍照舊被拒（302）`);
     T.eq([d.post.status, d.post.cleared], [302, true], `${tag}[B2] ${k}：POST 靜態路徑 不豁免（照舊 302 並清除登入 cookie）`);
@@ -237,10 +238,16 @@ async function probeB(T, serverFile, origFile) {
   // 原版的安全行為也量一次，作為「不退步」的對照
   for (const k of ['dis', 'del', 'pw2']) {
     T.eq([R.api[k].status, R.api[k].json && R.api[k].json.code], [O.api[k].status, O.api[k].json && O.api[k].json.code], `[B2 對照] ${k}：/api/me 與 origin/main 相同`);
-    for (const f of ['uploads', 'uploadsJs', 'ghostJs', 'admin', 'post']) T.eq(R.dyn[k][f].status, O.dyn[k][f].status, `[B2 對照] ${k}：${f} 與 origin/main 相同`);
+    for (const f of ['ghostJs', 'admin', 'post']) T.eq(R.dyn[k][f].status, O.dyn[k][f].status, `[B2 對照] ${k}：${f} 與 origin/main 相同`);
+    // SEC-02 刻意差異：/uploads 由 302（導向登入）改為 401；基準若仍是舊行為（302）才有意義，不再逐項比對狀態碼
   }
   T.ok(['_s_del', '_s_dis', '_s_pw2'].every(u => O.audit.includes(u)), '[B2 對照] origin/main 對這三個帳號同樣寫了稽核（原版另外還有 3 筆誤踢紀錄＝bug 的副作用）');
-  T.eq(R.unauth, O.unauth, '[B3] 未登入者的靜態檔／API 回應（狀態、Location、標頭、內容雜湊）與 origin/main 逐項相同');
+  { // SEC-02 刻意差異：未登入 /uploads/* 由 302 改 401（無 Location）；其餘逐項與 origin/main 相同
+    const U = '/uploads/zzz';
+    T.eq([R.unauth[U].s, R.unauth[U].loc || ''], [401, ''], '[B3] 未登入 /uploads/* → 401、無 Location（SEC-02）');
+    const strip = (o) => { const c = Object.assign({}, o); delete c[U]; return c; };
+    T.eq(strip(R.unauth), strip(O.unauth), '[B3] 未登入者的靜態檔／API 回應（狀態、Location、標頭、內容雜湊）與 origin/main 逐項相同（/uploads 除外，見上一項）');
+  }
   return R;
 }
 

@@ -1496,12 +1496,37 @@ app.get('/admin.html', requireAuth, ...(process.env.DB_BACKEND === 'postgres' ? 
   if (!user || user.role !== 'admin' || user.active === false) return res.redirect('/');
   serveHtmlWithVersion(path.join(__dirname, '_client', 'admin.html'), res);
 });
-app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_NO_CACHE));
 // ── 上傳檔案路由：改由 storage 模組代理（支援本地/Supabase）──
-app.get('/uploads/:key', requireAuth, (req, res, next) => {
+// SEC-02：名片照片屬於個資。原本只要登入就能下載任何 key（檔名雖是 UUID，但知道網址就拿得到別人的名片照）。
+// 現在下載前先找出「引用這個 key 的聯絡人」，並用和 GET /api/contacts 完全相同的可視範圍判斷（visibleContactsOf）：
+//   · 找不到任何聯絡人引用這個 key（含上傳了但還沒存成名片、已被永久刪除的）→ 一律 404
+//   · 引用它的聯絡人都不在目前使用者的可視範圍 → 404（刻意不用 403，避免洩漏「這個檔案存在」）
+//   · 管理員（role=admin）維持可看全部「有被引用」的名片圖（含已軟刪除、客戶池的聯絡人）
+// 目前系統只有「名片圖片」這一種上傳類型（唯一的上傳入口是 POST /api/upload，值只會存進 contacts[].cardImage），
+// 沒有任何「全員共用」的檔案（公告附件、公司 logo 等都不走 /uploads）。日後若新增別種經 /uploads 提供的檔案，
+// 必須在 canViewUpload 明確加上它的授權規則——沒有被任何規則認領的 key 一律 404（預設拒絕）。
+// 未登入回 401（不是導向登入頁：這是圖片資源，不是頁面）。postgres 模式要先 db.ready()（/uploads 不在 /api/ 底下，
+// 不會經過上面的 dbReadyMiddleware；canViewUpload 要讀資料）。
+const UPLOAD_KEY_RE = /^[0-9a-fA-F-]{36}\.[A-Za-z0-9]{1,10}$/;
+function uploadsRequireLogin(req, res, next) {
+  if (req.session && req.session.user) return next();
+  res.status(401).end();
+}
+function canViewUpload(req, key) {
+  if (typeof key !== 'string' || !UPLOAD_KEY_RE.test(key)) return false;   // 非本系統產生的檔名格式 → 沒有任何紀錄會引用它
+  const data = db.load();
+  const refs = (data.contacts || []).filter(c => c && typeof c.cardImage === 'string' && path.posix.basename(c.cardImage) === key);
+  if (!refs.length) return false;
+  if (req.session.user.role === 'admin') return true;
+  return visibleContactsOf(req, data, loadAuth(), refs).length > 0;
+}
+app.get('/uploads/:key', uploadsRequireLogin, ...(process.env.DB_BACKEND === 'postgres' ? [dbReadyMiddleware] : []), (req, res, next) => {
+  if (!canViewUpload(req, req.params.key)) return res.status(404).end();
   Promise.resolve(storage.serveFile(req, res, req.params.key)).catch(next);
 });
-
+// （上面這段刻意放在下一行 app.use(requireAuth, express.static…) 之前：那一行對所有路徑都先要求登入、未登入會 302 導向登入頁；
+//   /uploads 是圖片資源，未登入要回 401，所以要先被上面的路由處理。）
+app.use(requireAuth, express.static(path.join(__dirname, '_client'), STATIC_NO_CACHE));
 app.get('/api/me', requireAuth, (req, res) => {
   // 補上 bu 資訊（session 內可能沒有，從 auth.json 即時讀取最新）
   const auth = loadAuth();
@@ -3555,6 +3580,22 @@ function isKaConfirmed(opp, username) {
 }
 
 const { buildHealthScorer } = require('./lib/contactHealth');   // 客戶健康分數（索引化，M-02）
+// 目前使用者「看得到」的聯絡人（可視範圍的單一來源）：GET /api/contacts 與 GET /uploads/:key（SEC-02）共用，
+// 兩邊永遠同一套規則。allContacts 是要判斷的候選清單（GET /api/contacts 傳全部；/uploads 只傳引用該檔案的幾筆——
+// 這幾個過濾函式都是逐筆判斷，所以對子集合算出的結果和對全部算再取交集相同）。
+function visibleContactsOf(req, data, auth, allContacts) {
+  const role = req.session.user.role;
+  let contacts = [];
+  if (role !== 'secretary') {
+    const owners = getViewableOwners(req, 'contacts');
+    contacts = (allContacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
+    contacts = filterByBu(req, contacts);
+    contacts = filterByViewGroup(req, contacts, c => c.company);   // tecopm: 限定 group memberCompanies
+  }
+  // ⭐ KA 跨部門共享：其他部門（+秘書）看得到 KA 公司的聯絡人；同部門不加
+  mergeKaVisible(contacts, req, data, auth, allContacts || [], 'contacts');
+  return contacts;
+}
 app.get('/api/contacts', requireAuth, (req, res) => {
   const { search } = req.query;
   const data = db.load();
@@ -3562,15 +3603,7 @@ app.get('/api/contacts', requireAuth, (req, res) => {
   const _auth = loadAuth();
   const _ownerNameMap = {};
   (_auth.users || []).forEach(u => { _ownerNameMap[u.username] = userLabel(u); });
-  let contacts = [];
-  if (role !== 'secretary') {
-    const owners = getViewableOwners(req, 'contacts');
-    contacts = (data.contacts || []).filter(c => owners.includes(c.owner) && !c.deleted);
-    contacts = filterByBu(req, contacts);
-    contacts = filterByViewGroup(req, contacts, c => c.company);   // tecopm: 限定 group memberCompanies
-  }
-  // ⭐ KA 跨部門共享：其他部門（+秘書）看得到 KA 公司的聯絡人；同部門不加
-  mergeKaVisible(contacts, req, data, _auth, data.contacts || [], 'contacts');
+  let contacts = visibleContactsOf(req, data, _auth, data.contacts || []);
   if (search) {
     const kw = search.toLowerCase();
     contacts = contacts.filter(c =>

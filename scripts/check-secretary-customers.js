@@ -258,7 +258,7 @@ function groupUnit() {
   const html = read('_client/index.html');
   const scripts = [...html.matchAll(/<script\s+src="([^"]+\.js)"/g)].map((m) => m[1]);
   ok(scripts.indexOf('secretary-customers.js') < scripts.indexOf('app.js') && scripts.indexOf('secretary-customers.js') > 0, 'U15 index.html：secretary-customers.js 在 app.js 之前（首次載入競態修正）');
-  ok(/itts-crm-v43'/.test(read('_client/sw.js')), 'U16 SW_VERSION 為 v43');
+  ok(/itts-crm-v(4[3-9]|[5-9][0-9])'/.test(read('_client/sw.js')) && /v43：秘書客戶視圖/.test(read('_client/sw.js')), 'U16 SW_VERSION 不低於 v43 且 v43 註解有說明（後續提版不會讓此項失敗）');
   ok(/#SECRETARY_CUSTOMERS=1/.test(read('.env.example')), 'U17 .env.example 有記載 SECRETARY_CUSTOMERS');
   ok(/if \(SCU\.enabled\(\)\) FEATURE_REGISTRY\.push/.test(server) && /if \(SCU\.enabled\(\)\) DEFAULT_ROLE_PERMISSIONS\.secretary/.test(server), 'U18 功能鍵與預設權限只在開關開啟時登錄');
   // getViewableOwners 與基準逐字相同（不得改動：getEditableOwners 重用它）
