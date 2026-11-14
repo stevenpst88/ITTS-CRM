@@ -3279,10 +3279,8 @@ function openModal(contact = null) {
   $('contactForm').reset();
   $('contactId').value = '';
   $('cardImageUrl').value = '';
-  $('previewImg').style.display = 'none';
   $('previewImg').src = '';
-  $('cardImagePreview').querySelector('.upload-hint').style.display = 'flex';
-  $('imageActions').style.display = 'none';
+  $('cardImageLegacy').style.display = 'none';
 
   // BU 下拉
   setupBuSelector('contactBu', 'contactBuGroup', contact?.bu);
@@ -3322,9 +3320,7 @@ function openModal(contact = null) {
     if (contact.cardImage) {
       $('cardImageUrl').value = contact.cardImage;
       $('previewImg').src = contact.cardImage;
-      $('previewImg').style.display = 'block';
-      $('cardImagePreview').querySelector('.upload-hint').style.display = 'none';
-      $('imageActions').style.display = 'flex';
+      $('cardImageLegacy').style.display = 'block';   // 既有舊圖：唯讀預覽＋「移除圖片」；名片圖已不再上傳儲存
     }
     // 職能分類：有存就用，沒有就嘗試自動 mapping
     const jfKey = contact.jobFunction || autoMapJobFunction(contact.title || '');
@@ -3438,10 +3434,8 @@ function openModalAddContact(prefill = {}) {
   $('contactForm').reset();
   $('contactId').value = '';
   $('cardImageUrl').value = '';
-  $('previewImg').style.display = 'none';
   $('previewImg').src = '';
-  $('cardImagePreview').querySelector('.upload-hint').style.display = 'flex';
-  $('imageActions').style.display = 'none';
+  $('cardImageLegacy').style.display = 'none';
 
   $('modalTitle').textContent = '新增聯絡人';
 
@@ -3650,37 +3644,12 @@ $('title').addEventListener('input', function () {
 });
 $('cancelBtn').addEventListener('click', closeModal);
 
-// 名片圖片上傳
-$('cardImagePreview').addEventListener('click', () => $('cardImageInput').click());
-$('cardImageInput').addEventListener('change', async function () {
-  const file = this.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append('card', file);
-  try {
-    const res = await fetch(`${API}/upload`, { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.url) {
-      $('cardImageUrl').value = data.url;
-      // SEC-02：/uploads/:key 只有「已被名片引用」才能下載（還沒存成名片的新上傳會是 404），
-      // 所以存檔前的預覽改用本機檔案的 blob URL，不再用剛上傳的伺服器網址。
-      if (window._cardPreviewBlob) { try { URL.revokeObjectURL(window._cardPreviewBlob); } catch {} }
-      window._cardPreviewBlob = URL.createObjectURL(file);
-      $('previewImg').src = window._cardPreviewBlob;
-      $('previewImg').style.display = 'block';
-      $('cardImagePreview').querySelector('.upload-hint').style.display = 'none';
-      $('imageActions').style.display = 'flex';
-    }
-  } catch { showToast('圖片上傳失敗'); }
-  this.value = '';
-});
-
+// 名片圖不再上傳儲存（伺服器 POST /api/upload 已停用 410）；這裡只剩「移除既有舊圖」
+// 儲存時 cardImage 帶現有值（沒動）或 ''（已移除）；伺服器忽略任何新的非空值
 $('removeImage').addEventListener('click', () => {
   $('cardImageUrl').value = '';
-  $('previewImg').style.display = 'none';
   $('previewImg').src = '';
-  $('cardImagePreview').querySelector('.upload-hint').style.display = 'flex';
-  $('imageActions').style.display = 'none';
+  $('cardImageLegacy').style.display = 'none';
 });
 
 // 儲存

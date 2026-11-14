@@ -52,7 +52,7 @@ const U = {
 };
 // 每張假名片圖的檔名（uuid.副檔名；與 POST /api/upload 產生的格式相同）
 const uuid = () => crypto.randomUUID();
-const K = { A: uuid() + '.png', B: uuid() + '.png', ITS: uuid() + '.png', KA: uuid() + '.png', DEL: uuid() + '.png', POOL: uuid() + '.png', ORPHAN: uuid() + '.png' };
+const K = { A: uuid() + '.png', B: uuid() + '.png', ITS: uuid() + '.png', KA: uuid() + '.png', DEL: uuid() + '.png', POOL: uuid() + '.png', ORPHAN: uuid() + '.png', NEW: uuid() + '.png', XB: uuid() + '.png', OUT: uuid() + '.png', SEC: uuid() + '.png' };
 const createdUploads = [];
 
 function seedFiles() {
@@ -64,6 +64,7 @@ function seedFiles() {
     mkUser(U.ITS, 'user', { bu: ['ITS'], supervisor: U.manager2 }),
     mkUser(U.marketing, 'marketing'),
     mkUser(U.secretary, 'secretary', { bu: ['ERP'] }),
+    mkUser('_s_xb', 'user', { bu: ['ITS'], supervisor: U.manager1 }),   // 第 6 節：在 ERP 主管 manager1 的子樹內、但 BU 是 ITS
     mkUser(U.tecopm, 'tecopm', { viewOwnerScope: U.A, viewGroupId: '_s_g1' }),
     mkUser(U.groupsales, 'groupsales', { viewOwnerScope: U.A, viewGroupId: '_s_g1' }),
   ];
@@ -77,6 +78,10 @@ function seedFiles() {
       ct('c-ka', U.ITS, 'ITS', KA_CO, '丁（ITS 的 KA 名片）', K.KA),
       ct('c-del', U.A, 'ERP', ERP_CO, '戊（A 已刪除的名片）', K.DEL, { deleted: true }),
       ct('c-pool', '_pool', 'ERP', ERP_CO, '己（客戶池的名片）', K.POOL),
+      ct('c-xb', '_s_xb', 'ITS', ERP_CO, '辛（manager1 子樹內、BU＝ITS 的名片）', K.XB),
+      ct('c-out', U.A, 'ERP', '集團外沙盒公司', '壬（A 的名片，但公司不在集團 _s_g1）', K.OUT),
+      ct('c-sec', U.secretary, 'ERP', ERP_CO, '癸（秘書本人名下、與秘書同 BU 的名片）', K.SEC),
+      ct('c-new', U.A, 'ERP', ERP_CO, '庚（A 的名片，第 5 節播種；原為真實上傳後存成名片）', K.NEW),
     ],
     companies: [], keyAccounts: [{ id: 'ka1', company: KA_CO }],
     visits: [], opportunities: [], contracts: [], receivables: [], callins: [], quotations: [],
@@ -193,26 +198,54 @@ async function run() {
     }
   }
 
-  console.log('[5] 真實上傳流程：A 上傳 → 存成名片 → 才可下載');
+  // 名片圖不再儲存於伺服器：POST /api/upload 已停用（410），所以原本「真實上傳→存成名片」改成播種——
+  // 直接在儲存目錄放檔＋資料裡的 c-new.cardImage 指向它（seedFiles）。授權斷言（5.5–5.9）維持不變，只是來源改成播種。
+  // 上傳入口停用本身另見 scripts/check-no-card-storage.js。
+  console.log('[5] 播種的名片圖（取代原「真實上傳」流程）：A 的名片圖 → 依角色可下載');
   {
-    const form = new FormData();
-    form.append('card', new Blob([PNG], { type: 'image/png' }), 'card.png');
-    const up = await http(U.A, 'POST', '/api/upload', form);
-    eq(up.status, 200, '5.1 A 上傳名片圖成功（上傳流程不變）');
-    const url = up.json && up.json.url;
-    ok(typeof url === 'string' && /^\/uploads\/[0-9a-f-]{36}\.png$/i.test(url), `5.2 回傳 /uploads/<uuid>.png（${url}）`);
-    if (url) {
-      createdUploads.push(path.basename(url));
-      eq((await http(U.A, 'GET', url)).status, 404, '5.3 剛上傳、還沒存成名片：連 A 自己也是 404（沒有任何名片引用；前端預覽改用本機 blob URL）');
-      const mk = await http(U.A, 'POST', '/api/contacts', { name: '真實上傳測試', company: ERP_CO, isForeign: true, cardImage: url });
-      ok(mk.status === 200 || mk.status === 201, `5.4 A 用該網址建立名片成功（得到 ${mk.status} ${JSON.stringify(mk.json).slice(0, 120)}）`);
-      if (mk.status === 200 || mk.status === 201) {
-        ok(isPng(await http(U.A, 'GET', url)), '5.5 存成名片後 A 可下載（內容正確）');
-        eq(await got(U.B, path.basename(url)), 404, '5.6 同層級 B 下載＝404');
-        eq(await got(U.manager1, path.basename(url)), 200, '5.7 A 的主管下載＝200');
-        eq(await got(U.admin, path.basename(url)), 200, '5.8 管理員下載＝200');
-        eq(await got(U.manager2, path.basename(url)), 404, '5.9 別的部門主管下載＝404');
-      }
+    const url = '/uploads/' + K.NEW;
+    const up = await http(U.A, 'POST', '/api/upload', (() => { const f = new FormData(); f.append('card', new Blob([PNG], { type: 'image/png' }), 'card.png'); return f; })());
+    eq(up.status, 410, '5.1 A 上傳名片圖＝410（上傳入口已停用）');
+    eq(await got(U.A, K.ORPHAN), 404, '5.3 檔案在儲存目錄但沒有任何名片引用：連 A 自己也是 404');
+    ok(isPng(await http(U.A, 'GET', url)), '5.5 A 可下載自己的名片圖（內容正確）');
+    eq(await got(U.B, K.NEW), 404, '5.6 同層級 B 下載＝404');
+    eq(await got(U.manager1, K.NEW), 200, '5.7 A 的主管下載＝200');
+    eq(await got(U.admin, K.NEW), 200, '5.8 管理員下載＝200');
+    eq(await got(U.manager2, K.NEW), 404, '5.9 別的部門主管下載＝404');
+  }
+  console.log('[6] 補 filterByBu／filterByViewGroup／秘書分支的覆蓋（這三個函式與 GET /api/contacts 共用）');
+  {
+    await login('_s_xb');
+    const listOf = async (who) => new Set(((await http(who, 'GET', '/api/contacts')).json || []).map(c => c.id));
+    // ① 主管子樹內但 BU 不符：manager1 的清單看不到、也不得下載；admin／ITS 主管（manager2 不在其子樹）也要有明確預期
+    const l1 = await listOf(U.manager1);
+    ok(!l1.has('c-xb'), '6.1 ERP 主管 manager1：GET /api/contacts 看不到「子樹內但 BU＝ITS」的名片');
+    eq(await got(U.manager1, K.XB), 404, '6.2 ERP 主管 manager1 不得下載該名片圖（BU 不符）');
+    eq(await got('_s_xb', K.XB), 200, '6.3 名片擁有者本人（_s_xb）可下載自己的圖');
+    eq(await got(U.admin, K.XB), 200, '6.4 管理員可下載');
+    eq(await got(U.manager2, K.XB), 404, '6.5 ITS 主管 manager2（該員不在其子樹）不得下載');
+    // ② tecopm／groupsales：範圍（A）內，但公司不在其集團
+    for (const [role, who] of [['tecopm', U.tecopm], ['groupsales', U.groupsales]]) {
+      const l = await listOf(who);
+      ok(l.has('c-a') && !l.has('c-out'), '6.6 ' + role + '：清單有集團內公司的 c-a、沒有集團外公司的 c-out');
+      eq(await got(who, K.OUT), 404, '6.7 ' + role + ' 不得下載「公司不在其集團」的名片圖（即使 owner 在範圍內）');
+      eq(await got(who, K.A), 200, '6.8 ' + role + ' 仍可下載集團內公司的名片圖（對照組）');
+    }
+    eq(await got(U.A, K.OUT), 200, '6.9 擁有者 A 可下載自己的（集團外公司）名片圖');
+    eq(await got(U.manager1, K.OUT), 200, '6.10 A 的主管可下載（一般角色不受集團篩選）');
+    // ③ 秘書：任何圖一律 404，含「名片 owner 就是秘書本人、與秘書同 BU」
+    const lsec = await listOf(U.secretary);
+    ok(!lsec.has('c-sec') && !lsec.has('c-a') && !lsec.has('c-xb'), '6.11 秘書：GET /api/contacts 看不到任何名片（含自己名下）');
+    const secs = [];
+    for (const k of [K.SEC, K.A, K.B, K.XB, K.OUT, K.NEW, K.KA]) secs.push(await got(U.secretary, k));
+    eq(secs, [404, 404, 404, 404, 404, 404, 404], '6.12 秘書下載任何名片圖都 404（含 owner＝秘書本人、同 BU）');
+    eq(await got(U.admin, K.SEC), 200, '6.13 管理員可下載秘書名下名片的圖（對照組，證明 404 是授權造成而非檔案不存在）');
+    // 一致性（新增名片）：各角色「清單有＝下載得到」
+    const items = [['c-xb', K.XB], ['c-out', K.OUT], ['c-sec', K.SEC]];
+    for (const [role, who] of Object.entries(U)) {
+      if (role === 'admin') continue;
+      const l = await listOf(who);
+      for (const [id, key] of items) ok((await got(who, key) === 200) === l.has(id), '6.14 ' + role + ' 對 ' + id + '：清單與下載一致');
     }
   }
 }

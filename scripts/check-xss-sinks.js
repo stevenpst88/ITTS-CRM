@@ -115,7 +115,7 @@ function secStatic() {
   ok(scanText('x = `<td title="${escapeHtml(z.product)}">${escH(z.stage)}</td>`;').length === 0, '掃描器自測：已跳脫的不報');
   // server 端：使用者資料進 HTML 的寫入規則存在
   const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  ok(/isValidCardImage\(req\.body\.cardImage\)/.test(srv) && /isValidCardImage\(safeBody\.cardImage\)/.test(srv), 'server.js：POST／PUT 聯絡人都驗證 cardImage');
+  ok(/\n    cardImage: '',\n    createdAt/.test(srv) && /safeBody\.cardImage !== undefined\) \{\s*const _ci/.test(srv) && !/cardImage:\s*req\.body/.test(srv), 'server.js：POST 一律存 cardImage 空字串、PUT 只允許維持原值或清空（名片圖不再儲存，請求值都不會寫入）');
   ok(/USERNAME_RE\.test\(String\(username\)\.trim\(\)\)/.test(srv), 'server.js：建立帳號驗證帳號字元');
 }
 
@@ -201,7 +201,8 @@ async function secServer(tag) {
   const post = (body) => http('_s_u1', 'POST', '/api/contacts', body);
   // ── cardImage 驗證矩陣（新增）──
   let r = await post(base({ cardImage: uuidUrl('png') }));
-  ok(r.status === 200 || r.status === 201, T + 'cardImage：本系統上傳網址（uuid.png）→ 接受', r.status + ' ' + (r.json && r.json.error));
+  ok(r.status === 200 || r.status === 201, T + 'cardImage：本系統上傳網址（uuid.png）→ 接受（但不儲存）', r.status + ' ' + (r.json && r.json.error));
+  ok(r.json && r.json.cardImage === '', T + 'cardImage：本系統上傳網址 → 不儲存（存成空字串）', r.json && r.json.cardImage);
   const okId = r.json && r.json.id;
   r = await post(base({ cardImage: uuidUrl('JPG') })); ok(r.status < 300, T + 'cardImage：uuid.JPG（本地儲存保留原副檔名大小寫）→ 接受', r.status);
   r = await post(base({ cardImage: '' })); ok(r.status < 300, T + 'cardImage：空字串 → 接受', r.status);
@@ -222,20 +223,20 @@ async function secServer(tag) {
   };
   for (const [name, v] of Object.entries(bad)) {
     r = await post(base({ cardImage: v }));
-    ok(r.status === 400 && /名片圖片/.test((r.json && r.json.error) || ''), T + `cardImage 新增：${name} → 400 中文訊息`, r.status + ' ' + JSON.stringify(r.json).slice(0, 60));
+    ok(r.status < 300 && r.json && r.json.cardImage === '', T + `cardImage 新增：${name} → 忽略、存成空字串（名片圖不再儲存）`, r.status + ' ' + JSON.stringify(r.json).slice(0, 60));
   }
   const list = await http('_s_u1', 'GET', '/api/contacts');
   const stored = (list.json || []).filter(c => c.cardImage && c.cardImage !== LEGACY_IMG);
-  ok(stored.every(c => /^\/uploads\/[0-9a-f-]{36}\.[A-Za-z0-9]+$/.test(c.cardImage)), T + '被拒絕的值一個都沒有寫進資料', stored.map(c => c.cardImage).join('|').slice(0, 80));
+  ok(stored.length === 0, T + '請求帶的 cardImage 一個都沒有寫進資料', stored.map(c => c.cardImage).join('|').slice(0, 80));
   // ── 更新 ──
   const put = (id, body) => http('_s_u1', 'PUT', '/api/contacts/' + id, body);
   r = await put('L1', { title: '經理' }); ok(r.status === 200, T + '舊資料（cardImage 不合規）只改職稱、不帶 cardImage → 200', r.status + ' ' + JSON.stringify(r.json).slice(0, 80));
   r = await put('L1', { title: '協理', cardImage: LEGACY_IMG }); ok(r.status === 200, T + '舊資料整包送回、cardImage 未變 → 200（不擋）', r.status + ' ' + JSON.stringify(r.json).slice(0, 80));
-  r = await put('L1', { cardImage: 'javascript:alert(1)' }); ok(r.status === 400, T + '舊資料把 cardImage 改成另一個不合規值 → 400', r.status);
-  r = await put('L1', { cardImage: 'data:image/png;base64,AAAA' }); ok(r.status === 400, T + '更新為 data: URL → 400', r.status);
-  r = await put('L1', { cardImage: uuidUrl('webp') }); ok(r.status === 200, T + '舊資料改成合法上傳網址 → 200', r.status);
-  r = await put('L1', { cardImage: '' }); ok(r.status === 200, T + '清空 cardImage → 200', r.status);
-  r = await put(okId, { cardImage: 'http://evil.test/a.png' }); ok(r.status === 400, T + '合法資料改成外部網址 → 400', r.status);
+  r = await put('L1', { cardImage: 'javascript:alert(1)' }); ok(r.status === 200 && r.json && r.json.cardImage === LEGACY_IMG, T + '舊資料把 cardImage 改成另一個不合規值 → 忽略、維持原值', r.status + ' ' + (r.json && r.json.cardImage));
+  r = await put('L1', { cardImage: 'data:image/png;base64,AAAA' }); ok(r.status === 200 && r.json && r.json.cardImage === LEGACY_IMG, T + '更新為 data: URL → 忽略、維持原值', r.status);
+  r = await put('L1', { cardImage: uuidUrl('webp') }); ok(r.status === 200 && r.json && r.json.cardImage === LEGACY_IMG, T + '舊資料改成合法上傳網址 → 200 但忽略（不新增引用）', r.status);
+  r = await put('L1', { cardImage: '' }); ok(r.status === 200 && r.json && r.json.cardImage === '', T + '清空 cardImage → 200 並清掉', r.status);
+  r = await put(okId, { cardImage: 'http://evil.test/a.png' }); ok(r.status === 200 && r.json && r.json.cardImage === '', T + '改成外部網址 → 忽略（不寫入）', r.status);
   // ── 匯入：匯入流程本來就不吃 cardImage（一律寫 ''），確認帶了也不會寫入 ──
   r = await http('_s_admin', 'POST', '/api/admin/import-contacts-json', { targetOwner: '_s_u2', contacts: [{ name: '匯入甲', company: '匯入公司', taxId: '', cardImage: 'javascript:alert(1)' }] });
   const listU2 = await http('_s_u2', 'GET', '/api/contacts');
@@ -597,9 +598,9 @@ async function secMut() {
   const srvSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   const mutate = (src, from, to, id) => { if (src.split(from).length !== 2) throw new Error('變異 ' + id + ' 找不到唯一錨點：' + from.slice(0, 50)); return src.replace(from, () => to); };
   const mkSrv = (id, src) => { const f = path.join(ROOT, `_xss_mut_${id}.js`); fs.writeFileSync(f, src); tmpFiles.push(f); return f; };
-  // 變異 1：POST 聯絡人不驗證 cardImage
+  // 變異 1：POST 聯絡人把請求的 cardImage 直接寫入（名片圖不再儲存的規則被拿掉）
   {
-    const f = mkSrv('m1', mutate(srvSrc, 'if (!isValidCardImage(req.body.cardImage)) return res.status(400).json({ error: CARD_IMAGE_ERR });', 'void 0;', 'm1'));
+    const f = mkSrv('m1', mutate(srvSrc, "    cardImage: '',\n    createdAt: new Date().toISOString()\n  };\n  // 郵寄地址：只在有值", "    cardImage: req.body.cardImage || '',\n    createdAt: new Date().toISOString()\n  };\n  // 郵寄地址：只在有值", 'm1'));
     await freshServer(f);
     const delta = await captureFailures(() => secServer('變異1:不驗證 cardImage'));
     ok(delta >= 6, '變異1（POST 不驗證 cardImage）→ cardImage 矩陣有 ≥6 筆斷言失敗（抓得到）', '失敗 ' + delta);
