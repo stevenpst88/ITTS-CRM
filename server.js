@@ -1538,11 +1538,13 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 // ── Web Push 推播訂閱 ────────────────────────────────────
 // 訂閱：把瀏覽器產生的 PushSubscription 物件存到該 user 帳號
-app.post('/api/push/subscribe', requireAuth, (req, res) => {
+app.post('/api/push/subscribe', requireAuth, async (req, res) => {
   const sub = req.body;
   if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
     return res.status(400).json({ success: false, message: '訂閱資料格式不正確' });
   }
+  // SEC-08b：endpoint 是使用者提交的網址、伺服器之後會對它送請求 → 只收 https／443／解析後全是公開位址的端點（不寫死推播服務白名單）
+  { const chk = await pushNotify.validateEndpoint(sub.endpoint); if (!chk.ok) return res.status(400).json({ success: false, message: '推播端點不符合安全規定：' + chk.message }); }
   const auth = loadAuth();
   const user = auth.users.find(u => u.username === req.session.user.username);
   if (!user) return res.status(404).json({ success: false, message: '帳號不存在' });
@@ -1727,22 +1729,36 @@ function requireAi(req, res, next) {
 }
 
 // ── Feature 1：名片 AI 辨識 ─────────────────────────────
-const uploadOcr = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ok = /^image\//i.test(file.mimetype);
-    ok ? cb(null, true) : cb(new Error('只支援圖片格式'));
-  }
-});
+// SEC-09：業務版與管理員版共用同一套圖片檢查（lib/ocrImage.js）：multer 的 fileFilter（MIME＋副檔名白名單）→ 大小上限 →
+// 檔頭 magic bytes（ocrImageGate）。**這些全部在 aiCreditsGuard（扣 AI 額度）與 Gemini 呼叫之前**——不合格直接 400、不扣額度；
+// requireAi 也放在扣額度之前（沒設 Gemini 金鑰就不該扣點）。multer 的錯誤一律轉成 400 JSON（不再掉到預設錯誤處理）。
+// 送進 Gemini 的 MIME 用檔頭偵測的類型（req.file.detectedMime），不用用戶端宣稱的。
+const OCR_IMG = require('./lib/ocrImage');
+function ocrUploadMw(maxBytes) {
+  const up = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxBytes, files: 1 }, fileFilter: OCR_IMG.fileFilter });
+  return (req, res, next) => up.single('card')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'OCR_BAD_TYPE') return res.status(400).json({ error: OCR_IMG.BAD_IMAGE_MSG, code: 'INVALID_IMAGE' });
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: `圖片太大，請壓縮到 ${Math.round(maxBytes / 1024 / 1024)}MB 以內再上傳`, code: 'IMAGE_TOO_LARGE' });
+    return res.status(400).json({ error: '圖片上傳失敗，請重新選擇', code: 'UPLOAD_FAILED' });
+  });
+}
+function ocrImageGate(req, res, next) {
+  if (!req.file) return res.status(400).json({ error: '未收到圖片' });
+  const detected = OCR_IMG.sniffImageType(req.file.buffer);
+  if (!detected) return res.status(400).json({ error: OCR_IMG.BAD_IMAGE_MSG, code: 'INVALID_IMAGE' });
+  req.file.detectedMime = detected;
+  next();
+}
+const uploadOcrAdmin = ocrUploadMw(10 * 1024 * 1024);   // 管理員版上限維持 10MB
+const uploadOcrUser  = ocrUploadMw(8 * 1024 * 1024);    // 業務版上限維持 8MB
 
-app.post('/api/admin/ai-ocr-card', requireAdmin, aiCreditsGuard('admin-ocr-card'), requireAi,
-  (req, res, next) => uploadOcr.single('card')(req, res, next),
+app.post('/api/admin/ai-ocr-card', requireAdmin, uploadOcrAdmin, ocrImageGate, requireAi, aiCreditsGuard('admin-ocr-card'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '未收到圖片' });
       const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
+      const mimeType = req.file.detectedMime;
 
       const model = gemini.getModel();
       const result = await model.generateContent([
@@ -1779,14 +1795,12 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 );
 
 // ── 業務名片拍照辨識（業務可用，單張填入）────────────────
-const uploadOcrUser = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-app.post('/api/ai/ocr-card', requireAuth, aiLimiter, aiCreditsGuard('ocr-card'), requireAi,
-  (req, res, next) => uploadOcrUser.single('card')(req, res, next),
+app.post('/api/ai/ocr-card', requireAuth, aiLimiter, uploadOcrUser, ocrImageGate, requireAi, aiCreditsGuard('ocr-card'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '未收到圖片' });
       const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
+      const mimeType = req.file.detectedMime;
 
       const model = gemini.getModel();
       const result = await model.generateContent([
@@ -2047,22 +2061,23 @@ app.post('/api/ai/follow-up-email', requireAuth, aiLimiter, aiCreditsGuard('foll
 });
 
 // ── Feature 6：AI 公司背景分析（網頁 fetch + Gemini）───
+// 使用者自填網址的外送抓取（SEC-08b）：與整合區同一份 lib/safeUrl.js；只允許 443、回應上限 2MB。新增「使用者可控網址」的外送請用 publicFetch。
+const PUBLIC_FETCH_OPTS = { ports: ['443'], timeoutMs: 10000, maxBytes: 2 * 1024 * 1024 };
+function publicFetch(url, init) { return SU.safeFetch(url, init, PUBLIC_FETCH_OPTS); }
 app.post('/api/ai/company-insight', requireAuth, aiLimiter, aiCreditsGuard('company-insight'), requireAi, async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url || !/^https?:\/\//i.test(url))
+    if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url))
       return res.status(400).json({ error: '請提供有效的網址（需包含 https://）' });
+    // SEC-08b：使用者自填的網址由伺服器端抓取 → 與整合區同一套檢查（只收 https／443／解析後全是公開位址、連線釘 IP、轉址逐跳重檢、10 秒、上限 2MB）
+    { const chk = await SU.validateUrl(url, PUBLIC_FETCH_OPTS); if (!chk.ok) return res.status(400).json({ error: '此網址不符合安全規定：' + chk.message }); }
 
-    // 抓取網頁內容（10 秒逾時）
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    // 抓取網頁內容（逾時由 safeFetch 控制）
     let pageText;
     try {
-      const resp = await fetch(url, {
-        signal: controller.signal,
+      const resp = await publicFetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CRM-AI-Bot/1.0)' }
       });
-      clearTimeout(timer);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const html = await resp.text();
       // 移除 script / style 區塊及 HTML tags
@@ -2074,7 +2089,6 @@ app.post('/api/ai/company-insight', requireAuth, aiLimiter, aiCreditsGuard('comp
         .trim()
         .slice(0, 6000);
     } catch (fetchErr) {
-      clearTimeout(timer);
       return res.status(400).json({ error: '無法存取此網址，請確認網址是否正確或網站是否允許存取' });
     }
 
@@ -7465,6 +7479,25 @@ function maskIntegration(it) {
   return out;
 }
 
+// ── 已存機敏值不得被送往「被改掉的目標」（SEC-08b）──
+// 密碼（Basic）會隨請求送到 Base URL；clientSecret（OAuth）送到 Token Endpoint，換到的 token 再送到 Base URL。
+// 若網址的來源（協定＋主機＋埠）被改掉，而這次沒有同時提供新的機敏值，已存的舊值就會被送到新位址（被盜管理員 session 的外洩路徑）。
+// 規則：來源有變 → 受影響的已存機敏值視為「失效」：目前認證方式需要的那一個必須重新輸入（否則存檔／測試回 400），用不到的直接清掉。
+function integOrigin(u) {
+  const t = String(u || '').trim();
+  if (!t) return '';
+  try { const x = new URL(t); return (x.protocol + '//' + x.host).toLowerCase(); } catch { return t.toLowerCase(); }
+}
+// 這個已存機敏值（field）在新的 baseUrl／tokenEndpoint 下是否失效。prev 為已存設定；沒有已存值就沒有東西可外洩
+function integSecretTainted(prev, field, baseUrl, tokenEndpoint) {
+  if (!prev || !prev[field]) return false;
+  const baseChanged = integOrigin(prev.baseUrl) !== integOrigin(baseUrl);
+  const tokChanged = integOrigin(prev.tokenEndpoint) !== integOrigin(tokenEndpoint);
+  return field === 'password' ? baseChanged : (baseChanged || tokChanged);
+}
+const INTEG_SECRET_NEEDED = { basic: 'password', oauth: 'clientSecret' };
+const INTEG_REENTER_MSG = 'Base URL 或 Token Endpoint 的主機已變更：為避免已儲存的密碼被送到新位址，請同時重新輸入密碼（OAuth 為 Client Secret）';
+
 app.get('/api/admin/integrations', requireAdmin, (req, res) => {
   const data = db.load();
   res.json((data.integrations || []).map(maskIntegration));
@@ -7508,6 +7541,15 @@ app.post('/api/admin/integrations', requireAdmin, (req, res) => {
       catch (e) { console.error('[integrations] 加密失敗', f, e.message); }
     }
   });
+  // SEC-08b：目標來源變了但沒重新輸入的機敏值 → 需要的那個擋下（400），用不到的清掉（見上方 integSecretTainted）
+  if (prev) {
+    for (const f of INTEGRATION_SECRET_FIELDS) {
+      if (typeof b[f] === 'string' && b[f] !== '') continue;
+      if (!integSecretTainted(prev, f, item.baseUrl, item.tokenEndpoint)) continue;
+      if (INTEG_SECRET_NEEDED[item.authType] === f) return res.status(400).json({ error: INTEG_REENTER_MSG, code: 'SECRET_REENTRY_REQUIRED' });
+      item[f] = '';
+    }
+  }
 
   if (idx >= 0) data.integrations[idx] = item;
   else data.integrations.push(item);
@@ -7554,9 +7596,13 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   // 機敏值：前端有填用前端的；否則解密存檔值
   const resolveSecret = (field) => {
     if (typeof b[field] === 'string' && b[field] !== '') return b[field];
-    if (stored && stored[field]) { try { return secretBox.decrypt(stored[field]); } catch { return ''; } }
+    // SEC-08b：目標來源被改掉時，不拿已存的舊機敏值去送（見 integSecretTainted）
+    if (stored && stored[field] && !integSecretTainted(stored, field, baseUrl, String((b.tokenEndpoint != null ? b.tokenEndpoint : stored.tokenEndpoint) || '').trim())) { try { return secretBox.decrypt(stored[field]); } catch { return ''; } }
     return '';
   };
+  const _needF = INTEG_SECRET_NEEDED[authType];
+  if (stored && _needF && !(typeof b[_needF] === 'string' && b[_needF] !== '') && integSecretTainted(stored, _needF, baseUrl, String((b.tokenEndpoint != null ? b.tokenEndpoint : stored.tokenEndpoint) || '').trim()))
+    return res.status(400).json({ ok: false, error: INTEG_REENTER_MSG, reason: INTEG_REENTER_MSG, code: 'SECRET_REENTRY_REQUIRED' });
   const username      = b.username != null ? b.username : ((stored && stored.username) || '');
   const password      = resolveSecret('password');
   const clientId      = b.clientId != null ? b.clientId : ((stored && stored.clientId) || '');

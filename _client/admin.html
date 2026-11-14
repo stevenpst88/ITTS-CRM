@@ -4642,7 +4642,7 @@
             if (saved.hasPassword)     { $('integPassword').placeholder    = '（已設定，留空不變更）'; $('integPwdHint').textContent    = '已設定'; }
             if (saved.hasClientSecret) { $('integClientSecret').placeholder = '（已設定，留空不變更）'; $('integSecretHint').textContent = '已設定'; }
             showToast('✅ 連線設定已儲存'); showConnResult('ok', '已儲存。');
-          } else { showToast('儲存失敗'); showConnResult('err', '儲存失敗（HTTP ' + r.status + '）'); }
+          } else { let em = ''; try { em = (await r.json()).error || ''; } catch (_) { /* 非 JSON */ } showToast('儲存失敗'); showConnResult('err', '儲存失敗（HTTP ' + r.status + '）' + (em ? '：' + em : '')); }
         } catch (e) { showConnResult('err', '儲存失敗：' + e.message);
         } finally { btn.disabled = false; btn.textContent = orig; }
       });

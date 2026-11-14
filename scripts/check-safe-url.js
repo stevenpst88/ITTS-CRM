@@ -278,15 +278,13 @@ function staticScan(srcRaw, label) {
   const unregistered = rawOutside.filter((s) => {
     if (s.kind === 'fetch') {
       if (FIXED_HOSTS.some((h) => s.ctx.includes('https://' + h))) return false;
-      if (s.route.includes('/api/ai/company-insight')) return false;   // 已知缺口（另案）
       return true;
     }
     // https.get／lib.get：只允許 Yahoo Finance 輔助函式（固定主機，由呼叫端傳入常數）
     return !/yahoo|fetchJsonWithHttps|fetchHtmlAccumCookies|fetchYahooApi/i.test(lines.slice(Math.max(0, s.line - 40), s.line).join('\n') + s.ctx);
   });
   eq(unregistered.map((s) => s.line + ':' + s.kind), [], `${label}：整合區以外沒有未登記的外送呼叫`);
-  const gapHits = rawOutside.filter((s) => s.kind === 'fetch' && s.route.includes('/api/ai/company-insight'));
-  eq(gapHits.length, 1, `${label}：已知缺口 company-insight 仍是 1 處（修掉後請從這裡移除）`);
+  // company-insight 的缺口已在 SEC-08b 補上（改走 publicFetch；專屬檢查在 scripts/check-sec08b-holes.js）
   // 三個路由：第一次外送之前必須先 checkIntegrationUrl
   for (const rt of [['post', '/api/admin/integrations/test'], ['get', '/api/admin/integrations/sap-inspect'], ['post', '/api/admin/integrations/push/batch']]) {
     const idx = lines.findIndex((l) => l.startsWith('app.' + rt[0] + "('" + rt[1] + "'"));
