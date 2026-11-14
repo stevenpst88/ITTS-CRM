@@ -6961,17 +6961,28 @@ function adminAccountChange(req, kind, targetUsername, detail) {
   } catch (e) { console.error('[adminAccountChange notify]', e && e.message); }
 }
 
-function pushNotification(toUsername, type, title, body, refId) {
-  const data = db.load();
+// 第 6 個參數 callerData（選用，BUG-03）：
+//   · 沒傳（既有的幾十個呼叫點）＝原行為：自己 load → 加通知 → save → 發 Web Push。**陷阱**：JSON 後端每次 load() 都回傳「新物件」，
+//     呼叫端若在 pushNotification 之前就 load 了快照、之後又用那份快照 save，會把剛推的通知蓋掉——所以這類呼叫點一律「先 db.save 再通知」。
+//   · 有傳＝只改這個物件（unshift＋500 筆上限），**不 load、不 save、不發 Web Push**，回傳新增的通知物件；呼叫端自行 save，
+//     save 成功後再對回傳的通知呼叫 sendWebPush（checkOverdueReminders 就是這樣：單次 load → 全寫進同一個 data → 只 save 一次）。
+function pushNotification(toUsername, type, title, body, refId, callerData) {
+  const data = callerData || db.load();
   if (!data.notifications) data.notifications = [];
-  data.notifications.unshift({
+  const n = {
     id: uuidv4(), to: toUsername, type, title, body, refId,
     read: false, createdAt: new Date().toISOString()
-  });
+  };
+  data.notifications.unshift(n);
   if (data.notifications.length > 500) data.notifications = data.notifications.slice(0, 500);
+  if (callerData) return n;
   db.save(data);
+  sendWebPush(toUsername, type, title, body, refId);
+  return n;
+}
 
-  // Web Push：fire-and-forget（不阻塞既有流程，失敗自動清除過期訂閱）
+// Web Push：fire-and-forget（不阻塞既有流程，失敗自動清除過期訂閱）
+function sendWebPush(toUsername, type, title, body, refId) {
   if (pushNotify.isEnabled()) {
     pushNotify.sendToUser(loadAuth, saveAuth, toUsername, {
       title,
@@ -11529,6 +11540,9 @@ async function checkOverdueReminders() {
     const in7days  = new Date(today); in7days.setDate(in7days.getDate() + 7);
     const in30days = new Date(today); in30days.setDate(in30days.getDate() + 30);
     let changed = false;
+    // BUG-03：只 load 一次，通知與提醒標記都寫進同一個 data，最後只 save 一次；Web Push 等 save 成功後才發（避免存檔失敗卻已推播、隔天重發）。
+    const pending = [];
+    const notify = (to, type, title, msg, refId) => { pending.push(pushNotification(to, type, title, msg, refId, data)); };
 
     // helper：找 manager1（同 BU）
     // 找該業務的一級主管（合約到期 / 帳款逾期要一併通知）。
@@ -11565,17 +11579,17 @@ async function checkOverdueReminders() {
       if (daysLeft <= 7) {
         if (c._contractReminderDate === todayStr) continue;
         const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請確認是否續約`;
-        pushNotification(c.owner, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
+        notify(c.owner, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
         const mgr = findManager1(c.owner);
-        if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
+        if (mgr && mgr !== c.owner) notify(mgr, 'contract_expiring_7', '⚠️ 合約即將到期', msg, c.id);
         c._contractReminderDate = todayStr;
         changed = true;
       } else if (daysLeft <= 30 && !c._contract30Reminded) {
         // D-30 預警：整份合約只送一次（標記後不再重發）
         const msg = `${c.company} 合約（${c.contractNo || c.product}）將於 ${daysLeft} 天後（${c.endDate}）到期，請預作續約安排`;
-        pushNotification(c.owner, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
+        notify(c.owner, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
         const mgr = findManager1(c.owner);
-        if (mgr && mgr !== c.owner) pushNotification(mgr, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
+        if (mgr && mgr !== c.owner) notify(mgr, 'contract_expiring_30', '📅 合約 30 天內到期預警', msg, c.id);
         c._contract30Reminded = todayStr;
         changed = true;
       }
@@ -11593,7 +11607,7 @@ async function checkOverdueReminders() {
 
       const display = c.name + (c.title ? ` ${c.title}` : '') + (c.company ? `（${c.company}）` : '');
       const msg = `今天是您的客戶 ${display} 的生日，記得送上祝福`;
-      pushNotification(c.owner, 'birthday', '🎂 客戶生日提醒', msg, c.id);
+      notify(c.owner, 'birthday', '🎂 客戶生日提醒', msg, c.id);
       c._birthdayReminderYear = today.getFullYear();
       changed = true;
     }
@@ -11607,14 +11621,18 @@ async function checkOverdueReminders() {
 
       const daysOverdue = Math.round((today - due) / 86400000);
       const msg = `${r.company} 發票 ${r.invoiceNo || ''} 已逾期 ${daysOverdue} 天（到期：${r.dueDate}），請催收`;
-      pushNotification(r.owner, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
+      notify(r.owner, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
       const mgr = findManager1(r.owner);
-      if (mgr && mgr !== r.owner) pushNotification(mgr, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
+      if (mgr && mgr !== r.owner) notify(mgr, 'receivable_overdue', '🔴 帳款逾期未收', msg, r.id);
       r._receivableReminderDate = todayStr;
       changed = true;
     }
 
-    if (changed) db.save(data);
+    if (changed) {
+      db.save(data);
+      if (typeof db.flush === 'function') await db.flush();
+      pending.forEach(n => sendWebPush(n.to, n.type, n.title, n.body, n.refId));
+    }
     console.log('[checkOverdueReminders] 執行完成');
   } catch (e) {
     console.error('[checkOverdueReminders] 失敗:', e.message);
@@ -11652,4 +11670,4 @@ if (require.main === module) {
 
 module.exports = app;
 // 測試掛鉤（僅供單元測試 require，不經 HTTP 暴露）
-module.exports._test = { normalizeCompanyName, companyMatchKey, ensureCompanyMaster, runCompanyImport, notificationUrlFor };
+module.exports._test = { normalizeCompanyName, companyMatchKey, ensureCompanyMaster, runCompanyImport, notificationUrlFor, pushNotification, checkOverdueReminders };
