@@ -279,9 +279,9 @@ async function uiOnce() {
     await selSet(b, 'oppEditProductSub', 'C&S');
     eq(await b.ev(DISPLAY('oppEditDealIdGroup')), true, 'P19 改選 SAP CCFLEX C&S：Deal ID 欄位出現（連動正常）');
     await b.click('#oppEditDealId');
-    await b.type('NEW-DEAL-1');
+    await b.type('123456789');
     sv = await saveClick(b, 'o-normal');
-    eq(await server('o-normal').then((o) => [o.product, o.dealId]), ['SAP CCFLEX C&S', 'NEW-DEAL-1'], 'P20 一般商機改商品＋補 Deal ID：存成「SAP CCFLEX C&S」');
+    eq(await server('o-normal').then((o) => [o.product, o.dealId]), ['SAP CCFLEX C&S', '123456789'], 'P20 一般商機改商品＋補 Deal ID：存成「SAP CCFLEX C&S」');
 
     st = await openEdit(b, 'o-normal2');
     await selSet(b, 'oppEditProduct', '');
@@ -318,10 +318,10 @@ async function uiOnce() {
     await b.click('#oppEditSave'); await b.sleep(400);
     eq((await reqs(b, /\/api\/opportunities\//)).filter((x) => x.m === 'PUT').length, 0, 'P30 沒補 Deal ID 按儲存：前端擋下，沒送 PUT');
     await b.click('#oppEditDealId');
-    await b.type('FIX-REQ-1');
+    await b.type('987654321');
     sv = await saveClick(b, 'o-nocat-req');
-    ok(sv.body && !('product' in sv.body) && sv.body.dealId === 'FIX-REQ-1', 'P31 補填後送出：帶 dealId、不帶 product', J(sv.body));
-    eq(await server('o-nocat-req').then((o) => [o.product, o.dealId]), ['SAP Public Cloud License', 'FIX-REQ-1'], 'P32 伺服器：商品保持、Deal ID 已補');
+    ok(sv.body && !('product' in sv.body) && sv.body.dealId === '987654321', 'P31 補填後送出：帶 dealId、不帶 product', J(sv.body));
+    eq(await server('o-nocat-req').then((o) => [o.product, o.dealId]), ['SAP Public Cloud License', '987654321'], 'P32 伺服器：商品保持、Deal ID 已補');
 
     // ── 8. 看板拖曳 ──
     console.log('  [UI] 8 看板拖曳');
