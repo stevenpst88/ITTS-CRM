@@ -5090,6 +5090,7 @@ function openOppCreate(company) {
   $('oppEditAchievedDate').value = '';
   if ($('oppEditBusinessType')) $('oppEditBusinessType').value = '';
   $('oppEditDescription').value  = '';
+  _oppEditOrig = null;                             // 新增模式沒有「原值」
   populateOppEditProduct('', '');                  // 清空商品下拉
   dealIdSet('oppEdit', '');
 
@@ -5176,7 +5177,8 @@ function openOppEdit(id) {
     $('oppEditStage').addEventListener('change', _toggleAchievedDate);
   }
 
-  // 商品選單
+  // 商品選單（先記下原類別／原商品：下拉可能選不到原值，見 _oppEditOrig 說明）
+  _oppEditOrig = { category: o.category || '', product: o.product || '', productTouched: false, categoryTouched: false };
   populateOppEditProduct(o.category, o.product);
   // Deal ID：商品需要卻沒填（舊商機不追溯，但編輯存檔時要補）→ 立刻提示；已有值則一律顯示
   dealIdSet('oppEdit', o.dealId || '', { nag: !o._kaShared });
@@ -5193,6 +5195,21 @@ function openOppEdit(id) {
 
   $('oppEditOverlay').classList.add('open');
 }
+
+// 編輯商機時的「原值」。商品下拉可能選不到原本的商品：類別是空的（API／Excel 匯入／Lead 轉換建的舊商機）、
+// 類別在目錄裡沒有商品（MDM／CRM／資安，商品群組整個隱藏）、商品已改名或停用。這些情況下儲存會把 product 送成空字串，
+// 後端 PUT 會照單全收 → 舊商機的商品被清空。所以：使用者沒動過商品欄（沒有 change／input）、目前值又是空的，
+// 就不送 product（類別同理）。使用者主動把下拉選回「-- 請選擇 --」仍會清空（那是他明確的操作）。
+let _oppEditOrig = null;   // { category, product, productTouched, categoryTouched }；null＝新增模式
+function oppEditProductPreserved() { return !!(_oppEditOrig && !_oppEditOrig.productTouched && _oppEditOrig.product); }
+function oppEditCategoryPreserved() { return !!(_oppEditOrig && !_oppEditOrig.categoryTouched && _oppEditOrig.category); }
+// 目前生效的商品值（Deal ID 規則、刪除視窗用）：下拉為空但原值被保留時，視為原值
+function oppEditProductEffective() {
+  const v = getProductValue('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub');
+  return (!v && oppEditProductPreserved()) ? _oppEditOrig.product : v;
+}
+['oppEditProduct', 'oppEditProductSub'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (_oppEditOrig) _oppEditOrig.productTouched = true; }); });
+{ const el = $('oppEditProductCustom'); if (el) el.addEventListener('input', () => { if (_oppEditOrig) _oppEditOrig.productTouched = true; }); }
 
 function populateOppEditProduct(category, selected = '') {
   const ps = $('oppEditProduct');
@@ -5243,8 +5260,17 @@ function populateOppEditProduct(category, selected = '') {
     if (!foundSub) {
       if (subEl) { subEl.style.display = 'none'; subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
       if (selected && selected !== '其他' && !allValues.includes(selected)) {
-        ps.value = '其他';
-        if (customInp) { customInp.style.display = ''; customInp.value = selected; }
+        if (allValues.includes('其他')) {
+          ps.value = '其他';
+          if (customInp) { customInp.style.display = ''; customInp.value = selected; }
+        } else {
+          // 此類別的清單沒有「其他」可承接（商品已改名／停用、或資料來自 API／匯入）→ 補一個「（原值）」選項，儲存時不把商品清掉
+          const og = document.createElement('option');
+          og.value = selected; og.textContent = '（原值）' + selected;
+          ps.appendChild(og);
+          ps.value = selected;
+          if (customInp) { customInp.style.display = 'none'; customInp.value = ''; }
+        }
       } else {
         if (customInp) { customInp.style.display = ps.value === '其他' ? '' : 'none'; customInp.value = ''; }
       }
@@ -5259,7 +5285,12 @@ $('oppEditCategory').addEventListener('change', function () {
   $('oppEditProductCustom').value = '';
   const subEl = $('oppEditProductSub');
   if (subEl) { subEl.style.display = 'none'; subEl.innerHTML = '<option value="">-- 請選擇類型 --</option>'; }
-  populateOppEditProduct(this.value);
+  const st = _oppEditOrig;
+  if (!st) { populateOppEditProduct(this.value); return; }
+  st.categoryTouched = this.value !== st.category;       // 改回原類別＝等於沒動
+  if (this.value === st.category) { st.productTouched = false; populateOppEditProduct(this.value, st.product); }   // 改回原類別：還原原商品
+  else if (!st.category) populateOppEditProduct(this.value, st.product);   // 原本沒類別：補上類別時嘗試帶出原商品，不算動過商品
+  else { st.productTouched = true; populateOppEditProduct(this.value); }   // 原本有類別、改成別的：商品依新類別重選（原行為）
 });
 
 // ── Deal ID（商品目錄標記「需要 Deal ID」的商品必填；規則與伺服器 lib/productCatalog.js 一致，伺服器仍會強制檢查）──
@@ -5294,7 +5325,7 @@ function dealIdSafeUrl(u) {
 function dealIdEls(k) {
   return { grp: $(k + 'DealIdGroup'), inp: $(k + 'DealId'), link: $(k + 'DealIdLink'), hint: $(k + 'DealIdHint'), err: $(k + 'DealIdErr'), star: $(k + 'DealIdStar') };
 }
-function dealIdProduct(k) { const f = DEAL_FORMS[k]; return getProductValue(f.sel, f.custom, f.sub); }
+function dealIdProduct(k) { if (k === 'oppEdit') return oppEditProductEffective(); const f = DEAL_FORMS[k]; return getProductValue(f.sel, f.custom, f.sub); }
 function dealIdSetError(k, msg) {
   const e = dealIdEls(k); if (!e.err) return;
   e.err.textContent = msg || '';
@@ -5468,7 +5499,7 @@ $('oppEditCancel').addEventListener('click', closeOppEdit);
 // 刪除案件 → 開啟填寫原因 Modal
 $('oppEditDelete').addEventListener('click', () => {
   const company = $('oppEditCompany').value || '';
-  const product = getProductValue('oppEditProduct', 'oppEditProductCustom', 'oppEditProductSub') ||
+  const product = oppEditProductEffective() ||
                   $('oppEditProduct').value || '';
   $('oppDeleteCompany').value = company;
   $('oppDeleteProduct').value = product;
@@ -5536,6 +5567,9 @@ $('oppEditSave').addEventListener('click', async () => {
     bu:              ($('oppEditBu') && $('oppEditBu').value) || undefined,
     businessType:    ($('oppEditBusinessType') && $('oppEditBusinessType').value) || '',
   };
+  // 商品／類別：使用者沒動過、下拉又選不到原值（值為空）→ 不送，保留資料庫裡的原值（後端對空字串會照單全收覆寫）
+  if (!payload.product && oppEditProductPreserved()) delete payload.product;
+  if (!payload.category && oppEditCategoryPreserved()) delete payload.category;
   const _dlE = dealIdValue('oppEdit'); if (_dlE !== undefined) payload.dealId = _dlE;   // 欄位可見才送（可清空）；隱藏＝商品不需要且本來沒有值
   // 若標記為 Won 但使用者沒填成交日期，預設今天
   if (newStage === 'Won' && !payload.achievedDate) {
