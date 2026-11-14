@@ -24,6 +24,7 @@ const apiMonitor = require('./lib/apiMonitor');
 const pushNotify = require('./lib/pushNotify');
 const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動態報表：反覆延後警示／台北月界
 const secretBox = require('./lib/secretBox');
+const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（與稽核錨點 webhook 共用）
 const productCatalog = require('./lib/productCatalog');
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
@@ -7511,6 +7512,21 @@ app.post('/api/admin/integrations', requireAdmin, (req, res) => {
   res.json(maskIntegration(item));
 });
 
+// ── 整合 URL 的 SSRF 防護（SEC-08）──────────────────────────
+// 管理員設定的 Base URL／Token Endpoint 由伺服器端發出請求；被盜的管理員 session 可借 Vercel 出口探測內網或雲端 metadata。
+// 整合區（測試連線、sap-inspect、推送 SAP）所有外連一律走 integFetch（lib/safeUrl.js 的 safeFetch，與稽核錨點 webhook 共用同一套檢查）：
+//   只允許 https、不可帶帳密、連接埠白名單（預設 443）、DNS 解析後每個位址都必須是公開位址、連線釘在驗證過的 IP、
+//   轉址每一跳重新檢查（最多 3 跳）、整體逾時 10 秒、回應上限 5MB。不合格回 400＋中文訊息（不回顯網址內容）。
+// 環境變數 INTEGRATION_URL_PORTS（逗號分隔，預設 443）：SAP 租戶若用非 443 的連接埠才需要設定。
+// 新增整合相關外連請用 integFetch，不要用全域 fetch（scripts/check-safe-url.js 的靜態守門會變紅）。
+const INTEGRATION_FETCH_OPTS = { ports: SU.parsePorts(process.env.INTEGRATION_URL_PORTS), timeoutMs: 10000 };
+function integFetch(url, init) { return SU.safeFetch(url, init, INTEGRATION_FETCH_OPTS); }
+// 回 null 表示通過；否則回中文原因（label 例如 'Base URL'）。含 DNS 檢查，所以是 async。
+async function checkIntegrationUrl(url, label) {
+  const v = await SU.validateUrl(String(url || ''), INTEGRATION_FETCH_OPTS);
+  return v.ok ? null : `${label} 不符合安全規定：${v.message}`;
+}
+
 // 測試連線：伺服器端對 SAP 發一筆認證查詢，回報結果（不寫入、不送客戶資料）
 app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   const b = req.body || {};
@@ -7522,6 +7538,7 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   const baseUrl = String((b.baseUrl != null ? b.baseUrl : (stored && stored.baseUrl)) || '').trim().replace(/\/+$/, '');
   const authType = b.authType || (stored && stored.authType) || 'basic';
   if (!baseUrl) return res.json({ ok: false, reason: '缺少 Base URL' });
+  { const bad = await checkIntegrationUrl(baseUrl, 'Base URL'); if (bad) return res.status(400).json({ ok: false, error: bad, reason: bad }); }
 
   // 機敏值：前端有填用前端的；否則解密存檔值
   const resolveSecret = (field) => {
@@ -7542,9 +7559,10 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   } else if (authType === 'oauth') {
     if (!tokenEndpoint || !clientId || !clientSecret)
       return res.json({ ok: false, reason: 'OAuth 參數不完整（需 Token Endpoint / Client ID / Client Secret）' });
+    { const bad = await checkIntegrationUrl(tokenEndpoint, 'Token Endpoint'); if (bad) return res.status(400).json({ ok: false, error: bad, reason: bad }); }
     let tokenResp;
     try {
-      tokenResp = await fetch(tokenEndpoint, {
+      tokenResp = await integFetch(tokenEndpoint, {
         method: 'POST',
         headers: {
           'Authorization': 'Basic ' + Buffer.from(clientId + ':' + clientSecret).toString('base64'),
@@ -7570,7 +7588,7 @@ app.post('/api/admin/integrations/test', requireAdmin, async (req, res) => {
   const url = baseUrl + '/sap/c4c/api/v1/account-service/accounts?$top=1';
   let r;
   try {
-    r = await fetch(url, { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) });
+    r = await integFetch(url, { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) });
   } catch (e) {
     return res.json({ ok: false, reason: e.name === 'TimeoutError' ? '連線逾時（8 秒）' : '無法連線：' + e.message });
   }
@@ -7593,6 +7611,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
   if (!config || !config.enabled) return res.status(400).json({ error: '連線未啟用' });
   const baseUrl = config.baseUrl;
   if (!baseUrl) return res.status(400).json({ error: '缺少 Base URL' });
+  { const bad = await checkIntegrationUrl(baseUrl, 'Base URL'); if (bad) return res.status(400).json({ error: bad }); }
   if (config.authType !== 'basic') return res.status(400).json({ error: '僅支援 Basic 認證' });
   const pw = config.password ? (() => { try { return secretBox.decrypt(config.password); } catch { return ''; } })() : '';
   if (!config.username || !pw) return res.status(400).json({ error: '帳號或密碼未設定' });
@@ -7602,7 +7621,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
     const headers = { Authorization: auth, Accept: 'application/json' };
 
     // 查前 3 筆 Account 的 customerRole 和 identifications
-    const rAcc = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=3&$select=id,firstLineName,customerRole,identifications`, { headers });
+    const rAcc = await integFetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=3&$select=id,firstLineName,customerRole,identifications`, { headers });
     const tAcc = await rAcc.text();
     let bAcc = null; try { bAcc = JSON.parse(tAcc); } catch {}
     const accounts = (bAcc?.value || bAcc?.d?.results || bAcc?.data || []).map(a => ({
@@ -7611,7 +7630,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
 
     // 找有 identifications 的 Account（掃前 50 筆取第一個有值的）
     let sampleWithId = null;
-    const rScan = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=50&$select=id,firstLineName,identifications`, { headers });
+    const rScan = await integFetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=50&$select=id,firstLineName,identifications`, { headers });
     if (rScan.ok) {
       const tScan = await rScan.text();
       let bScan = null; try { bScan = JSON.parse(tScan); } catch {}
@@ -7628,14 +7647,14 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
     ];
     for (const ep of metaEps) {
       try {
-        const r2 = await fetch(baseUrl + ep, { headers });
+        const r2 = await integFetch(baseUrl + ep, { headers });
         if (r2.ok) { const t2 = await r2.text(); try { idTypesMeta = { endpoint: ep, data: JSON.parse(t2) }; break; } catch {} }
       } catch {}
     }
 
     // 抓一筆完整 Account（不 $select）看真實欄位結構：externalIds / defaultAddress 等
     let fullAccount = null;
-    const rFull = await fetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=1`, { headers });
+    const rFull = await integFetch(`${baseUrl}/sap/c4c/api/v1/account-service/accounts?$top=1`, { headers });
     if (rFull.ok) {
       const tFull = await rFull.text();
       let bFull = null; try { bFull = JSON.parse(tFull); } catch {}
@@ -7656,7 +7675,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
     const contactProbe = [];
     for (const ep of contactCandidates) {
       try {
-        const rp = await fetch(`${baseUrl}${ep}?$top=1`, { headers });
+        const rp = await integFetch(`${baseUrl}${ep}?$top=1`, { headers });
         const tp = (await rp.text()).trim();
         const isJson = tp.startsWith('{') || tp.startsWith('[');
         contactProbe.push({ endpoint: ep, status: rp.status, isJson, sample: isJson ? tp.slice(0, 200) : tp.slice(0, 60) });
@@ -7667,7 +7686,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
 
     // 抓真實 contactPerson 看 eMail / 帳號關聯 / 職稱 等欄位真實結構
     let fullContact = null, contactWithEmail = null, contactKeys = [];
-    const rC = await fetch(`${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons?$top=20`, { headers });
+    const rC = await integFetch(`${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons?$top=20`, { headers });
     if (rC.ok) {
       const tC = await rC.text();
       let bC = null; try { bC = JSON.parse(tC); } catch {}
@@ -7689,7 +7708,7 @@ app.get('/api/admin/integrations/sap-inspect', requireAdmin, async (req, res) =>
     ];
     for (const ep of addrEps) {
       try {
-        const ra = await fetch(baseUrl + ep, { headers });
+        const ra = await integFetch(baseUrl + ep, { headers });
         const ta = (await ra.text()).trim();
         const isJson = ta.startsWith('{') || ta.startsWith('[');
         addressProbe.push({ endpoint: ep, status: ra.status, isJson, sample: isJson ? ta.slice(0, 600) : ta.slice(0, 50) });
@@ -7728,7 +7747,7 @@ async function ensureAccountAddress(baseUrl, auth, sapAccId, addressText) {
   candidates.push({ isDefaultAddress: true, country: 'TW', cityName: s.slice(0, 120) });   // 地址放 cityName（非 street，避開 postalCode 必填）
   candidates.push({ isDefaultAddress: true, country: 'TW' });                               // 最低限度：僅國別
   try {
-    const rg = await fetch(`${base}?$top=1`, { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+    const rg = await integFetch(`${base}?$top=1`, { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
     if (rg.ok) {
       let bg = null; try { bg = JSON.parse(await rg.text()); } catch {}
       const existing = bg?.value || bg?.d?.results || bg?.data || [];
@@ -7736,7 +7755,7 @@ async function ensureAccountAddress(baseUrl, auth, sapAccId, addressText) {
     }
     let last = '';
     for (const body of candidates) {
-      const rp = await fetch(base, {
+      const rp = await integFetch(base, {
         method: 'POST',
         headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(body),
@@ -7853,6 +7872,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
   if (!config || !config.enabled) return res.status(400).json({ error: '連線未啟用' });
   const baseUrl = config.baseUrl;
   if (!baseUrl) return res.status(400).json({ error: '缺少 Base URL' });
+  { const bad = await checkIntegrationUrl(baseUrl, 'Base URL'); if (bad) return res.status(400).json({ error: bad }); }
   if (config.authType !== 'basic') return res.status(400).json({ error: 'OAuth 批次推送尚未支援，請改用 Basic 認證' });
   const pw = config.password ? (() => { try { return secretBox.decrypt(config.password); } catch { return ''; } })() : '';
   if (!config.username || !pw) return res.status(400).json({ error: '帳號或密碼未設定' });
@@ -7897,7 +7917,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
       const url    = linkedA ? `${baseUrl}/sap/c4c/api/v1/account-service/accounts/${sapAccId}` : `${baseUrl}/sap/c4c/api/v1/account-service/accounts`;
       const hdrs = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
       if (method === 'PATCH') { hdrs['If-Match'] = '*'; hdrs['Content-Type'] = 'application/merge-patch+json'; }   // SAP V2 PATCH 需 If-Match 樂觀鎖 + merge-patch 內容型別
-      const r = await fetch(url, { method, headers: hdrs, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
+      const r = await integFetch(url, { method, headers: hdrs, body: JSON.stringify(ap), signal: AbortSignal.timeout(10000) });
       const rt = await r.text();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${rt.slice(0, 300)}`);
       if (!linkedA) {
@@ -7941,7 +7961,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
           const url    = linkedC ? `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons/${eC.sapId}` : `${baseUrl}/sap/c4c/api/v1/contact-person-service/contactPersons`;
           const hdrs2 = { 'Authorization': auth, 'Content-Type': 'application/json', 'Accept': 'application/json' };
           if (method === 'PATCH') { hdrs2['If-Match'] = '*'; hdrs2['Content-Type'] = 'application/merge-patch+json'; }
-          const r2 = await fetch(url, { method, headers: hdrs2, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
+          const r2 = await integFetch(url, { method, headers: hdrs2, body: JSON.stringify(cp), signal: AbortSignal.timeout(10000) });
           const ct2 = await r2.text();
           if (!r2.ok) throw new Error(`HTTP ${r2.status}: ${ct2.slice(0, 300)}`);
           if (!linkedC) {
