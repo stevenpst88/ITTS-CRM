@@ -31,4 +31,12 @@ module.exports = {
   // 稽核事件（只增不改，見 lib/auditStore.js）：insertAuditEvent 永不 reject；flush 會等它們寫完
   auditStore:       impl.auditStore,
   insertAuditEvent: impl.insertAuditEvent,
+  // 寫入競爭防護（Postgres 專有；JSON 後端沒有這些函式＝undefined，呼叫端以 typeof 判斷）。見 lib/writeGuard.js
+  acquireDbWriteLock: impl.acquireDbWriteLock,
+  nextQuoteSeq:       impl.nextQuoteSeq,
+  listIssuedQuoteNos: impl.listIssuedQuoteNos,
+  writeFailureCount:  impl.writeFailureCount,
+  flushMain:          impl.flushMain,
+  invalidateCache:    impl.invalidateCache,
+  setSaveHook:        impl.setSaveHook,
 };

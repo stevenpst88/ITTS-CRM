@@ -21,7 +21,14 @@
 const { Pool } = require('pg');
 const { createAuditStore, pgAdapter, legacyReadAdapter, createAuditFacade } = require('../lib/auditStore');
 const AuditLegacy = require('../lib/auditLegacy');
+const { createPgWriteGuard } = require('../lib/pgWriteGuard');
 const path = require('path');
+
+// 寫入競爭防護開關（預設關閉＝與先前行為相同；細節見 lib/pgWriteGuard.js、lib/writeGuard.js）
+//   DB_WRITE_SERIALIZE=1  寫入型請求以 advisory 鎖序列化（鎖本身由 lib/writeGuard.js 的 middleware 取得）
+//   QUOTE_NO_ATOMIC=1     報價單號改由 DB 原子計數器發放
+const SERIALIZE_ON = process.env.DB_WRITE_SERIALIZE === '1';
+const QUOTE_NO_ATOMIC_ON = process.env.QUOTE_NO_ATOMIC === '1';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -35,9 +42,11 @@ function getPool() {
   _pool = new Pool({
     connectionString:        DATABASE_URL,
     ssl:                     { rejectUnauthorized: false },
-    max:                     2,       // serverless 建議 2
+    max:                     SERIALIZE_ON ? 3 : 2,   // serverless 建議 2；開寫入鎖時多 1 條（鎖持有者獨占一條連線）
     idleTimeoutMillis:       10000,
     connectionTimeoutMillis: 5000,
+    // 開寫入鎖時才加用戶端查詢逾時（黑洞連線不會讓存檔／flush 永遠卡住）；關閉時與原本完全相同
+    ...(SERIALIZE_ON ? { query_timeout: Number(process.env.DB_QUERY_TIMEOUT_MS) > 0 ? Math.floor(Number(process.env.DB_QUERY_TIMEOUT_MS)) : 15000 } : {}),
   });
   _pool.on('error', (err) => console.error('[db/postgres] pool error:', err));
   return _pool;
@@ -59,9 +68,12 @@ async function ensureSchema() {
 }
 
 // ── 讀取主資料（含 updated_at 用於 stale check）──
-async function loadAsync() {
+// fetchMain：純讀取，不動任何模組狀態，回傳 { content, ms, snap }。snap＝發出 SELECT 當下的存檔世代／進行中存檔數，
+// 供 ready()（DB_WRITE_SERIALIZE=1）判斷「這份抓回來的內容有沒有可能比快取舊」。
+async function fetchMain() {
   await ensureSchema();
   const pool = getPool();
+  const snap = { gen: _saveGen, pending: _pendingSaves };
   const { rows } = await pool.query(`SELECT content, updated_at FROM app_data WHERE id = 'main'`);
   if (rows.length === 0) {
     const empty = { contacts: [], groups: [], monthlyBudgets: [] };
@@ -69,11 +81,14 @@ async function loadAsync() {
       `INSERT INTO app_data (id, content) VALUES ('main', $1) RETURNING updated_at`,
       [JSON.stringify(empty)]
     );
-    _lastUpdatedAtMs = ins.length ? new Date(ins[0].updated_at).getTime() : Date.now();
-    return empty;
+    return { content: empty, ms: ins.length ? new Date(ins[0].updated_at).getTime() : Date.now(), snap };
   }
-  _lastUpdatedAtMs = new Date(rows[0].updated_at).getTime();
-  return rows[0].content;
+  return { content: rows[0].content, ms: new Date(rows[0].updated_at).getTime(), snap };
+}
+async function loadAsync() {
+  const r = await fetchMain();
+  _lastUpdatedAtMs = r.ms;
+  return r.content;
 }
 
 // ── 寫入主資料（更新本地 _lastUpdatedAtMs，避免馬上又被 stale check 偵測為過期）──
@@ -87,7 +102,10 @@ async function saveAsync(data) {
      RETURNING updated_at`,
     [JSON.stringify(data)]
   );
-  if (rows.length) _lastUpdatedAtMs = new Date(rows[0].updated_at).getTime();
+  if (rows.length) {
+    const ms = new Date(rows[0].updated_at).getTime();
+    _lastUpdatedAtMs = SERIALIZE_ON ? Math.max(_lastUpdatedAtMs, ms) : ms;   // 開關開啟時只增不減（見 _refetchGuarded）
+  }
 }
 
 // ── 主資料 stale check：只 SELECT updated_at（<100 bytes），
@@ -147,6 +165,8 @@ let _cache             = null;
 let _writeQueue        = Promise.resolve();
 let _lastFetch         = 0;
 let _lastUpdatedAtMs   = 0;   // 主 row 的 updated_at（毫秒）
+let _saveGen           = 0;   // save() 被呼叫的次數（僅 DB_WRITE_SERIALIZE=1 使用）
+let _pendingSaves      = 0;   // 已排入佇列、尚未完成的主資料存檔數（僅 DB_WRITE_SERIALIZE=1 使用）
 
 let _auditCache        = null;
 let _auditWriteQueue   = Promise.resolve();
@@ -167,13 +187,23 @@ function load() {
   return _cache;
 }
 
+let _writeFailures     = 0;     // 主資料存檔失敗累計次數（診斷用；writeGuard 不再用它判斷單一請求的成敗，改看該請求自己的存檔 promise）
+let _saveHook          = null;  // writeGuard 注入：每次 save() 把「這次存檔的 promise」交給它（歸屬到發起的請求、偵測鎖外寫入）
+
 function save(data) {
   _cache     = data;
   _lastFetch = Date.now(); // 剛寫完，視同剛 fetch
   _writeQueue = _writeQueue
     .catch(() => null)
     .then(() => saveAsync(data));
-  _writeQueue.catch((err) => console.error('[db/postgres] save failed:', err));
+  _writeQueue.catch((err) => { _writeFailures++; console.error('[db/postgres] save failed:', err); });
+  if (SERIALIZE_ON) {
+    // 世代號／進行中計數：ready() 據此丟棄「在存檔期間抓回來的舊內容」（審查 #1）
+    _saveGen++; _pendingSaves++;
+    const dec = () => { _pendingSaves--; };
+    _writeQueue.then(dec, dec);
+    if (_saveHook) { try { _saveHook(_writeQueue); } catch (e) { console.error('[db] saveHook error:', e && e.message); } }
+  }
   return _writeQueue;
 }
 
@@ -240,6 +270,28 @@ async function flush() {
   try { await auditStore.flush(); } catch (e) { /* 已 log */ }
 }
 
+// ── 重抓主資料（只在 DB_WRITE_SERIALIZE=1 時使用）──
+// 問題（審查 #1）：同實例上「無鎖」請求的 ready() 發出 SELECT 後，持鎖寫入者 W 才 save()；SELECT 在 W 的 UPDATE 提交前就在資料庫端執行完，
+// 回應卻在 W 的 save() 之後才到 → 直接指派會把 W 剛改的快取換回舊物件，而 W 的 saveAsync 之後又把時間戳設成最新，
+// 之後 stale check 永遠判定「沒過期」，下一個寫入者就在舊內容上改、整份蓋掉 W。
+// 解法：SELECT 發出時記下 { 存檔世代, 進行中存檔數 }；回來時若世代變了、發出時或回來時有存檔在進行，就丟棄這份內容（快取已是較新的世代），
+// 並先等佇列清空再重抓（最多 3 次）。另外，兩個並行的重抓若「後發的先到、先發的後到」，舊內容不可蓋掉較新的快取（比較時間戳）。
+// _lastUpdatedAtMs 只增不減。回傳 true＝快取已是這份內容或更新，false＝放棄（快取維持現狀）。
+async function _refetchGuarded() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (_pendingSaves > 0) { try { await _writeQueue; } catch (e) { /* 失敗由 save() 的 catch 記錄 */ } }
+    const r = await fetchMain();
+    if (r.snap.pending === 0 && _pendingSaves === 0 && r.snap.gen === _saveGen) {
+      // 同實例上兩個並行的重抓可能「後執行的先回來」：舊的那份最後才到，不可把較新的快取換回舊的。
+      // 只採用比目前快取時間戳更新的內容；一樣新或更舊＝快取已經是這份（或更新），不動。
+      if (r.ms > _lastUpdatedAtMs) { _cache = r.content; _lastUpdatedAtMs = r.ms; }
+      return true;
+    }
+  }
+  console.warn('[db/postgres] 重抓主資料時一直有存檔在進行，放棄這次重抓（沿用目前快取）');
+  return false;
+}
+
 // ── 啟動時呼叫：preload 資料、跑一次性 migration ──
 async function ready() {
   await flush();
@@ -261,7 +313,12 @@ async function ready() {
   }
 
   // 確認需要重抓 → 完整 fetch
-  _cache = await loadAsync();
+  if (SERIALIZE_ON) {
+    // 開關開啟：抓回來的內容若可能比快取舊（抓取期間有人 save()），就丟棄，不動 _cache／_lastUpdatedAtMs
+    if (!(await _refetchGuarded())) return;
+  } else {
+    _cache = await loadAsync();
+  }
   _lastFetch = now;
 
   // ── 一次性 migration：若主資料還有 _auditLog → 搬到獨立 row ──
@@ -297,10 +354,32 @@ async function ready() {
   //   改為 lazy load（第一次 admin 看 logs 或 writeLog 時才拉）
 }
 
+// ── 寫入競爭防護（lib/pgWriteGuard.js）：表／鎖鍵用預設值；只有開關開啟時才會被呼叫（才會建表）──
+const pgGuard = createPgWriteGuard({
+  getPool,
+  onForcedRelease: (ms) => console.error('[db/postgres] 寫入鎖持有 ' + ms + 'ms 後被強制釋放'),
+});
+/** 取得 DB 層全域寫入鎖（專用連線上的交易）。waitMs 等鎖上限；holdMs 持有上限看門狗 */
+function acquireDbWriteLock(opts) { return pgGuard.acquireLock(opts); }
+/** 原子取號：floor＝blob 現況已用最大序號。QUOTE_NO_ATOMIC 沒開時直接拒絕，避免誤用 */
+function nextQuoteSeq(ym, floor, issuedTo) {
+  if (!QUOTE_NO_ATOMIC_ON) return Promise.reject(new Error('QUOTE_NO_ATOMIC 未啟用'));
+  return pgGuard.nextQuoteSeq(ym, floor, issuedTo);
+}
+function listIssuedQuoteNos(ym) { return pgGuard.listIssued(ym); }
+function writeFailureCount() { return _writeFailures; }
+/** 只等主資料那一條寫入佇列（不等稽核）：寫入鎖在主資料提交後就可以放，稽核另一列、另一條佇列 */
+async function flushMain() { try { await _writeQueue; } catch (e) { /* 已 log；失敗由 writeFailureCount 偵測 */ } }
+/** 存檔失敗後讓下個請求整份重抓（stale check 在 _lastUpdatedAtMs=0 時一律回 true） */
+function invalidateCache() { _lastUpdatedAtMs = 0; }
+function setSaveHook(fn) { _saveHook = typeof fn === 'function' ? fn : null; }
+
 module.exports = {
   load, save, flush, ready,
   loadAuditLog, appendAuditLog,
   auditStore, insertAuditEvent,
+  acquireDbWriteLock, nextQuoteSeq, listIssuedQuoteNos, writeFailureCount, flushMain, invalidateCache, setSaveHook,
+  _setPoolForTest: (p) => { _pool = p; },
   // 給 admin 工具 / 測試用
   _loadAsync: loadAsync, _saveAsync: saveAsync,
   _loadAuditLogAsync: loadAuditLogAsync, _saveAuditLogAsync: saveAuditLogAsync,

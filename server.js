@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const crypto = require('crypto');
 const db = require('./db');
+const { createWriteGuard, readConfig: readWriteGuardConfig } = require('./lib/writeGuard');   // 全域寫入序列化（DB_WRITE_SERIALIZE）
 const { deriveRuntimeInfo } = require('./lib/runtimeInfo');   // 版本資訊頁：由真實環境推導部署／資料庫型態
 const AuditStore = require('./lib/auditStore');   // 稽核事件（只增不改）的篩選／輸出共用函式
 const jwtSession = require('./middleware/jwtSession');
@@ -24,6 +25,7 @@ const secretBox = require('./lib/secretBox');
 const productCatalog = require('./lib/productCatalog');
 const createPlanGuard = require('./middleware/planGuard');
 const createAiCreditsMiddleware = require('./middleware/aiCredits');
+const { createSapLinkWriteback, WARNING: SAP_WRITEBACK_WARNING } = require('./lib/sapLinkWriteback');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -318,8 +320,94 @@ app.use('/api/', apiLimiter);
 const planGuard = createPlanGuard(loadAuth);
 app.use('/api/', planGuard);
 
+// ── 全域寫入序列化（DB_WRITE_SERIALIZE=1 才啟用；預設完全不介入）─────────────
+// 整份 blob 是「最後寫入者勝出」：兩個請求各讀舊快照再整份寫回，後者會蓋掉前者。
+// 這裡讓已登入的寫入型請求排隊拿鎖（行程內互斥＋Postgres advisory 鎖），拿到鎖後重新 ready() 再進 handler，
+// 存檔 flush 完才釋放。設計、豁免清單與逾時行為見 lib/writeGuard.js、DEPLOY.md「寫入競爭防護」。
+// 這裡只建立 guard；中介層（app.use）掛在「強制改密碼／集團角色白名單」之後（見 app.post('/api/login') 之前），被那些中介層拒絕的請求不會排隊拿鎖。
+/**
+ * /api/admin/ 底下「不是只有管理員能用」的路由：路徑前綴 → 該路由實際允許的角色（必須與 handler 內的角色檢查一致）。
+ * 目前只有客戶池（server.js 的 /api/admin/pool/*：requireAuth＋handler 內檢查 admin／manager1／manager2／executive）。
+ * 新增這類路由時必須同步登記，否則會被下面的 preDeny 當成「一定被拒絕」而逃出寫入鎖；
+ * scripts/check-write-guard.js 的 L6 會掃描所有 /api/admin/* 路由，沒登記就失敗。
+ */
+const ADMIN_PATH_OPEN_ROLES = [
+  { prefix: '/api/admin/pool/', roles: ['admin', 'manager1', 'manager2', 'executive'] },
+];
+/** 一定會被後面的權限檢查拒絕的請求，不必排隊拿鎖。預設 /api/admin/* 只有 admin（requireAdmin／qAdmin）；例外見 ADMIN_PATH_OPEN_ROLES */
+function writeGuardPreDeny(req, full) {
+  const f = String(full).toLowerCase();
+  if (!f.startsWith('/api/admin/')) return false;
+  try {
+    const open = ADMIN_PATH_OPEN_ROLES.find((o) => f.startsWith(o.prefix));
+    if (open) return !open.roles.includes(req.session.user.role);   // handler 同樣看 session 的 role
+    const u = loadAuth().users.find((x) => x.username === req.session.user.username);
+    return !u || u.role !== 'admin' || u.active === false;
+  } catch (_) { return false; }
+}
+const writeGuard = createWriteGuard({
+  db, config: readWriteGuardConfig(),
+  preDeny: writeGuardPreDeny,
+});
+// multipart 路由：multer 讀完 body 之後才取鎖（上傳時間不占全域鎖）。放在 multer 之後的路由層中介
+// 用法：在 multer 之後掛 writeLateLock('<這條路由的完整路徑>')——路徑同時註冊成「multipart 延後取鎖」路由；沒註冊的路由即使帶 multipart 標頭也照樣在全域中介層取鎖
+const writeLateLock = (routePath) => writeGuard.lateLock(routePath);
+
+/** Web Push 清除失效訂閱：DB_WRITE_SERIALIZE=1 時改成「放鎖後的背景存檔」也在短鎖內重讀最新 auth 再改；關閉＝undefined（舊行為） */
+function pushCleanupOpts() {
+  if (!writeGuard.config.serialize) return undefined;
+  return {
+    applyOnLatestAuth: async (mutate) => {
+      try {
+        await writeGuard.withLock('push subscription cleanup', async () => {
+          await db.ready();
+          const a = loadAuth();
+          if (mutate(a) !== false) { saveAuth(a); await (typeof db.flushMain === 'function' ? db.flushMain() : db.flush()); }
+        }, { waitMs: 3000, holdMs: 8000 });
+      } catch (e) { console.warn('[pushNotify] 清除失效訂閱沒有存成功（下次推播會再試）：' + (e && e.message)); }
+    },
+  };
+}
+
+/**
+ * 「外部呼叫（無鎖）→ 短鎖內重讀最新資料、只套用自己改動的欄位」。實作在 lib/writeGuard.js 的 applyOnLatest（有完整說明與測試）。
+ * DB_WRITE_SERIALIZE 關閉＝完全維持舊行為（直接修改 await 前讀到的 legacyData 並整份存回）。
+ * 回傳 true＝已存入（或沒有東西要存）；false＝沒有存成功（不丟例外）。AI 快取類寫入可以忽略回傳值；SAP 對照不行（見 push/batch）。
+ */
+function applyOnLatest(label, legacyData, mutate, opts) {
+  return writeGuard.applyOnLatest(label, legacyData, mutate, opts);
+}
+
 // ── AI Credits 扣點中介（每功能獨立呼叫）──────────────────
-const aiCreditsGuard = createAiCreditsMiddleware(loadAuth, saveAuth);
+const _aiCreditsBase = createAiCreditsMiddleware(loadAuth, saveAuth);
+// DB_WRITE_SERIALIZE=1：扣點會 saveAuth＝整份 blob 寫入，而這些 AI 路由為了不讓 Gemini 的等待占著鎖而被豁免——
+// 所以只把「扣點」這一小步放進短鎖（等 3 秒、持有 8 秒；鎖內先 ready() 取最新資料），放鎖後才 next() 去呼叫 Gemini。關閉＝原樣。
+function aiCreditsGuard(featureKey) {
+  const inner = _aiCreditsBase(featureKey);
+  return function aiCreditsLocked(req, res, next) {
+    if (!writeGuard.config.serialize) return inner(req, res, next);
+    // 不需要寫入的情況（沒有訂閱設定的舊安裝／企業版無上限／點數不足要回 402）不搶鎖：inner 在這些情況都不會 saveAuth
+    // （判斷與 middleware/aiCredits.js 一致；鎖內 inner 會用最新資料重新判斷一次）
+    let willDeduct = true;   // 判斷失敗就保守走鎖內路徑
+    try {
+      const sub = loadAuth()._subscription;
+      const cost = (createAiCreditsMiddleware.CREDIT_COSTS && createAiCreditsMiddleware.CREDIT_COSTS[featureKey]) || 5;
+      willDeduct = !!sub && !(sub.plan === 'enterprise' && sub.aiCredits == null) && (sub.aiCredits != null ? sub.aiCredits : 0) >= cost;
+    } catch (_) { willDeduct = true; }
+    if (!willDeduct) return inner(req, res, next);
+    let proceed = false;
+    writeGuard.withLock('ai credits ' + featureKey, async () => {
+      await db.ready();
+      inner(req, res, () => { proceed = true; });
+      await (typeof db.flushMain === 'function' ? db.flushMain() : db.flush());
+    }, { waitMs: 3000, holdMs: 8000 }).then(() => {
+      if (proceed) next();   // 沒 proceed＝inner 已經自己回應（例如 402 點數不足）
+    }).catch((e) => {
+      console.warn('[ai credits] 取不到寫入鎖，請使用者稍後再試：' + (e && e.message));
+      if (!res.headersSent) { res.set('Retry-After', '2'); res.status(503).json({ code: 'DB_BUSY', retryable: true, error: '系統目前較忙，這次 AI 請求尚未執行，請稍候幾秒後再按一次。' }); }
+    });
+  };
+}
 
 // ── 輸入清理工具函式 ──────────────────────────────────────
 /**
@@ -1112,6 +1200,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── 全域寫入序列化的中介層（DB_WRITE_SERIALIZE=1 才有作用）──
+// 刻意放在 apiLimiter／planGuard／強制改密碼／集團角色白名單之後：被這些擋下的請求不會排隊拿鎖。
+// （/api/admin/* 的管理員檢查是路由層的 requireAdmin，改用上面的 preDeny 預先排除。）
+app.use('/api/', writeGuard.middleware());
+
 app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -1319,7 +1412,7 @@ app.post('/api/push/test', requireAuth, async (req, res) => {
     body: '如果您看到這則通知，代表訂閱已生效！',
     tag: 'test',
     data: { type: 'test', url: '/' }
-  });
+  }, pushCleanupOpts());
   res.json({ success: result.sent > 0, ...result });
 });
 
@@ -1644,13 +1737,13 @@ winRate 是 0–100 整數，factors 各項加總約等於 winRate。`
     const text = result.response.text();
     try {
       const aiData = gemini.parseJson(text);
-      // 快取到商機物件
-      const idx = data.opportunities.findIndex(o => o.id === oppId);
-      if (idx !== -1) {
-        data.opportunities[idx].aiWinRate   = aiData.winRate;
-        data.opportunities[idx].aiWinRateAt = new Date().toISOString();
-        db.save(data);
-      }
+      // 快取到商機物件（開關開啟時：Gemini 等待之後在短鎖內重讀最新資料、只更新這兩個欄位，不拿 await 前的舊物件整份存回）
+      await applyOnLatest('ai opp-win-rate cache', data, (d) => {
+        const idx = (d.opportunities || []).findIndex(o => o.id === oppId);
+        if (idx === -1) return false;
+        d.opportunities[idx].aiWinRate   = aiData.winRate;
+        d.opportunities[idx].aiWinRateAt = new Date().toISOString();
+      });
       res.json(aiData);
     } catch {
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
@@ -1722,14 +1815,14 @@ ${visitSummary}
     const text = result.response.text();
     try {
       const aiData = gemini.parseJson(text);
-      // 快取到聯絡人
-      const idx = data.contacts.findIndex(c => c.id === contactId);
-      if (idx !== -1) {
-        data.contacts[idx].aiSummary       = aiData.summary;
-        data.contacts[idx].aiSummaryHealth = aiData.health;
-        data.contacts[idx].aiSummaryAt     = new Date().toISOString();
-        db.save(data);
-      }
+      // 快取到聯絡人（同上：開關開啟時在短鎖內重讀最新資料、只更新這三個欄位）
+      await applyOnLatest('ai contact-summary cache', data, (d) => {
+        const idx = (d.contacts || []).findIndex(c => c.id === contactId);
+        if (idx === -1) return false;
+        d.contacts[idx].aiSummary       = aiData.summary;
+        d.contacts[idx].aiSummaryHealth = aiData.health;
+        d.contacts[idx].aiSummaryAt     = new Date().toISOString();
+      });
       res.json(aiData);
     } catch {
       res.status(500).json({ error: 'AI 回應格式錯誤，請重試' });
@@ -4976,6 +5069,7 @@ app.get('/api/admin/contacts/export', requireAdmin, (req, res) => {
 // ── 客戶資料批次匯入（Admin）────────────────────────────
 app.post('/api/admin/contacts/import', requireAdmin,
   (req, res, next) => uploadImport.single('file')(req, res, next),
+  writeLateLock('/api/admin/contacts/import'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -5091,7 +5185,7 @@ app.post('/api/admin/contacts/import', requireAdmin,
 );
 
 // ── 商機批次匯入（Admin）─────────────────────────────────
-app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), async (req, res) => {
+app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => uploadImport.single('file')(req, res, next), writeLateLock('/api/admin/opportunities/import'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
 
@@ -5387,6 +5481,7 @@ app.get('/api/admin/visits/export', requireAdmin, (req, res) => {
 // ── 日報（拜訪記錄）批次匯入（Admin）──────────────────────
 app.post('/api/admin/visits/import', requireAdmin,
   (req, res, next) => uploadImport.single('file')(req, res, next),
+  writeLateLock('/api/admin/visits/import'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -5513,6 +5608,7 @@ app.get('/api/admin/contracts/export', requireAdmin, (req, res) => {
 // ── 合約管理批次匯入（Admin）─────────────────────────────
 app.post('/api/admin/contracts/import', requireAdmin,
   (req, res, next) => uploadImport.single('file')(req, res, next),
+  writeLateLock('/api/admin/contracts/import'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -6435,7 +6531,7 @@ function pushNotification(toUsername, type, title, body, refId) {
       body,
       tag: `${type}:${refId || ''}`,        // 同 ref 的通知會合併不重疊
       data: { type, refId, url: notificationUrlFor(type, refId) }
-    }).catch(e => console.warn('[pushNotify] sendToUser failed:', e.message));
+    }, pushCleanupOpts()).catch(e => console.warn('[pushNotify] sendToUser failed:', e.message));
   }
 }
 
@@ -7161,6 +7257,8 @@ app.get('/api/admin/integrations/push/preview', requireAdmin, (req, res) => {
 });
 
 // ── 異質系統整合：批次推送（每次最多 10 家，前端循環呼叫）──────
+// SAP 對照寫回：取不到鎖／存檔失敗時不能默默吞掉（否則重推會在 SAP 重複建立帳號）；說明見 lib/sapLinkWriteback.js
+const sapWriteback = createSapLinkWriteback({ applyOnLatest });
 app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) => {
   const operator = req.session.user.username;
   const b = req.body || {};
@@ -7190,6 +7288,7 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
 
   if (!data.integrationLinks) data.integrationLinks = [];
   if (!data.integrationLogs)  data.integrationLogs  = [];
+  sapWriteback.mergePendingInto(data);   // 上次沒寫成功的對照（同一個實例記憶體內）先併進來，這次才不會把已建立的帳號當成未同步而重複建立
   const logId    = uuidv4();
   const logEntry = { id: logId, integrationId: config.id, startedAt: new Date().toISOString(), endedAt: null, operator, pushed: 0, failed: 0, records: [] };
   data.integrationLogs.unshift(logEntry);
@@ -7282,9 +7381,14 @@ app.post('/api/admin/integrations/push/batch', requireAdmin, async (req, res) =>
     }
   }
   logEntry.endedAt = new Date().toISOString();
-  db.save(data);
+  // 開關開啟時：SAP 外部呼叫（數十秒）結束後，在鎖內重讀最新資料，只合併「這次推送新增／更新的對照」與「這次的推送紀錄」，
+  // 不拿 await 前的舊物件整份存回（否則推送期間別人提交的報價單／商機都會被蓋掉）。關閉＝維持原本的整份存回。
+  // 這裡不同於 AI 快取：寫回失敗＝SAP 已有帳號但本機沒對照，所以用完整等待＋重試並確認存檔成功，仍失敗就在回應標 saved:false＋warning（見 lib/sapLinkWriteback.js）
+  const sapSaved = await sapWriteback.commit(data, logEntry);
   writeLog('PUSH_INTEGRATION', operator, 'system', `SAP 批次推送 ${companies.length} 家：成功 ${logEntry.pushed} 筆、失敗 ${logEntry.failed} 筆`, req);
-  res.json({ logId, pushed: logEntry.pushed, failed: logEntry.failed, records: logEntry.records });
+  res.json(sapSaved
+    ? { logId, pushed: logEntry.pushed, failed: logEntry.failed, records: logEntry.records }
+    : { logId, pushed: logEntry.pushed, failed: logEntry.failed, records: logEntry.records, saved: false, warning: SAP_WRITEBACK_WARNING });
 });
 
 // ── 異質系統整合：執行紀錄 ────────────────────────────────────
@@ -8502,6 +8606,7 @@ app.get('/api/companies/export', requireAuth, (req, res) => {
 // ?dryRun=1：只試算不寫入，回傳將新增/更新/疑似重複的明細供前端預覽確認
 app.post('/api/companies/import', requireAuth,
   (req, res, next) => uploadImport.single('file')(req, res, next),
+  writeLateLock('/api/companies/import'),
   (req, res) => {
     if (!isAdminOrMarketing(req)) return res.status(403).json({ error: '無權限（限管理員/行銷）' });
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -8684,6 +8789,7 @@ function yoyImportPlan(parsedYears, existing) {
 // 累計快照模式 → 以「年度×部門」為單位整批取代：只動檔案裡出現的部門×年度，其餘（其他部門/其他年度）原封不動。
 app.post('/api/yoy/import', requireAuth,
   (req, res, next) => uploadImport.single('file')(req, res, next),
+  writeLateLock('/api/yoy/import'),
   (req, res) => {
     if (!canImportYoy(req)) return res.status(403).json({ error: '無權限（限系統管理員）' });
     if (!req.file) return res.status(400).json({ error: '請上傳 Excel 檔案' });
@@ -9312,7 +9418,7 @@ const uploadImport = multer({
   }
 });
 
-app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file'), (req, res) => {
+app.post('/api/admin/import-contacts', requireAdmin, uploadImport.single('file'), writeLateLock('/api/admin/import-contacts'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '未收到檔案' });
   const { targetOwner, skipDuplicates } = req.body;
   if (!targetOwner) return res.status(400).json({ error: '請指定匯入對象' });
@@ -10581,15 +10687,41 @@ app.use((req, res) => {
 // ════════════════════════════════════════════════════════════
 //  雙模啟動：本地直接 listen；Vercel serverless 只 export app
 // ════════════════════════════════════════════════════════════
+// 啟動時的遷移／逾期提醒：都會讀-改-寫整份 blob。DB_WRITE_SERIALIZE 關閉＝維持舊行為（直接跑、不等）。
+// 開啟＝在寫入鎖內、用最新資料執行，但這不是使用者請求，所以：
+//  · 鎖用「短等待、短持有」（等 1.5 秒、持有最多 5 秒）；取不到（有人正在寫入）就略過，下次冷啟動再做——絕不排進使用者的鎖佇列、也不阻塞請求；
+//  · 任何失敗只記 log，不丟出去；
+//  · 鎖內不做外部呼叫（checkOverdueReminders 的 Web Push 是背景 fire-and-forget）。
+// 這些工作本來就是「條件成立才存檔」（每天最多一次）：沒有東西要做的冷啟動不會 save，只是拿一次短鎖。
+// 已知最壞情況（審查 R2-#8，依 Vercel 凍結行為推論、未實測）：冷啟動由 GET 觸發、回應後實例立刻被凍結，而此時背景工作正持有鎖——
+// 看門狗計時器凍結中不會觸發，只剩 DB 端 idle_in_transaction_session_timeout（= 持有上限 5 秒＋2 秒＋3 秒 = 10 秒）把鎖收回；
+// 這 10 秒內其他實例的寫入者最多等 8 秒後回 503 DB_BUSY（可重試），之後自行恢復，不遺失資料。持有上限已從 10 秒縮到 5 秒（最壞 15 秒→10 秒）。
+function runStartupJobs() {
+  if (!writeGuard.config.serialize) {
+    migrateOwner();
+    migrateStage成交ToWon();
+    checkOverdueReminders();
+    return Promise.resolve();
+  }
+  return writeGuard.withLock('startup jobs', async () => {
+    await db.ready();
+    migrateOwner();
+    migrateStage成交ToWon();
+    await checkOverdueReminders();
+    await db.flush();
+  }, { waitMs: 1500, holdMs: 5000 }).catch((e) => {
+    if (e && (e.code === 'DB_BUSY' || e.code === 'DB_UNAVAILABLE')) console.warn('[startup jobs] 略過（取不到寫入鎖，下次冷啟動再做）：' + e.message);
+    else console.error('[startup jobs]', e && e.message);
+  });
+}
+
 if (require.main === module) {
   // 本地執行：node server.js
   (async () => {
     try { await db.ready(); } catch (e) { console.error('[db] ready failed:', e); }
     try { await apiMonitor.ready(); } catch (e) { console.error('[apiMonitor] ready failed:', e); }
     app.listen(PORT, () => {
-      migrateOwner();
-      migrateStage成交ToWon();
-      checkOverdueReminders();
+      runStartupJobs().catch((e) => console.error('[startup jobs]', e && e.message));
       console.log(`\n✅ 業務名片管理系統已啟動`);
       console.log(`👉 請開啟瀏覽器，前往 http://localhost:${PORT}\n`);
     });
@@ -10600,11 +10732,7 @@ if (require.main === module) {
   if (process.env.DB_BACKEND === 'postgres') {
     // 背景預熱 + 遷移（不阻塞 cold start；首個 request 會等 ready）
     db.ready()
-      .then(() => {
-        migrateOwner();
-        migrateStage成交ToWon();
-        checkOverdueReminders();
-      })
+      .then(() => runStartupJobs())
       .catch((e) => console.error('[db] preload failed:', e));
     apiMonitor.ready().catch((e) => console.error('[apiMonitor] preload failed:', e));
   }

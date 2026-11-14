@@ -49,6 +49,8 @@ function applyAccessMode() {
 
 // 全域 fetch 攔截：唯讀模式下擋下所有 POST/PUT/DELETE/PATCH（除白名單外）
 const _ACCESS_VIEW_EXEMPT_CLIENT = ['/api/logout', '/api/user/password'];
+const _WRITE_METHODS_CLIENT = ['POST', 'PUT', 'DELETE', 'PATCH'];
+let _unsavedToastAt = 0;
 (function patchFetch() {
   const _origFetch = window.fetch.bind(window);
   window.fetch = function (url, opts) {
@@ -67,9 +69,31 @@ const _ACCESS_VIEW_EXEMPT_CLIENT = ['/api/logout', '/api/user/password'];
         }
       }
     }
-    return _origFetch(url, opts);
+    const p = _origFetch(url, opts);
+    const m = ((opts && opts.method) || 'GET').toUpperCase();
+    if (!_WRITE_METHODS_CLIENT.includes(m)) return p;
+    // 寫入型請求收到 503 且伺服器標示 retryable（DB_BUSY／DB_WRITE_FAILED／QUOTE_NO_UNAVAILABLE…）＝這次操作「尚未儲存」。
+    // 統一用 toast 告知（不自動重送：重送可能重複建單／重複寄信，由使用者決定），並在 Response 上標記，讓各呼叫點用 isUnsaved(r) 避免顯示成功。
+    return p.then(async (resp) => {
+      if (resp && resp.status === 503) {
+        try {
+          const j = await resp.clone().json();
+          if (j && j.retryable === true) {
+            resp.__unsaved = true;
+            const now = Date.now();
+            if (now - _unsavedToastAt > 1500) {
+              _unsavedToastAt = now;
+              try { if (typeof showToast === 'function') showToast('⚠️ ' + (j.error || '這次操作尚未儲存，請稍候幾秒後再按一次。'), 6500); } catch {}
+            }
+          }
+        } catch {}
+      }
+      return resp;
+    });
   };
 })();
+/** 這個回應是「尚未儲存」的 503（見上方 patchFetch）。呼叫點：if (isUnsaved(r)) return;——不要顯示成功、不要關閉視窗，讓使用者再按一次 */
+function isUnsaved(r) { return !!(r && r.__unsaved); }
 
 function applyPermissions() {
   // ── 集團PM（tecopm）— 唯讀角色，最高優先級處理 ──────────────
@@ -315,11 +339,14 @@ const SYSTEMS = {
 // ── 工具函式 ─────────────────────────────────────────────
 function $(id) { return document.getElementById(id); }
 
+var _toastTimer = null;   // var：app.js 解析期就可能有人呼叫 showToast，let 會踩到 TDZ
 function showToast(msg, duration = 2500) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), duration);
+  // 所有 toast 共用同一個元素：新訊息要取消前一個計時器，否則前一則的 6.5 秒計時會把後一則（例如 8 秒的重點提示）提早收掉
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove('show'); _toastTimer = null; }, duration);
 }
 
 function getInitial(name) {
@@ -2369,11 +2396,12 @@ $('cOppSaveBtn').addEventListener('click', async () => {
   };
 
   try {
-    await fetch(`${API}/opportunities`, {
+    const _rNewOpp = await fetch(`${API}/opportunities`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (isUnsaved(_rNewOpp)) return;   // 503：尚未儲存，保留表單讓使用者再按一次
     showToast('✅ 商機已新增');
     // 重置表單
     $('cOppCategory').value    = '';
@@ -4256,7 +4284,8 @@ $v('visitSaveBtn').addEventListener('click', async () => {
   try {
     let visitId = id;
     if (id) {
-      await fetch(`${API}/visits/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitPayload) });
+      const _rVisitPut = await fetch(`${API}/visits/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitPayload) });
+      if (isUnsaved(_rVisitPut)) return;   // 503：尚未儲存
     } else {
       const r = await fetch(`${API}/visits`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(visitPayload) });
       const saved = await r.json().catch(() => ({}));
@@ -4279,10 +4308,15 @@ $v('visitSaveBtn').addEventListener('click', async () => {
         visitId,
         bu: ($v('oppBu') && $v('oppBu').value) || undefined,
       };
-      await fetch(`${API}/opportunities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oppPayload) });
-      await loadOpportunities();
-      updateStatCards();
-      showToast(id ? '已更新拜訪記錄' : '已新增拜訪記錄 及 商機（Pipeline）');
+      const _rVisitOpp = await fetch(`${API}/opportunities`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oppPayload) });
+      if (isUnsaved(_rVisitOpp)) {
+        // 503：拜訪記錄已經存好，但商機尚未建立。不能保留視窗讓使用者再按一次儲存（新拜訪會被重複建立），所以照常關閉並明確告知商機要重新新增
+        showToast('拜訪記錄已儲存，但商機尚未建立（系統較忙）。請稍後到商機頁重新新增。', 8000);
+      } else {
+        await loadOpportunities();
+        updateStatCards();
+        showToast(id ? '已更新拜訪記錄' : '已新增拜訪記錄 及 商機（Pipeline）');
+      }
     } else {
       showToast(_visitOppId ? '✅ 已新增商機日報' : (id ? '已更新拜訪記錄' : '已新增拜訪記錄'));
     }
@@ -4338,7 +4372,8 @@ $v('visitViewDeleteBtn').addEventListener('click', () => {
 $v('visitConfirmCancel').addEventListener('click', () => $v('visitConfirmOverlay').classList.remove('open'));
 $v('visitConfirmDelete').addEventListener('click', async () => {
   try {
-    await fetch(`${API}/visits/${currentVisitId}`, { method: 'DELETE' });
+    const _rVisitDel = await fetch(`${API}/visits/${currentVisitId}`, { method: 'DELETE' });
+    if (isUnsaved(_rVisitDel)) return;   // 503：尚未刪除
     showToast('已刪除拜訪記錄');
     $v('visitConfirmOverlay').classList.remove('open');
     loadVisits();
@@ -5082,11 +5117,12 @@ $('oppEditSave').addEventListener('click', async () => {
     payload.achievedDate = new Date().toISOString().slice(0, 10);
   }
   try {
-    await fetch(`${API}/opportunities/${id}`, {
+    const _rOppPut1 = await fetch(`${API}/opportunities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (isUnsaved(_rOppPut1)) return;   // 503：尚未儲存
     await loadOpportunities();
     renderKanban();
     updateStatCards();
@@ -6496,11 +6532,12 @@ $('saveTargetBtn').addEventListener('click', async () => {
   const amount = parseFloat($('targetAmountInput').value);
   if (!year || isNaN(amount) || amount < 0) { showToast('請填入正確的目標金額'); return; }
   try {
-    await fetch(`${API}/targets`, {
+    const _rTarget = await fetch(`${API}/targets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ year, amount })
     });
+    if (isUnsaved(_rTarget)) return;   // 503：尚未儲存
     await loadTargets();
     renderTargetHistory();
     updateTargetCard();
@@ -6666,11 +6703,12 @@ async function updateOppStage(id, stage, confirmWon = false) {
         body.achievedDate = new Date().toISOString().slice(0, 10);
       }
     }
-    await fetch(`${API}/opportunities/${id}`, {
+    const _rOppPut2 = await fetch(`${API}/opportunities/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    if (isUnsaved(_rOppPut2)) { renderOppTable(); return; }   // 503：尚未儲存——「改了即生效」的下拉已被瀏覽器改成新值，重畫表格讓它回到實際（舊）階段
     await loadOpportunities();
     renderOppTable();
     renderTargetHistory();
@@ -8337,7 +8375,8 @@ $('contractDeleteCancel').addEventListener('click', () => $('contractDeleteModal
 $('contractDeleteConfirm').addEventListener('click', async () => {
   if (!contractDeleteId) return;
   try {
-    await fetch(`${API}/contracts/${contractDeleteId}`, { method: 'DELETE' });
+    const _rContractDel = await fetch(`${API}/contracts/${contractDeleteId}`, { method: 'DELETE' });
+    if (isUnsaved(_rContractDel)) return;   // 503：尚未刪除
     $('contractDeleteModal').classList.remove('open');
     contractDeleteId = null;
     showToast('合約已刪除');
@@ -8839,10 +8878,12 @@ function renderNotifList(list) {
         item.classList.remove('unread');
         _updateBadgeFromDOM();
       } else {
-        await fetch(`${API}/notifications/${id}/read`, { method: 'PUT' });
-        item.classList.remove('unread');
-        _pollBundleEtag = null; // server 狀態已改，強制下次取最新
-        pollNotifications();
+        const _rRead = await fetch(`${API}/notifications/${id}/read`, { method: 'PUT' });
+        if (!isUnsaved(_rRead)) {   // 503（尚未儲存）：維持未讀樣式，不然下次輪詢又被蓋回未讀；仍照常開啟通知指向的頁面
+          item.classList.remove('unread');
+          _pollBundleEtag = null; // server 狀態已改，強制下次取最新
+          pollNotifications();
+        }
         if ((item.dataset.type || '').startsWith('quote_') && item.dataset.ref) openQuoteFromNotification(item.dataset.type, item.dataset.ref);
       }
     });
@@ -8896,7 +8937,8 @@ $('notifReadAll').addEventListener('click', async () => {
   document.querySelectorAll('.notif-item[data-contract="1"]').forEach(item => {
     markContractReminderRead(item.dataset.id);
   });
-  await fetch(`${API}/notifications/read-all`, { method: 'PUT' });
+  const _rReadAll = await fetch(`${API}/notifications/read-all`, { method: 'PUT' });
+  if (isUnsaved(_rReadAll)) return;   // 503（尚未儲存）：patchFetch 已提示；不要重抓（重抓會讓剛標的已讀又全部跳回未讀）
   _pollBundleEtag = null; // server 狀態已改，強制下次取最新
   pollNotifications();
 });
@@ -9074,7 +9116,8 @@ $('receivableModalSave').addEventListener('click', async () => {
 
 async function deleteReceivable(id) {
   if (!confirm('確定刪除此帳款？')) return;
-  await fetch(`${API}/receivables/${id}`, { method: 'DELETE' });
+  const _rRecvDel = await fetch(`${API}/receivables/${id}`, { method: 'DELETE' });
+  if (isUnsaved(_rRecvDel)) return;   // 503：尚未刪除
   showToast('✅ 已刪除');
   loadReceivablesView();
 }

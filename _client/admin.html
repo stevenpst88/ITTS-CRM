@@ -4508,7 +4508,7 @@
         progWrap.style.display = ''; resultEl.style.display = 'none';
 
         const BATCH = 5, total = checked.length;
-        let done = 0, pushed = 0, failed = 0;
+        let done = 0, pushed = 0, failed = 0, linkUnsaved = 0;   // linkUnsaved：SAP 已推送，但本機的 SAP 對照沒有寫入成功的批次數
         const paint = () => {
           const pct = total ? Math.round(done / total * 100) : 0;
           progBar.style.width = pct + '%';
@@ -4525,6 +4525,7 @@
             if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
             pushed += d.pushed || 0;
             failed += d.failed || 0;
+            if (d.saved === false) linkUnsaved++;
           } catch (e) { failed += batch.length; }
           done += batch.length;
           paint();
@@ -4533,7 +4534,11 @@
 
         const stopped = _pushStop;
         resultEl.style.display = '';
-        if (!failed && !stopped) {
+        if (linkUnsaved) {
+          // 伺服器回報：SAP 端已建立／更新，但本機的 SAP 對照沒存成功。此時重推會在 SAP 重複建立帳號，所以要明確擋下
+          resultEl.style.background = '#fdecec'; resultEl.style.color = '#c0322b';
+          resultEl.textContent = `⚠️ SAP 已推送（成功 ${pushed} 筆、失敗 ${failed} 筆），但本機對照寫入失敗（${linkUnsaved} 批），請勿重推，請聯絡 IT。`;
+        } else if (!failed && !stopped) {
           resultEl.style.background = '#e7f5ec'; resultEl.style.color = '#1a7f37';
           resultEl.textContent = `✅ 推送完成：成功 ${pushed} 筆，失敗 0 筆`;
         } else if (stopped) {
@@ -4546,7 +4551,8 @@
         execBtn.disabled = false; execBtn.textContent = '🚀 執行推送';
         stopBtn.style.display = 'none'; stopBtn.textContent = '⏸ 停止';
         _pushStop = false;
-        if (!stopped) showToast(failed === 0 ? `✅ SAP 推送完成（${pushed} 筆）` : `⚠️ SAP 推送：${failed} 筆失敗`);
+        if (linkUnsaved) showToast('⚠️ SAP 已推送但本機對照寫入失敗，請勿重推，請聯絡 IT');
+        else if (!stopped) showToast(failed === 0 ? `✅ SAP 推送完成（${pushed} 筆）` : `⚠️ SAP 推送：${failed} 筆失敗`);
       });
 
       // ══ ④ 執行紀錄 ══════════════════════════════════════════
@@ -4804,8 +4810,25 @@
     });
 
     // ── API Helper（自動處理 session 過期）──
+    let _unsavedToastAt = 0;
+    /** 這個回應是「尚未儲存」的 503（鎖忙／存檔失敗；伺服器標 retryable）。呼叫點：if (isUnsaved(r)) return;——不要顯示成功 */
+    function isUnsaved(r) { return !!(r && r.__unsaved); }
+    /** 寫入型請求的 503 統一處理：提示「尚未儲存」（不自動重送，避免重複建立／重複寄信）並標記 Response */
+    async function markUnsaved(r, method) {
+      if (!r || r.status !== 503 || !['POST', 'PUT', 'DELETE', 'PATCH'].includes(String(method || 'GET').toUpperCase())) return r;
+      try {
+        const j = await r.clone().json();
+        if (j && j.retryable === true) {
+          r.__unsaved = true;
+          const now = Date.now();
+          if (now - _unsavedToastAt > 1500) { _unsavedToastAt = now; try { showToast('⚠️ ' + (j.error || '這次操作尚未儲存，請稍候幾秒後再按一次。'), 6500); } catch (_) {} }
+        }
+      } catch (_) {}
+      return r;
+    }
     async function adminFetch(url, options = {}) {
       const r = await fetch(url, options);
+      await markUnsaved(r, options && options.method);
       if (r.status === 401 || r.status === 403) {
         showLoginScreen();
         $('adminLoginErr').textContent = 'Session 已過期，請重新登入';
@@ -6034,7 +6057,8 @@
     async function restoreContact(id, name) {
       if (!confirm(`確定要還原「${name}」嗎？\n還原後將回到原業務的聯絡人名單。`)) return;
       try {
-        await adminFetch(`${API}/admin/contacts/${id}/restore`, { method: 'POST' });
+        const _rRestore = await adminFetch(`${API}/admin/contacts/${id}/restore`, { method: 'POST' });
+        if (isUnsaved(_rRestore)) return;   // 503：尚未還原
         alert('✅ 已還原成功');
         loadDeletedContacts();
       } catch (e) { alert('還原失敗：' + e.message); }
@@ -6054,7 +6078,8 @@
         return;
       }
       try {
-        await adminFetch(`${API}/admin/contacts/${id}/permanent`, { method: 'DELETE' });
+        const _rPerm = await adminFetch(`${API}/admin/contacts/${id}/permanent`, { method: 'DELETE' });
+        if (isUnsaved(_rPerm)) return;   // 503：尚未刪除
         alert('✅ 已永久刪除');
         loadDeletedContacts();
       } catch (e) { alert('刪除失敗：' + e.message); }
@@ -7298,11 +7323,12 @@
           // 這裡用 PUT 送空值，server 端改為刪除該 key
           try {
             const defR = getDefaultRatio();
-            await fetch('/api/settings/user-quarter-ratios', {
+            const _rClr = await markUnsaved(await fetch('/api/settings/user-quarter-ratios', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ username: u.username, year, ratios: defR, clearPersonal: true })
-            });
+            }), 'PUT');
+            if (isUnsaved(_rClr)) return;   // 503：尚未清除
             if (qrUserRatios[u.username]) delete qrUserRatios[u.username][year];
             renderQrUserTable();
           } catch(e) { alert('清除失敗：' + e.message); }
