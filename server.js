@@ -1729,22 +1729,36 @@ function requireAi(req, res, next) {
 }
 
 // ── Feature 1：名片 AI 辨識 ─────────────────────────────
-const uploadOcr = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const ok = /^image\//i.test(file.mimetype);
-    ok ? cb(null, true) : cb(new Error('只支援圖片格式'));
-  }
-});
+// SEC-09：業務版與管理員版共用同一套圖片檢查（lib/ocrImage.js）：multer 的 fileFilter（MIME＋副檔名白名單）→ 大小上限 →
+// 檔頭 magic bytes（ocrImageGate）。**這些全部在 aiCreditsGuard（扣 AI 額度）與 Gemini 呼叫之前**——不合格直接 400、不扣額度；
+// requireAi 也放在扣額度之前（沒設 Gemini 金鑰就不該扣點）。multer 的錯誤一律轉成 400 JSON（不再掉到預設錯誤處理）。
+// 送進 Gemini 的 MIME 用檔頭偵測的類型（req.file.detectedMime），不用用戶端宣稱的。
+const OCR_IMG = require('./lib/ocrImage');
+function ocrUploadMw(maxBytes) {
+  const up = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxBytes, files: 1 }, fileFilter: OCR_IMG.fileFilter });
+  return (req, res, next) => up.single('card')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'OCR_BAD_TYPE') return res.status(400).json({ error: OCR_IMG.BAD_IMAGE_MSG, code: 'INVALID_IMAGE' });
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: `圖片太大，請壓縮到 ${Math.round(maxBytes / 1024 / 1024)}MB 以內再上傳`, code: 'IMAGE_TOO_LARGE' });
+    return res.status(400).json({ error: '圖片上傳失敗，請重新選擇', code: 'UPLOAD_FAILED' });
+  });
+}
+function ocrImageGate(req, res, next) {
+  if (!req.file) return res.status(400).json({ error: '未收到圖片' });
+  const detected = OCR_IMG.sniffImageType(req.file.buffer);
+  if (!detected) return res.status(400).json({ error: OCR_IMG.BAD_IMAGE_MSG, code: 'INVALID_IMAGE' });
+  req.file.detectedMime = detected;
+  next();
+}
+const uploadOcrAdmin = ocrUploadMw(10 * 1024 * 1024);   // 管理員版上限維持 10MB
+const uploadOcrUser  = ocrUploadMw(8 * 1024 * 1024);    // 業務版上限維持 8MB
 
-app.post('/api/admin/ai-ocr-card', requireAdmin, aiCreditsGuard('admin-ocr-card'), requireAi,
-  (req, res, next) => uploadOcr.single('card')(req, res, next),
+app.post('/api/admin/ai-ocr-card', requireAdmin, uploadOcrAdmin, ocrImageGate, requireAi, aiCreditsGuard('admin-ocr-card'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '未收到圖片' });
       const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
+      const mimeType = req.file.detectedMime;
 
       const model = gemini.getModel();
       const result = await model.generateContent([
@@ -1781,14 +1795,12 @@ address（地址）, website（網址，需含 http/https）, taxId（統一編�
 );
 
 // ── 業務名片拍照辨識（業務可用，單張填入）────────────────
-const uploadOcrUser = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-app.post('/api/ai/ocr-card', requireAuth, aiLimiter, aiCreditsGuard('ocr-card'), requireAi,
-  (req, res, next) => uploadOcrUser.single('card')(req, res, next),
+app.post('/api/ai/ocr-card', requireAuth, aiLimiter, uploadOcrUser, ocrImageGate, requireAi, aiCreditsGuard('ocr-card'),
   async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: '未收到圖片' });
       const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
+      const mimeType = req.file.detectedMime;
 
       const model = gemini.getModel();
       const result = await model.generateContent([
