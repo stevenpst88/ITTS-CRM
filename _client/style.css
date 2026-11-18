@@ -753,6 +753,36 @@ body {
 .fc-chk-row:hover { background: #f0f4ff; }
 .fc-chk-row input[type=checkbox] { width: 15px; height: 15px; accent-color: #1a73e8; cursor: pointer; }
 
+/* 可搜尋下拉（searchable-select.js）：沿用 fc-multisel-* 的按鈕／浮層外觀，這裡只補輸入框與清單 */
+.ss-wrap { display: inline-block; }
+.ss-panel { min-width: 220px; padding: 8px; }
+.ss-panel[hidden] { display: none; }
+.ss-panel { max-width: calc(100vw - 20px); box-sizing: border-box; }
+.ss-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #ccd; border-radius: 8px; font-size: 14px; background: #fff; color: #333; }
+.ss-input:focus { outline: 2px solid #1a73e8; outline-offset: 0; }
+.ss-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+.ss-opt { padding: 8px 10px; border-radius: 6px; font-size: 13px; font-weight: 500; color: #333; cursor: pointer; user-select: none; }
+.ss-opt[aria-selected="true"] { font-weight: 700; color: #1a73e8; }
+.ss-opt.ss-active { background: #e8f0fe; }
+.ss-empty { padding: 8px 10px; font-size: 13px; color: #888; }
+/* 多選：按鈕不爆版、全選／清除列、checkbox 列 */
+.ss-btn { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-tools { display: flex; gap: 8px; margin-top: 6px; }
+.ss-tool { flex: 1; padding: 6px 8px; border: 1px solid #ccd; border-radius: 8px; background: #f5f7fb; color: #1a73e8; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ss-tool:disabled { opacity: .45; cursor: default; }
+.ss-opt:has(.ss-chk) { display: flex; align-items: center; gap: 8px; }
+.ss-chk { width: 16px; height: 16px; accent-color: #1a73e8; flex: none; pointer-events: none; }
+.ss-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-empty[hidden] { display: none; }
+@media (max-width: 640px) {
+  .ss-panel { min-width: 0; width: min(88vw, 300px); }
+  .ss-input { font-size: 16px; }   /* 避免 iOS 聚焦時自動放大 */
+  .ss-opt { padding: 12px 10px; }
+  .ss-tool { padding: 10px 8px; font-size: 13px; }
+  .ss-btn { max-width: 150px; }
+  .ss-chk { width: 20px; height: 20px; }
+}
+
 .forecast-summary-row {
   display: flex; gap: 16px; margin-bottom: 18px; flex-wrap: wrap;
 }

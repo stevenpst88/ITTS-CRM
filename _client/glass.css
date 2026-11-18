@@ -1446,6 +1446,17 @@ body.glass .fc-chk-row { color: var(--g-text); }
 body.glass .fc-chk-row:hover { background: var(--g-row-hover); }
 body.glass .fc-chk-row input[type=checkbox] { accent-color: var(--g-accent); }
 body.glass.dark .fc-chk-row input[type=checkbox] { color-scheme: dark; }
+/* 可搜尋下拉：輸入框／選項狀態（外觀沿用上面 fc-multisel-*） */
+body.glass .ss-input { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-text); }
+body.glass.dark .ss-input { color-scheme: dark; }
+body.glass .ss-input:focus { outline: 2px solid var(--g-accent); outline-offset: 0; }
+body.glass .ss-opt { color: var(--g-text); }
+body.glass .ss-opt.ss-active { background: var(--g-row-hover); }
+body.glass .ss-opt[aria-selected="true"] { color: var(--g-accent); }
+body.glass .ss-tool { background: var(--g-input); border: 1px solid var(--g-edge); color: var(--g-accent); }
+body.glass .ss-chk { accent-color: var(--g-accent); }
+body.glass.dark .ss-chk { color-scheme: dark; }
+body.glass .ss-empty { color: var(--g-text-2, var(--g-text)); opacity: .7; }
 body.glass .fc-multisel-btn.active, body.glass.dark .fc-multisel-btn.active { border-color: var(--g-accent); color: var(--g-accent); background: color-mix(in srgb, var(--g-accent) 14%, var(--g-input)); }
 body.glass:not(.dark) .btn-soft-success { color: #14532d; }
 body.glass:not(.dark) .btn-soft-danger { color: #a31515; }

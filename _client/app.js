@@ -7205,6 +7205,12 @@ const STAGE_CONF_LABEL = { A: 'Commit', B: 'Upside', C: 'Pipeline', Won: 'Won' }
 let forecastSalesPerson = '';
 // 用戶名稱對應表（username → displayName），供多用戶報表顯示
 let forecastUserMap = {};
+// username → [顯示名稱, 暱稱]（可搜尋人員下拉比對用；舊版後端沒有 detail 時為空）
+let forecastUserAliases = {};
+let forecastSalesSS = null;   // ITTSSearchSelect.enhance（多選模式）的回傳物件
+// 業務篩選的「選取集合」（帳號陣列）：空陣列 = 全部業務（與 forecastSelectedStages 同語意）。
+// 原 <select id="forecastSalesFilter"> 只當資料來源（選項清單）；多選模式下它的 .value 不可信（只反映第一個），所有讀取一律改用本陣列。
+let forecastSelectedOwners = [];
 // 表頭排序狀態：null = 預設（依預定簽約日）；'amount' = 合約金額；'profit' = 毛利金額
 // 方向：'desc' | 'asc'
 let forecastSortKey = null;
@@ -7233,8 +7239,16 @@ async function loadForecastView() {
   }
   // 取得可見用戶名稱對應表（秘書/主管才有多筆）
   try {
-    const r = await fetch(`${API}/usermap`);
-    if (r.ok) forecastUserMap = await r.json();
+    const r = await fetch(`${API}/usermap?detail=1`);
+    if (r.ok) {
+      const raw = await r.json();
+      // ?detail=1 的值是 {label, displayName, nickname}；舊版後端回字串 → 相容處理
+      forecastUserMap = {}; forecastUserAliases = {};
+      Object.entries(raw).forEach(([u, v]) => {
+        if (v && typeof v === 'object') { forecastUserMap[u] = v.label || u; forecastUserAliases[u] = [v.displayName, v.nickname].filter(Boolean); }
+        else forecastUserMap[u] = v;
+      });
+    }
   } catch { /* ignore */ }
   initForecastYearSel();
   initForecastSalesFilter();   // 載入 userMap 後再填入業務選單
@@ -7260,6 +7274,8 @@ function initForecastSalesFilter() {
   if (userPermissions.role === 'tecopm') {
     const salesFilter0 = $('forecastSalesFilter');
     if (salesFilter0) salesFilter0.style.display = 'none';
+    if (forecastSalesSS) forecastSalesSS.setVisible(false);
+    forecastSelectedOwners = [];
     return;
   }
   const canFilter = ['admin','manager1','manager2','secretary'].includes(userPermissions.role);
@@ -7278,8 +7294,20 @@ function initForecastSalesFilter() {
       }
     });
     if (!salesFilter.dataset.bound) {
-      salesFilter.addEventListener('change', renderForecastTable);
+      // 元件每次勾選／全選／清除都對 select 觸發 change：同步選取集合後重算（沒有元件時退回單選語意）
+      salesFilter.addEventListener('change', () => {
+        forecastSelectedOwners = forecastSalesSS ? forecastSalesSS.getSelected() : (salesFilter.value ? [salesFilter.value] : []);
+        renderForecastTable();
+      });
       salesFilter.dataset.bound = '1';
+    }
+    // 升級成可搜尋人員下拉：原 select 仍是資料來源（.value／change 不變），只是改由自訂面板操作
+    if (window.ITTSSearchSelect) {
+      if (!forecastSalesSS) forecastSalesSS = ITTSSearchSelect.enhance(salesFilter, { aliases: forecastUserAliases, multiple: true, allLabel: '全部業務' });
+      else forecastSalesSS.refresh();
+      forecastSelectedOwners = forecastSalesSS.getSelected();
+      salesFilter.style.display = 'none';   // 上面 canFilter 分支每次呼叫都會把原 select 顯示出來，這裡再藏回去
+      forecastSalesSS.setVisible(true);
     }
   }
 
@@ -7347,14 +7375,14 @@ function initForecastStageMultiSel() {
 }
 
 function getForecastOpps(year) {
-  const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
+  const ownerSet = forecastSelectedOwners.length ? new Set(forecastSelectedOwners) : null;   // 空 = 不篩
   const buVal = $('forecastBuFilter') ? $('forecastBuFilter').value : '';
 
   return ownScopeOpps().filter(o => {
     if (!o.expectedDate) return false;
     if (o.stage === 'D') return false;          // D 階段不納入銷售預測
     if (new Date(o.expectedDate).getFullYear() !== year) return false;
-    if (salesVal && o.owner !== salesVal) return false;   // 業務人員篩選
+    if (ownerSet && !ownerSet.has(o.owner)) return false;   // 業務人員篩選（可多位）
     if (buVal && o.category !== buVal) return false;      // BU 篩選（比對畫面顯示的「BU」欄＝o.category，資料齊全）
     if (forecastSelectedStages.length && !forecastSelectedStages.includes(o.stage)) return false;  // 多選階段篩選
     return true;
@@ -7471,11 +7499,12 @@ function renderForecastTable() {
   const totWon = wonOpps.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0);
 
   // ── 篩選標籤（顯示目前套用的條件）──
-  const salesVal = $('forecastSalesFilter') ? $('forecastSalesFilter').value : '';
-  const salesLabel = salesVal ? (forecastUserMap[salesVal] || salesVal) : '';
+  const ownerLabels = forecastSelectedOwners.map(u => forecastUserMap[u] || u);
+  // 人數多時摘要成「前 3 位＋等 N 人」，避免標籤列爆版
+  const salesLabels = ownerLabels.length > 3 ? [...ownerLabels.slice(0, 3), `等 ${ownerLabels.length} 位業務`] : ownerLabels;
   const STAGE_TAG_NAMES = { A:'A｜Commit', B:'B｜Upside', C:'C｜Pipeline', Won:'Won' };
   const stageLabels = forecastSelectedStages.map(s => STAGE_TAG_NAMES[s] || s);
-  const filterTags = [salesLabel, ...stageLabels].filter(Boolean);
+  const filterTags = [...salesLabels, ...stageLabels].filter(Boolean).map(t => escapeHtml(t));
   const filterHint = filterTags.length
     ? `<div style="font-size:12px;color:#1a73e8;margin-bottom:6px">
         篩選中：${filterTags.map(t=>`<span style="background:#e8f0fe;border-radius:4px;padding:2px 8px;margin-right:4px">${t}</span>`).join('')}
@@ -7484,8 +7513,8 @@ function renderForecastTable() {
   const hintEl = $('forecastFilterHint');
   if (hintEl) hintEl.innerHTML = filterHint;
 
-  // ── 季度業績進度面板（僅選定單一業務時顯示） ──
-  renderForecastQuarterPanel(salesVal);
+  // ── 季度業績進度面板（僅「恰好選 1 位」業務時顯示；0 位或 2 位以上傳 '' → 面板隱藏） ──
+  renderForecastQuarterPanel(forecastSelectedOwners.length === 1 ? forecastSelectedOwners[0] : '');
 
   $('forecastSummaryCards').innerHTML = `
     <div class="forecast-summary-card fsc-blue">
@@ -7854,8 +7883,19 @@ function hideOppVisitTooltip() {
 }
 
 // 匯出 Excel
+// 帶上畫面目前的篩選（業務／階段／BU）；後端只會再縮小可視範圍。沒有任何篩選時網址與舊版相同
+function buildForecastExportUrl() {
+  const p = new URLSearchParams();
+  p.set('year', String(forecastYear));
+  const buEl = $('forecastBuFilter');
+  // 多位業務用「重複參數」owner=a&owner=b（不用逗號：帳號可能含逗號）；空 = 不帶
+  forecastSelectedOwners.forEach(u => p.append('owner', u));
+  if (forecastSelectedStages.length) p.set('stages', forecastSelectedStages.join(','));
+  if (buEl && buEl.value) p.set('bu', buEl.value);
+  return `${API}/forecast/export?${p.toString()}`;
+}
 $('forecastExportBtn').addEventListener('click', () => {
-  window.location.href = `${API}/forecast/export?year=${forecastYear}`;
+  window.location.href = buildForecastExportUrl();
 });
 
 // ── ERP MA 合約管理 ───────────────────────────────────────

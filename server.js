@@ -5295,6 +5295,7 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
 // ── 銷售預測 Excel 匯出 ──────────────────────────────────
 const STAGE_CONF       = { D: 10, C: 25, B: 50, A: 90, Won: 100 };
 const STAGE_LABEL_EXPORT = { A: 'Commit', B: 'Upside', C: 'Pipeline', Won: 'Won' };
+const FORECAST_FILTER_STAGES = ['A', 'B', 'C', 'Won'];   // 匯出可篩選的階段（D 不納入預測）
 
 app.get('/api/forecast/export', requireAuth, (req, res) => {
   // 集團PM 不可下載 Excel（深度防禦：tecopm middleware 已用路徑白名單擋下，這裡再多一層）
@@ -5310,8 +5311,21 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
 
   // 篩選當年度商機（依預定簽約日，依角色可視範圍）
   const forecastOwners = getViewableOwners(req, 'opportunities');
+  // 畫面篩選（可選）：owner／stages／bu。只能「再縮小」可視範圍——owner 與 forecastOwners 取交集（不在可視範圍的值 → 不會多出任何資料），
+  // 沒帶任何參數時 fOwners/fStages/fBu 全為空，下面的過濾條件恆為真，輸出與舊版相同。
+  const _q1 = (v) => (typeof v === 'string' ? v.trim() : '');
+  // owner 可重複帶（owner=a&owner=b；也收 owner[]=a 寫法），舊的單一字串呼叫照舊：最多 200 個值、單一值最多 128 字
+  // （超長截斷，仍是「不會命中任何人」的值，不會變成不篩）；每個值再與 forecastOwners 取交集（只縮小）；全部無效／未帶＝不篩。
+  // 直接解析原始查詢字串：Express 的 qs 在重複鍵超過 20 個時會把陣列轉成物件（舊寫法會因此整個被忽略而變成「不篩」＝匯出全部可視資料），
+  // 且 owner[x]=…／巢狀物件之類的畸形鍵在這裡根本不會被當成 owner（元素一律是字串）。
+  let _ownerRaw = [];
+  try { const sp = new URLSearchParams(String(req.originalUrl || '').split('?')[1] || ''); _ownerRaw = sp.getAll('owner').concat(sp.getAll('owner[]')); } catch (e) { _ownerRaw = []; }
+  const fOwners = new Set(_ownerRaw.slice(0, 200).map(v => v.trim().slice(0, 128)).filter(Boolean));
+  const fStages = _q1(req.query.stages).split(',').map(s => s.trim()).filter(s => FORECAST_FILTER_STAGES.includes(s));
+  const fBu     = _q1(req.query.bu);
   const opps = (data.opportunities || [])
     .filter(o => forecastOwners.includes(o.owner) && o.expectedDate && new Date(o.expectedDate).getFullYear() === yr && o.stage !== 'D')
+    .filter(o => (!fOwners.size || fOwners.has(o.owner)) && (!fStages.length || fStages.includes(o.stage)) && (!fBu || o.category === fBu))
     .sort((a, b) => (a.expectedDate || '').localeCompare(b.expectedDate || ''));
 
   // 標題列
@@ -5384,7 +5398,12 @@ app.get('/api/forecast/export', requireAuth, (req, res) => {
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const today = new Date();
   const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
-  auditExport(req, 'EXPORT_FORECAST', opps.length, `${yr} 年度商機預測；依角色(${user.role})可視範圍：${forecastOwners.length} 位業務`, 'xlsx');
+  // 稽核描述限長：每個值 64 字、owner 總長 ≤ 300 字（超過加「…」）；BU 也限 64 字
+  const _cut = (v, n) => (v.length > n ? v.slice(0, n) + '…' : v);
+  let _ownDesc = [...fOwners].map(v => _cut(v, 64)).join('/');
+  if (_ownDesc.length > 300) _ownDesc = _ownDesc.slice(0, 300) + '…';
+  const _fDesc = (fOwners.size || fStages.length || fBu) ? `；篩選：${[fOwners.size && '業務=' + _ownDesc, fStages.length && '階段=' + fStages.join('/'), fBu && 'BU=' + _cut(fBu, 64)].filter(Boolean).join('、')}` : '';
+  auditExport(req, 'EXPORT_FORECAST', opps.length, `${yr} 年度商機預測；依角色(${user.role})可視範圍：${forecastOwners.length} 位業務${_fDesc}`, 'xlsx');
   const fname = `${yr}%E5%B9%B4SalesPipeline_${encodeURIComponent(salesPerson || 'export')}_${dateStr}.xlsx`;
   res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -6951,8 +6970,10 @@ app.get('/api/usermap', requireAuth, (req, res) => {
   // 自己一定包含
   viewable.add(username);
   const map = {};
+  // ?detail=1：值改為 {label, displayName, nickname}，供「可搜尋人員下拉」用名稱／暱稱／帳號比對；不帶時回傳格式與舊版完全相同
+  const detail = req.query.detail === '1';
   auth.users.filter(u => viewable.has(u.username)).forEach(u => {
-    map[u.username] = userLabel(u);
+    map[u.username] = detail ? { label: userLabel(u), displayName: u.displayName || '', nickname: u.nickname || '' } : userLabel(u);
   });
   res.json(map);
 });
