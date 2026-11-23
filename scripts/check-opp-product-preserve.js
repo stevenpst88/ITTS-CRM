@@ -92,7 +92,7 @@ function seedFiles() {
   const users = [mkUser('_s_adm', 'admin'), mkUser('_s_u1', 'user', { bu: ['ERP'] })];
   fs.writeFileSync(path.join(ROOT, 'auth.json'), JSON.stringify({ users }, null, 2));
   const d = {
-    contacts: [], companies: [], visits: [], contracts: [], receivables: [], callins: [], keyAccounts: [], quotations: [],
+    contacts: [{ id: 'c_sbx1', owner: '_s_u1', name: '沙盒聯絡人', company: '沙盒公司A', bu: 'ERP', createdAt: new Date().toISOString() }], companies: [], visits: [], contracts: [], receivables: [], callins: [], keyAccounts: [], quotations: [],
     opportunities: JSON.parse(JSON.stringify(SEED_OPPS)),
     productCatalog: mkCatalog(),
   };
@@ -103,7 +103,7 @@ function cleanupFiles() { FILES.forEach((f) => { try { fs.unlinkSync(f); } catch
 // ───────────────── 伺服器 ─────────────────
 let child = null, childPid = null;
 async function startServer() {
-  const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
+  const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE, OPP_REQUIRE_CONTACT: '0' });   // 本腳本測的是商品／Deal ID，不是聯絡人綁定（該規則由 check-won-auto-customer.js 負責）
   for (const k of ['DATABASE_URL', 'MAIL_MODE', 'VERCEL', 'AUDIT_EVENTS_TABLE', 'QUOTE_FLOW_ENGINE', 'QUOTE_FLOW_DESIGNER', 'FEATURE_GUARD_MODE']) delete env[k];
   await assertPortFree(PORT);
   child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -359,6 +359,7 @@ async function uiOnce() {
     await selSet(b, 'oppEditCategory', 'ITS');
     await selSet(b, 'oppEditProduct', 'WMS');
     await b.ev(`(()=>{document.getElementById('oppEditAmount').value='10'; document.getElementById('oppEditExpectedDate').value='${YEAR}-12-30'; return 0})()`);
+    await b.ev(`(()=>{const s=document.getElementById('oppEditContactSelect'); if(s&&!s.value){const o=[...s.options].find(x=>x.value); if(o) s.value=o.value;} return 0})()`);   // 建立商機現在必須先選聯絡人
     await b.click('#oppEditSave');
     await b.waitFor(OVERLAY_CLOSED, 8000);
     const post = (await reqs(b, /\/api\/opportunities$/)).find((x) => x.m === 'POST');

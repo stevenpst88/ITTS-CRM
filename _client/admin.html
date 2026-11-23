@@ -7625,6 +7625,12 @@
         if (d.ownerErrors && d.ownerErrors.length) {
           h += `<div class="ax-bad-mt8">⚠ ${d.ownerErrors.length} 列業務對不到、會被略過：<br>${d.ownerErrors.slice(0, 15).map(escH).join('<br>')}${d.ownerErrors.length > 15 ? '<br>…' : ''}</div>`;
         }
+        if (typeof d.wonAutoConverted === 'number' && (d.wonAutoConverted || d.wonPending)) {
+          h += `<div class="ax-bad-mt8">成交列：預計自動轉為客戶 ${d.wonAutoConverted} 筆、待人工處理 ${d.wonPending} 筆（無可轉換的名片）</div>`;
+        }
+        if (d.noContactErrors && d.noContactErrors.length) {
+          h += `<div class="ax-bad-mt8">⚠ ${d.noContactErrors.length} 列找不到名片、會被拒絕（商機必須綁定名片）：<br>${d.noContactErrors.slice(0, 15).map(escH).join('<br>')}${d.noContactErrors.length > 15 ? '<br>…' : ''}</div>`;
+        }
         if (d.fieldErrors && d.fieldErrors.length) {
           h += `<div class="ax-bad-mt8">⚠ ${d.fieldErrors.length} 列欄位異常（缺必填）、會被略過：<br>${d.fieldErrors.slice(0, 15).map(escH).join('<br>')}${d.fieldErrors.length > 15 ? '<br>…' : ''}</div>`;
         }
@@ -7690,6 +7696,12 @@
         }
         if (data.invalidDealId) {
           html += `<div class="import-result-detail">⚠ ${escH(String(data.invalidDealId))} 筆 SAP Deal ID 不合格（非 9 碼數字）已捨棄該欄值</div>`;
+        }
+        if (typeof data.wonAutoConverted === 'number' && (data.wonAutoConverted || data.wonPending)) {
+          html += `<div class="import-result-detail">成交列：自動轉為客戶 ${data.wonAutoConverted} 筆、待人工處理 ${data.wonPending} 筆（無可轉換的名片）</div>`;
+        }
+        if (data.noContactErrors && data.noContactErrors.length) {
+          html += `<div class="import-result-detail">⚠ ${data.noContactErrors.length} 列找不到名片、已拒絕（商機必須綁定名片）：<br>${data.noContactErrors.slice(0,10).map(e => escH(e)).join('<br>')}${data.noContactErrors.length > 10 ? '<br>...' : ''}</div>`;
         }
         if (data.fieldErrors && data.fieldErrors.length) {
           html += `<div class="import-result-detail">⚠ ${data.fieldErrors.length} 列欄位異常略過：<br>${data.fieldErrors.slice(0,10).map(e => escH(e)).join('<br>')}${data.fieldErrors.length > 10 ? '<br>...' : ''}</div>`;
