@@ -3982,6 +3982,8 @@ async function initUser() {
       try { stored = window.ITTSDeepLink ? window.ITTSDeepLink.consume() : ''; } catch (_) { stored = ''; }
       if (!_handleQuoteDeepLink() && stored) _handleQuoteDeepLink(stored);
     }
+    // 推播深連結 #contract:<id>（合約到期類通知）：同樣登入初始化完成後處理
+    if (typeof _handleContractDeepLink === 'function') _handleContractDeepLink();
     // 公告彈窗（announcements.js）：不 await、自帶 try/catch，失敗絕不影響登入與載入
     try { if (window.ITTSAnnounce) window.ITTSAnnounce.start(user); } catch (_) { /* ignore */ }
     // 待補名片待辦（company-card-tasks.js）：不 await、自帶錯誤處理；isFirstLoad＝剛登入的第一次載入才跳彙總視窗
@@ -9284,6 +9286,8 @@ async function pollNotifications() {
       createdAt: null,
       isContract: true,
       days:      c.days,
+      contractId:   c.contractId || '',     // 點擊導向／「已處理」用（伺服器 poll-bundle 帶出；舊版回應沒有就沒有導向）
+      contractType: c.contractType || '',
     }));
 
     // 生日提醒轉換成統一格式
@@ -9326,7 +9330,7 @@ function renderNotifList(list) {
   if (!list.length) { el.innerHTML = '<div class="notif-empty">暫無通知</div>'; return; }
 
   const typeIcon = {
-    contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴',
+    contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴', contract_expiring_30:'📅', contract_expiring_7:'⚠️', receivable_overdue:'🔴', lead_assigned:'🎯', birthday:'🎂',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
     quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
     company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨'
@@ -9359,18 +9363,24 @@ function renderNotifList(list) {
 
   if (contractItems.length) {
     html += `<div class="notif-group-hd">📄 合約到期提醒</div>`;
+    html += `<div class="nt-hint">點提醒可開啟合約；處理完請按「已處理」。續約後在合約填寫續約日期，提醒也會自動消失。</div>`;
     html += contractItems.map(n => {
       const urgClass = n.type === 'contract_expired'  ? 'notif-contract-expired'
                      : n.type === 'contract_urgent'   ? 'notif-contract-urgent'
                      : 'notif-contract-expiring';
+      const cid = n.contractId ? escapeHtml(n.contractId) : '';
       return `
-        <div class="notif-item notif-contract ${urgClass} ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}" data-contract="1">
+        <div class="notif-item notif-contract ${urgClass} ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}" data-contract="1" data-contract-id="${cid}" data-contract-type="${escapeHtml(n.contractType || '')}">
           <div class="notif-icon">${typeIcon[n.type] || '📄'}</div>
           <div class="notif-content">
             <div class="notif-title">${escapeHtml(n.title)}</div>
             <div class="notif-body">${escapeHtml(n.body)}</div>
             ${n.days != null ? `<div class="notif-days-bar">
               <div class="notif-days-fill ${urgClass}" style="width:${Math.min(100, Math.max(4, 100 - n.days))}%"></div>
+            </div>` : ''}
+            ${cid ? `<div class="nt-actions">
+              <button type="button" class="nt-btn nt-open" data-nt-contract-id="${cid}" data-nt-contract-type="${escapeHtml(n.contractType || '')}" aria-label="開啟這份合約">開啟合約</button>
+              <button type="button" class="nt-btn nt-done" data-nt-contract-id="${cid}" aria-label="這份合約的到期提醒已處理，不再提醒">已處理</button>
             </div>` : ''}
           </div>
         </div>`;
@@ -9387,6 +9397,7 @@ function renderNotifList(list) {
           <div class="notif-body">${escapeHtml(n.body)}</div>
           <div class="notif-time">${n.createdAt ? new Date(n.createdAt).toLocaleString('zh-TW') : ''}</div>
         </div>
+        <button type="button" class="nt-x" data-nt-id="${escapeHtml(n.id)}" aria-label="清除這則通知" title="清除這則通知">✕</button>
       </div>`).join('');
   }
 
@@ -9404,6 +9415,7 @@ function renderNotifList(list) {
         markContractReminderRead(id);
         item.classList.remove('unread');
         _updateBadgeFromDOM();
+        if (item.dataset.contractId) openContractFromBell(item.dataset.contractId, item.dataset.contractType);   // 點提醒本身＝開啟該合約（沒有 contractId＝舊版回應，維持只標已讀）
       } else {
         await fetch(`${API}/notifications/${id}/read`, { method: 'PUT' });
         item.classList.remove('unread');
@@ -9422,10 +9434,139 @@ function renderNotifList(list) {
           const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
           window.ITTSCardTasks.openFromNotification();
         }
+        _notifGoByType(item.dataset.type, item.dataset.ref);   // 合約到期（儲存型）、Call-in、Lead、應收逾期：之前點了沒有任何導向
       }
     });
   });
+
+  // 每則儲存型通知右側的「✕」：只清除這一則，不觸發列的導向（stopPropagation；這個監聽器在按鈕自己身上，比列的先跑）
+  el.querySelectorAll('.nt-x').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      _notifDeleteOne(btn.dataset.ntId, btn.closest('.notif-item'));
+    });
+  });
+  // 合約提醒列的「開啟合約」「已處理」：同樣不觸發列的點擊（列的點擊也會導向＋標已讀）
+  el.querySelectorAll('.nt-open').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest('.notif-item');
+      if (row) { markContractReminderRead(row.dataset.id); row.classList.remove('unread'); _updateBadgeFromDOM(); }
+      openContractFromBell(btn.dataset.ntContractId, btn.dataset.ntContractType);
+    });
+  });
+  el.querySelectorAll('.nt-done').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      _contractReminderDone(btn.dataset.ntContractId, btn);
+    });
+  });
 }
+
+// ════════════════════════════════════════════════════════
+// ── 鈴鐺：清除／已處理／點擊導向（feat/bell-actions）────────
+// 儲存型通知：每則 ✕＝DELETE /api/notifications/:id；頁首「清除已讀」＝DELETE /api/notifications/read（都只動自己的）。
+// 動態合約到期提醒：沒有東西可刪，「已處理」＝POST /api/contract-reminders/:id/dismiss（伺服器記錄，鍵含迄日，續約改迄日會重新提醒）。
+// 刻意不自動刪除已讀通知（避免誤刪歷史）。導向對照表：contract_* → 合約管理對應子頁＋開合約視窗；lead_assigned → 潛在客戶；receivable_overdue → 應收帳款。
+// ════════════════════════════════════════════════════════
+function _ntCloseDropdown() { const dd = $('notifDropdown'); if (dd) dd.style.display = 'none'; }
+// 功能鍵檢查：權限清單尚未載入時一律放行（由伺服器端把關）；管理員在伺服器端本來就擁有全部功能
+function _ntCan(feature) { const f = userPermissions && userPermissions.features; return !Array.isArray(f) || f.includes(feature); }
+// 操作完成後元素已被移除，焦點會掉回 body；把焦點交給清單（tabindex=-1），鍵盤使用者不會失去位置
+function _ntRestoreFocus() {
+  const el = $('notifList');
+  if (el && (!document.activeElement || document.activeElement === document.body)) { if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); try { el.focus({ preventScroll: true }); } catch (_) { /* ignore */ } }
+}
+async function _ntErr(r, fallback) { try { const e = await r.json(); return (e && e.error) || fallback; } catch (_) { return fallback; } }
+
+async function _notifDeleteOne(id, itemEl) {
+  if (!id) return;
+  try {
+    const r = await fetch(`${API}/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!r.ok && r.status !== 404) { showToast(await _ntErr(r, '無法清除這則通知')); return; }   // 404＝已被清除過（別的分頁），也算完成
+  } catch (_) { showToast('無法清除這則通知（網路問題）'); return; }
+  if (itemEl && itemEl.parentNode) itemEl.remove();
+  _pollBundleEtag = null;   // server 狀態已改，強制取最新（badge、第 21 則以後的通知補上來）
+  await pollNotifications();
+  _ntRestoreFocus();
+}
+
+async function _notifClearRead() {
+  let removed = 0;
+  try {
+    const r = await fetch(`${API}/notifications/read`, { method: 'DELETE' });
+    if (!r.ok) { showToast(await _ntErr(r, '無法清除已讀通知')); return; }
+    const j = await r.json().catch(() => ({}));
+    removed = Number(j && j.removed) || 0;
+  } catch (_) { showToast('無法清除已讀通知（網路問題）'); return; }
+  showToast(removed ? `已清除 ${removed} 則已讀通知` : '沒有已讀的通知可清除');
+  _pollBundleEtag = null;
+  await pollNotifications();
+  _ntRestoreFocus();
+}
+
+async function _contractReminderDone(contractId, btn) {
+  if (!contractId) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/contract-reminders/${encodeURIComponent(contractId)}/dismiss`, { method: 'POST' });
+    // 404＝這筆提醒已經不存在（別處已處理、已續約或合約已刪除）：結果相同，重新取清單即可
+    if (!r.ok && r.status !== 404) { showToast(await _ntErr(r, '無法標記為已處理')); if (btn) btn.disabled = false; return; }
+  } catch (_) { showToast('無法標記為已處理（網路問題）'); if (btn) btn.disabled = false; return; }
+  _pollBundleEtag = null;
+  await pollNotifications();
+  showToast('已處理：這份合約不再提醒（若修改合約迄日會重新提醒）');
+  _ntRestoreFocus();
+}
+
+// 開啟合約：ref＝合約 id（動態提醒與新的儲存型通知都是 id；舊資料可能是合約編號，找不到 id 時退而比對編號）。
+// 依合約實際 type 切到對應子頁（ERP_MA→erp-ma、SAP_MA→sap-ma、SERVICE_MA→service-ma；Service MA 頁沒啟用時退回 erp-ma），再開編輯視窗。
+async function openContractFromBell(ref, hintType) {
+  _ntCloseDropdown();
+  if (!_ntCan('contractGroup')) { showToast('你沒有「合約管理」的檢視權限'); return false; }
+  if (!ref) { showSection('erp-ma'); return true; }   // 舊通知沒有帶合約：至少切到合約清單
+  let list = null;
+  try { const r = await fetch(`${API}/contracts`); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) list = j; } } catch (_) { /* 下面統一處理 */ }
+  if (!list) { showToast('無法載入合約資料，請稍後再試'); return false; }
+  const c = list.find(x => x.id === ref) || list.find(x => x.contractNo && x.contractNo === ref);
+  if (!c) { showToast('此合約已刪除或你沒有檢視權限'); return false; }
+  const ctype = c.type || hintType || 'ERP_MA';
+  const section = ctype === 'SAP_MA' ? 'sap-ma' : (ctype === 'SERVICE_MA' && document.getElementById('serviceMaView') ? 'service-ma' : 'erp-ma');
+  allContracts = list;   // openContractModal 從這份找資料；showSection 隨後的載入會換成同一份最新資料
+  showSection(section);
+  openContractModal(c.id, ctype);
+  return true;
+}
+
+// 儲存型通知的導向對照（只做「切到區段」，不強制開特定項目）
+const _NT_SECTION_BY_TYPE = {
+  lead_assigned: { section: 'leads', feature: 'leads', label: '潛在客戶' },
+  receivable_overdue: { section: 'receivables', feature: 'accountingGroup', label: '應收帳款' },
+};
+function _notifGoByType(type, ref) {
+  if (type === 'contract_expiring' || type === 'contract_expiring_30' || type === 'contract_expiring_7' || type === 'contract_urgent' || type === 'contract_expired') {
+    openContractFromBell(ref, '');
+    return true;
+  }
+  const t = Object.prototype.hasOwnProperty.call(_NT_SECTION_BY_TYPE, type) ? _NT_SECTION_BY_TYPE[type] : null;
+  if (!t) return false;
+  _ntCloseDropdown();
+  if (!_ntCan(t.feature)) { showToast(`你沒有「${t.label}」的檢視權限`); return true; }
+  showSection(t.section);
+  return true;
+}
+
+// 推播深連結 #contract:<id>（server notificationUrlFor 對合約到期類回傳）：格式 英數底線連字號 1–64；處理完立刻清掉 hash（避免重新整理又開一次）。
+// 與 #quote: 的差別：未登入時不會暫存到 sessionStorage（deep-link.js 只管 #quote:，登入後落在首頁）。
+function _handleContractDeepLink(hashArg) {
+  const h = typeof hashArg === 'string' ? hashArg : (window.location.hash || '');
+  const m = h.length <= 80 ? /^#contract:([A-Za-z0-9_-]{1,64})$/.exec(h) : null;
+  if (!m) return false;
+  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) { /* 忽略 */ }
+  openContractFromBell(m[1], '');
+  return true;
+}
+window.addEventListener('hashchange', _handleContractDeepLink);
 
 // 簽核相關通知 → 切到報價單頁並開啟該張（成本請求開「填成本」，其餘開「簽核面板」）
 function openQuoteFromNotification(type, id) {
@@ -9478,6 +9619,8 @@ $('notifReadAll').addEventListener('click', async () => {
   _pollBundleEtag = null; // server 狀態已改，強制下次取最新
   pollNotifications();
 });
+
+$('notifClearRead').addEventListener('click', _notifClearRead);
 
 $('notifBellBtn').addEventListener('click', () => {
   const dd = $('notifDropdown');
