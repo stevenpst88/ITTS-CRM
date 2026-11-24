@@ -26,6 +26,7 @@ const pipelineDateWarning = require('./lib/pipelineDateWarning');   // 商機動
 const secretBox = require('./lib/secretBox');
 const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（與稽核錨點 webhook 共用）
 const productCatalog = require('./lib/productCatalog');
+const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片自動轉客戶（WON_AUTO_CUSTOMER=0 關閉）
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
@@ -1533,7 +1534,7 @@ app.get('/api/me', requireAuth, (req, res) => {
   const auth = loadAuth();
   const me = auth.users.find(u => u.username === req.session.user.username);
   const { pwa: _pwa, ...pub } = req.session.user;   // pwa（密碼版本）只給伺服器比對用，不回前端
-  res.json({ ...pub, bu: normalizeBu(me?.bu) });
+  res.json({ ...pub, bu: normalizeBu(me?.bu), ...(oppRequireContactOn() ? {} : { oppRequireContact: false }) });   // 只有「關閉」時多帶一個旗標，開著時輸出與舊版相同
 });
 
 // ── Web Push 推播訂閱 ────────────────────────────────────
@@ -3403,6 +3404,32 @@ app.delete('/api/key-accounts/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// 成交自動轉客戶的稽核（只記 id，不記姓名／電話／Email）
+function logWonAutoCustomer(req, operator, opp, r) {
+  if (!r || r.status === 'already') return;
+  const who = operator || 'system';
+  const tgt = opp.company || '（無公司名）';   // 公司空白時不退用 contactName（人名）
+  if (r.status === 'converted') {
+    // 名片欄位稽核（沿用 writeContactAudit）：只放名片 id＋公司名，不放姓名（targetName 留空）、無電話／Email
+    try { writeContactAudit('UPDATE', req, { id: r.contactId, name: '', company: opp.company || '' }, [{ field: 'customerType', fieldLabel: '客戶身分（成交自動轉換）', oldValue: r.prevType || '', newValue: 'customer' }]); } catch {}
+    writeLog('WON_AUTO_CUSTOMER', who, tgt, `商機 ${opp.id} 成交，系統自動將綁定名片 ${r.contactId} 轉為客戶（操作者 ${who}，商機擁有者 ${opp.owner}）`, req);
+  } else {
+    writeLog('WON_AUTO_CUSTOMER_PENDING', who, tgt, `商機 ${opp.id} 成交但無可轉換的綁定名片（${WONC.REASON_TEXT[r.reason] || r.reason}），待人工處理`, req);
+  }
+}
+
+// ── Admin: 依成交商機重新同步客戶身分（預設 dryRun；apply:true 才寫入）──
+app.post('/api/admin/won-resync-customers', requireAdmin, (req, res) => {
+  if (!WONC.enabled()) return res.status(404).json({ error: '功能未啟用' });
+  const apply = !!req.body && req.body.apply === true;
+  const data = db.load();
+  const rep = WONC.resync(data, { apply, cap: 200, normalizeLoose: normalizeCompanyLoose });
+  if (apply && rep.converted > 0) db.save(data);
+  writeLog(apply ? 'WON_RESYNC_CUSTOMERS' : 'WON_RESYNC_CUSTOMERS_DRYRUN', req.session.user.username, 'system',
+    `${apply ? '已轉換' : '預覽'}：${rep.candidateTotal} 張名片${apply ? `（實際轉換 ${rep.converted}）` : ''}；成交但無綁定名片 ${rep.unboundTotal} 筆`, req);
+  res.json({ success: true, ...rep });
+});
+
 // ── Admin: 修復同公司聯絡人 customerType 不一致 ──────────
 // 邏輯：依 (owner, company) 分組。若該組內有任一聯絡人是 customer，
 //   則把同組其他聯絡人也設為 customer，并補上 productLine（取多數決或第一個 customer 的）
@@ -4635,6 +4662,29 @@ app.get('/api/opportunities', requireAuth, (req, res) => {
   res.json(filtered);
 });
 
+// ── 商機必須綁定一張「存在且操作者看得到」的名片（OPP_REQUIRE_CONTACT=0 關閉，預設開）──
+// 可視判斷與 GET /api/contacts 共用 visibleContactsOf（含 KA 跨部門共享、BU、集團範圍；秘書只剩 KA 共享）。
+function oppRequireContactOn() { const v = String(process.env.OPP_REQUIRE_CONTACT == null ? '' : process.env.OPP_REQUIRE_CONTACT).trim().toLowerCase(); return !(v === '0' || v === 'off' || v === 'false'); }
+// 名片公司與商機公司是否「寬鬆一致」（normalizeCompanyLoose：去空白／大小寫／公司後綴／標點）。任一邊為空、或正規化後為空 → 不比對（視為一致）
+function oppContactCompanyMismatch(contact, company) {
+  const a = normalizeCompanyForOpp(company), b = normalizeCompanyForOpp(contact && contact.company);
+  return !!(a && b && a !== b);
+}
+// 商機↔名片公司比對專用（不動 normalizeCompanyLoose：它另有 8 處呼叫，行為不可變）：NFKC（全形→半形、全形括號→半形）＋臺→台，再套 normalizeCompanyLoose
+function normalizeCompanyForOpp(s) { return normalizeCompanyLoose(String(s == null ? '' : s).normalize('NFKC').replace(/臺/g, '台')); }
+const OPP_CONTACT_MISMATCH = { status: 400, code: 'OPP_CONTACT_COMPANY_MISMATCH', error: '選擇的聯絡人所屬公司與商機的公司不一致，請重新選擇聯絡人或修正公司名稱' };
+// 回傳 { error, status, code } 或 { cid, contact }（cid 為 trim 後的字串，呼叫端要存這個值）。company＝這張商機（修改後）的公司名，空白則不比對
+function checkOppContact(req, data, contactId, company) {
+  if (contactId != null && typeof contactId !== 'string') return { status: 400, code: 'OPP_CONTACT_INVALID', error: '聯絡人欄位格式不正確（須為單一名片 ID）' };
+  const cid = typeof contactId === 'string' ? contactId.trim() : '';
+  if (!cid) return { status: 400, code: 'OPP_CONTACT_REQUIRED', error: '請先選擇聯絡人（商機必須綁定一張名片；若還沒有名片，請先建立名片）' };
+  const c = (data.contacts || []).find(x => x && x.id === cid && !x.deleted);
+  if (!c) return { status: 400, code: 'OPP_CONTACT_NOT_FOUND', error: '選擇的聯絡人不存在或已刪除，請重新選擇' };
+  if (!visibleContactsOf(req, data, loadAuth(), [c]).length) return { status: 403, code: 'OPP_CONTACT_FORBIDDEN', error: '無權限使用此聯絡人建立商機' };
+  if (oppContactCompanyMismatch(c, company)) return OPP_CONTACT_MISMATCH;
+  return { cid, contact: c };
+}
+
 app.post('/api/opportunities', requireAuth, (req, res) => {
   const owner = req.session.user.username;
   const buCheck = resolveItemBuOnCreate(req, req.body.bu);
@@ -4647,15 +4697,21 @@ app.post('/api/opportunities', requireAuth, (req, res) => {
   }
   const data = db.load();
   if (!data.opportunities) data.opportunities = [];
+  let _postContact = null;   // OPP_REQUIRE_CONTACT 開時：{ cid(trim 後), contact }
+  if (oppRequireContactOn()) {
+    const _rc = checkOppContact(req, data, req.body.contactId, String(req.body.company == null ? '' : req.body.company).trim());
+    if (_rc.error) return res.status(_rc.status).json({ error: _rc.error, code: _rc.code });
+    _postContact = _rc;
+  }
   const _dl = checkOppDealId(data, req.body.product, req.body.dealId);   // 商品要求 Deal ID 卻沒填 → 400（前端另有檢查，這裡是強制）
   if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
   const opp = {
     id: uuidv4(),
     owner,
     bu: buCheck.bu,
-    contactId:       req.body.contactId       || '',
+    contactId:       _postContact ? _postContact.cid : (req.body.contactId || ''),   // 開關開：存 trim 後的字串
     contactName:     req.body.contactName     || '',
-    company:         req.body.company         || '',
+    company:         req.body.company         || (_postContact ? (_postContact.contact.company || '') : ''),   // 開關開且沒帶公司：由名片帶入
     category:        req.body.category        || '',
     product:         req.body.product         || '',
     amount:          req.body.amount          || '',
@@ -4737,6 +4793,7 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   }
   const owner = data.opportunities[idx].owner; // 保留原始 owner
   const oldStage = data.opportunities[idx].stage;
+  const _oldCid = String(data.opportunities[idx].contactId || '');   // 成交後改綁名片要轉新名片
   const oldAmount = parseFloat(data.opportunities[idx].amount) || 0;
   const oldExpectedDate = data.opportunities[idx].expectedDate || null;
   // BU 更新驗證
@@ -4758,6 +4815,28 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   }
   // Deal ID：只有這次請求帶了 product 或 dealId（＝表單送出）才檢查；看板拖曳／階段快速變更只送 {stage}，不受影響。
   // 舊商機沒有 dealId 不追溯——只在「表單編輯且商品需要」時要求補填。
+  // 聯絡人綁定：只在「本次請求明確改 contactId」且新值與現有值不同時檢查（不可清空、不可指向不存在／看不到的名片）；舊的無名片商機照常編輯其他欄位
+  // 另外：contactId 一律 trim 後存入；非字串（陣列／物件／數字）→ 400；改了 contactId 或改了公司時，名片公司要與商機公司寬鬆一致（舊資料原樣送回不檢查）
+  if (oppRequireContactOn()) {
+    const _cur = data.opportunities[idx];
+    const _rawC = req.body.contactId;
+    if (_rawC !== undefined && _rawC !== null && typeof _rawC !== 'string') return res.status(400).json({ error: '聯絡人欄位格式不正確（須為單一名片 ID）', code: 'OPP_CONTACT_INVALID' });
+    const _curCid = String(_cur.contactId || '');
+    const _newCid = _rawC === undefined ? _curCid : String(_rawC || '').trim();
+    const _effCompany = String(req.body.company !== undefined ? (req.body.company == null ? '' : req.body.company) : (_cur.company || '')).trim();
+    const _cidChanged = _newCid !== _curCid;
+    const _companyChanged = req.body.company !== undefined && _effCompany !== String(_cur.company || '').trim();
+    if (_companyChanged && !_effCompany && _newCid) return res.status(400).json({ error: '已綁定聯絡人的商機不可把公司名稱清空', code: 'OPP_COMPANY_REQUIRED' });   // 防「先清空公司再改綁別家名片」繞過一致性檢查
+    if (_cidChanged) {
+      const _rc = checkOppContact(req, data, _newCid, _effCompany);
+      if (_rc.error) return res.status(_rc.status).json({ error: _rc.error, code: _rc.code });
+      if (!_effCompany && _rc.contact && _rc.contact.company) req.body.company = _rc.contact.company;   // 綁定時商機公司是空的 → 用名片公司補上
+    } else if (_companyChanged && _newCid) {
+      const _ec = (data.contacts || []).find(x => x && x.id === _newCid && !x.deleted);
+      if (_ec && oppContactCompanyMismatch(_ec, _effCompany)) return res.status(OPP_CONTACT_MISMATCH.status).json({ error: OPP_CONTACT_MISMATCH.error, code: OPP_CONTACT_MISMATCH.code });
+    }
+    if (_rawC !== undefined) req.body.contactId = _newCid;
+  }
   const oldDealId = data.opportunities[idx].dealId || '';
   if (req.body.product !== undefined || req.body.dealId !== undefined) {
     const _dl = checkOppDealId(data,
@@ -4800,7 +4879,11 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
       owner
     });
   }
+  // 成交（非 Won → Won）自動把綁定名片轉為客戶；系統自動行為，不看名片 owner。已是客戶不重寫（冪等）、Won 回退不降級。
+  const _newCidSaved = String(data.opportunities[idx].contactId || '');
+  const _won = (WONC.enabled() && newStage === 'Won' && (oldStage !== 'Won' || (_newCidSaved && _newCidSaved !== _oldCid))) ? WONC.convertForWonOpp(data, data.opportunities[idx]) : null;   // 非 Won→Won，或已是 Won 但改綁了別張名片（舊名片不降級）
   db.save(data);
+  if (_won) logWonAutoCustomer(req, username, data.opportunities[idx], _won);
   const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
   const newDealId = data.opportunities[idx].dealId || '';
   const dealDetail = oldDealId !== newDealId ? ` DealID:${oldDealId || '（空）'}→${newDealId || '（空）'}` : '';   // Deal ID 變更要留稽核
@@ -5716,6 +5799,10 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     const errors = [];
     const unmatchedCompanies = new Map();   // 預檢：真實業務 + 公司名對不到既有名片（可能名稱不一致）
     const fieldErrors = [];                 // 欄位異常（如缺預計簽約日）→ 略過該列
+    const requireContactImport = oppRequireContactOn();
+    const wonOn = WONC.enabled();
+    let wonConverted = 0, wonPending = 0; const wonSeen = new Set(), wonConvertedIds = [], wonPendingLogs = [];   // 匯入成交列自動轉客戶統計（稽核彙總一筆＋待人工逐筆上限 20）
+    const noContactErrors = [];             // OPP_REQUIRE_CONTACT：沒有名片可綁的列（拒絕）
     // 寬鬆正規化公司名 → 既有名片原始公司名（供預檢「近似建議」，抓 股份有限公司/空白/標點差異）
     const looseCompanyToOriginal = new Map();
     (data.contacts || []).forEach(c => {
@@ -5836,6 +5923,11 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         if (!resolvedContactName) resolvedContactName = placeholder.name;
       }
 
+      // 商機必須綁名片：對不到名片的列直接拒絕並列出原因（_pool 列上面已自動建待補名片，所以不會走到這裡）
+      if (!contactId && requireContactImport) {
+        noContactErrors.push(`第${rowNum}列：找不到「${company}」的名片，商機必須綁定名片，請先建立名片或修正公司名稱`);
+        return;
+      }
       // 預檢：真實業務 + 公司名對不到既有名片（且非 _pool 待補）→ 潛在名稱不一致
       if (!contactId && owner !== POOL_USERNAME) {
         const rec = unmatchedCompanies.get(company) || { company, rows: [], suggestion: '' };
@@ -5877,6 +5969,18 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
       if (!_dealId && productCatalog.resolveDealIdRule(data.productCatalog, opp.product).requires) missingDealId++;
       if (!dryRun) data.opportunities.push(opp);
       created++;
+      // 成交列：匯入當下就把綁定名片轉客戶（WON_AUTO_CUSTOMER 開）；沒有可轉的名片 → 計入待人工。預檢只計數不寫入
+      if (wonOn && opp.stage === 'Won') {
+        if (dryRun) {
+          const _f = WONC.findBoundContact(data, opp);
+          if (_f.contact && _f.contact.customerType !== 'customer' && !wonSeen.has(_f.contact.id)) { wonSeen.add(_f.contact.id); wonConverted++; }
+          else if (!_f.contact) { wonPending++; }
+        } else {
+          const _r = WONC.convertForWonOpp(data, opp);
+          if (_r.status === 'converted') { wonConverted++; if (wonConvertedIds.length < 50) wonConvertedIds.push(_r.contactId); }
+          else if (_r.status === 'skipped') { wonPending++; if (wonPendingLogs.length < 20) wonPendingLogs.push({ opp, r: _r }); }
+        }
+      }
     });
 
     if (dryRun) {
@@ -5884,9 +5988,11 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
         dryRun: true,
         wouldCreate: created,                        // 可匯入筆數
         missingDealId, invalidDealId,                // 商品要求 Deal ID 卻沒填的筆數（提醒用，不擋匯入）／Deal ID 欄位值不合格被丟棄的筆數
-        skipped: errors.length + fieldErrors.length, // 會被略過（業務對不到 / 欄位異常）
+        skipped: errors.length + fieldErrors.length + noContactErrors.length, // 會被略過（業務對不到 / 欄位異常 / 無名片可綁）
         ownerErrors: errors,                         // 業務對不到的詳細列
         fieldErrors,                                 // 欄位異常（如缺預計簽約日）
+        ...(requireContactImport ? { noContactErrors } : {}),   // 無名片可綁而被拒絕的列
+        ...(wonOn ? { wonAutoConverted: wonConverted, wonPending } : {}),   // 成交列：會自動轉客戶／待人工的筆數
         linkedContacts,                              // 會連到既有名片
         wouldCreatePoolPlaceholders: createdPoolContacts,  // _pool 會新建的客戶池名片
         unmatchedCompanies: [...unmatchedCompanies.values()],  // 公司名對不到既有名片（附近似建議）
@@ -5894,8 +6000,13 @@ app.post('/api/admin/opportunities/import', requireAdmin, (req, res, next) => up
     }
 
     if (created > 0 || createdPoolContacts > 0) db.save(data);
+    if (wonOn && (wonConverted || wonPending)) {
+      const _who = req.session.user.username;
+      writeLog('WON_AUTO_CUSTOMER_IMPORT', _who, 'import', `Excel 匯入成交列：自動轉客戶 ${wonConverted} 筆、待人工 ${wonPending} 筆${wonConvertedIds.length ? '（名片 id：' + wonConvertedIds.join(',') + (wonConverted > wonConvertedIds.length ? ' …' : '') + '）' : ''}`, req);
+      wonPendingLogs.forEach(p => logWonAutoCustomer(req, _who, p.opp, p.r));
+    }
 
-    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors, fieldErrors, missingDealId, invalidDealId });
+    res.json({ success: true, created, linkedContacts, createdPoolContacts, errors, fieldErrors, missingDealId, invalidDealId, ...(requireContactImport ? { noContactErrors } : {}), ...(wonOn ? { wonAutoConverted: wonConverted, wonPending } : {}) });
   } catch (err) {
     console.error('[import opp]', err);
     res.status(500).json({ error: '匯入失敗：' + err.message });
@@ -8464,7 +8575,9 @@ app.post('/api/leads/:id/convert', requireAuth, (req, res) => {
   l.status = 'converted';
   l.opportunityId = opp.id;
   l.convertedAt = new Date().toISOString();
+  const _wonL = (WONC.enabled() && opp.stage === 'Won') ? WONC.convertForWonOpp(data, opp) : null;   // 轉換時直接指定成交：同樣把綁定名片轉客戶
   db.save(data);
+  if (_wonL) logWonAutoCustomer(req, username, opp, _wonL);
   writeLog('CONVERT_LEAD', username, l.company || l.contactName, `轉換業務：${salesPerson}`, req);
 
   res.json({ lead: l, opportunity: opp, contactId });

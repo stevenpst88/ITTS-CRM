@@ -124,6 +124,7 @@ async function uiCreate(b, C) {
   await b.type('  306 538 617  ');
   eq(await b.ev(`document.getElementById('oppEditDealId').value`), '306538617', 'UI22 真實輸入（含空白）→ 只留 9 碼數字');
   eq(await b.ev(TEXT('oppEditDealIdErr')), '', 'UI22b 9 碼後錯誤訊息清除');
+  await b.ev(`(()=>{const s=document.getElementById('oppEditContactSelect'); if(s&&!s.value){const o=[...s.options].find(x=>x.value); if(o) s.value=o.value;} return 0})()`);   // 建立商機現在必須先選聯絡人
   await shot(b, C, 'sapdeal_create_filled_1440.png');
   await b.click('#oppEditSave');
   await b.waitFor(`!document.getElementById('oppEditOverlay').classList.contains('open')`, 8000);

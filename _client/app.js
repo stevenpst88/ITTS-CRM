@@ -3880,6 +3880,7 @@ async function initUser() {
     const user = await res.json();
     window._myRole = user.role || 'user';
     window._myUsername = user.username || '';
+    window._oppRequireContact = user.oppRequireContact !== false;   // 伺服器 OPP_REQUIRE_CONTACT=0 時為 false
     // 強制變更密碼：彈出 modal 並中斷後續初始化（API 已被 middleware 阻擋）
     if (user.mustChangePassword === true) {
       window._displayName = user.displayName || '';
@@ -5067,7 +5068,7 @@ function openOppCreate(company) {
     const contacts = allContacts
       .filter(c => c.company === company && !c.isPlaceholder && !c.deleted)
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));
-    sel.innerHTML = '<option value="">（不指定聯絡人）</option>';
+    sel.innerHTML = '<option value="">-- 請選擇聯絡人（必選）--</option>';   // 商機必須綁名片
     contacts.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.id;
@@ -5106,6 +5107,7 @@ async function _createOppFromModal() {
   if (!dealIdValidate('oppEdit')) return;
   const sel       = $('oppEditContactSelect');
   const contactId = sel ? sel.value : '';
+  if (!contactId && window._oppRequireContact !== false) { showToast('請先選擇聯絡人（商機必須綁定名片；若還沒有名片請先建立）'); return; }   // 後端 OPP_REQUIRE_CONTACT 也會擋，這裡提早提示；開關=0 時（/api/me 帶 oppRequireContact:false）不擋
   const contact   = contactId ? allContacts.find(c => c.id === contactId) : null;
   const gmRaw     = $('oppEditGrossMargin').value;
   const payload = {

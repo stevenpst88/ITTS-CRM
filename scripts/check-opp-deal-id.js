@@ -73,7 +73,7 @@ function seedFiles() {
   const users = [mkUser('_s_adm', 'admin'), mkUser('_s_u1', 'user', { bu: ['ERP'] }), mkUser('_s_u2', 'user', { bu: ['ERP'] })];
   fs.writeFileSync(path.join(ROOT, 'auth.json'), JSON.stringify({ users }, null, 2));
   const d = {
-    contacts: [], companies: [], visits: [], contracts: [], receivables: [], callins: [], keyAccounts: [], quotations: [],
+    contacts: [{ id: 'c_sbx1', owner: '_s_u1', name: '沙盒聯絡人', company: '沙盒公司A', bu: 'ERP', createdAt: new Date().toISOString() }], companies: [], visits: [], contracts: [], receivables: [], callins: [], keyAccounts: [], quotations: [],
     opportunities: [
       mkOpp('o-legacy', 'SAP Public Cloud License'),
       mkOpp('o-legacy2', 'SAP Public Cloud License'),
@@ -100,7 +100,7 @@ fs.writeFileSync(PRELOAD, [
 ].join('\n') + '\n');
 let child = null, childPid = null;
 async function startServer(mut) {
-  const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE });
+  const env = Object.assign({}, process.env, { PORT: String(PORT), JWT_SECRET: crypto.randomBytes(24).toString('hex'), SESSION_BACKEND: 'jwt', DB_BACKEND: 'json', NODE_ENV: 'development', ALLOWED_ORIGINS: BASE, OPP_REQUIRE_CONTACT: '0' });   // 本腳本測的是商品／Deal ID，不是聯絡人綁定（該規則由 check-won-auto-customer.js 負責）
   for (const k of ['DATABASE_URL', 'MAIL_MODE', 'VERCEL', 'AUDIT_EVENTS_TABLE', 'QUOTE_FLOW_ENGINE', 'QUOTE_FLOW_DESIGNER', 'FEATURE_GUARD_MODE', 'DEALID_MUT_SPEC']) delete env[k];
   if (mut && mut.file) { env.DEALID_MUT_SPEC = JSON.stringify(mut); env.DEALID_ROOT = ROOT; }
   await assertPortFree(PORT);
