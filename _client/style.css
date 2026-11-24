@@ -5218,6 +5218,7 @@ body.dark .notif-read-all { color: #8ab8ff; }   /* 原本 #1a73e8 壓在深色�
   .nt-x { min-width: 40px; min-height: 40px; }
   .nt-btn { min-height: 36px; padding: 4px 14px; }
   .notif-header { gap: 6px; }
+}
 /* ── License／MA 服務期間（.qterm-*）──────────────────────────────────────────
    quote.js 的 quoteTermBlock() 產生（報價單品項列的「類型＋起迄日」、核准後「修改服務期間」小視窗），quote-approval.js 的簽核面板唯讀顯示用 .qterm-view。
    MA_TRACKING=1 才有這些元素；樣式用 --qt-* 自訂變數，深色（body.dark）與玻璃版（body.glass）各自覆寫，全部對比 >= 4.5:1（scripts/_quote-terms-ui.js 實測）。
@@ -5262,6 +5263,7 @@ body #quoteModalOverlay > .modal.qs-mode.qs-info.qt-wide { max-width:1240px !imp
 .qterm-badge { display:inline-block; padding:0 7px; border-radius:9px; font-size:11.5px; font-weight:700; background:#eef3fd; color:#12439e; border:1px solid #9bb7ec; }
 body.dark .qterm-view { color:#c5cfda; }
 body.dark .qterm-badge { background:#16253f; color:#a5cdff; border-color:#3a5f9a; }
+@media (max-width: 480px) {
   .qterm { gap:6px 8px; }
   .qterm-dates { width:100%; }
   .qterm-dates .qterm-field { flex:1 0 100%; }   /* 起、迄各占一行，快捷按鈕與「共 N 個月」接在後面換行 */

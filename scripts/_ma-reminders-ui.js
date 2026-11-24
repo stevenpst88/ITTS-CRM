@@ -24,7 +24,7 @@ const { withBrowser } = require('./_fd-cdp');
 const ROOT = path.resolve(__dirname, '..');
 const J = JSON.stringify;
 const CDP = parseInt(process.env.MAREM_UI_CDP || '9630', 10);
-const BASE_REF = process.env.MAREM_UI_BASE || '3d85397';   // P3a 之前（P2b 驗收後修正）：沒有任何提醒規則前端
+const BASE_REF = process.env.MAREM_UI_BASE || 'origin/main';   // P3a 之前（P2b 驗收後修正）：沒有任何提醒規則前端
 if (!((parseInt(process.env.B2_PORT, 10) >= 3330 && parseInt(process.env.B2_PORT, 10) <= 3339) || (parseInt(process.env.B2_PORT, 10) >= 3350 && parseInt(process.env.B2_PORT, 10) <= 3359))) { console.log('拒絕：本腳本只准用埠 3330–3339 或 3350–3359'); process.exit(2); }
 if (!((CDP >= 9630 && CDP <= 9639) || (CDP >= 9650 && CDP <= 9659))) { console.log('拒絕：本腳本只准用 CDP 埠 9630–9639 或 9650–9659'); process.exit(2); }
 

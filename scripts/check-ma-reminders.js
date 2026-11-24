@@ -14,7 +14,7 @@
  *   node scripts/check-ma-reminders.js                        全部（不含變異）
  *   MAREM_ONLY=unit,sim,volume,api,roles,off node ...        只跑指定群組
  *   MAREM_MUT=1 node ...                                      另外跑變異測試
- *   MAREM_PORT（預設 3322；限 3320–3329）／MAREM_BASE_REF（開關比對的基準提交，預設 3d85397＝P2 驗收後）／MAREM_BASE_DIR
+ *   MAREM_PORT（預設 3322；限 3320–3329）／MAREM_BASE_REF（開關比對的基準提交，預設 origin/main＝沒有 MA 功能的正式站基準）／MAREM_BASE_DIR
  * 守門：工作樹已有 auth.json／data.json／audit.log.json 時拒絕執行。一次只跑一個。
  */
 const fs = require('fs');
@@ -1480,7 +1480,7 @@ async function groupRoles() {
 function exportBase() {
   if (process.env.MAREM_BASE_DIR) return { dir: process.env.MAREM_BASE_DIR, cleanup() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marem-base-'));
-  const baseRef = process.env.MAREM_BASE_REF || '3d85397';
+  const baseRef = process.env.MAREM_BASE_REF || 'origin/main';
   const a = spawnSync('git', ['archive', baseRef], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   if (a.status !== 0) throw new Error('git archive ' + baseRef + ' 失敗：' + String(a.stderr));
   const t = spawnSync('tar', ['-x', '-C', dir], { input: a.stdout, maxBuffer: 256 * 1024 * 1024 });
@@ -1498,7 +1498,8 @@ async function groupOff() {
     const who6 = [U.adm, U.u1, U.u2, U.sec, U.mkt, U.m1];
     for (const w of who6) await loginAt(base, jr, w);
     const out = {};
-    const rec = async (key, who, method, url, body, hdr) => { const r = await httpAt(base, jr, who, method, url, body, hdr); out[key] = r.status + ' ' + norm(r.text); return r; };
+    const rec = async (key, who, method, url, body, hdr) => { const r = await httpAt(base, jr, who, method, url, body, hdr); const _t = /product-catalog/.test(url) ? r.text.replace(/,"termKind":"[^"]*"/g, '').replace(/,"startsTask":(true|false)/g, '') : r.text;   // 基準（沒有 MA）會原樣輸出已存的類型欄位；MA 關閉版輸出前會去掉，這是設計：正式站沒存過這兩欄，比對時兩邊都去掉
+    out[key] = r.status + ' ' + norm(_t); return r; };
     out.cron = null;
     await rec('cron', null, 'GET', '/api/cron/mail-outbox', undefined, { Authorization: 'Bearer ' + CRON_SECRET });
     await rec('cronNoAuth', null, 'GET', '/api/cron/mail-outbox');

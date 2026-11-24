@@ -24,7 +24,7 @@ const { withBrowser } = require('./_fd-cdp');
 const ROOT = path.resolve(__dirname, '..');
 const J = JSON.stringify;
 const CDP = parseInt(process.env.MATRK_UI_CDP || '9610', 10);
-const BASE_REF = process.env.MATRK_UI_BASE || '7efdba5';   // P2b 完成的 commit（驗收後修正之前）；也可用 MATRK_UI_BASE=8e8b99c 比對沒有 MA 前端的版本
+const BASE_REF = process.env.MATRK_UI_BASE || 'origin/main';   // P2b 完成的 commit（驗收後修正之前）；也可用 MATRK_UI_BASE=8e8b99c 比對沒有 MA 前端的版本
 
 let res = [];
 function t(name, ok, extra) { res.push([name, !!ok, extra == null ? '' : String(extra)]); if (!ok) console.log('  ✗ ' + name + (extra != null && extra !== '' ? '｜' + String(extra).slice(0, 220) : '')); }

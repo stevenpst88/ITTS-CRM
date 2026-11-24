@@ -10,7 +10,7 @@
  *   node scripts/check-ma-tracking.js                       單元＋API＋角色＋開關
  *   MATRK_ONLY=unit,api,roles,off node ...                  只跑指定群組
  *   MATRK_MUT=1 node ...                                    另外跑變異測試（每個變異都必須讓對應群組變紅）
- *   MATRK_PORT（預設 3292；限 3290–3299 或 3310–3319）／MATRK_BASE_REF（開關比對的基準提交，預設 7efdba5＝P2 完成）／MATRK_BASE_DIR
+ *   MATRK_PORT（預設 3292；限 3290–3299 或 3310–3319）／MATRK_BASE_REF（開關比對的基準提交，預設 origin/main＝沒有 MA 功能的正式站基準）／MATRK_BASE_DIR
  * 守門：工作樹已有 auth.json／data.json／audit.log.json 時拒絕執行。
  */
 const fs = require('fs');
@@ -1070,7 +1070,7 @@ async function groupFix6() {
 function exportBase() {
   if (process.env.MATRK_BASE_DIR) return { dir: process.env.MATRK_BASE_DIR, cleanup() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'matrk-base-'));
-  const baseRef = process.env.MATRK_BASE_REF || '7efdba5';
+  const baseRef = process.env.MATRK_BASE_REF || 'origin/main';
   const a = spawnSync('git', ['archive', baseRef], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   if (a.status !== 0) throw new Error('git archive ' + baseRef + ' 失敗：' + String(a.stderr));
   const t = spawnSync('tar', ['-x', '-C', dir], { input: a.stdout, maxBuffer: 256 * 1024 * 1024 });
@@ -1089,7 +1089,7 @@ async function groupOff() {
     const jr = {};
     for (const w of [U.adm, U.u1, U.u2, U.sec, U.mkt, U.m1]) await loginAt(base, jr, w);
     const out = {}; const extra = {}; const stored = {};
-    const rec = async (key, who, method, url, body) => { const r = await httpAt(base, jr, who, method, url, body); out[key] = r.status + ' ' + norm(r.text); return r; };
+    const rec = async (key, who, method, url, body) => { const r = await httpAt(base, jr, who, method, url, body); const _t = /product-catalog/.test(url) ? r.text.replace(/,"termKind":"[^"]*"/g, '').replace(/,"startsTask":(true|false)/g, '') : r.text;   /* 基準（沒有 MA）會原樣輸出已存的類型欄位、存檔時洗掉；比對輸出時兩邊都去掉這兩欄（儲存內容的差異另由 F1c 檢查） */ out[key] = r.status + ' ' + norm(_t); return r; };
     const o1 = await rec('postOpp', U.u1, 'POST', '/api/opportunities', { company: '開關測試公司', contactName: '甲', product: MAP, amount: AMT, expectedDate: '2026-12-31', bu: 'ERP', category: 'ERP' });
     const id = o1.json.id;
     await rec('putWonNoTerm', U.u1, 'PUT', `/api/opportunities/${id}`, { stage: 'Won' });

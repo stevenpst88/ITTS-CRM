@@ -27,7 +27,7 @@ const ROOT = path.join(__dirname, '..');
 const G = require('./lib-quote-notes-golden.js');
 const MUT = process.env.CTERM_MUT === '1';
 const ONLY = process.env.CTERM_ONLY || '';
-const BASE_REF = process.env.CTERM_BASE_REF || 'ed36964';
+const BASE_REF = process.env.CTERM_BASE_REF || 'origin/main';
 
 let res = [];
 const t = (name, ok, extra) => res.push([name, !!ok, extra === undefined ? '' : String(extra)]);
