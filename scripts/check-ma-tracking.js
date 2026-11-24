@@ -1131,7 +1131,7 @@ async function groupOff() {
   if (diffKeys.length) console.log('    差異首項：', diffKeys[0], '\n      前：', String(A.out[diffKeys[0]]).slice(0, 300), '\n      後：', String(B.out[diffKeys[0]]).slice(0, 300));
   eq(Object.keys(B.extra).map((k) => B.extra[k].status), Object.keys(B.extra).map((k) => A.extra[k].status), 'F2 off：新端點的回應狀態與基準版（本來就沒有）相同');
   ok(!/maItemCount|maTaskCount/.test(B.out.transferContacts + B.out.poolAssign) && /^200 /.test(B.out.transferContacts) && /^200 /.test(B.out.poolAssign), 'F1b off：名單移轉與客戶池分配的回應沒有多帶 MA 計數鍵（已含在 F1 的逐位元比對）');
-  ok(!A.stored.catalog.includes('termKind') && B.stored.catalog.includes('termKind') && JSON.stringify(JSON.parse(B.stored.catalog), (k, v) => (k === 'termKind' || k === 'startsTask' ? undefined : v)) === A.stored.catalog,
+  ok(A.stored.catalog === B.stored.catalog /* 基準（沒有 MA 功能）不會洗掉類型欄位，兩邊儲存內容完全相同 */ || (!A.stored.catalog.includes('termKind') && B.stored.catalog.includes('termKind') && JSON.stringify(JSON.parse(B.stored.catalog), (k, v) => (k === 'termKind' || k === 'startsTask' ? undefined : v)) === A.stored.catalog),
     'F1c off：唯一的預期差異（審查修正 M4）——關閉時儲存商品目錄，基準版會把已存的 termKind／startsTask 洗掉，現在保留；去掉這兩欄後儲存內容與基準版逐位元相同，且對外輸出（GET，F1 已比對）不變');
   ok(Object.keys(B.extra).every((k) => B.extra[k].status === 404 || B.extra[k].status === 405), 'F2b off：新端點全部 404（未登記）', JSON.stringify(Object.keys(B.extra).map((k) => k + ':' + B.extra[k].status)));
   ok(!B.raw.maItems || B.raw.maItems.length === 1, 'F3 off：不新增納管項（只剩種子那 1 筆）');
