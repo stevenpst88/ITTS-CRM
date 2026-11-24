@@ -43,7 +43,7 @@ const contrastSel = (b, sel, dark) => b.ev(`${CONTRAST_FN}(document.querySelecto
 const THEMES = ['glass-dark', 'glass-light', 'plain-light', 'plain-dark'];
 async function theme(b, mode) {
   await b.ev(`(()=>{const c=document.body.classList; c.toggle('glass',${J(mode.startsWith('glass'))}); c.toggle('dark',${J(mode.endsWith('dark'))}); return true})()`);
-  await b.sleep(350);
+  await b.sleep(1200);   // 主題切換有顏色過渡動畫，量測太早會量到過渡中途的顏色
 }
 
 function browse(C, maxMs, fn) {
@@ -92,7 +92,7 @@ async function clickTitle(b, rowSel) {
 
 // ═════════════════ list ═════════════════
 async function secList(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 240000, async (b) => {
     await openUser(b, X.U.u1);
     await openBell(b);
@@ -100,7 +100,7 @@ async function secList(C) {
     t('UL1 u1 的 12 則儲存型通知都顯示', regular.split(',').length === 12, regular);
     t('UL2 每則儲存型通知都有 ✕', (await count(b, '#notifList .notif-item[data-type] .nt-x')) === 12);
     t('UL3 ✕ 有 aria-label「清除這則通知」且是 button', (await b.ev("[...document.querySelectorAll('#notifList .nt-x')].every(e=>e.tagName==='BUTTON' && e.getAttribute('aria-label')==='清除這則通知' && e.type==='button')")) === true);
-    t('UL4 動態合約提醒列：ct-erp1／ct-sap1／ct-xss／ct-del（MA 開啟時 SERVICE_MA 不在動態提醒）', (await b.ev("[...document.querySelectorAll('#notifList .notif-item[data-contract]')].map(e=>e.dataset.contractId).sort().join()")) === 'ct-del,ct-erp1,ct-sap1,ct-xss');
+    t('UL4 動態合約提醒列：ct-erp1／ct-sap1／ct-xss／ct-del（未啟用 MA 追蹤時 SERVICE_MA 也在動態提醒）', (await b.ev("[...document.querySelectorAll('#notifList .notif-item[data-contract]')].map(e=>e.dataset.contractId).sort().join()")) === 'ct-del,ct-erp1,ct-sap1,ct-svc1,ct-xss');
     t('UL5 每列都有「開啟合約」與「已處理」且有 aria-label', (await b.ev("[...document.querySelectorAll('#notifList .notif-item[data-contract]')].every(r=>{const o=r.querySelector('.nt-open'), d=r.querySelector('.nt-done'); return o&&d&&o.textContent==='開啟合約'&&d.textContent==='已處理'&&o.getAttribute('aria-label')&&d.getAttribute('aria-label')})")) === true);
     t('UL6 有說明「續約後在合約填寫續約日期，提醒也會自動消失」', (await b.ev("document.querySelector('#notifList .nt-hint')?.textContent||''")).includes('續約後在合約填寫續約日期，提醒也會自動消失'));
     t('UL7 頁首有「清除已讀」鈕，與「全部已讀」並列', (await b.ev("(()=>{const a=document.getElementById('notifClearRead'), r=document.getElementById('notifReadAll'); return !!a&&!!r&&a.textContent==='清除已讀'&&a.parentElement===r.parentElement})()")) === true);
@@ -116,7 +116,7 @@ async function secList(C) {
 
 // ═════════════════ delete ═════════════════
 async function secDelete(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 300000, async (b) => {
     // u2：1 則未讀儲存型（quote_approved，點列會導向報價單）、1 則已讀儲存型、1 則動態合約提醒（未讀）→ badge 2
     await openUser(b, X.U.u2);
@@ -148,7 +148,7 @@ async function secDelete(C) {
     t('UD10b 沒有 JS 例外', noErr(b).length === 0, J(noErr(b)).slice(0, 300));
   });
   // 鍵盤
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 240000, async (b) => {
     await openUser(b, X.U.u1);
     await openBell(b);
@@ -166,7 +166,7 @@ async function secDelete(C) {
     t('UD12c 沒有觸發導向（還在儀表板）', (await sectionNow(b)) === null);
   });
   // 超過 20 則
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 240000, async (b) => {
     await openUser(b, X.U.u4);
     await openBell(b);
@@ -181,7 +181,7 @@ async function secDelete(C) {
 
 // ═════════════════ nav ═════════════════
 async function secNav(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 360000, async (b) => {
     await openUser(b, X.U.u1);
     const openRow = async (sel) => { await clickTitle(b, sel); };
@@ -199,10 +199,9 @@ async function secNav(C) {
     // contract_expiring_7 → SAP_MA
     await openRow('.notif-item[data-id="n5"]');
     await expectModal('儲存型 contract_expiring_7（SAP_MA）', 'sap-ma', 'ct-sap1', 'SAP_MA', 'SAP 測試客戶');
-    // SERVICE_MA → service-ma（MA 開啟）
+    // SERVICE_MA：沒有 Service MA 頁，退回 erp-ma
     await openRow('.notif-item[data-id="n6"]');
-    await expectModal('儲存型 contract_expiring_7（SERVICE_MA）', 'service-ma', 'ct-svc1', 'SERVICE_MA', 'Service 測試客戶');
-    t('UN service-ma 區段的畫面確實顯示（#serviceMaView 未隱藏）', (await b.ev("(()=>{const v=document.getElementById('serviceMaView'); return !!v && !v.hidden})()")) === true);
+    await expectModal('儲存型 contract_expiring_7（SERVICE_MA）', 'erp-ma', 'ct-svc1', 'SERVICE_MA', 'Service 測試客戶');
     // 合約已不存在
     const secBefore = await sectionNow(b);
     await openRow('.notif-item[data-id="n7"]');
@@ -220,7 +219,7 @@ async function secNav(C) {
     t('UN 動態提醒指向已刪除合約：友善訊息、不開視窗', (await toast(b)).includes('此合約已刪除或你沒有檢視權限') && !(await modalState(b)).open);
     // callin / receivable / lead
     await openRow('.notif-item[data-id="n8"]');
-    t('UN callin_new → Call-in 區段', (await sectionNow(b)) === 'callin' && (await b.ev("getComputedStyle(document.getElementById('callinView')).display")) !== 'none');
+    t('UN callin_new（Call-in 已移除）：不導向、不報錯', (await sectionNow(b)) !== 'callin');
     await openRow('.notif-item[data-id="n10"]');
     t('UN receivable_overdue → 應收帳款區段', (await sectionNow(b)) === 'receivables' && (await b.ev("getComputedStyle(document.getElementById('receivablesView')).display")) !== 'none');
     await openRow('.notif-item[data-id="n9"]');
@@ -230,7 +229,7 @@ async function secNav(C) {
     t('UN 導向沒有 JS 例外', noErr(b).length === 0, J(noErr(b)).slice(0, 300));
   });
   // 行銷：lead_assigned → leads
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 240000, async (b) => {
     await openUser(b, X.U.mkt);
     await clickTitle(b, '.notif-item[data-id="mk1"]');
@@ -248,7 +247,7 @@ async function secNav(C) {
 
 // ═════════════════ dismiss ═════════════════
 async function secDismiss(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 300000, async (b) => {
     await openUser(b, X.U.u1);
     await openBell(b);
@@ -293,7 +292,7 @@ async function secDismiss(C) {
 
 // ═════════════════ deeplink ═════════════════
 async function secDeeplink(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 360000, async (b) => {
     await openUser(b, X.U.u1, { hash: '#contract:ct-erp1', wait: 3000 });
     let ms = await modalState(b);
@@ -329,14 +328,14 @@ async function secDeeplink(C) {
     t('UK5 格式正確但合約不存在 → 友善訊息、不開視窗', (await toast(b)).includes('此合約已刪除或你沒有檢視權限') && !(await modalState(b)).open);
     await b.ev("location.hash='#contract:ct-svc1'; 0");
     await b.waitFor("document.getElementById('contractModal').classList.contains('open')", 8000);
-    t('UK6 Service MA 合約 → service-ma 頁', (await sectionNow(b)) === 'service-ma' && (await modalState(b)).type === 'SERVICE_MA');
+    t('UK6 Service MA 合約 → erp-ma 頁（無 Service MA 頁）', (await sectionNow(b)) === 'erp-ma' && (await modalState(b)).type === 'SERVICE_MA');
     t('UK7 沒有 JS 例外', noErr(b).length === 0, J(noErr(b)).slice(0, 300));
   });
 }
 
 // ═════════════════ edge ═════════════════
 async function secEdge(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 240000, async (b) => {
     await openUser(b, X.U.vw);
     await openBell(b);
@@ -354,10 +353,12 @@ async function secEdge(C) {
 
 // ═════════════════ look ═════════════════
 async function secLook(C) {
-  await X.fresh({ env: { MA_TRACKING: '1' } });
+  await X.fresh({});
   await browse(C, 420000, async (b) => {
     await openUser(b, X.U.u1);
     await openBell(b);
+    // 未啟用 MA 追蹤時動態合約提醒多一筆，儲存型通知列被擠到捲動區下方：量測前先把 n1 捲進可視範圍
+    await b.ev("(()=>{const e=document.querySelector('.notif-item[data-id=\"n1\"]'); if(e) e.scrollIntoView({block:'center'}); return true})()");
     const sels = ['.nt-x', '.nt-btn.nt-open', '.nt-btn.nt-done', '.nt-hint', '#notifClearRead', '#notifReadAll', '.notif-item[data-id="n1"] .notif-title', '.notif-item[data-id="n1"] .notif-body'];
     const worst = [];
     for (const mode of THEMES) {
@@ -417,7 +418,6 @@ const UI_MUTS = () => [
   { name: 'UM9 合約已刪除沒有友善訊息', file: 'app.js', section: 'nav', expect: /^UN 合約已刪除/, find: "  if (!c) { showToast('此合約已刪除或你沒有檢視權限'); return false; }", rep: "  if (!c) { return false; }" },
   { name: 'UM10 「已處理」沒有送出 POST', file: 'app.js', section: 'dismiss', expect: /^US1/, find: "    const r = await fetch(`${API}/contract-reminders/${encodeURIComponent(contractId)}/dismiss`, { method: 'POST' });", rep: "    const r = { ok: true };" },
   { name: 'UM11 「清除已讀」鈕沒有綁定', file: 'app.js', section: 'delete', expect: /^UD6/, find: "$('notifClearRead').addEventListener('click', _notifClearRead);", rep: "" },
-  { name: 'UM12 Service MA 合約不切到 service-ma 頁', file: 'app.js', section: 'nav', expect: /^UN 儲存型 contract_expiring_7（SERVICE_MA）/, find: "(ctype === 'SERVICE_MA' && document.getElementById('serviceMaView') ? 'service-ma' : 'erp-ma')", rep: "'erp-ma'" },
   { name: 'UM13 沒有權限也硬切區段（lead_assigned）', file: 'app.js', section: 'nav', expect: /^UN lead_assigned（業務/, find: "  if (!_ntCan(t.feature)) { showToast(`你沒有「${t.label}」的檢視權限`); return true; }", rep: "" },
   { name: 'UM14 手機 ✕ 太小', file: 'style.css', section: 'look', expect: /^UM 375px.*夠大/, find: "  .nt-x { min-width: 40px; min-height: 40px; }", rep: "  .nt-x { min-width: 20px; min-height: 20px; }" },
   { name: 'UM15 清除後不補第 21 則（不重新取清單）', file: 'app.js', section: 'delete', expect: /^UD14/, find: "  if (itemEl && itemEl.parentNode) itemEl.remove();\n  _pollBundleEtag = null;   // server 狀態已改，強制取最新（badge、第 21 則以後的通知補上來）\n  await pollNotifications();", rep: "  if (itemEl && itemEl.parentNode) itemEl.remove();" },

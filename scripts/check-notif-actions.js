@@ -69,7 +69,7 @@ function seedUsers() {
 const NOW = Date.now();
 const iso = (minAgo) => new Date(NOW - minAgo * 60000).toISOString();
 const mkContract = (id, owner, type, company, endOff, extra) => Object.assign({
-  id, owner, contractNo: 'NT-' + id, company, contactName: '', product: 'SAP License MA', startDate: dstr(-300), endDate: dstr(endOff), renewDate: '', amount: '100', salesPerson: '', note: '', type, createdAt: iso(100000),
+  id, owner, contractNo: 'NT-' + id, company, contactName: '', product: 'SAP License MA', startDate: dstr(-300), endDate: dstr(endOff), renewDate: '', amount: '100', salesPerson: '', note: '', type, _contract30Reminded: 'seed', createdAt: iso(100000),
 }, extra || {});
 /** 通知：minAgo 愈小愈新（陣列順序＝新到舊，與 pushNotification 的 unshift 一致） */
 const mkN = (id, to, type, title, read, refId, minAgo) => ({ id, to, type, title, body: title + '｜內文', refId: refId === undefined ? '' : refId, read: !!read, createdAt: iso(minAgo == null ? 10 : minAgo) });
@@ -422,7 +422,7 @@ const SERVER_MUTS = [
   { name: 'M3 ETag 不含合約提醒（處理後仍回 304）', file: 'server.js', edits: [{ find: "const json = JSON.stringify(body);\n  const etag = 'W/\"' + crypto.createHash('sha1').update(json).digest('base64').slice(0, 22) + '\"';", rep: "const json = JSON.stringify(body);\n  const etag = 'W/\"' + crypto.createHash('sha1').update(JSON.stringify(Object.assign({}, body, { contractReminders: [] }))).digest('base64').slice(0, 22) + '\"';" }], expect: /^D5/ },
   { name: 'M4 已處理鍵不含迄日（改日期不會重新提醒）', file: 'lib/notifActions.js', edits: [{ find: "String(endDate == null ? '' : endDate);", rep: "'';" }], expect: /^D10/ },
   { name: 'M5 GET poll-bundle 會寫入', file: 'server.js', edits: [{ find: "  const body = { notifications, contractReminders, birthdayReminders };", rep: "  data.__touch = Date.now(); db.save(data);\n  const body = { notifications, contractReminders, birthdayReminders };" }], expect: /^D2/ },
-  { name: 'M6 dismiss 不檢查可視範圍', file: 'server.js', edits: [{ find: "x.id === id && owners.includes(x.owner) && !(MA.enabled() && x.type === 'SERVICE_MA'));\n  if (!c) return NOT_FOUND();", rep: "x.id === id);\n  if (!c) return NOT_FOUND();" }], expect: /^D11/ },
+  { name: 'M6 dismiss 不檢查可視範圍', file: 'server.js', edits: [{ find: "x.id === id && owners.includes(x.owner));\n  if (!c) return NOT_FOUND();", rep: "x.id === id);\n  if (!c) return NOT_FOUND();" }], expect: /^D11/ },
   { name: 'M7 dismiss 不確認目前是否有提醒', file: 'server.js', edits: [{ find: "if (!NTA.contractReminderStatus(c, today)) return NOT_FOUND();", rep: "" }], expect: /^D12 / },
   { name: 'M8 /api/contract-reminders 沒有過濾已處理', file: 'server.js', edits: [{ find: "res.json(NTA.filterDismissed(data.contractReminderDismissals, username, reminders));", rep: "res.json(reminders);" }], expect: /^D7/ },
   { name: 'M9 DELETE /read 被排到 /:id 之後（路由順序）', file: 'server.js', edits: [{ find: "app.delete('/api/notifications/read', requireAuth,", rep: "app.delete('/api/notifications/readx', requireAuth," }], expect: /^A3/ },

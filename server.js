@@ -7377,7 +7377,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
 // 動態合約到期提醒「已處理」：提醒是每次由合約即時推導的（沒有儲存的通知可刪），所以只記一筆旁路紀錄
 // data.contractReminderDismissals[`${本人}|${合約 id}|${迄日}`] = ISO 時間；GET 端（poll-bundle、/api/contract-reminders）據此過濾。
 // 鍵含迄日：合約續約改了迄日，鍵就對不上，提醒自動重新出現。只有「POST」會寫入與清理（上限 5000 筆、迄日早於今天 400 天以上者清掉）。
-// 可視判斷與提醒本身完全相同（getViewableOwners('contracts')＋MA 開啟時排除 SERVICE_MA）；看不到、不存在、目前沒有提醒的合約一律同樣的 404，不洩漏合約是否存在。
+// 可視判斷與提醒本身完全相同（getViewableOwners('contracts')）；看不到、不存在、目前沒有提醒的合約一律同樣的 404，不洩漏合約是否存在。
 // 只影響本人（鍵含 username），不改合約、不通知任何人，所以不寫稽核（與「標已讀」同性質的個人偏好）。
 app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
   const { username, role } = req.session.user;
