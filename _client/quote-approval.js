@@ -33,7 +33,7 @@ const ACTION_LABEL = {
   ITEM_TEXT_EDIT: '修改品項說明／備註（不影響核准）',
   // 編輯事件時間軸（q.timeline，伺服器 pushEdit 寫入）
   OPP_VOID_INVALIDATE: '商機作廢→報價單失效', OPP_VOID: '商機作廢→報價單失效', OPP_RESTORE: '商機還原→報價單恢復',
-  DRAFT_CREATE: '建立報價單', TIMELINE_TRIMMED: '較早事件已省略', DRAFT_SAVE: '儲存修改', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
+  DRAFT_CREATE: '建立報價單', TIMELINE_TRIMMED: '較早事件已省略', DRAFT_SAVE: '儲存修改', TERM_EDIT: '修改品項服務期間', COST_SAVE: '儲存成本', COST_REOPEN: '成本退回重填',
 };
 const COST_STATE_LABEL = { na: '無需顧問填寫', needed: '需顧問填寫（尚未通知）', requested: '等待顧問填寫', filled: '顧問已填寫完成' };
 const CLASS_ORDER = ['consult', 'software', 'hardware', 'crm', 'mdm', 'ot', 'other'];
@@ -60,6 +60,7 @@ const QAP_CSS = `
 .qap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; font-size: 13px; }
 .qap-grid .k { color: #6b7684; margin-right: 6px; }
 .qap-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #eef0f3; color: #4a5560; }
+.qap-badge.qap-nw { white-space: nowrap; }   /* 「修改品項服務期間」不折行 */
 .qap-badge.ok { background: #e6f4ea; color: #1e7a3a; }
 .qap-badge.warn { background: #fff4e5; color: #8a4b00; }
 .qap-badge.bad { background: #fde8e8; color: #b3261e; }
@@ -506,7 +507,10 @@ function buildItemsSection(q) {
     const price = parseFloat(it.unitPrice) || 0;
     subtotal += Math.round(qty * price * 100);
     seg += Math.round(qty * price * 100);
-    let tr = `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
+    // 服務期間（License／MA；伺服器只在 MA_TRACKING=1 才輸出 termKind 等欄位，所以關閉時 tl 一定是空字串＝輸出與以前相同）：品名下一行，唯讀
+    const tl = (typeof QTERMS === 'object' && QTERMS) ? QTERMS.servicePeriodLine(it.termKind, it.termFrom, it.termTo) : '';
+    const tlHtml = tl ? `<div class="qterm-view"><span class="qterm-badge">${e(QTERMS.KIND_LABEL[QTERMS.parseKind(it.termKind) || ''] || '')}</span> ${e(tl)}</div>` : '';
+    let tr = `<tr><td class="c">${++seq}</td><td class="desc">${e(it.desc || '')}${tlHtml}</td><td class="r">${e(fmtNum(qty))}</td><td>${e(it.unit || '式')}</td>`;
     if (showPrice) tr += `<td class="r">${e(fmtNum(price))}</td><td class="r">${e(fmtNum(qty * price))}</td>`;
     if (showCost) tr += `<td class="r">${it.cost === undefined || it.cost === null ? '—' : e(fmtNum(it.cost))}</td>`;
     if (showPrice && showCost) tr += `<td class="r">${e(lineMarginText(it))}</td>`;
@@ -737,7 +741,7 @@ function buildHistorySection(q) {
   const hasEdit = h.some((x) => x.kind === 'edit');
   const cell = (x) => (x.action === 'ITEM_TEXT_EDIT' ? buildTextDiff(x) : e(x.comment || '') + (Number(x.count) > 1 ? `<span class="qap-muted">（連續 ${e(x.count)} 次）</span>` : ''));
   const lbl = (x) => e(ACTION_LABEL[x.action] || x.action || '');
-  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${x.kind === 'edit' ? `<span class="qap-badge">${lbl(x)}</span>` : lbl(x)}</td><td class="desc">${cell(x)}</td></tr>`).join('');
+  const rows = h.map((x) => `<tr><td class="r">${e(fmtTime(x.at))}</td><td>${e(x.byName || '')}</td><td>${x.kind === 'edit' ? `<span class="qap-badge${x.action === 'TERM_EDIT' ? ' qap-nw' : ''}">${lbl(x)}</span>` : lbl(x)}</td><td class="desc">${cell(x)}</td></tr>`).join('');
   return sec(hasEdit ? '簽核與編輯歷程' : '簽核歷程', `<div class="qap-tablewrap"><table class="qap-table qap-hist"><thead><tr><th class="r">時間</th><th>人員</th><th>動作</th><th>簽核建議／駁回原因／修改內容</th></tr></thead><tbody>${rows}</tbody></table></div>`).replace('<div class="qap-sec">', '<div class="qap-sec" id="qapHistory">');
 }
 

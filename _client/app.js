@@ -810,6 +810,7 @@ function showDashboard() {
   $('visitsToolbar').style.display    = 'none';
   if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);
   setActiveNav(null);
+  _maSection(null);
   updateStatCards();
   Promise.all([loadOpportunities(), loadTargets(), loadQuarterRatios(), loadOprRange(), loadUserQuarterRatios(), loadMonthlyBudget(), loadUserBu(), loadPureSupervisors()]).then(() => {
     renderDashboardCharts();
@@ -931,7 +932,10 @@ function showSection(section) {
   // 秘書唯讀客戶視圖（secretary-customers.js，後載 script；後端 SECRETARY_CUSTOMERS 關閉或非秘書時 show() 會退回首頁）
   if (window.ITTSSecCust) window.ITTSSecCust.setActive(false);
   if (section === 'secretaryCustomers') _whenScriptsReady(section, () => { if (window.ITTSSecCust) window.ITTSSecCust.show(); else showDashboard(); });
+  _maSection(section);
 }
+// MA／License 到期管理與 Service MA 區段（ma-tasks.js 啟用後才動態建立 view 與側欄項；未啟用時什麼都不做）
+function _maSection(section) { try { if (window.ITTSMaTasks) window.ITTSMaTasks.onSection(section); } catch (_) { /* ignore */ } }
 
 // ════════════════════════════════════════════════════════════
 // 🏢 企業主檔（使用者端，依權限只看自己客戶）
@@ -3990,6 +3994,8 @@ async function initUser() {
     try { if (window.ITTSCardTasks) window.ITTSCardTasks.start(user, { login: isFirstLoad }); } catch (_) { /* ignore */ }
     try { if (window.ITTSCompanyReq) window.ITTSCompanyReq.start(user); } catch (_) { /* ignore */ }
     try { if (window.ITTSSecCust) window.ITTSSecCust.start(user); } catch (_) { /* ignore */ }
+    // 成交納管任務卡＋到期管理（ma-tasks.js；MA_TRACKING 未啟用時後端回 404 → 什麼都不顯示）
+    try { if (window.ITTSMaTasks) window.ITTSMaTasks.start(user, { login: isFirstLoad }); } catch (_) { /* ignore */ }
   } catch { window.location.href = '/login.html'; }
 }
 
@@ -4807,11 +4813,8 @@ function renderKanban() {
         if (newStage === 'Won' && !opp.achievedDate) {
           body.achievedDate = new Date().toISOString().slice(0, 10);
         }
-        const r = await fetch(`${API}/opportunities/${dragOppId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        const r = await oppPutWithTerm(dragOppId, body, opp, opp.product);
+        if (r === null) return;   // 成交期間視窗取消：不改階段，卡片留在原欄
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           showToast('❌ 更新失敗：' + (err.error || r.status));
@@ -4834,6 +4837,25 @@ function renderKanban() {
       } catch (err) { showToast('❌ 網路錯誤，請重試'); }
     }, sig);
   });
+}
+
+// ── 成交入口共用（MA_TRACKING）：License／MA 商品變 Won 時先跳「服務期間」視窗，伺服器回 TERM_REQUIRED／TERM_INVALID 也開同一個視窗 ──
+// 回傳 Response；null＝使用者取消（不改階段）。功能未啟用（ITTSMaTasks.enabled() 為假）＝與直接 fetch 完全相同。
+async function oppPutWithTerm(id, body, opp, product) {
+  const M = window.ITTSMaTasks;
+  const doPut = b => fetch(`${API}/opportunities/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  if (!(body && body.stage === 'Won' && M && M.enabled())) return doPut(body);
+  let extra = await M.wonTerm(opp, { product });
+  if (extra === null) return null;
+  for (let i = 0; i < 4; i++) {
+    const r = await doPut(Object.assign({}, body, extra));
+    if (r.ok) { M.refreshSoon(); try { _refreshBell(); } catch (_) { /* ignore */ } return r; }   // 成交會建立任務卡與通知：首頁待辦與鈴鐺跟著更新
+    const e = await r.clone().json().catch(() => ({}));
+    if (e.code !== 'TERM_REQUIRED' && e.code !== 'TERM_INVALID') return r;
+    extra = await M.wonTerm(opp, { product, force: true, message: e.error, prefill: extra });
+    if (extra === null) return null;
+  }
+  return doPut(Object.assign({}, body, extra));
 }
 
 // ── 簽約慶祝動畫 ─────────────────────────────────────────
@@ -5580,12 +5602,9 @@ $('oppEditSave').addEventListener('click', async () => {
     payload.achievedDate = new Date().toISOString().slice(0, 10);
   }
   try {
-    const _rE = await fetch(`${API}/opportunities/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!_rE.ok) {   // 伺服器擋下（例如 SAP Deal ID 必填）：留在視窗內、顯示原因，不要假裝已更新
+    const _rE = await oppPutWithTerm(id, payload, allOpportunities.find(x => x.id === id), payload.product);
+    if (_rE === null) return;   // 成交期間視窗取消：留在表單、不改階段
+    if (!_rE.ok) {   // 伺服器擋下（例如 Deal ID 必填）：留在視窗內、顯示原因，不要假裝已更新
       const _eE = await _rE.json().catch(() => ({}));
       if (_eE.code === 'DEAL_ID_REQUIRED' || _eE.code === 'DEAL_ID_FORMAT' || _eE.code === 'DEAL_ID_INVALID') { const _g = $('oppEditDealIdGroup'); if (_g) _g.hidden = false; dealIdSetError('oppEdit', _eE.error); }
       showToast(_eE.error || '儲存失敗，請重試');
@@ -7169,11 +7188,15 @@ async function updateOppStage(id, stage, confirmWon = false) {
         body.achievedDate = new Date().toISOString().slice(0, 10);
       }
     }
-    await fetch(`${API}/opportunities/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    const _oppT = allOpportunities.find(o => o.id === id);
+    const _rT = await oppPutWithTerm(id, body, _oppT, _oppT && _oppT.product);
+    if (_rT === null) { renderOppTable(); return; }   // 成交期間視窗取消：不改階段，下拉選單還原
+    if (!_rT.ok && window.ITTSMaTasks && window.ITTSMaTasks.enabled()) {   // 功能啟用時才顯示失敗（未啟用維持原本不檢查的行為）
+      const _eT = await _rT.json().catch(() => ({}));
+      showToast('❌ 更新失敗：' + (_eT.error || _rT.status));
+      renderOppTable();
+      return;
+    }
     await loadOpportunities();
     renderOppTable();
     renderTargetHistory();
@@ -7915,7 +7938,10 @@ function contractStatus(c) {
   if (!endDate) return { key: 'active', label: '有效', days: null, pct: 100, color: 'green', isRenewed: false };
 
   const end     = new Date(endDate);
-  const endDiff = Math.ceil((end - today) / 86400000);
+  // MA_TRACKING 開啟時，剩餘天數與「MA／License 到期管理」共用台北日曆日算法（ITTSMaTasks.daysLeft）；關閉時維持原算法
+  const _maDl = (d) => { const M = window.ITTSMaTasks; return M && M.enabled && M.enabled() && M.daysLeft ? M.daysLeft(d) : null; };
+  const _tpEnd = _maDl(endDate);
+  const endDiff = _tpEnd !== null ? _tpEnd : Math.ceil((end - today) / 86400000);
 
   let effectiveEnd, effectiveStart, isRenewed = false;
 
@@ -7934,7 +7960,8 @@ function contractStatus(c) {
     effectiveStart = startDate ? new Date(startDate) : null;
   }
 
-  const diff = Math.ceil((effectiveEnd - today) / 86400000);
+  const _tpDiff = _maDl(isRenewed ? renewDate : endDate);
+  const diff = _tpDiff !== null ? _tpDiff : Math.ceil((effectiveEnd - today) / 86400000);
 
   // 進度條：剩餘時間百分比
   let pct = 100;
@@ -8511,6 +8538,83 @@ async function loadSapMaView() {
   } catch { showToast('無法載入合約資料'); }
 }
 
+// ── Service MA 合約（MA_TRACKING；type==='SERVICE_MA' 由伺服器在任務卡「簽約確認」時建立）──────────────
+// view／側欄項由 ma-tasks.js 啟用後才動態建立；既有 ERP_MA／SAP_MA 頁籤的篩選與提醒完全不動（它們的 filter 本來就只認自己的 type）
+function _refreshBell() { _pollBundleEtag = null; pollNotifications(); }
+async function loadServiceMaView() {
+  try {
+    await fetchAllContracts();
+    if (allKeyAccounts.length === 0) { try { await loadKeyAccounts(); } catch {} }
+    renderServiceMaList();
+  } catch { showToast('無法載入合約資料'); }
+}
+function renderServiceMaList() {
+  if (!$('serviceMaTbody')) return;
+  const list = allContracts.filter(c => c.type === 'SERVICE_MA');
+  renderContractStat(list, 'serviceMaStatRow');
+  renderContractTable(list, 'serviceMaTbody', $('serviceMaSearch').value, $('serviceMaStatusFilter').value);
+  decorateServiceMaRows();
+}
+// 來源連結（商機／到期管理項）；合約欄位 oppId／quoteId／maItemId 只由伺服器寫入，這裡全部唯讀、textContent
+function decorateServiceMaRows() {
+  const tbody = $('serviceMaTbody');
+  if (!tbody) return;
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length === 1 && !rows[0].querySelector('.ct-btn-edit')) {
+    const td = rows[0].querySelector('td');
+    if (td) td.textContent = '尚無 Service MA 合約。License／MA 商機成交後，在任務卡確認「合約已簽訂」就會出現在這裡。';
+    return;
+  }
+  rows.forEach(tr => {
+    const eb = tr.querySelector('.ct-btn-edit');
+    if (!eb) return;
+    const c = allContracts.find(x => x.id === eb.dataset.id);
+    const rn = tr.querySelector('.ct-btn-renew'); if (rn) rn.remove();   // 續約走到期管理（P4），Service MA 不從這裡手動複製
+    if (!c) return;
+    const td = tr.querySelector('td');
+    if (!td) return;
+    const box = document.createElement('div');
+    box.className = 'mat-src';
+    if (c.oppId) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'mat-link'; b.textContent = '來源商機';
+      b.addEventListener('click', async () => {
+        if (!allOpportunities.some(o => o.id === c.oppId)) { try { await loadOpportunities(); } catch {} }
+        if (allOpportunities.some(o => o.id === c.oppId)) openOppEdit(c.oppId);
+        else showToast('找不到這筆商機（可能已刪除或不在你的範圍）');
+      });
+      box.appendChild(b);
+    }
+    if (c.maItemId && window.ITTSMaTasks && window.ITTSMaTasks.itemsOn()) {
+      const b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'mat-link'; b2.textContent = '到期管理項';
+      b2.addEventListener('click', () => showSection('maItems'));
+      box.appendChild(b2);
+    }
+    const st = contractStatus(c);
+    if (st.days !== null) { const sp = document.createElement('span'); sp.className = 'mat-src-days'; sp.textContent = st.key === 'expired' ? ('已逾期 ' + st.days + ' 天') : ('剩餘 ' + st.days + ' 天'); box.appendChild(sp); }
+    td.appendChild(box);
+  });
+}
+// 合約視窗開啟 SERVICE_MA 時，唯讀顯示來源（由伺服器寫入；儲存時 payload 不含這些欄位）。傳 null＝移除
+function _contractSourceBox(c) {
+  const old = document.getElementById('contractSourceBox');
+  if (old) old.remove();
+  if (!c) return;
+  const body = $('contractModal').querySelector('.modal-body');
+  if (!body) return;
+  const box = document.createElement('div');
+  box.id = 'contractSourceBox'; box.className = 'mat-srcbox';
+  const h = document.createElement('div'); h.className = 'mat-srcbox-title'; h.textContent = '來源（系統寫入，不可修改）';
+  box.appendChild(h);
+  [['來源商機', c.oppId], ['來源報價單', c.quoteId], ['到期管理項', c.maItemId], ['簽約日', c.signedDate]].forEach(p => {
+    if (!p[1]) return;
+    const r = document.createElement('div'); r.className = 'mat-srcbox-row';
+    const k = document.createElement('span'); k.className = 'mat-srcbox-k'; k.textContent = p[0];
+    const v = document.createElement('code'); v.className = 'mat-srcbox-v'; v.textContent = p[1];
+    r.appendChild(k); r.appendChild(v); box.appendChild(r);
+  });
+  body.appendChild(box);
+}
+
 // ── 年度通知判斷 ─────────────────────────────────────────
 // PCE / PE License MA：起迄日超過1年 → 每年到期前90天顯示發票開立通知
 // PCOE License MA：合約到期日前90天顯示客戶端續約通知
@@ -8591,6 +8695,7 @@ function renderSapNoticeBar(list) {
 async function reloadCurrentContractView() {
   if (currentSection === 'erp-ma') await loadErpMaView();
   else if (currentSection === 'sap-ma') await loadSapMaView();
+  else if (currentSection === 'service-ma') await loadServiceMaView();
 }
 
 function renderContractStat(all, statRowId) {
@@ -8769,7 +8874,7 @@ $('contractEndDate').addEventListener('change',   () => updateMultiYearSection()
 function openContractModal(id = null, type = null) {
   const isEdit = !!id;
   const contractType = type || (id ? (allContracts.find(x => x.id === id)?.type || 'ERP_MA') : 'ERP_MA');
-  const typeLabel = contractType === 'SAP_MA' ? 'SAP License MA' : 'ERP MA';
+  const typeLabel = contractType === 'SAP_MA' ? 'SAP License MA' : (contractType === 'SERVICE_MA' ? 'Service MA' : 'ERP MA');
   $('contractModalTitle').textContent = isEdit ? `編輯 ${typeLabel} 合約` : `新增 ${typeLabel} 合約`;
   $('contractTypeHidden').value = contractType;
   $('contractId').value = id || '';
@@ -8799,6 +8904,7 @@ function openContractModal(id = null, type = null) {
     $('contractYearFields').innerHTML = '';
     $('contractTCV').value = '';
   }
+  _contractSourceBox(isEdit && contractType === 'SERVICE_MA' ? allContracts.find(x => x.id === id) : null);
   $('contractModal').classList.add('open');
 }
 
@@ -8910,6 +9016,7 @@ $('contractDeleteConfirm').addEventListener('click', async () => {
     contractDeleteId = null;
     showToast('合約已刪除');
     await reloadCurrentContractView();
+    try { const M = window.ITTSMaTasks; if (M && M.enabled && M.enabled() && M.afterContractChange) M.afterContractChange(); } catch (_) { /* 刪除 Service MA 合約會重開簽約任務卡：首頁待辦、到期管理、鈴鐺跟著更新 */ }
   } catch { showToast('刪除失敗'); }
 });
 
@@ -9308,8 +9415,16 @@ async function pollNotifications() {
       };
     });
 
-    // 合併：生日 → 合約 → 一般通知
-    const merged = [...birthdayNotifs, ...contractNotifs, ...regularList];
+    // MA／License 到期提醒（P3b；MA_TRACKING=1 才有 maReminders 鍵）：依當下條件即時推導的「依人彙總」群組。
+    // 儲存型 ma_reminder 只負責 Web Push／歷史，同一件事不重複顯示（條件不成立時伺服器也會把它標已讀）。沒有 maReminders 鍵＝與以前完全相同。
+    const maList = Array.isArray(bundle.maReminders) ? bundle.maReminders : null;
+    const maNotifs = (maList && maList.length && window.ITTSMaRem)
+      ? [{ id: 'ma_summary', type: 'ma_summary', isMa: true, read: window.ITTSMaRem.allRead(maList), createdAt: null, items: maList }]
+      : [];
+    const shownRegular = maList ? regularList.filter(n => n.type !== 'ma_reminder') : regularList;
+
+    // 合併：生日 → 合約 → MA／License → 一般通知
+    const merged = [...birthdayNotifs, ...contractNotifs, ...maNotifs, ...shownRegular];
 
     // 未讀計算
     const unreadCount = merged.filter(n => !n.read).length;
@@ -9332,14 +9447,16 @@ function renderNotifList(list) {
   const typeIcon = {
     contract_urgent:'🟠', contract_expiring:'🟡', contract_expired:'🔴', contract_expiring_30:'📅', contract_expiring_7:'⚠️', receivable_overdue:'🔴', lead_assigned:'🎯', birthday:'🎂',
     quote_cost_request:'🧾', quote_cost_done:'✅', quote_submitted:'📝', quote_step_approved:'☑️',
-    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_mode_changed:'🔏', admin_account_change:'🛡️',
-    company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨'
+    quote_approved:'✅', quote_returned:'↩️', quote_withdrawn:'↩️', quote_voided:'⚠️', quote_board:'🏛️', quote_text_edited:'📝', quote_term_changed:'📅', quote_mode_changed:'🔏', admin_account_change:'🛡️',
+    company_card_task:'🗂️', company_request_new:'🏛️', company_request_done:'📨',
+    deal_task:'📝', deal_task_skipped:'⚠️', ma_reminder:'⏳', ma_not_renew:'🚫'
   };
 
   // 分組：生日 / 合約提醒 / 一般通知
   const birthdayItems  = list.filter(n => n.isBirthday);
   const contractItems  = list.filter(n => n.isContract);
-  const regularItems   = list.filter(n => !n.isContract && !n.isBirthday);
+  const maItems        = list.filter(n => n.isMa);
+  const regularItems   = list.filter(n => !n.isContract && !n.isBirthday && !n.isMa);
 
   let html = '';
 
@@ -9387,8 +9504,12 @@ function renderNotifList(list) {
     }).join('');
   }
 
+  if (maItems.length) {
+    html += `<div class="notif-group-hd">⏳ MA／License 到期提醒</div><div id="maRemBellHost"></div>`;
+  }
+
   if (regularItems.length) {
-    if (contractItems.length) html += `<div class="notif-group-hd">🔔 系統通知</div>`;
+    if (contractItems.length || maItems.length) html += `<div class="notif-group-hd">🔔 系統通知</div>`;
     html += regularItems.slice(0, 20).map(n => `
       <div class="notif-item ${n.read ? '' : 'unread'}" data-id="${escapeHtml(n.id)}" data-type="${escapeHtml(n.type || '')}" data-ref="${escapeHtml(n.refId || '')}">
         <div class="notif-icon">${typeIcon[n.type] || '🔔'}</div>
@@ -9434,6 +9555,18 @@ function renderNotifList(list) {
           const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
           window.ITTSCardTasks.openFromNotification();
         }
+        if (item.dataset.type === 'deal_task' && window.ITTSMaTasks) {
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSMaTasks.openFromNotification();
+        }
+        if (item.dataset.type === 'deal_task_skipped' && window.ITTSMaTasks) {
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSMaTasks.openItemsFromNotification();
+        }
+        if ((item.dataset.type === 'ma_reminder' || item.dataset.type === 'ma_not_renew') && window.ITTSMaTasks) {   // 深連結 #maitems
+          const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+          window.ITTSMaTasks.openItemsFromNotification();
+        }
         _notifGoByType(item.dataset.type, item.dataset.ref);   // 合約到期（儲存型）、Call-in、Lead、應收逾期：之前點了沒有任何導向
       }
     });
@@ -9461,6 +9594,17 @@ function renderNotifList(list) {
       _contractReminderDone(btn.dataset.ntContractId, btn);
     });
   });
+
+  // MA／License 群組（動態內容；要在上面綁完 .notif-item 的點擊之後才畫，否則會被當成一般通知去呼叫 /notifications/:id/read）
+  if (maItems.length && window.ITTSMaRem) {
+    window.ITTSMaRem.paintBell($('maRemBellHost'), maItems[0].items, {
+      open: (x) => {
+        const dd = $('notifDropdown'); if (dd) dd.style.display = 'none';
+        if (window.ITTSMaTasks) window.ITTSMaTasks.openItemsFromNotification(x && x.itemId);
+      },
+      onRead: () => _updateBadgeFromDOM(),
+    });
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -9615,6 +9759,8 @@ $('notifReadAll').addEventListener('click', async () => {
   document.querySelectorAll('.notif-item[data-contract="1"]').forEach(item => {
     markContractReminderRead(item.dataset.id);
   });
+  // MA／License 到期提醒全標已讀（localStorage，每日重置；沒有 maReminders 就什麼都不做）
+  if (window.ITTSMaRem && _pollBundleCache && Array.isArray(_pollBundleCache.maReminders)) window.ITTSMaRem.markAllRead(_pollBundleCache.maReminders);
   await fetch(`${API}/notifications/read-all`, { method: 'PUT' });
   _pollBundleEtag = null; // server 狀態已改，強制下次取最新
   pollNotifications();

@@ -865,6 +865,17 @@
   body.dark #pcPanel .pc-deal-url { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
   body.dark #pcPanel .pc-deal-hint { color:#9aa4b0; }
   body.dark #pcPanel .pc-deal-hint.pc-deal-bad { color:#ff9b94; }
+  /* 銷售商品維護：商品類型列（類型下拉＋成交後啟動任務卡勾選；MA_TRACKING=1 才出現）。顏色走 --ax-*，深淺色成對 */
+  #pcPanel .pc-term-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; }
+  #pcPanel .pc-term-lbl { font-size:12px; color:var(--ax-text, #374151); }
+  #pcPanel .pc-term-sel { padding:3px 6px; font-size:12px; border:1px solid var(--ax-border, #d1d5db); border-radius:6px; background:var(--ax-surface, #fff); color:var(--ax-text, #333); }
+  #pcPanel .pc-term-chk { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--ax-text, #374151); cursor:pointer; }
+  #pcPanel .pc-term-chk.pc-term-off { opacity:.55; cursor:not-allowed; }
+  #pcSuggestBtn { background:none; border:1px solid var(--ax-border, #d1d5db); color:var(--ax-text, #374151); padding:8px 14px; font-size:13px; border-radius:6px; cursor:pointer; margin-left:8px; }
+  /* 商品列的卡片底色：玻璃深色版是深色、一般（非玻璃）深色版維持淺色卡片（既有 Deal ID 列同樣如此），所以淺字只用在玻璃深色 */
+  body.glass.dark #pcPanel .pc-term-lbl, body.glass.dark #pcPanel .pc-term-chk { color:#c9d1d9; }
+  body.dark #pcPanel .pc-term-sel { background:#0d1117; border-color:#30363d; color:#c9d1d9; }
+  body.dark #pcSuggestBtn { border-color:#30363d; color:#c9d1d9; }
 </style>
 </head>
 <body class="admin-page">
@@ -2628,6 +2639,7 @@
           <div id="pcPanel"></div>
           <div style="display:flex;align-items:center;gap:12px;margin-top:16px;border-top:1px solid #eee;padding-top:14px">
             <button id="pcSaveBtn" style="background:#1a73e8;color:#fff;border:none;padding:9px 20px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">💾 儲存變更</button>
+            <button id="pcSuggestBtn" hidden title="依群組標題（License MA、Service MA）與商品名稱（含 License／MA／維護／授權）預選類型；只填表單，要按「儲存變更」才生效">套用建議類型</button>
             <span id="pcStatus" class="ax-muted-13"></span>
           </div>
         </div>
@@ -3277,9 +3289,11 @@
 
   <script src="idle-timeout.js" data-ignore-expired="1"></script><!-- 閒置 30 分鐘自動登出（admin 自己有登入畫面，沒登入的 401 不導向，只處理閒置逾時） -->
   <script src="glass-theme.js"></script>
+  <script src="quote-terms.js"></script><!-- 商品類型建議（QTERMS.suggestKind）：與報價單服務期間共用同一份規則 -->
   <script src="config-review.js"></script>
   <script src="flow-overview.js"></script><!-- 簽核流程設計器：唯讀總覽圖 -->
   <script src="flow-designer.js"></script><!-- 簽核流程設計器：泳道編輯／模擬器／驗證／草稿 -->
+  <script src="ma-reminders-admin.js"></script><!-- 提醒規則頁（MA_TRACKING=1 才會由 probe 動態插入側欄項／section／樣式表；關閉時什麼都不建立）：須在 config-review.js 之後 -->
   <script src="admin-users-view.js"></script>
   <script src="announcements.js"></script><!-- 後台「預覽」沿用使用者端彈窗元件 -->
   <script>
@@ -3320,7 +3334,9 @@
 
     // ── 導覽切換 ──
     document.querySelectorAll('.admin-nav-item').forEach(item => {
-      item.addEventListener('click', function() {
+      item.addEventListener('click', function(ev) {
+        // 銷售商品維護（MA_TRACKING 開啟時）儲存進行中不切換頁面，避免離開後誤以為已存好（儲存完成後即可切換）
+        if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa && this.dataset.sec !== 'product-catalog') { showToast('「銷售商品維護」正在儲存中，請等顯示「已儲存」後再切換頁面'); return; }
         document.querySelectorAll('.admin-nav-item').forEach(i => i.classList.remove('active'));
         document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
         this.classList.add('active');
@@ -3837,8 +3853,11 @@
     // ── 銷售商品維護（Admin）───────────────────────────────────
     const PC_BUS = ['ERP', 'ITS', 'MDM', 'CRM', '資安'];
     const PC_BU_COLOR = { ERP: '#1a73e8', ITS: '#0a8a4a', MDM: '#e37400', CRM: '#7c3aed', '資安': '#e11d48' };
-    let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null;
+    let _pcInited = false, _pcAttached = false, _pcData = null, _pcActive = 'ERP', _pcDrag = null, _pcMa = false, _pcSaving = false;   // _pcMa：伺服器回 maTracking:true（MA_TRACKING=1）才顯示商品類型欄
     const pcEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    // 儲存進行中（_pcSaving）關閉／重新整理分頁 → 瀏覽器確認視窗（只在 MA_TRACKING 開啟時；關閉時行為與以前相同）
+    window.addEventListener('beforeunload', (e) => { if (_pcMa && _pcSaving) { e.preventDefault(); e.returnValue = ''; return ''; } });
 
     async function initProductCatalog() {
       if (_pcInited) return;
@@ -3846,8 +3865,11 @@
       $('pcStatus').textContent = '載入中…';
       try {
         const r = await adminFetch(`${API}/product-catalog`);
-        _pcData = pcBuildModel(await r.json());
+        const cat = await r.json();
+        _pcMa = !!(cat && cat.maTracking === true);
+        _pcData = pcBuildModel(cat);
       } catch (e) { _pcData = { ERP: [], ITS: [], MDM: [], CRM: [], '資安': [] }; }
+      $('pcSuggestBtn').hidden = !(_pcMa && window.QTERMS);
       $('pcStatus').textContent = '';
       pcAttachOnce();
       pcRender();
@@ -3863,6 +3885,7 @@
           items: (g.items || []).map(it => ({
             name: it.name || '', _orig: it.name || '', enabled: it.enabled !== false,
             requiresDealId: it.requiresDealId === true, dealRegisterUrl: typeof it.dealRegisterUrl === 'string' ? it.dealRegisterUrl : '',
+            termKind: (it.termKind === 'license' || it.termKind === 'ma') ? it.termKind : 'none', startsTask: it.startsTask === true,
             subs: (Array.isArray(it.subs) ? it.subs : []).map(s => ({ name: s, _orig: s })),
           })),
         }));
@@ -3937,7 +3960,7 @@
               + `<button data-pcact="del-sub" data-gi="${gi}" data-pi="${pi}" data-si="${si}" style="border:none;background:none;color:#9ca3af;cursor:pointer;font-size:12px">✕</button></span>`;
           });
           h += `<button data-pcact="add-sub" data-gi="${gi}" data-pi="${pi}" style="font-size:12px;border:1px dashed #cbd5e1;background:none;border-radius:6px;padding:3px 9px;cursor:pointer;color:#6b7280">＋明細</button>`
-            + `</div>` + pcDealRowHtml(p, gi, pi) + `</div>`
+            + `</div>` + pcDealRowHtml(p, gi, pi) + (_pcMa ? `<div class="pc-term-row" data-pcterm data-gi="${gi}" data-pi="${pi}"></div>` : '') + `</div>`
             + `<button data-pcact="del-prod" data-gi="${gi}" data-pi="${pi}" title="刪除產品" style="border:none;background:none;color:#ef4444;cursor:pointer;font-size:15px;margin-top:5px">🗑</button>`
             + `</div>`;
         });
@@ -3945,6 +3968,40 @@
       });
       h += `<button data-pcact="add-grp" style="width:100%;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:9px;font-size:13px;color:#6b7280;cursor:pointer">＋ 新增分類群組</button>`;
       $('pcPanel').innerHTML = h;
+      if (_pcMa) pcFillTermRows();
+    }
+
+    // 商品類型列（類型下拉＋成交後啟動任務卡勾選）：全部用 createElement／textContent 組，不經 innerHTML
+    function pcFillTermRows() {
+      $('pcPanel').querySelectorAll('[data-pcterm]').forEach(box => {
+        const gi = +box.dataset.gi, pi = +box.dataset.pi, p = ((_pcData[_pcActive] || [])[gi] || { items: [] }).items[pi];
+        if (!p) return;
+        const lbl = document.createElement('span'); lbl.className = 'pc-term-lbl'; lbl.textContent = '類型';
+        const sel = document.createElement('select'); sel.className = 'pc-term-sel';
+        sel.dataset.pcfld = 'tkind'; sel.dataset.gi = String(gi); sel.dataset.pi = String(pi);
+        sel.setAttribute('aria-label', '商品類型：' + p.name);
+        [['none', '一般'], ['license', 'License'], ['ma', 'MA']].forEach(o => {
+          const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; if (p.termKind === o[0]) op.selected = true; sel.appendChild(op);
+        });
+        const chk = document.createElement('label'); chk.className = 'pc-term-chk' + (p.termKind === 'none' ? ' pc-term-off' : '');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.pcfld = 'tstart'; cb.dataset.gi = String(gi); cb.dataset.pi = String(pi);
+        cb.checked = p.termKind !== 'none' && !!p.startsTask; cb.disabled = p.termKind === 'none';
+        chk.appendChild(cb); chk.appendChild(document.createTextNode(' 成交後啟動任務卡'));
+        box.appendChild(lbl); box.appendChild(sel); box.appendChild(chk);
+      });
+    }
+
+    // 套用建議：依群組標題與商品名稱預選類型；只動目前還是「一般」的商品（不覆蓋管理員手動選的），只改表單，要按儲存才生效。任務卡勾選一律不動（預設全不勾）
+    function pcApplySuggest() {
+      if (!window.QTERMS) return;
+      let n = 0;
+      for (const bu of PC_BUS) for (const g of (_pcData[bu] || [])) for (const p of g.items) {
+        if (p.termKind !== 'none') continue;
+        const k = window.QTERMS.suggestKind(p.name, g.group);
+        if (k) { p.termKind = k; n++; }
+      }
+      pcRender();
+      $('pcStatus').textContent = n ? '已為 ' + n + ' 項商品預選類型，請檢查後按「儲存變更」' : '沒有需要預選的商品（名稱或群組標題不符，或已設定過類型）';
     }
 
     function pcFocus(sel) { const el = $('pcPanel').querySelector(sel); if (el) el.focus(); }
@@ -3961,6 +4018,7 @@
       panel.addEventListener('dragover', e => { if (_pcDrag) e.preventDefault(); });
       panel.addEventListener('drop', pcOnDrop);
       $('pcSaveBtn').addEventListener('click', pcSave);
+      $('pcSuggestBtn').addEventListener('click', pcApplySuggest);
     }
 
     function pcOnClick(e) {
@@ -3970,7 +4028,7 @@
       if (act === 'add-grp') { G.push({ group: '新分類群組', enabled: true, items: [] }); pcRender(); pcFocus(`[data-pcfld="group"][data-gi="${G.length - 1}"]`); }
       else if (act === 'del-grp') { if (confirm('刪除此分類群組？（歷史商機不受影響）')) { G.splice(gi, 1); pcRender(); } }
       else if (act === 'toggle-grp') { G[gi].enabled = !G[gi].enabled; pcRender(); }
-      else if (act === 'add-prod') { G[gi].items.push({ name: '', _orig: '', enabled: true, requiresDealId: false, dealRegisterUrl: '', subs: [] }); pcRender(); pcFocus(`[data-pcfld="name"][data-gi="${gi}"][data-pi="${G[gi].items.length - 1}"]`); }
+      else if (act === 'add-prod') { G[gi].items.push({ name: '', _orig: '', enabled: true, requiresDealId: false, dealRegisterUrl: '', termKind: 'none', startsTask: false, subs: [] }); pcRender(); pcFocus(`[data-pcfld="name"][data-gi="${gi}"][data-pi="${G[gi].items.length - 1}"]`); }
       else if (act === 'del-prod') { if (confirm('刪除此產品？（歷史商機不受影響）')) { G[gi].items.splice(pi, 1); pcRender(); } }
       else if (act === 'toggle-prod') { G[gi].items[pi].enabled = !G[gi].items[pi].enabled; pcRender(); }
       else if (act === 'add-sub') { G[gi].items[pi].subs.push({ name: '', _orig: '' }); pcRender(); pcFocus(`[data-pcfld="sub"][data-gi="${gi}"][data-pi="${pi}"][data-si="${G[gi].items[pi].subs.length - 1}"]`); }
@@ -3987,6 +4045,13 @@
         G[gi].items[pi].requiresDealId = !!el.checked;
         pcRender();
         pcFocus('[data-pcfld="req"][data-gi="' + gi + '"][data-pi="' + pi + '"]');
+      } else if (el.dataset.pcfld === 'tkind') {
+        const p = G[gi].items[pi]; p.termKind = ['license', 'ma'].includes(el.value) ? el.value : 'none';
+        if (p.termKind === 'none') p.startsTask = false;
+        pcRender();
+        pcFocus('[data-pcfld="tkind"][data-gi="' + gi + '"][data-pi="' + pi + '"]');
+      } else if (el.dataset.pcfld === 'tstart') {
+        const p = G[gi].items[pi]; p.startsTask = !!el.checked && p.termKind !== 'none';
       } else if (el.dataset.pcfld === 'durl') {
         const p = G[gi].items[pi]; p.dealRegisterUrl = el.value;
         const ht = pcDealHintText(p), hint = el.parentNode.querySelector('[data-pchint]');
@@ -4040,6 +4105,7 @@
             items: g.items.map(p => {
               const o = { name: (p.name || '').trim(), enabled: !!p.enabled, subs: p.subs.map(s => (s.name || '').trim()).filter(Boolean) };
               if (p.requiresDealId) { o.requiresDealId = true; const u = String(p.dealRegisterUrl || '').trim(); if (u) o.dealRegisterUrl = u; }   // 不需要 SAP Deal ID 的商品不存網址
+              if (_pcMa && p.termKind !== 'none') { o.termKind = p.termKind; if (p.startsTask) o.startsTask = true; }   // 一般商品不存欄位；MA_TRACKING 關閉時整段不送
               return o;
             }).filter(p => p.name),
           }))
@@ -4064,7 +4130,7 @@
           if (ok) applyRenames = renames;
         } catch (e) { /* 預覽失敗 → 當作只改目錄 */ }
       }
-      btn.disabled = true; const orig = btn.textContent; btn.textContent = '儲存中…'; st.textContent = '';
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = '儲存中…'; st.textContent = ''; _pcSaving = true;
       try {
         const r = await adminFetch(`${API}/admin/product-catalog`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ catalog, renames: applyRenames }) });
         const d = await r.json();
@@ -4073,7 +4139,7 @@
         const extra = (d.updatedOpps || d.updatedContracts) ? `（連動商機 ${d.updatedOpps}、合約 ${d.updatedContracts}）` : '';
         st.textContent = `已儲存 ${new Date().toLocaleTimeString()}${extra}`;
       } catch (e) { st.innerHTML = `<span class="ax-bad">儲存失敗：${pcEsc(e.message)}</span>`; }
-      finally { btn.disabled = false; btn.textContent = orig; }
+      finally { _pcSaving = false; btn.disabled = false; btn.textContent = orig; }
     }
 
     // ── 報價牌價簿（Admin）─────────────────────────────────────
@@ -5184,6 +5250,7 @@
         renderUserTable();
         if (typeof mailAfterUserTable === 'function') mailAfterUserTable();
         if (window.FlowDesigner && typeof window.FlowDesigner.probe === 'function') window.FlowDesigner.probe();   // 簽核流程設計器：開關開啟時才顯示側欄項
+        if (window.MaRemAdmin) window.MaRemAdmin.probe({ fetch: adminFetch, crApi: _afCrApi, canLeave: () => { if (typeof _pcSaving !== 'undefined' && _pcSaving && _pcMa) { showToast('「銷售商品維護」正在儲存中，請等顯示「已儲存」後再切換頁面'); return false; } return true; } });   // 提醒規則頁（MA_TRACKING=1 才插入）
       } catch (e) { if (e.message !== 'Session expired') showToast('載入失敗'); }
     }
 

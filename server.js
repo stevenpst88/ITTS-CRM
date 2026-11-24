@@ -28,6 +28,10 @@ const SU = require('./lib/safeUrl');   // SEC-08：外連 URL 的 SSRF 防護（
 const productCatalog = require('./lib/productCatalog');
 const WONC = require('./lib/wonAutoCustomer');   // 商機成交→綁定名片自動轉客戶（WON_AUTO_CUSTOMER=0 關閉）
 const NTA = require('./lib/notifActions');   // 鈴鐺：清除通知（DELETE /api/notifications）與合約到期提醒「已處理」（POST /api/contract-reminders/:id/dismiss）的純邏輯
+const MA = require('./lib/maTracking');   // 成交納管／任務卡／合約串接的純邏輯（MA_TRACKING=1 才啟用；與 QTERM 同一個開關）
+const MAR = require('./lib/maRoutes');   // 其端點、稽核與通知；register 在檔案尾端，PUT／DELETE／restore 內呼叫掛鉤
+const MRR = require('./lib/maReminderRoutes');   // 到期「活規則」提醒（P3a）：規則設定／試算器端點、掃描（cron＋poll-bundle 補掃）、動態鈴鐺 maReminders；MA_TRACKING=1 才啟用
+const QTERM = require('./lib/quoteTerms');   // 報價單品項服務期間／商品類型（MA_TRACKING=1 才啟用，預設關閉）
 const CREQ = require('./lib/companyRequests');   // 統編查無→申請行銷建檔（COMPANY_REQUESTS=off 整個關閉）
 const cardTasks = require('./lib/companyCardTasks');   // 企業主檔責任業務＋待補名片待辦（推導狀態；COMPANY_CARD_TASKS=off 整個關閉）
 const createPlanGuard = require('./middleware/planGuard');
@@ -1284,6 +1288,8 @@ const GROUPSALES_ALLOWED_PREFIXES = [
   '/api/company-requests',  // 統編查無→申請建檔：GET 自己的申請、POST :id/cancel（核可／退回由 handler 限行銷／管理員）
   '/api/my-tasks',          // 我的待辦（待補名片）：GET、POST dismiss——只讀寫呼叫者自己的待辦，集團業務是可擁有名片的角色
 ];
+// 成交納管（MA_TRACKING=1 才放行）：集團業務是可擁有商機的角色，成交後要能處理自己的簽約確認任務卡、看到期管理（範圍仍由 handler 的可視範圍收斂）。關閉時不放行＝與以前相同（403）。
+const MA_GROUPSALES_PREFIXES = ['/api/ma-items', '/api/deal-tasks'];
 app.use((req, res, next) => {
   const role = req.session?.user?.role;
   if (!GROUP_SCOPED_ROLES.includes(role)) return next();
@@ -1299,7 +1305,7 @@ app.use((req, res, next) => {
   }
 
   // groupsales：讀寫皆可，但限於白名單端點
-  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => rp === p || rp.startsWith(p + '/'));
+  const ok = GROUPSALES_ALLOWED_PREFIXES.some(p => rp === p || rp.startsWith(p + '/')) || (MA.enabled() && MA_GROUPSALES_PREFIXES.some(p => rp === p || rp.startsWith(p + '/')));
   if (!ok) return res.status(403).json({ error: '無權存取此資源' });
   next();
 });
@@ -1443,7 +1449,9 @@ app.get(/^\/q\/.*$/i, (req, res) => {
   res.status(r.status).set(r.headers).send(r.body);
 });
 app.use('/deep-link.js', express.static(path.join(__dirname, '_client', 'deep-link.js'), STATIC_NO_CACHE));
-registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json' });
+registerMailRoutes(app, { requireAdmin, quoteMail, loadAuth, saveAuth, writeLog, db, backend: _USE_DB_FOR_META ? 'postgres' : 'json',
+  // MA_TRACKING=1：每日一次的 mail-outbox cron 處理完信件後順便掃描到期提醒（不新增 vercel.json cron——Hobby 方案 cron 數量有限）；關閉時回 null＝不多任何輸出
+  maSweep: () => MRR.sweepReminders({ mode: 'cron' }) });
 // 稽核防竄改（hash chain／錨點／每日排程／簽核歷程鏈檢查）；預設關閉（AUDIT_CHAIN 沒設成 1 時只回報「未啟用」）。放在強制改密碼與角色白名單 middleware 之後。
 require('./lib/auditChainRoutes').register(app, { requireAdmin, writeLog, db });
 
@@ -1459,6 +1467,7 @@ function serveHtmlWithVersion(htmlPath, res) {
       .replace(/src="app\.js"/g,        `src="app.js?v=${BUILD_VERSION}"`)
       .replace(/src="idle-timeout\.js"/g, `src="idle-timeout.js?v=${BUILD_VERSION}"`)
       .replace(/src="tw-workdays\.js"/g, `src="tw-workdays.js?v=${BUILD_VERSION}"`)
+      .replace(/src="quote-terms\.js"/g, `src="quote-terms.js?v=${BUILD_VERSION}"`)
       .replace(/src="taxid-guard\.js"/g, `src="taxid-guard.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-pricebook\.js"/g, `src="quote-pricebook.js?v=${BUILD_VERSION}"`)
       .replace(/src="quote-costlines\.js"/g, `src="quote-costlines.js?v=${BUILD_VERSION}"`)
@@ -4846,6 +4855,15 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
     if (_dl.error) return res.status(_dl.status).json({ error: _dl.error, code: _dl.code });
     if (req.body.dealId !== undefined) req.body.dealId = _dl.dealId;   // 存正規化後的值（去控制字元／前後空白）
   }
+  // 成交納管（MA_TRACKING=1）：階段變 Won 的檢查一律在這裡做（看板拖曳、表單、表格、直接打 API 都走這支）。缺服務期間 → 400 TERM_REQUIRED，且在任何資料變更之前回應（無副作用）。
+  let _maPlan = null, _maUnwon = false;
+  if (MA.enabled() && typeof req.body.stage === 'string') {
+    if (req.body.stage === 'Won' && oldStage !== 'Won') {
+      const _pl = MA.planWon(data, { id: req.params.id, product: req.body.product !== undefined ? req.body.product : data.opportunities[idx].product }, req.body);
+      if (!_pl.ok) return res.status(_pl.status).json({ error: _pl.message, code: _pl.code });
+      if (_pl.track) _maPlan = _pl;
+    } else if (oldStage === 'Won' && req.body.stage !== 'Won') _maUnwon = true;
+  }
   data.opportunities[idx] = { ...data.opportunities[idx], ...pickFields(req.body, OPP_FIELDS), id: req.params.id, owner };
   if (data.opportunities[idx].dealId === '') delete data.opportunities[idx].dealId;   // 清空＝移除鍵
   const newStage = data.opportunities[idx].stage;
@@ -4883,6 +4901,10 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   // 成交（非 Won → Won）自動把綁定名片轉為客戶；系統自動行為，不看名片 owner。已是客戶不重寫（冪等）、Won 回退不降級。
   const _newCidSaved = String(data.opportunities[idx].contactId || '');
   const _won = (WONC.enabled() && newStage === 'Won' && (oldStage !== 'Won' || (_newCidSaved && _newCidSaved !== _oldCid))) ? WONC.convertForWonOpp(data, data.opportunities[idx]) : null;   // 非 Won→Won，或已是 Won 但改綁了別張名片（舊名片不降級）
+  // 成交納管：建立／重開納管項與任務卡，或在離開 Won 時取消／作廢（與商機更新同一次 db.save）
+  let _maRes = null, _maUn = null;
+  if (_maPlan) _maRes = MA.applyWon(data, data.opportunities[idx], _maPlan, { by: username, nowIso: new Date().toISOString() });
+  else if (_maUnwon) _maUn = MA.applyUnwon(data, req.params.id, { by: username, nowIso: new Date().toISOString() }, 'STAGE_REVERTED');
   db.save(data);
   if (_won) logWonAutoCustomer(req, username, data.opportunities[idx], _won);
   const stageDetail = oldStage !== newStage ? ` 階段:${oldStage}→${newStage}` : ` 階段:${newStage}`;
@@ -4890,6 +4912,12 @@ app.put('/api/opportunities/:id', requireAuth, (req, res) => {
   const dealDetail = oldDealId !== newDealId ? ` DealID:${oldDealId || '（空）'}→${newDealId || '（空）'}` : '';   // Deal ID 變更要留稽核
   writeLog('UPDATE_OPP', username, data.opportunities[idx].company || data.opportunities[idx].contactName,
     `${data.opportunities[idx].product}${stageDetail}${dealDetail}`, req);
+  if (_maRes) MAR.afterWon(req, data.opportunities[idx], _maRes, username);
+  if (_maUn) MAR.afterUnwon(req, data.opportunities[idx], _maUn, 'STAGE_REVERTED', username);
+  // 有納管動作才多回 ma 區塊（前端據此提示「已建立任務卡」）；沒有就與以前相同
+  if ((_maRes && (_maRes.items.length || _maRes.task)) || (_maUn && (_maUn.cancelledTasks.length || _maUn.voidedItems.length))) {
+    return res.json({ ...data.opportunities[idx], ma: { items: _maRes ? _maRes.items.length : 0, createdItems: _maRes ? _maRes.createdItems.length : 0, taskId: _maRes && _maRes.task ? _maRes.task.id : '', taskAction: _maRes ? _maRes.taskAction : '', cancelledTasks: _maUn ? _maUn.cancelledTasks.length : 0, voidedItems: _maUn ? _maUn.voidedItems.length : 0 } });
+  }
   res.json(data.opportunities[idx]);
 });
 
@@ -5194,7 +5222,9 @@ app.delete('/api/opportunities/:id', requireAuth, (req, res) => {
     console.error('[opp void cascade]', e);
     return res.status(500).json({ error: '商機作廢時處理連結的報價單失敗，商機未刪除，請重試', code: 'OPP_VOID_CASCADE_FAILED' });
   }
+  const _maDel = MA.enabled() ? MA.applyUnwon(data, opp.id, { by: owner, nowIso: new Date().toISOString() }, 'OPP_DELETED') : null;   // 成交納管：商機刪除 → 任務卡取消、納管項作廢（可還原）
   db.save(data);
+  if (_maDel) MAR.afterUnwon(req, opp, _maDel, 'OPP_DELETED', owner);
   writeLog('DELETE_OPP', owner, opp.company || opp.contactName,
     `${opp.product} 原因:${deleteReason || '未說明'}${_inv.length ? '｜連結報價單 ' + _inv.length + ' 張同時失效（' + _inv.map(x => x.q.quoteNo || '草稿').slice(0, 10).join('、') + '）' : ''}`, req);
   // 站內通知報價單擁有者（pushNotification 自帶 load/save，必須在 db.save 之後）
@@ -5370,7 +5400,9 @@ app.post('/api/opportunities/restore/:id', requireAuth, (req, res) => {
   data.lostOpportunities.splice(idx, 1);
   // 因這筆商機作廢而失效的報價單恢復（簽核中被關閉的回到草稿，需重新送簽）
   const _rev = quoteOppLink.revalidateForOpp(data, restored, username, new Date().toISOString());
+  const _maRs = MA.enabled() && restored.stage === 'Won' ? MA.applyRestore(data, restored, { by: username, nowIso: new Date().toISOString() }) : null;   // 成交納管：還原 Won 商機 → 重開作廢的納管項與任務卡
   db.save(data);
+  if (_maRs && (_maRs.items.length || _maRs.task)) MAR.afterWon(req, restored, _maRs, username);
   if (_rev.length) writeLog('RESTORE_OPP_QUOTES', username, restored.company || restored.contactName, `商機還原，${_rev.length} 張報價單恢復`, req);
   _rev.forEach(q => { try { pushNotification(q.owner, 'quote_voided', '✅ 報價單已恢復：' + (q.quoteNo || '草稿'), '連結的商機已還原，這張報價單恢復可用。', q.id); } catch (e) { /* 忽略 */ } });
   res.json({ success: true, opportunity: restored, revalidatedQuotes: _rev.length });
@@ -6311,7 +6343,12 @@ app.put('/api/contracts/:id', requireAuth, (req, res) => {
   );
   if (idx === -1) return res.status(404).json({ error: '找不到此合約' });
   const owner = data.contracts[idx].owner; // 保留原 owner，不讓前端改
+  const _oldCn = data.contracts[idx].contractNo;
   data.contracts[idx] = { ...data.contracts[idx], ...pickFields(req.body, CONTRACT_FIELDS), id: req.params.id, owner };
+  // 成交納管：由任務卡建立的合約（有 maItemId）改合約編號 → 同步回納管項並留 history（舊合約沒有 maItemId，完全不進這裡）
+  if (MA.enabled() && data.contracts[idx].maItemId && data.contracts[idx].contractNo !== _oldCn) {
+    (data.maItems || []).filter(it => it && it.contractId === req.params.id).forEach(it => { it.contractNo = data.contracts[idx].contractNo; it.updatedAt = new Date().toISOString(); it.history.push({ at: it.updatedAt, by: username, action: 'CONTRACT_NO_EDIT', note: '合約編號修改', from: _oldCn, to: data.contracts[idx].contractNo }); });
+  }
   db.save(data);
   writeLog('UPDATE_CONTRACT', username, data.contracts[idx].company,
     `合約No:${data.contracts[idx].contractNo}`, req);
@@ -6324,11 +6361,16 @@ app.delete('/api/contracts/:id', requireAuth, (req, res) => {
   if (!data.contracts) return res.json({ success: true });
   const c = data.contracts.find(c => c.id === req.params.id && c.owner === owner);
   if (!c) return res.json({ success: true });
+  // 成交納管：已刪除的 SERVICE_MA 合約再刪一次 → 直接成功，不重複解除連結／重開任務卡／通知（冪等）
+  if (MA.enabled() && c.maItemId && c.deleted) return res.json({ success: true });
   c.deleted   = true;
   c.deletedAt = new Date().toISOString();
   c.deletedBy = owner;
+  // 成交納管：刪除由任務卡建立的合約 → 納管項解除合約連結，任務卡已完成者重開（業務可重新簽約，編號可重新使用）
+  const _maCd = MA.enabled() && c.maItemId ? MA.applyContractDeleted(data, c, { by: owner, nowIso: c.deletedAt }) : null;
   db.save(data);
   writeLog('DELETE_CONTRACT', owner, c.company, `合約No:${c.contractNo}`, req);
+  if (_maCd) MAR.afterContractDeleted(req, c, _maCd, owner);
   res.json({ success: true });
 });
 
@@ -7159,6 +7201,13 @@ function notificationUrlFor(type, refId) {
       return refId ? `/index.html#contact:${refId}` : '/index.html#contacts';
     case 'company_card_task':
       return '/index.html#cardtasks';   // 前端 company-card-tasks.js 處理：開「待補名片」彙總視窗
+    case 'deal_task':
+      return '/index.html#dealtasks';   // 成交簽約確認任務卡（MA_TRACKING；前端 P2b 處理：開「待簽約確認」彙總視窗）
+    case 'deal_task_skipped':
+      return '/index.html#maitems';    // 業務回報「此案不簽合約」→ 行銷／主管開到期管理頁
+    case 'ma_reminder':
+    case 'ma_not_renew':
+      return '/index.html#maitems';    // MA／License 到期提醒（P3）、業務標記不續約 → 開到期管理頁
     default:
       return '/';
   }
@@ -7319,7 +7368,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
   // manager2 會看到全部業務，兩者都無視 BU 與組織線，是可見性破口）
   const owners = getViewableOwners(req, 'contracts');
 
-  const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
+  const contracts = (data.contracts || []).filter(c => owners.includes(c.owner) && !(MA.enabled() && c.type === 'SERVICE_MA'));   // MA_TRACKING=1：SERVICE_MA 由到期提醒規則處理，避免重複
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
@@ -7377,7 +7426,7 @@ app.get('/api/contract-reminders', requireAuth, (req, res) => {
 // 動態合約到期提醒「已處理」：提醒是每次由合約即時推導的（沒有儲存的通知可刪），所以只記一筆旁路紀錄
 // data.contractReminderDismissals[`${本人}|${合約 id}|${迄日}`] = ISO 時間；GET 端（poll-bundle、/api/contract-reminders）據此過濾。
 // 鍵含迄日：合約續約改了迄日，鍵就對不上，提醒自動重新出現。只有「POST」會寫入與清理（上限 5000 筆、迄日早於今天 400 天以上者清掉）。
-// 可視判斷與提醒本身完全相同（getViewableOwners('contracts')）；看不到、不存在、目前沒有提醒的合約一律同樣的 404，不洩漏合約是否存在。
+// 可視判斷與提醒本身完全相同（getViewableOwners('contracts')＋MA 開啟時排除 SERVICE_MA）；看不到、不存在、目前沒有提醒的合約一律同樣的 404，不洩漏合約是否存在。
 // 只影響本人（鍵含 username），不改合約、不通知任何人，所以不寫稽核（與「標已讀」同性質的個人偏好）。
 app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
   const { username, role } = req.session.user;
@@ -7387,7 +7436,7 @@ app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
   if (!NTA.isValidId(id)) return NOT_FOUND();
   const data = db.load();
   const owners = getViewableOwners(req, 'contracts');
-  const c = (data.contracts || []).find(x => x.id === id && owners.includes(x.owner));
+  const c = (data.contracts || []).find(x => x.id === id && owners.includes(x.owner) && !(MA.enabled() && x.type === 'SERVICE_MA'));
   if (!c) return NOT_FOUND();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   if (!NTA.contractReminderStatus(c, today)) return NOT_FOUND();   // 目前沒有這筆提醒（已續約、尚未進入 90 天…）
@@ -7400,27 +7449,30 @@ app.post('/api/contract-reminders/:id/dismiss', requireAuth, (req, res) => {
 app.get('/api/notifications', requireAuth, (req, res) => {
   const username = req.session.user.username;
   const data = db.load();
-  const list = (data.notifications || []).filter(n => n.to === username);
+  const list = MRR.scrub(req.session.user.role, (data.notifications || []).filter(n => n.to === username));
   res.json(list);
 });
 
 // ── 通知合併端點：notifications + contract-reminders + birthday-reminders ──
 // 單次 db.load() 完成三組計算 + ETag 支援，省 Supabase egress
-app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
+app.get('/api/poll-bundle', requireAuth, mailPollDrain, MRR.lazyMiddleware, (req, res) => {
   const username = req.session.user.username;
   const role     = req.session.user.role;
+  // MA_TRACKING=1：到期提醒的補掃由上面的 MRR.lazyMiddleware 先做完；這裡做通知自動解除（可能寫入）與動態推導，再載入資料；關閉時回 null、什麼都不做
+  const _maReminders = MRR.poll(req);
   const data = db.load();
   const auth = loadAuth();
 
   // ── 1. 一般通知 ──
-  const notifications = (data.notifications || []).filter(n => n.to === username);
+  const notifications = MRR.scrub(role, (data.notifications || []).filter(n => n.to === username));   // MA_TRACKING 關閉或非秘書：原陣列原樣回傳
 
   // ── 2. 合約到期提醒 ──
   let contractReminders = [];
   if (role !== 'secretary') {
     // 同 /api/contract-reminders：一律走 getViewableOwners，不再自行硬寫階層
     const owners = getViewableOwners(req, 'contracts');
-    const contracts = (data.contracts || []).filter(c => owners.includes(c.owner));
+    // MA_TRACKING=1：SERVICE_MA 合約由『到期提醒規則』處理（鈴鐺的 maReminders），這裡排除避免重複提醒；ERP_MA／SAP_MA 與其他合約行為不變
+    const contracts = (data.contracts || []).filter(c => owners.includes(c.owner) && !(MA.enabled() && c.type === 'SERVICE_MA'));
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const calcStatus = (c) => NTA.contractReminderStatus(c, today);
     contracts.forEach(c => {
@@ -7498,8 +7550,11 @@ app.get('/api/poll-bundle', requireAuth, mailPollDrain, (req, res) => {
     birthdayReminders.sort((a, b) => a.daysLeft - b.daysLeft);
   }
 
-  // ── 序列化 + ETag ──
+  // ── 4. MA／License 到期提醒（MA_TRACKING=1 才有；動態推導，條件不再成立就自動消失）──
   const body = { notifications, contractReminders, birthdayReminders };
+  if (_maReminders) body.maReminders = _maReminders;
+
+  // ── 序列化 + ETag ──
   const json = JSON.stringify(body);
   const etag = 'W/"' + crypto.createHash('sha1').update(json).digest('base64').slice(0, 22) + '"';
   if (req.headers['if-none-match'] === etag) {
@@ -8198,7 +8253,8 @@ app.get('/api/admin/integrations/logs', requireAdmin, (req, res) => {
 // 讀：全站登入者可用（商機/合約下拉要吃）
 app.get('/api/product-catalog', requireAuth, (req, res) => {
   const data = db.load();
-  res.json(data.productCatalog || productCatalog.SEED_PRODUCT_CATALOG);
+  // MA_TRACKING 開啟 → 多帶 maTracking:true；關閉 → 去掉商品類型欄位（輸出與沒有此功能時逐位元相同）
+  res.json(productCatalog.catalogForOutput(data.productCatalog || productCatalog.SEED_PRODUCT_CATALOG, QTERM.enabled()));
 });
 
 // 存：僅 admin。可帶 renames 連動改名 opp.product/contract.product；?preview=1 只回影響筆數不寫入
@@ -8215,7 +8271,7 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   }
 
   // 驗證目錄形狀後寫入
-  let dealDiff = [];
+  let dealDiff = [], termDiff = [];
   if (b.catalog && b.catalog.bus && typeof b.catalog.bus === 'object' && !Array.isArray(b.catalog.bus)) {
     // Deal ID 設定（requiresDealId／dealRegisterUrl）：網址只收 http/https，驗證失敗整份不寫入
     const norm = productCatalog.normalizeCatalogDealSettings(b.catalog.bus);
@@ -8224,6 +8280,19 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
       return res.status(400).json({ error: `商品「${e0.name}」：${e0.error}`, code: 'DEAL_URL_INVALID', details: norm.errors.slice(0, 20) });
     }
     dealDiff = productCatalog.diffDealSettings(data.productCatalog, norm.bus);
+    // 商品類型（termKind／startsTask）：MA_TRACKING=1 才驗證並存；關閉時請求裡的這兩欄一律丟掉（稽核不記）
+    if (QTERM.enabled()) {
+      const tn = productCatalog.normalizeCatalogTermSettings(norm.bus);
+      if (tn.errors.length) {
+        const e0 = tn.errors[0];
+        return res.status(400).json({ error: `商品「${e0.name}」：${e0.error}`, code: 'TERM_KIND_INVALID', details: tn.errors.slice(0, 20) });
+      }
+      termDiff = productCatalog.diffTermSettings(data.productCatalog, tn.bus);
+      norm.bus = tn.bus;
+    } else {
+      // 審查修正 M4：關閉時請求裡的這兩欄一律丟掉（不輸出、不使用），但「已存的」類型設定必須保留——否則開關關閉期間存一次目錄就永久洗掉，再開啟後成交默默不納管
+      norm.bus = productCatalog.preserveCatalogTermSettings(data.productCatalog, productCatalog.stripCatalogTermSettings(norm.bus), renames);
+    }
     data.productCatalog = {
       bus: norm.bus,
       updatedAt: new Date().toISOString(),
@@ -8238,7 +8307,8 @@ app.post('/api/admin/product-catalog', requireAdmin, (req, res) => {
   db.save(data);
   writeLog('SAVE_PRODUCT_CATALOG', operator, 'system',
     `銷售商品目錄更新；改名連動 商機 ${impact.updatedOpps} 筆、合約 ${impact.updatedContracts} 筆` +
-    (dealDiff.length ? `；Deal ID 設定異動：${dealDiff.slice(0, 10).join('、')}${dealDiff.length > 10 ? ' 等 ' + dealDiff.length + ' 項' : ''}` : ''), req);
+    (dealDiff.length ? `；Deal ID 設定異動：${dealDiff.slice(0, 10).join('、')}${dealDiff.length > 10 ? ' 等 ' + dealDiff.length + ' 項' : ''}` : '') +
+    (termDiff.length ? `；商品類型設定異動：${termDiff.slice(0, 10).join('、')}${termDiff.length > 10 ? ' 等 ' + termDiff.length + ' 項' : ''}` : ''), req);
   res.json({ ok: true, updatedAt: data.productCatalog.updatedAt, ...impact });
 });
 
@@ -8694,18 +8764,23 @@ app.post('/api/transfer-contacts', requireAuth, (req, res) => {
   (data.visits || []).forEach(v => {
     if (v.owner === fromOwner && transferredIds.has(v.contactId)) { v.owner = toOwner; visitCount++; }
   });
+  const _maOppIds = MA.enabled() ? new Set() : null;   // MA_TRACKING：被移轉的商機 id，用來帶走對應的納管項與任務卡（審查修正 M1）
   (data.opportunities || []).forEach(o => {
-    if (o.owner === fromOwner && transferredIds.has(o.contactId)) { o.owner = toOwner; oppCount++; }
+    if (o.owner === fromOwner && transferredIds.has(o.contactId)) { o.owner = toOwner; oppCount++; if (_maOppIds) _maOppIds.add(o.id); }
   });
   (data.receivables || []).forEach(r => {
     if (r.owner === fromOwner && transferredCompanies.has(r.company)) { r.owner = toOwner; recvCount++; }
   });
+  const _maTr = _maOppIds && _maOppIds.size ? MA.transferOpps(data, _maOppIds, fromOwner, toOwner, { by: username, nowIso: new Date().toISOString() }) : null;
 
   db.save(data);
   writeLog('TRANSFER_CONTACTS', username, `${fromOwner}→${toOwner}`,
     `移轉 ${contactCount} 位客戶（拜訪 ${visitCount} 筆、商機 ${oppCount} 筆、帳款 ${recvCount} 筆）`, req);
+  if (_maTr) MAR.afterTransfer(req, _maTr, fromOwner, toOwner, username);
 
-  res.json({ success: true, contactCount, visitCount, oppCount, recvCount });
+  res.json(_maTr && (_maTr.items.length || _maTr.tasks.length)
+    ? { success: true, contactCount, visitCount, oppCount, recvCount, maItemCount: _maTr.items.length, maTaskCount: _maTr.tasks.length }
+    : { success: true, contactCount, visitCount, oppCount, recvCount });
 });
 
 // ════════════════════════════════════════════════════════════
@@ -10441,12 +10516,14 @@ app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
     }
   });
   // 商機：池中 owner 且 contactId 或 company 比對到的
+  const _maPoolOpps = MA.enabled() ? new Set() : null;   // MA_TRACKING：連動帶走納管項與任務卡（審查修正 M1）
   (data.opportunities || []).forEach(o => {
     if (o.owner === POOL_USERNAME && (transferredIds.has(o.contactId) ||
         (o.company && transferredCompanies.has(o.company)))) {
-      o.owner = targetOwner; oppCount++;
+      o.owner = targetOwner; oppCount++; if (_maPoolOpps) _maPoolOpps.add(o.id);
     }
   });
+  const _maPoolTr = _maPoolOpps && _maPoolOpps.size ? MA.transferOpps(data, _maPoolOpps, POOL_USERNAME, targetOwner, { by: username, nowIso: new Date().toISOString() }) : null;
   // 合約
   (data.contracts || []).forEach(x => {
     if (x.owner === POOL_USERNAME && x.company && transferredCompanies.has(x.company)) {
@@ -10463,7 +10540,10 @@ app.post('/api/admin/pool/assign', requireAuth, (req, res) => {
   db.save(data);
   writeLog('POOL_ASSIGN', username, `${POOL_USERNAME}→${targetOwner}`,
     `分配 ${contactCount} 位客戶（拜訪 ${visitCount}、商機 ${oppCount}、合約 ${contractCount}、帳款 ${recvCount} 筆）`, req);
-  res.json({ success: true, contactCount, visitCount, oppCount, contractCount, recvCount });
+  if (_maPoolTr) MAR.afterTransfer(req, _maPoolTr, POOL_USERNAME, targetOwner, username);
+  res.json(_maPoolTr && (_maPoolTr.items.length || _maPoolTr.tasks.length)
+    ? { success: true, contactCount, visitCount, oppCount, contractCount, recvCount, maItemCount: _maPoolTr.items.length, maTaskCount: _maPoolTr.tasks.length }
+    : { success: true, contactCount, visitCount, oppCount, contractCount, recvCount });
 });
 
 // ── 客戶名單匯入：下載範本 ────────────────────────────────────
@@ -11108,13 +11188,22 @@ app.put('/api/me/contact', requireAuth, (req, res) => {
 
 // ── 報價單：CRUD、成本填寫、簽核、簽核設定、報價章、匯出 ─────────────────────
 // 實作在 lib/quoteRoutes.js（權限／狀態機／通知／稽核），規則在 lib/quoteApproval.js（核決表、毛利精算、內容雜湊）。
+let _quoteConfigReview = null;
 require('./lib/quoteRoutes')(app, {
   db, loadAuth, saveAuth, requireAuth, requireAdmin, writeLog, pushNotification, getViewableOwners,
   sanitizeStr, genQuoteNo, taipeiToday, resolveIssuer, buildQuoteWorkbook, buildQuotePnlExcel,
   QUOTE_TEMPLATE, uuidv4, normalizeBu, getUserFeatures,
   flushAuditBeforeEnd,   // GET 路徑的稽核事件（流程引擎預覽的影子／熔斷）在回應送出前確保寫入
   mail: quoteMail,   // 簽核信件（E1–E6）；MAIL_MODE=off 時 notifyMail 立刻返回
+  exposeConfigReview: (cr) => { _quoteConfigReview = cr; },   // 提醒規則（MA_TRACKING）登錄自己的兩人覆核種類
+  maRenewOfCheck: (req, data, id, company) => MRR.checkRenewOf(req, data, id, company),   // 報價單 renewOf 驗證（MA_TRACKING=1 才會被呼叫）
 });
+
+// ── 成交納管／任務卡／到期管理（MA_TRACKING=1 才啟用；關閉時端點等同未登記）──────────
+// 實作在 lib/maRoutes.js，純邏輯在 lib/maTracking.js。商機成交／回退／刪除／還原的掛鉤在上面的商機端點內。
+MAR.register(app, { db, loadAuth, requireAuth, writeLog, pushNotification, getViewableOwners, filterByBu, filterByViewGroup, userLabel });
+// 到期提醒規則（後台設定／試算器）、單項時間軸、不續約／撤銷、續約候選；掃描與動態鈴鐺見 MRR.sweepReminders／MRR.poll
+MRR.register(app, { db, loadAuth, requireAuth, requireAdmin, writeLog, pushNotification, webPush: sendWebPush, configReview: _quoteConfigReview });
 
 // ── 全域錯誤處理（必須在所有路由之後）─────────────────────
 // eslint-disable-next-line no-unused-vars
@@ -11762,6 +11851,7 @@ async function checkOverdueReminders() {
     // D-30 預警（每份合約只送一次）+ D-7 急迫提醒（每天送，直到處理）
     for (const c of (data.contracts || [])) {
       if (!c.endDate || c.renewDate || c.deleted) continue;
+      if (MA.enabled() && c.type === 'SERVICE_MA') continue;   // MA_TRACKING=1：SERVICE_MA 由到期提醒規則處理，避免重複提醒
       const end = new Date(c.endDate); end.setHours(0, 0, 0, 0);
       if (end < today || end > in30days) continue;
       const daysLeft = Math.round((end - today) / 86400000);

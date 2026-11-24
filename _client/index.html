@@ -3127,10 +3127,13 @@
   <script src="company-ta.js"></script><!-- 企業主檔篩選 TA（EDM 名單）：須在 app.js 之前載入 -->
   <script src="secretary-customers.js"></script><!-- 秘書唯讀客戶視圖：須在 app.js 之前載入（initUser 結尾以 window.ITTSSecCust 守衛呼叫 start，放後面會在首次載入無快取時錯過）；本檔只在呼叫時才用 showSection 等全域；後端未啟用時不建立任何畫面元素 -->
   <script src="searchable-select.js"></script><!-- 可搜尋下拉（銷售預測的業務篩選）：須在 app.js 之前載入（initForecastSalesFilter 以 window.ITTSSearchSelect 守衛使用） -->
+  <script src="ma-tasks.js"></script><!-- License／MA 成交納管（成交期間視窗、簽約確認任務卡、到期管理）：須在 company-requests.js 之後、app.js 之前載入（app.js 的成交入口與 showSection 會呼叫 ITTSMaTasks；QTERMS 在執行時才取用，所以可早於 quote-terms.js） -->
+  <script src="ma-reminders.js"></script><!-- MA／License 到期活規則提醒（鈴鐺區塊、報價單「這是續約嗎？」選擇器）：須在 app.js 之前載入（pollNotifications／quote.js 在執行時才取用 window.ITTSMaRem；ma-tasks.js 之後） -->
   <script src="app.js"></script>
   <script src="glass-dash.js"></script>
   <script src="role-homes.js"></script>
   <script src="tw-workdays.js"></script>
+  <script src="quote-terms.js"></script><!-- License／MA 服務期間規則（前後端共用，window.QTERMS）：須在 quote.js 之前 -->
   <script src="quote-pricebook.js"></script>
   <script src="quote-costlines.js"></script>
   <script src="quote.js"></script>

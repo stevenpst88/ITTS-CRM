@@ -644,6 +644,8 @@ function _qActionButtons(q) {
   if (p.canWithdraw) out.push(b('withdraw', '↩ 撤回', '', '撤回後可修改，已簽的關卡作廢'));
   // 簽核中（整張鎖定）或已核准的單：只修改各品項的「說明／備註」（不影響簽核，會留下紀錄）。擁有者與管理員才有
   if ((p.isOwner || me.isAdmin) && a && (a.state === 'pending' || a.state === 'approved')) out.push(b('notes', '📝 說明／備註', '', '只修改各品項的說明與備註（印在客戶報價單上）：不影響金額與簽核，會留下修改紀錄'));
+  // 已核准的單改服務期間，狀態條件與後端共用 QTERMS.termEditState（License／MA 的期間常在核准後才確定或延期）：MA_TRACKING=1 且有 License／MA 品項（或品名像）才顯示，擁有者與管理員才有
+  if (quoteTermsOn() && (p.isOwner || me.isAdmin) && QTERMS.termEditState(q) && quoteHasTermItems(q)) out.push(b('terms', '📅 服務期間', '', '只修改 License／MA 品項的服務期間：不影響金額與簽核（不需重新簽核），但客戶報價單上的期間會立即改變，會留下紀錄並通知已簽核的人'));
   if (p.canApprove || p.canReturn) {
     out.push(b('approve', '✍ 簽核', 'btn-primary', '開啟簽核面板'));
   } else if ((a && (a.state !== 'none' || (a.history || []).length || p.canReassign)) || (p.canSeePrice !== false && q.timelineCount > 0)) {   // 草稿也有編輯時間軸（q.timeline）可看
@@ -805,6 +807,7 @@ function bindQuoteListHandlers() {
         case 'submit':   p = submitQuote(id); break;
         case 'withdraw': p = withdrawQuote(id); break;
         case 'notes':    p = openQuoteNotesDialog(id); break;
+        case 'terms':    p = openQuoteTermsDialog(id); break;
         case 'approve':  p = qOpenApproval(id); break;
         case 'cost':     p = qOpenCostFill(id); break;
         case 'preview':  p = previewQuote(id); break;
@@ -1121,7 +1124,9 @@ function switchQuoteTab(tabName) {
   });
   // 毛利與簽核路徑頁籤放成本明細（欄位多：項目／廠商／說明／單位／數量／單價／小計／控制鈕），表單加寬；報價資訊頁籤維持原寬度
   const modal = document.querySelector('#quoteModalOverlay > .modal');
-  if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : '860px';
+  // 服務期間功能開啟時，報價資訊頁籤加寬到 1240px（視窗窄時仍受 96% 限制）：品項列多了「類型＋起迄日」，新增模式左側又有逐步進度欄，原寬度下品名欄只剩約 150px（長品名被截）
+  if (modal) modal.style.maxWidth = tabName === 'pnl' ? '1060px' : (quoteTermsOn() ? '1240px' : '860px');
+  if (modal) modal.classList.toggle('qt-wide', tabName !== 'pnl' && quoteTermsOn());   // 新增模式的逐步填寫規則（quote-steps.js）有 max-width:1000px !important，這個 class 在 style.css 蓋回 1240px
   if (tabName === 'pnl') renderPnlTab();
   if (typeof QSteps === 'object' && QSteps) QSteps.onTab(tabName);   // 逐步填寫：只在新單分步時作用
 }
@@ -1481,7 +1486,42 @@ function updatePnlNumbers() {
 }
 
 // ── 關閉 Modal ───────────────────────────────────────────────
+// ── 續約對象 renewOf（MA_TRACKING=1 才有；ma-reminders.js 提供選擇器）─────────────────────────────
+// 「這是續約嗎？」只在內部表單顯示；不進核准雜湊、不印在客戶版報價單、簽核面板與預覽也不顯示。
+// 關閉時 qRenewOn() 為 false：不建立任何元素、請求也不多任何欄位，畫面與請求與以前位元級相同。
+// 讀回→重畫：開表單時 q.renewOf 交給選擇器當初值；使用者沒動過就不送 renewOf（伺服器沿用舊值，防舊分頁／載入失敗洗掉）；動過才送（空字串＝清除）。
+var _qRenew = { picker: null };
+function qRenewOn() { return quoteCfg().maTracking === true && typeof ITTSMaRem === 'object' && ITTSMaRem !== null && typeof ITTSMaRem.mountRenewPicker === 'function'; }
+function qRenewFetch(url) {
+  return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+}
+function qRenewReset() {
+  if (_qRenew.picker) { _qRenew.picker.destroy(); _qRenew.picker = null; }
+}
+function qRenewInit(q) {
+  qRenewReset();
+  if (!qRenewOn()) return;
+  var host = $('qRenewHost');
+  if (!host) {
+    // 放在「連結商機」那一步（#qOppStep）之後、但不屬於任何 .qs-step：逐步填寫時步驟會收合，放在步驟裡面橫幅就會被收起來看不到
+    var anchor = $('qOppStep');
+    if (!anchor || !anchor.parentNode) return;
+    host = document.createElement('div'); host.id = 'qRenewHost'; host.hidden = true;
+    anchor.parentNode.insertBefore(host, anchor.nextSibling);
+  }
+  var approved = !!(q && q.approval && q.approval.state === 'approved');
+  var val = q && typeof q.renewOf === 'string' ? q.renewOf : '';
+  if (approved && !val) { host.hidden = true; return; }   // 已核准且沒有續約對象：不顯示（已核准後唯讀）
+  _qRenew.picker = ITTSMaRem.mountRenewPicker(host, {
+    getCompany: function () { return $('qCompany') ? $('qCompany').value : ''; },
+    value: val, original: q ? (q.company || '') : null, locked: approved, fetchJson: qRenewFetch,
+  });
+  _qRenew.picker.refresh();
+}
+function qRenewRefreshSoon() { if (_qRenew.picker) _qRenew.picker.refreshSoon(); }
+
 function closeQuoteModal() {
+  qRenewReset();
   qInvalidReset();
   $('quoteModalOverlay').style.display = 'none';
   _qOppAwaiting = false; { const oo = $('oppEditOverlay'); if (oo) oo.style.zIndex = ''; }
@@ -1764,6 +1804,7 @@ async function qOppSelect(id, quiet) {
   qOppRenderList();
   updateQuoteTotals();
   if (typeof QSteps === 'object' && QSteps && typeof QSteps.refresh === 'function') QSteps.refresh();
+  qRenewRefreshSoon();   // 換商機＝換客戶：重查續約候選
   return true;
 }
 
@@ -2053,6 +2094,7 @@ async function openQuoteModal(idOrNull, opts) {
       // 公司輸入時篩聯絡人
       $('qCompany').addEventListener('input', function() {
         buildQuoteContactSelect('', this.value);
+        qRenewRefreshSoon();
       });
 
       // 聯絡人選擇後自動帶入
@@ -2078,6 +2120,7 @@ async function openQuoteModal(idOrNull, opts) {
 
     // 商機連結（新單必選；編輯舊單顯示目前連結／未連結）。要在逐步填寫（QSteps.onOpen）之前完成，商機步驟才會依預選結果判定
     await qOppInit(q, opts);
+    qRenewInit(q);   // 續約對象（MA_TRACKING=1 才有）：公司已由商機帶入，才查候選
 
     // 儲存按鈕 — 每次重設 onclick 避免舊 context 殘留
     $('quoteModalSave').onclick = saveQuote;
@@ -2338,6 +2381,110 @@ function autoFillFromContact() {
   buildQuoteContactSelect(id, c.company);
 }
 
+// ── 品項「類型／服務期間」（License／MA；MA_TRACKING=1 才有：GET /quote-approval/config 帶 maTracking:true）──────────────
+// 規則（驗證、一年／三年快捷、共 N 個月、預選建議）全在 quote-terms.js（window.QTERMS，與伺服器同一份）。
+// 功能關閉時 quoteTermsOn() 為 false：品項列不多任何元素、readQuoteItems／payloadItems 不多任何欄位，畫面與請求與以前位元級相同。
+// 全部 createElement＋textContent（品名／日期含 HTML 字元也只會當文字）。
+function quoteTermsOn() { return quoteCfg().maTracking === true && typeof QTERMS === 'object' && QTERMS !== null; }
+function _qtEl(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+/** 這一組（類型下拉＋起迄日）目前的狀態是否有問題：回 null＝通過；否則 { reason, el }（el＝該去修正的欄位） */
+function quoteTermProblemIn(box) {
+  const sel = box.querySelector('.qterm-kind'), f = box.querySelector('.qterm-from'), t = box.querySelector('.qterm-to');
+  if (!sel || !f || !t) return null;
+  const p = QTERMS.validateTerm(sel.value, f.value, t.value);
+  if (!p) return null;
+  return { code: p.code, reason: p.reason, el: !f.value ? f : (!t.value ? t : (t.value < f.value ? t : f)) };
+}
+/** 依目前值更新一組欄位：日期區顯示／隱藏、「共 N 個月」、紅字提示、aria-invalid */
+function quoteTermRefresh(box) {
+  const sel = box.querySelector('.qterm-kind'), dates = box.querySelector('.qterm-dates');
+  const f = box.querySelector('.qterm-from'), t = box.querySelector('.qterm-to');
+  const span = box.querySelector('.qterm-span'), err = box.querySelector('.qterm-err');
+  const on = !!sel.value;
+  dates.hidden = !on;
+  const p = on ? quoteTermProblemIn(box) : null;
+  span.textContent = on && !p ? QTERMS.spanText(f.value, t.value) : '';
+  err.hidden = !p;
+  err.textContent = p ? p.reason : '';
+  [f, t].forEach(function (el) {
+    const bad = !!p && (p.el === el || (p.code === 'TERM_REQUIRED' && !el.value));
+    el.classList.toggle('qterm-bad', bad);
+    if (bad) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+  });
+}
+/**
+ * 建立一組「類型下拉＋起迄日＋一年／三年快捷＋共 N 個月＋紅字提示」。opts.allowNone＝false 時沒有「一般」選項（核准後的單類型不能改回一般）；
+ * opts.onChange(box) 在任何欄位變動後呼叫（表單用來重算進度，小視窗用來清錯誤訊息）。
+ */
+function quoteTermBlock(it, opts) {
+  opts = opts || {};
+  const kind = QTERMS.parseKind(it && it.termKind) || '';
+  const box = _qtEl('div', 'qterm');
+  const kl = _qtEl('label', 'qterm-field');
+  kl.appendChild(_qtEl('span', 'qterm-lab', '類型'));
+  const sel = _qtEl('select', 'qterm-kind');
+  sel.setAttribute('aria-label', '品項類型（License 或 MA 需填服務期間起訖日）');
+  [['', '一般'], ['license', 'License'], ['ma', 'MA']].forEach(function (o) {
+    if (o[0] === '' && opts.allowNone === false) return;
+    const op = _qtEl('option', '', o[1]); op.value = o[0]; sel.appendChild(op);
+  });
+  sel.value = kind;
+  kl.appendChild(sel);
+  box.appendChild(kl);
+  const dates = _qtEl('div', 'qterm-dates');
+  const mk = function (cls, lab, aria, val) {
+    const l = _qtEl('label', 'qterm-field');
+    l.appendChild(_qtEl('span', 'qterm-lab', lab));
+    const i = _qtEl('input', cls);
+    i.type = 'date'; i.min = '1900-01-01'; i.max = '2999-12-31';
+    i.setAttribute('aria-label', aria);
+    if (typeof val === 'string' && QTERMS.isRealDate(val)) i.value = val;
+    l.appendChild(i); dates.appendChild(l);
+    return i;
+  };
+  const from = mk('qterm-from', '起', '服務期間起日', it && it.termFrom);
+  const to = mk('qterm-to', '迄', '服務期間迄日', it && it.termTo);
+  const changed = function () { quoteTermRefresh(box); if (typeof opts.onChange === 'function') opts.onChange(box); };
+  // 一年／三年／共 N 個月放進同一個不可拆的群組：版面不夠時整組一起換行，不會再出現「一年在迄日旁、三年掉到下一行」（新增與編輯同一個函式、同一組 class）
+  const qk = _qtEl('span', 'qterm-qk');
+  [[1, '一年'], [3, '三年']].forEach(function (q) {
+    const b = _qtEl('button', 'qterm-quick', q[1]);
+    b.type = 'button';
+    b.title = '迄日 = 起日 + ' + q[0] + ' 年 − 1 天';
+    b.addEventListener('click', function () {
+      if (!QTERMS.isRealDate(from.value)) { from.focus(); quoteTermRefresh(box); return; }   // 沒有起日就推不出迄日：把游標放回起日
+      to.value = QTERMS.quickEnd(from.value, q[0]);
+      changed();
+    });
+    qk.appendChild(b);
+  });
+  const span = _qtEl('span', 'qterm-span'); span.setAttribute('aria-live', 'polite');
+  qk.appendChild(span);
+  dates.appendChild(qk);
+  box.appendChild(dates);
+  const err = _qtEl('div', 'qterm-err'); err.setAttribute('aria-live', 'polite'); err.hidden = true;
+  box.appendChild(err);
+  const hint = _qtEl('div', 'qterm-hint', '已依品名預選，可自行更改'); hint.hidden = true;
+  box.appendChild(hint);
+  sel.addEventListener('change', function () { hint.hidden = true; if (typeof opts.onKindChange === 'function') opts.onKindChange(box); changed(); });
+  [from, to].forEach(function (el) {
+    el.addEventListener('input', changed);
+    el.addEventListener('change', changed);
+  });
+  quoteTermRefresh(box);
+  return box;
+}
+/** 表單上一列（一般品項）的服務期間欄位問題；功能關閉或該列沒有欄位回 null */
+function quoteRowTermProblem(tr) {
+  const box = tr && tr.querySelector ? tr.querySelector('.qterm') : null;
+  return box ? quoteTermProblemIn(box) : null;
+}
+
 // ── 項目列表渲染 ─────────────────────────────────────────────
 // 每列帶 data-lid（伺服器指派的穩定列代號）與 data-cost（舊式單的 items[].cost，只在有權者看得到成本時存在）。
 // data-cost 只是舊單成本的載體（帶入成本明細種子、舊式單的唯讀顯示）；不再送出，成本由顧問或業務在成本明細編輯器（QCL）填。
@@ -2410,6 +2557,36 @@ function renderQuoteItems(items) {
           return '<option value="' + c[0] + '"' + ((it.cat || '') === c[0] ? ' selected' : '') + '>' + c[1] + '</option>';
         }).join('') + '</select></td>' + ctrl(i) + '</tr>';
   }).join('');
+
+  // 服務期間（License／MA）：每個一般品項在品名欄下方多一組「類型＋起迄日」。要在下面「輸入事件」綁定之前加好，日期欄的輸入才會同步重算合計與逐步進度。
+  // 新增列（還沒有 lid）且使用者沒手動選過類型時，品名輸入完（離開欄位）若含 License／MA／維護／授權就預選對應類型（只是建議，可改；改過一次之後不再自動動它）
+  { const tbl = tbody.closest('table'); if (tbl) tbl.classList.toggle('qt-on', quoteTermsOn()); }   // 服務期間開啟時品項表欄寬較緊湊（style.css .qt-on），把寬度讓給品名
+  if (quoteTermsOn()) {
+    const trs = tbody.querySelectorAll('tr');
+    items.forEach(function (it, i) {
+      const row = trs[i];
+      if (!row || it.kind === 'title' || it.kind === 'subtotal') return;
+      if (it.tkTouched === true) row.dataset.tkTouched = '1';
+      { const di = row.querySelector('.qi-desc'); if (di) { di.title = di.value; di.addEventListener('input', function () { di.title = di.value; }); } }   // 長品名被截斷時，滑鼠停留可看全文
+      const box = quoteTermBlock(it, {
+        onChange: function () { updateQuoteTotals(); },
+        onKindChange: function () { row.dataset.tkTouched = '1'; },
+      });
+      const descTd = row.querySelector('.qi-desc').parentNode;
+      descTd.appendChild(box);
+      row.querySelector('.qi-desc').addEventListener('change', function () {
+        if (row.dataset.lid || row.dataset.tkTouched === '1') return;
+        const sel = box.querySelector('.qterm-kind');
+        if (sel.value) return;
+        const k = QTERMS.suggestKind(this.value, '');
+        if (!k) return;
+        sel.value = k;
+        box.querySelector('.qterm-hint').hidden = false;
+        quoteTermRefresh(box);
+        updateQuoteTotals();
+      });
+    });
+  }
 
   // 輸入事件：即時更新品項小計與各小計列（標題／小計列的輸入框沒有數量與單價，只需重算合計）
   tbody.querySelectorAll('input').forEach(function (inp) {
@@ -2576,6 +2753,13 @@ function readQuoteItems() {
     if (row.dataset.needprice === '1') it.needPrice = true;   // 只讓重畫（移動、刪除其他列）時旗標跟著列走；伺服器依 lid 自己維護，忽略送上去的值
     const catSel = row.querySelector('.qi-cat');
     if (catSel) it.cat = catSel.value;            // ''＝自動；一律送出，伺服器才知道使用者把分類清回「自動」
+    // 服務期間（MA_TRACKING=1 才有欄位）：類型一律送出（''＝一般，伺服器才知道使用者改回一般）；有類型才帶起迄日。tkTouched 只給重畫用（保住「使用者手動選過類型」的狀態），不送伺服器
+    const tkSel = row.querySelector('.qterm-kind');
+    if (tkSel) {
+      it.termKind = tkSel.value;
+      if (tkSel.value) { it.termFrom = row.querySelector('.qterm-from').value; it.termTo = row.querySelector('.qterm-to').value; }
+      if (row.dataset.tkTouched === '1') it.tkTouched = true;
+    }
     return it;
   });
 }
@@ -2652,6 +2836,14 @@ async function saveQuote() {
   // 數量空白或 0：畫面小計顯示 0，但存檔會被當成 1 → 不偷偷改，直接擋下請業務填正確數量
   const badQtyInput = Array.from($('quoteItemsBody').querySelectorAll('.qi-qty')).find(function (i) { return !(parseFloat(i.value) > 0); });
   if (badQtyInput) { switchQuoteTab('info'); badQtyInput.focus(); showToast('品項數量必須大於 0'); return; }
+  // License／MA 品項的起迄日必填（伺服器也會擋，回 TERM_REQUIRED／TERM_INVALID）：游標直接帶到有問題的那一欄，訊息的「第 N 列」只數一般品項（與伺服器同）
+  if (quoteTermsOn()) {
+    const rowsNow = Array.from($('quoteItemsBody').querySelectorAll('tr')).filter(function (tr) { return !tr.dataset.kind; });
+    for (let ri = 0; ri < rowsNow.length; ri++) {
+      const tp = quoteRowTermProblem(rowsNow[ri]);
+      if (tp) { switchQuoteTab('info'); if (tp.el.scrollIntoView) tp.el.scrollIntoView({ block: 'center' }); tp.el.focus(); showToast('第 ' + (ri + 1) + ' 列：' + tp.reason); return; }
+    }
+  }
   const items = readQuoteItems();
   const sub = quoteTotal(items, 'none', 0).sub;
   if (discountType === 'percent' && !(discountValue > 0 && discountValue < 100)) {
@@ -2698,6 +2890,11 @@ async function saveQuote() {
     // 說明／備註（readQuoteItems 一律給字串；空字串＝清除）。不進核准雜湊，所以只改這兩欄不會讓核准作廢
     if (typeof it.spec === 'string') o.spec = it.spec;
     if (typeof it.note === 'string') o.note = it.note;
+    // 服務期間（MA_TRACKING=1 才有）：不進核准雜湊，所以只改這幾欄不會讓核准作廢
+    if (typeof it.termKind === 'string') {
+      o.termKind = it.termKind;
+      if (it.termKind) { o.termFrom = it.termFrom || ''; o.termTo = it.termTo || ''; }
+    }
     if (it.lid) o.lid = it.lid;
     else if (it.nid) o.nid = it.nid;   // 暫時代號：伺服器用它把成本明細裡指向這個新品項的 forLid／forLids 換成剛指派的 lid（不存檔）
     return o;
@@ -2725,6 +2922,7 @@ async function saveQuote() {
     costNote:      needC ? $('qCostNote').value.trim() : '',
   };
   if (oppIdVal) payload.oppId = oppIdVal;
+  if (_qRenew.picker && _qRenew.picker.touched()) payload.renewOf = _qRenew.picker.value();   // 續約對象（不進核准雜湊）；沒動過就不送
   if (costLinesPayload !== undefined) {
     payload.costLines = costLinesPayload;
     // 過期分頁保護：帶上表單載入時的成本明細摘要，伺服器發現別的視窗已改過就回 409 STALE_COSTS（新單、舊畫面沒有摘要就不帶）
@@ -2827,7 +3025,7 @@ async function openQuoteNotesDialog(id) {
   ov.className = 'modal-overlay open';
   ov.id = 'qNotesOverlay';
   ov.style.zIndex = '125';
-  const state = q.approval && q.approval.state === 'pending' ? '簽核中' : '已核准';
+  const state = '已核准';
   ov.innerHTML = '<div class="modal q-dlg q-dlg-wide" role="dialog" aria-modal="true" aria-labelledby="qNotesTitle">' +
     '<div class="modal-header"><h2 id="qNotesTitle">修改品項說明／備註　' + escapeHtml(q.quoteNo || '') + '</h2><button type="button" class="modal-close" data-qn="x" aria-label="關閉">&#10005;</button></div>' +
     '<div class="modal-body q-dlg-body">' +
@@ -2872,6 +3070,120 @@ async function openQuoteNotesDialog(id) {
       close();
       showToast('已更新品項說明／備註（簽核狀態不變）');
       renderQuoteList();
+    } catch (err) {
+      errEl.textContent = '儲存失敗，請重試';
+    } finally {
+      busy = false; saveBtn.disabled = false;
+    }
+  });
+}
+
+// ── 只修改品項的「服務期間」（簽核中／已核准的單；MA_TRACKING=1 才有）─────────────────────────────────
+// PATCH /api/quotations/:id/item-terms 只收 { items:[{lid, termKind?, termFrom?, termTo?}] }：不可能動到金額、狀態或簽核（伺服器寫入前還會驗證核准雜湊不變）；
+// 伺服器留下稽核 UPDATE_QUOTE_TERM、時間軸一筆，並通知已簽核的人。客戶單上印出的期間因此立即改變——對話框上方明講。
+const QTERM_ERR = {
+  TERM_REQUIRED: '請填寫服務期間的起日與迄日',
+  TERM_INVALID: '服務期間不正確（日期必須真實存在，且迄日不得早於起日）',
+  TERM_KIND_LOCKED: 'License／MA 品項的類型不能改回一般（要移除請修改報價單內容，核准後修改會使核准作廢）',
+  TERM_NOT_APPLICABLE: '這個品項不是 License／MA，請同時選擇類型',
+  BAD_FIELDS: '送出的欄位不正確，請重新整理頁面（Ctrl+F5）後再試',
+  BAD_LID: '找不到對應的報價品項，請重新整理頁面後再試',
+  BAD_ITEM: '送出的內容不正確，請重新整理頁面後再試',
+  BAD_ITEMS: '沒有要修改的品項',
+  NO_PERMISSION: '只有這張報價單的業務本人（或管理員）可以修改服務期間',
+  NOT_FOUND: '找不到這張報價單',
+};
+/** 這張單有沒有 License／MA 品項，或品名像 License／MA（核准後補期間的入口） */
+function quoteHasTermItems(q) {
+  return (q.items || []).some(function (it) {
+    if (!it || quoteIsKindRow(it)) return false;
+    return !!QTERMS.parseKind(it.termKind) || !!QTERMS.suggestKind(it.desc, '');
+  });
+}
+async function openQuoteTermsDialog(id) {
+  if (!quoteTermsOn()) { showToast('服務期間功能尚未啟用'); return; }
+  const q = (await _qFetchQuote(id)) || _qFind(id);
+  if (!q) { showToast('找不到此報價單'); return; }
+  const rows = (q.items || []).filter(function (it) { return !quoteIsKindRow(it); });
+  if (!rows.length) { showToast('這張報價單沒有品項'); return; }
+  const old = document.getElementById('qTermsOverlay');
+  if (old) old.remove();
+  const ov = _qtEl('div', 'modal-overlay open'); ov.id = 'qTermsOverlay'; ov.classList.add('qterm-ovl');
+  const dlg = _qtEl('div', 'modal q-dlg q-dlg-wide');
+  dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'qTermsTitle');
+  const head = _qtEl('div', 'modal-header');
+  const h2 = _qtEl('h2', '', '修改服務期間　' + (q.quoteNo || '')); h2.id = 'qTermsTitle';
+  const xb = _qtEl('button', 'modal-close', '✕'); xb.type = 'button'; xb.setAttribute('aria-label', '關閉');
+  head.appendChild(h2); head.appendChild(xb);
+  const body = _qtEl('div', 'modal-body q-dlg-body');
+  const state = q.approval && q.approval.state === 'pending' ? '簽核中' : '已核准';
+  const info = _qtEl('div', 'q-infobar qterm-info');
+  info.appendChild(document.createTextNode('這張報價單目前' + state + '。這裡只能修改 License／MA 品項的服務期間：不影響金額與簽核（不需重新簽核），但'));
+  info.appendChild(_qtEl('b', '', '客戶報價單上印出的期間會立即改變'));
+  info.appendChild(document.createTextNode('，每次修改都會留下紀錄（舊 → 新）並通知已簽核的人。'));
+  body.appendChild(info);
+  const list = _qtEl('div', 'qn-list');
+  const entries = [];
+  const errEl = _qtEl('div', 'qn-err'); errEl.setAttribute('role', 'alert'); errEl.setAttribute('aria-live', 'assertive');
+  rows.forEach(function (it, i) {
+    const k = QTERMS.parseKind(it.termKind) || '';
+    // 沒有類型的一般品項只在品名像 License／MA 時列出（補上類型與期間）；其餘不列，避免整張單一長串
+    if (!k && !QTERMS.suggestKind(it.desc, '')) return;
+    const row = _qtEl('div', 'qn-row');
+    row.appendChild(_qtEl('div', 'qn-name', (i + 1) + '. ' + (it.desc || '（未填品項說明）')));
+    const box = quoteTermBlock(it, { allowNone: !k, onChange: function () { errEl.textContent = ''; } });
+    row.appendChild(box);
+    list.appendChild(row);
+    entries.push({ it: it, k: k, box: box, no: i + 1 });
+  });
+  body.appendChild(list);
+  body.appendChild(errEl);
+  const foot = _qtEl('div', 'modal-footer');
+  const cancel = _qtEl('button', 'btn btn-secondary', '取消'); cancel.type = 'button';
+  const saveBtn = _qtEl('button', 'btn btn-primary', '儲存服務期間'); saveBtn.type = 'button';
+  foot.appendChild(cancel); foot.appendChild(saveBtn);
+  dlg.appendChild(head); dlg.appendChild(body); dlg.appendChild(foot); ov.appendChild(dlg);
+  document.body.appendChild(ov);
+  let busy = false;
+  const close = function () { document.removeEventListener('keydown', onKey, true); ov.remove(); };
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); if (!busy) close(); } }
+  document.addEventListener('keydown', onKey, true);
+  ov.addEventListener('mousedown', function (e) { if (e.target === ov && !busy) close(); });
+  xb.addEventListener('click', function () { if (!busy) close(); });
+  cancel.addEventListener('click', function () { if (!busy) close(); });
+  if (!entries.length) errEl.textContent = '這張報價單沒有 License／MA 品項';
+  const firstEl = ov.querySelector('.qterm-from'); if (firstEl) firstEl.focus();
+  saveBtn.addEventListener('click', async function () {
+    if (busy) return;
+    // 只送有改的列（沒改的不送，避免覆蓋別人剛改的）；送出前先用同一套規則擋掉缺漏／顛倒
+    const items = [];
+    for (let n = 0; n < entries.length; n++) {
+      const en = entries[n];
+      const sel = en.box.querySelector('.qterm-kind'), f = en.box.querySelector('.qterm-from'), t = en.box.querySelector('.qterm-to');
+      const changed = sel.value !== en.k || (sel.value && (f.value !== (en.it.termFrom || '') || t.value !== (en.it.termTo || '')));
+      if (!changed) continue;
+      const pr = quoteTermProblemIn(en.box);
+      if (pr) { pr.el.focus(); errEl.textContent = '第 ' + en.no + ' 列：' + pr.reason; return; }
+      items.push({ lid: en.it.lid, termKind: sel.value, termFrom: f.value, termTo: t.value });
+    }
+    if (!items.length) { errEl.textContent = '沒有修改任何內容'; return; }
+    busy = true; saveBtn.disabled = true; errEl.textContent = '';
+    try {
+      const r = await fetch(API + '/quotations/' + encodeURIComponent(id) + '/item-terms', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items }) });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        const code = j && j.code;
+        const keepServerMsg = (code === 'TERM_REQUIRED' || code === 'TERM_INVALID') && j.error;   // 這兩種伺服器訊息有「第 N 列」與原因，直接用
+        errEl.textContent = keepServerMsg ? j.error : (QTERM_ERR[code] || j.error || '儲存失敗');
+        return;
+      }
+      const i = (allQuotations || []).findIndex(function (x) { return x.id === id; });
+      if (i >= 0) allQuotations[i] = j;
+      close();
+      showToast('已更新服務期間（簽核狀態不變，已通知已簽核的人）');
+      renderQuoteList();
+      // 成功後直接帶到簽核進度，讓使用者看到時間軸上剛留下的那一筆
+      if (typeof qOpenApproval === 'function') qOpenApproval(id);
     } catch (err) {
       errEl.textContent = '儲存失敗，請重試';
     } finally {

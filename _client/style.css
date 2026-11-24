@@ -5219,3 +5219,314 @@ body.dark .notif-read-all { color: #8ab8ff; }   /* 原本 #1a73e8 壓在深色�
   .nt-btn { min-height: 36px; padding: 4px 14px; }
   .notif-header { gap: 6px; }
 }
+/* ── License／MA 服務期間（.qterm-*）──────────────────────────────────────────
+   quote.js 的 quoteTermBlock() 產生（報價單品項列的「類型＋起迄日」、核准後「修改服務期間」小視窗），quote-approval.js 的簽核面板唯讀顯示用 .qterm-view。
+   MA_TRACKING=1 才有這些元素；樣式用 --qt-* 自訂變數，深色（body.dark）與玻璃版（body.glass）各自覆寫，全部對比 >= 4.5:1（scripts/_quote-terms-ui.js 實測）。
+   選擇器刻意加 body 前綴提高權重：quote.js 內嵌的 .qn-row input（修改說明小視窗）樣式是之後才插入 <head> 的，同權重會蓋掉這裡。 */
+.qterm { --qt-fg:#1f2937; --qt-sub:#4b5563; --qt-line:#9aa5b4; --qt-bg:#ffffff; --qt-err:#b3261e; --qt-accent:#1a56c8; --qt-chip:#eef3fd; --qt-chip-fg:#12439e;
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--qt-fg); }
+body.dark .qterm { --qt-fg:#e6edf3; --qt-sub:#b4bfcb; --qt-line:#5b6673; --qt-bg:#0d1117; --qt-err:#ff9d96; --qt-accent:#79b8ff; --qt-chip:#16253f; --qt-chip-fg:#a5cdff; }
+body.glass:not(.dark) .qterm { --qt-fg:var(--g-text, #1f2937); --qt-sub:var(--g-text-2, #4b5563); --qt-bg:#ffffff; }
+.qterm-field { display:inline-flex; align-items:center; gap:5px; margin:0; }
+.qterm-lab { color:var(--qt-sub); font-size:12px; white-space:nowrap; }
+body .qterm .qterm-kind, body .qterm .qterm-from, body .qterm .qterm-to {
+  width:auto; margin:0; min-height:30px; box-sizing:border-box; padding:3px 8px; font-size:12.5px; border:1px solid var(--qt-line); border-radius:5px;
+  background:var(--qt-bg); color:var(--qt-fg); color-scheme:light; }
+body.dark .qterm .qterm-kind, body.dark .qterm .qterm-from, body.dark .qterm .qterm-to { color-scheme:dark; }
+body .qterm .qterm-from, body .qterm .qterm-to { min-width:9.2em; }
+body .qterm .qterm-kind:focus-visible, body .qterm .qterm-from:focus-visible, body .qterm .qterm-to:focus-visible, .qterm .qterm-quick:focus-visible { outline:2px solid var(--qt-accent); outline-offset:1px; }
+body .qterm .qterm-bad { border-color:var(--qt-err); box-shadow:0 0 0 2px color-mix(in srgb, var(--qt-err) 22%, transparent); }
+.qterm-dates { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+.qterm-dates[hidden], .qterm-err[hidden], .qterm-hint[hidden] { display:none; }
+.qterm .qterm-quick { min-height:30px; padding:2px 11px; font-size:12.5px; border-radius:15px; cursor:pointer; border:1px solid var(--qt-accent); background:var(--qt-chip); color:var(--qt-chip-fg); font-weight:600; }
+.qterm .qterm-quick:hover { filter:brightness(.96); }
+.qterm-span { color:var(--qt-sub); font-weight:600; white-space:nowrap; }
+.qterm-qk { display:flex; align-items:center; flex:1 0 100%; flex-wrap:nowrap; gap:6px 8px; }   /* 一年／三年／共 N 個月 不可拆開，且一律獨立一行（在起迄日下方）：排版與欄寬無關，新增與編輯模式完全一致 */
+.qterm-dates { flex:1 0 100%; }
+body #quoteModalOverlay > .modal.qs-mode.qs-info.qt-wide { max-width:1240px !important; }   /* 蓋過 quote-steps.js 的 1000px */   /* 類型一行、起迄日一行、快捷一行 */
+.qterm .qterm-quick { white-space:nowrap; flex:0 0 auto; }   /* 不可一字一行（窄欄曾把「一年」折成直排） */
+/* 品項表欄寬緊湊版（只在服務期間開啟時；table 有 .qt-on）：固定欄略縮，把寬度讓給品名 */
+.quote-items-table.qt-on thead th:nth-child(4) { width:52px !important; }
+.quote-items-table.qt-on thead th:nth-child(5) { width:62px !important; }
+.quote-items-table.qt-on thead th:nth-child(6), .quote-items-table.qt-on thead th:nth-child(7) { width:100px !important; }
+.quote-items-table.qt-on thead th:nth-child(8) { width:80px !important; }
+.quote-items-table.qt-on thead th:nth-child(9) { width:70px !important; }
+.quote-items-table.qt-on .qi-unit { width:46px !important; }
+.quote-items-table.qt-on .qi-qty { width:54px !important; }
+.quote-items-table.qt-on .qi-price { width:92px !important; }
+.qterm-err { flex:1 0 100%; color:var(--qt-err); font-size:12.5px; font-weight:600; }
+.qterm-hint { flex:1 0 100%; color:var(--qt-sub); font-size:12px; }
+.qterm-ovl { z-index:125; }
+.qterm-info { margin-bottom:10px; }
+/* 簽核面板（唯讀）：品名下的「類型徽章＋服務期間」 */
+.qterm-view { margin-top:3px; font-size:12px; line-height:1.5; color:#374151; }
+.qterm-badge { display:inline-block; padding:0 7px; border-radius:9px; font-size:11.5px; font-weight:700; background:#eef3fd; color:#12439e; border:1px solid #9bb7ec; }
+body.dark .qterm-view { color:#c5cfda; }
+body.dark .qterm-badge { background:#16253f; color:#a5cdff; border-color:#3a5f9a; }
+@media (max-width: 480px) {
+  .qterm { gap:6px 8px; }
+  .qterm-dates { width:100%; }
+  .qterm-dates .qterm-field { flex:1 0 100%; }   /* 起、迄各占一行，快捷按鈕與「共 N 個月」接在後面換行 */
+  body .qterm .qterm-from, body .qterm .qterm-to { flex:1; min-width:0; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   License／MA 成交納管（ma-tasks.js）— .mat-*
+   成交期間視窗、簽約確認任務卡、首頁待辦卡、MA／License 到期管理頁、合約來源區塊。
+   每個底色都搭配明確的字色（淺色／深色／玻璃淺／玻璃深），不依賴繼承；不使用 inline style。
+   層級：.mat-overlay 的 z-index 100000，刻意低於 company-card-tasks 的 100001 與 company-requests 的 100002
+   （若登入時其他彈窗同時開著，那兩個蓋在上面；本檔登入彙總視窗也會等它們關掉才顯示）；高於一般 modal（≤10000）與慶祝動畫。
+   ══════════════════════════════════════════════════════════ */
+.mat-panel, .mat-overlay, .mat-page, .mat-notice {
+  --mat-bg: #ffffff; --mat-fg: #1f2937; --mat-sub: #475569; --mat-line: #d9dee7; --mat-soft: #f3f6fb;
+  --mat-accent: #1a56c8; --mat-accent-fg: #ffffff;
+  --mat-danger: #b3261e; --mat-danger-fg: #ffffff;
+  --mat-warn-bg: #fff1d6; --mat-warn-fg: #7a3f00;
+  --mat-chip-bg: #e8edfb; --mat-chip-fg: #1f2f7a;
+  --mat-ok-bg: #e3f4e8; --mat-ok-fg: #14532d;
+  --mat-bad-bg: #fde7e7; --mat-bad-fg: #8a1c1c;
+  --mat-bar-ok: #1e7a3c; --mat-bar-warn: #a85d00; --mat-bar-bad: #b3261e;
+}
+body.dark .mat-panel, body.dark .mat-overlay, body.dark .mat-page, body.dark .mat-notice {
+  --mat-bg: #161b22; --mat-fg: #e6edf3; --mat-sub: #a9b4c1; --mat-line: #3a4350; --mat-soft: #1c232d;
+  --mat-accent: #1f6feb; --mat-accent-fg: #ffffff;
+  --mat-danger: #da3633; --mat-danger-fg: #ffffff;
+  --mat-warn-bg: #3a2a05; --mat-warn-fg: #ffd48a;
+  --mat-chip-bg: #1f2a44; --mat-chip-fg: #c9d6ff;
+  --mat-ok-bg: #0f2a1a; --mat-ok-fg: #b7f0c9;
+  --mat-bad-bg: #3d1518; --mat-bad-fg: #ffb4b4;
+  --mat-bar-ok: #3fb868; --mat-bar-warn: #d29922; --mat-bar-bad: #f0524f;
+}
+.mat-page[hidden], .mat-plain[hidden], .mat-host[hidden], .mat-error[hidden], .mat-btn[hidden], .mat-empty[hidden] { display: none !important; }
+.mat-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mat-host { margin: 0 0 16px; display: flex; flex-direction: column; gap: 12px; }
+
+/* 面板（首頁待辦卡） */
+.mat-panel { background: var(--mat-bg); color: var(--mat-fg); border: 1px solid var(--mat-line); border-left: 5px solid var(--mat-accent); border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(15, 27, 53, .08); }
+.mat-panel-overdue { border-left-color: var(--mat-danger); }
+body.glass .mat-panel, body.glass .mat-page { background: var(--g-surface-strong); color: var(--g-text); --mat-fg: var(--g-text); --mat-sub: var(--g-text-2); --mat-line: var(--g-edge); -webkit-backdrop-filter: blur(var(--g-blur)); backdrop-filter: blur(var(--g-blur)); }
+.mat-panel-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.mat-panel-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--mat-fg); }
+.mat-count { background: var(--mat-accent); color: var(--mat-accent-fg); border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: 700; }
+.mat-sub { margin: 0 0 8px; font-size: 13px; color: var(--mat-sub); line-height: 1.6; }
+.mat-lead { margin: 0 0 12px; font-size: 14px; color: var(--mat-fg); line-height: 1.7; word-break: break-word; }
+.mat-note { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.6; background: var(--mat-soft); color: var(--mat-fg); border: 1px solid var(--mat-line); word-break: break-word; }
+.mat-more { margin: 8px 0 0; font-size: 13px; color: var(--mat-sub); }
+.mat-list { list-style: none; margin: 0; padding: 0; }
+.mat-row { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--mat-line); }
+.mat-row:first-child { border-top: none; }
+.mat-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.mat-name { font-size: 15px; color: var(--mat-fg); word-break: break-word; }
+.mat-meta { font-size: 13px; color: var(--mat-sub); word-break: break-word; }
+.mat-chips-inline { display: flex; gap: 6px; flex-wrap: wrap; }
+.mat-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mat-chip { display: inline-block; align-self: flex-start; background: var(--mat-chip-bg); color: var(--mat-chip-fg); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; }
+.mat-chip-warn { background: var(--mat-warn-bg); color: var(--mat-warn-fg); }
+.mat-chip-mute { background: var(--mat-soft); color: var(--mat-sub); border: 1px solid var(--mat-line); }
+
+/* 按鈕 */
+.mat-btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 8px; padding: 8px 16px; min-height: 38px; cursor: pointer; border: 1px solid transparent; }
+.mat-btn-sm { font-size: 13px; padding: 5px 12px; min-height: 34px; }
+.mat-btn-primary { background: var(--mat-accent); color: var(--mat-accent-fg); }
+.mat-btn-danger { background: var(--mat-danger); color: var(--mat-danger-fg); }
+.mat-btn-danger-ghost { background: var(--mat-soft); color: var(--mat-bad-fg); border-color: var(--mat-danger); }
+.mat-btn-ghost { background: var(--mat-soft); color: var(--mat-fg); border-color: var(--mat-line); }
+.mat-btn-link { background: transparent; color: var(--mat-accent); padding: 6px 0; min-height: 0; text-decoration: underline; }
+body.dark .mat-btn-link { color: #79b8ff; }
+.mat-btn:disabled { opacity: .55; cursor: default; }
+.mat-btn:focus-visible, .mat-input:focus-visible, .mat-textarea:focus-visible, .mat-fchip:focus-visible, .mat-link:focus-visible { outline: 3px solid #4c8dff; outline-offset: 2px; }
+body.glass:not(.dark) :is(.mat-btn, .mat-input, .mat-textarea, .mat-fchip, .mat-link):focus-visible { outline-color: #1a56c8; }
+
+/* 對話框（不透明底，任何主題下數字都清楚） */
+.mat-overlay { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 30, .62); animation: mat-fade .15s ease-out; }
+.mat-dialog { background: var(--mat-bg); color: var(--mat-fg); width: 520px; max-width: 100%; max-height: 88vh; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid var(--mat-line); box-shadow: 0 24px 64px rgba(0, 0, 0, .4); overflow: hidden; }
+.mat-dialog.mat-wide { width: 680px; }
+.mat-dlg-title { margin: 0; padding: 18px 22px 8px; font-size: 18px; font-weight: 700; color: var(--mat-fg); word-break: break-word; }
+.mat-dlg-body { padding: 4px 22px 14px; overflow-y: auto; }
+.mat-dlg-foot { padding: 12px 22px 16px; border-top: 1px solid var(--mat-line); display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.mat-field-label { display: block; margin: 10px 0 4px; font-size: 13px; font-weight: 600; color: var(--mat-sub); }
+.mat-input, .mat-textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--mat-line); background: var(--mat-soft); color: var(--mat-fg); }
+.mat-textarea { resize: vertical; }
+.mat-daterow { display: flex; gap: 12px; flex-wrap: wrap; }
+.mat-daterow .mat-col { flex: 1 1 170px; min-width: 0; }
+.mat-quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mat-span { font-size: 13px; font-weight: 600; color: var(--mat-sub); }
+.mat-error { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--mat-bad-bg); color: var(--mat-bad-fg); word-break: break-word; }
+
+/* 步驟條（成交 → 簽約確認 → 歸入 Service MA 管理 → 到期前提醒）：狀態同時用文字呈現，不只靠顏色 */
+.mat-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.mat-step { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--mat-line); background: var(--mat-soft); color: var(--mat-fg); min-width: 0; }
+.mat-step-n { font-size: 12px; font-weight: 700; color: var(--mat-sub); }
+.mat-step-l { font-size: 13px; font-weight: 700; word-break: break-word; }
+.mat-step-s { font-size: 12px; color: var(--mat-sub); }
+.mat-step-done { background: var(--mat-ok-bg); color: var(--mat-ok-fg); border-color: var(--mat-ok-fg); }
+.mat-step-done .mat-step-n, .mat-step-done .mat-step-s { color: var(--mat-ok-fg); }
+.mat-step-current { background: var(--mat-accent); color: var(--mat-accent-fg); border-color: var(--mat-accent); }
+.mat-step-current .mat-step-n, .mat-step-current .mat-step-s { color: var(--mat-accent-fg); }
+.mat-step-skipped { background: var(--mat-warn-bg); color: var(--mat-warn-fg); border-color: var(--mat-warn-fg); }
+.mat-step-skipped .mat-step-n, .mat-step-skipped .mat-step-s { color: var(--mat-warn-fg); }
+.mat-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 12px; font-size: 14px; }
+.mat-dt { color: var(--mat-sub); font-weight: 600; }
+.mat-dd { margin: 0; color: var(--mat-fg); word-break: break-word; }
+
+/* 到期管理頁 */
+.mat-page { background: var(--mat-bg); color: var(--mat-fg); border: 1px solid var(--mat-line); border-radius: 12px; padding: 16px; }
+.mat-page-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.mat-page-title { margin: 0; font-size: 18px; font-weight: 700; color: var(--mat-fg); }
+.mat-page-actions { display: flex; gap: 8px; }
+.mat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.mat-card { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--mat-line); background: var(--mat-soft); color: var(--mat-fg); }
+.mat-card-n { font-size: 24px; font-weight: 700; }
+.mat-card-l { font-size: 13px; color: var(--mat-sub); }
+.mat-card-warn { background: var(--mat-warn-bg); border-color: var(--mat-warn-fg); }
+.mat-card-warn .mat-card-n, .mat-card-warn .mat-card-l { color: var(--mat-warn-fg); }
+.mat-card-bad { background: var(--mat-bad-bg); border-color: var(--mat-bad-fg); }
+.mat-card-bad .mat-card-n, .mat-card-bad .mat-card-l { color: var(--mat-bad-fg); }
+.mat-filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.mat-fchip { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 14px; min-height: 34px; border-radius: 999px; cursor: pointer; border: 1px solid var(--mat-line); background: var(--mat-soft); color: var(--mat-fg); }
+.mat-fchip-on { background: var(--mat-accent); color: var(--mat-accent-fg); border-color: var(--mat-accent); }
+.mat-tablewrap { overflow-x: auto; }
+.mat-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14px; color: var(--mat-fg); }   /* 481px 以上窄視窗：維持欄寬、外層 .mat-tablewrap 橫向捲動（≤480px 改卡片式） */
+.mat-table td[data-label="期間"], .mat-table td[data-label="剩餘天數"] { white-space: nowrap; }
+.mat-table th { text-align: left; font-size: 13px; padding: 8px 10px; color: var(--mat-sub); border-bottom: 2px solid var(--mat-line); white-space: nowrap; }
+.mat-table td { padding: 10px; border-bottom: 1px solid var(--mat-line); vertical-align: middle; word-break: break-word; color: var(--mat-fg); }
+.mat-tr-bad td { background: var(--mat-bad-bg); }
+.mat-days { display: block; font-size: 13px; margin-top: 4px; }
+.mat-days-bad { color: var(--mat-bad-fg); font-weight: 700; }
+.mat-bar { display: block; width: 110px; height: 8px; border: 0; border-radius: 4px; background: var(--mat-line); -webkit-appearance: none; appearance: none; overflow: hidden; }
+.mat-bar::-webkit-progress-bar { background: var(--mat-line); border-radius: 4px; }
+.mat-bar-ok::-webkit-progress-value { background: var(--mat-bar-ok); border-radius: 4px; }
+.mat-bar-warn::-webkit-progress-value { background: var(--mat-bar-warn); border-radius: 4px; }
+.mat-bar-bad::-webkit-progress-value { background: var(--mat-bar-bad); border-radius: 4px; }
+.mat-bar-ok::-moz-progress-bar { background: var(--mat-bar-ok); }
+.mat-bar-warn::-moz-progress-bar { background: var(--mat-bar-warn); }
+.mat-bar-bad::-moz-progress-bar { background: var(--mat-bar-bad); }
+.mat-empty { margin: 14px 0 0; text-align: center; font-size: 14px; color: var(--mat-sub); }
+
+/* Service MA 合約頁（沿用 contract-* 版型）與合約來源 */
+.mat-notice { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; background: var(--mat-soft); color: var(--mat-fg); border: 1px solid var(--mat-line); }
+.mat-src { margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 12px; }
+.mat-src-days { color: inherit; font-weight: 600; }
+.mat-link { font: inherit; font-size: 12px; background: transparent; border: 0; padding: 2px 0; color: #1a56c8; text-decoration: underline; cursor: pointer; }
+body.dark .mat-link { color: #79b8ff; }
+.mat-srcbox { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #f3f6fb; color: #1f2937; border: 1px solid #d9dee7; font-size: 13px; }
+body.dark .mat-srcbox { background: #1c232d; color: #e6edf3; border-color: #3a4350; }
+.mat-srcbox-title { font-weight: 700; margin-bottom: 6px; }
+.mat-srcbox-row { display: flex; gap: 10px; padding: 2px 0; flex-wrap: wrap; }
+.mat-srcbox-k { min-width: 84px; color: #475569; }
+body.dark .mat-srcbox-k { color: #a9b4c1; }
+.mat-srcbox-v { word-break: break-all; color: inherit; background: transparent; }
+@keyframes mat-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mat-overlay { animation: none; } }
+@media (max-width: 480px) {
+  .mat-overlay { align-items: flex-end; padding: 0; }
+  .mat-dialog, .mat-dialog.mat-wide { width: 100%; border-radius: 16px 16px 0 0; max-height: 92vh; }
+  .mat-dlg-title { padding: 16px 16px 6px; font-size: 17px; }
+  .mat-dlg-body { padding: 4px 16px 12px; }
+  .mat-dlg-foot { padding: 10px 16px 14px; }
+  .mat-dlg-foot .mat-btn, .mat-row-actions .mat-btn { flex: 1 1 100%; min-height: 44px; }
+  .mat-row-actions { width: 100%; }
+  .mat-steps { grid-template-columns: 1fr; }
+  .mat-dl { grid-template-columns: 1fr; gap: 0; }
+  .mat-dd { margin-bottom: 8px; }
+  .mat-panel, .mat-page { padding: 12px; }
+  .mat-table { min-width: 0; }
+  .mat-table td[data-label="期間"], .mat-table td[data-label="剩餘天數"] { white-space: normal; }
+  .mat-table thead { display: none; }
+  .mat-table, .mat-table tbody, .mat-table tr, .mat-table td { display: block; width: 100%; box-sizing: border-box; }
+  .mat-table tr { border: 1px solid var(--mat-line); border-radius: 10px; margin-bottom: 10px; padding: 4px 0; }
+  .mat-table td { border: 0; padding: 6px 12px; }
+  .mat-table td::before { content: attr(data-label); display: block; font-size: 12px; font-weight: 600; color: var(--mat-sub); }
+  .mat-tr-bad td { background: transparent; }
+  .mat-tr-bad { background: var(--mat-bad-bg); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   MA／License 到期「活規則」提醒（P3b）— .mar-*
+   範圍：鈴鐺的「MA／License 到期提醒」群組（ma-reminders.js）、到期管理頁的狀態徽章／下一個提醒／提醒時間軸（ma-tasks.js）、
+         報價單表單的「這是續約嗎？」選擇器（ma-reminders.js + quote.js）。後台「提醒規則」頁的樣式在 ma-reminders-admin.css（.mar-a-*，後台不載入本檔）。
+   每個底色都搭配明確的字色（淺色／深色／玻璃淺／玻璃深共四種外觀都 ≥ 4.5:1，由 scripts/_ma-reminders-ui.js 以實際算出的顏色驗證），不使用 inline style。
+   層級：本區塊不設 z-index（鈴鐺在 .notif-dropdown 內、到期管理頁在版面內；標記不續約對話框沿用 .mat-overlay 的 100000，低於 company-card-tasks 100001／company-requests 100002）。
+   ══════════════════════════════════════════════════════════ */
+body {
+  --mar-bg: #ffffff; --mar-fg: #1f2937; --mar-sub: #475569; --mar-line: #d9dee7; --mar-line2: #8793a8; --mar-soft: #f3f6fb; --mar-input: #ffffff;
+  --mar-accent: #1a56c8; --mar-accent-fg: #ffffff; --mar-focus: #b45309;
+  --mar-info-bg: #e8edfb; --mar-info-fg: #1f2f7a; --mar-warn-bg: #fff1d6; --mar-warn-fg: #7a3f00;
+  --mar-danger-bg: #fde7e7; --mar-danger-fg: #8a1c1c; --mar-ok-bg: #e3f4e8; --mar-ok-fg: #14532d;
+}
+body.dark {
+  --mar-bg: #161b22; --mar-fg: #e6edf3; --mar-sub: #a9b4c1; --mar-line: #3a4350; --mar-line2: #6b7686; --mar-soft: #1c232d; --mar-input: #0d1117;
+  --mar-accent: #1f6feb; --mar-accent-fg: #ffffff; --mar-focus: #ffd27a;
+  --mar-info-bg: #1f2a44; --mar-info-fg: #c9d6ff; --mar-warn-bg: #3a2a05; --mar-warn-fg: #ffd48a;
+  --mar-danger-bg: #3d1518; --mar-danger-fg: #ffb4b4; --mar-ok-bg: #0f2a1a; --mar-ok-fg: #b7f0c9;
+}
+.mar-renew[hidden], .mar-next[hidden], .mar-bell-list[hidden] { display: none !important; }
+
+/* 鈴鐺群組：摘要列沿用 .notif-item（四種外觀的底色／字色都已由既有規則處理），展開的每一列自己帶不透明底色與字色 */
+.mar-bell-sum { align-items: flex-start; }
+.mar-bell-hint { margin-top: 3px; }
+.mar-bell-list { padding: 4px 12px 10px; }
+.mar-bell-row { background: var(--mar-soft); color: var(--mar-fg); border: 1px solid var(--mar-line); border-left: 4px solid var(--mar-line2); border-radius: 8px; padding: 8px 10px; margin: 6px 0 0; cursor: pointer; font-size: 12.5px; line-height: 1.5; }
+.mar-bell-row:hover { border-color: var(--mar-accent); }
+.mar-bell-unread { border-left-color: var(--mar-accent); font-weight: 600; }
+.mar-bell-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.mar-bell-co { font-size: 13px; color: var(--mar-fg); word-break: break-word; }
+.mar-bell-pd { color: var(--mar-fg); word-break: break-word; }
+.mar-kind { display: inline-block; background: var(--mar-info-bg); color: var(--mar-info-fg); border-radius: 999px; padding: 0 8px; font-size: 11px; font-weight: 700; }
+.mar-bell-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
+.mar-bell-rule, .mar-bell-roles { color: var(--mar-sub); font-weight: 400; word-break: break-word; }
+.mar-bell-roles { margin-top: 2px; }
+.mar-lv { display: inline-block; border-radius: 999px; padding: 0 9px; font-size: 12px; font-weight: 700; }
+.mar-lv-info { background: var(--mar-info-bg); color: var(--mar-info-fg); }
+.mar-lv-warn { background: var(--mar-warn-bg); color: var(--mar-warn-fg); }
+.mar-lv-danger { background: var(--mar-danger-bg); color: var(--mar-danger-fg); }
+.mar-bell-more { margin-top: 6px; font-size: 12px; color: var(--mar-fg); background: var(--mar-soft); border-radius: 6px; padding: 4px 8px; }
+.mar-bell-openpage { display: block; width: 100%; margin-top: 8px; font: inherit; font-size: 13px; font-weight: 700; background: var(--mar-accent); color: var(--mar-accent-fg); border: 0; border-radius: 8px; padding: 8px 12px; min-height: 36px; cursor: pointer; }
+.mar-bell-sum:focus-visible, .mar-bell-row:focus-visible, .mar-bell-openpage:focus-visible, .mar-btn-tl:focus-visible, .mar-renew-select:focus-visible { outline: 3px solid var(--mar-focus); outline-offset: 2px; }
+
+/* 到期管理頁：狀態徽章、原因、下一個提醒、提醒時間軸 */
+.mar-badge { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 12px; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+.mar-badge-tracking { background: var(--mar-info-bg); color: var(--mar-info-fg); }
+.mar-badge-renewed { background: var(--mar-ok-bg); color: var(--mar-ok-fg); }
+.mar-badge-not_renew { background: var(--mar-warn-bg); color: var(--mar-warn-fg); }
+.mar-badge-ended, .mar-badge-void { background: var(--mar-soft); color: var(--mar-sub); border-color: var(--mar-line2); }
+.mar-step { font-size: 13px; color: var(--mat-fg); }
+.mar-reason { margin-top: 4px; font-size: 12.5px; color: var(--mat-fg); word-break: break-word; }
+.mar-next { margin-top: 4px; font-size: 12.5px; line-height: 1.5; color: var(--mat-fg); border-left: 3px solid var(--mar-line2); padding-left: 8px; word-break: break-word; }
+.mar-next-active { border-left-color: var(--mar-warn-fg); font-weight: 600; }
+.mar-next-future { border-left-color: var(--mar-accent); }
+.mat-tr-focus { outline: 3px solid var(--mat-accent); outline-offset: -3px; }
+.mar-tl-td { background: var(--mat-soft); padding: 10px 14px; border-bottom: 1px solid var(--mat-line); }
+.mar-tl-load { margin: 0; font-size: 13px; color: var(--mat-fg); }
+.mar-tl-sub { margin: 0 0 8px; font-size: 13px; color: var(--mat-fg); }
+.mar-tl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mar-tl-li { display: grid; grid-template-columns: 96px 1fr; gap: 2px 12px; align-items: start; background: var(--mar-bg); color: var(--mar-fg); border: 1px solid var(--mar-line); border-left: 4px solid var(--mar-line2); border-radius: 8px; padding: 8px 10px; }
+.mar-tl-active { border-left-color: var(--mar-warn-fg); }
+.mar-tl-future { border-left-color: var(--mar-accent); }
+.mar-tl-date { font-weight: 700; font-size: 13px; color: var(--mar-fg); white-space: nowrap; }
+.mar-tl-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.mar-tl-name { font-size: 13.5px; color: var(--mar-fg); word-break: break-word; }
+.mar-tl-when { font-size: 12.5px; color: var(--mar-sub); }
+.mar-tl-state { display: inline-block; border-radius: 999px; padding: 0 9px; font-size: 12px; font-weight: 700; background: var(--mar-soft); color: var(--mar-sub); border: 1px solid var(--mar-line2); }
+.mar-tl-state-active { background: var(--mar-warn-bg); color: var(--mar-warn-fg); border-color: transparent; }
+.mar-tl-state-future { background: var(--mar-info-bg); color: var(--mar-info-fg); border-color: transparent; }
+.mar-tl-state-cond { background: var(--mar-danger-bg); color: var(--mar-danger-fg); border-color: transparent; }
+.mar-tl-meta { grid-column: 2; font-size: 12.5px; color: var(--mar-sub); word-break: break-word; }
+
+/* 報價單「這是續約嗎？」 */
+.mar-renew { margin: 4px 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--mar-info-bg); color: var(--mar-info-fg); border: 1px solid var(--mar-accent); font-size: 13px; line-height: 1.6; }
+.mar-renew-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.mar-renew-title { font-size: 14px; color: var(--mar-info-fg); }
+.mar-renew-sub { color: var(--mar-info-fg); }
+.mar-renew-label { display: block; font-weight: 700; margin: 4px 0; color: var(--mar-info-fg); }
+.mar-renew-select { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; background: var(--mar-input); color: var(--mar-fg); border: 1px solid var(--mar-line2); border-radius: 8px; padding: 8px 10px; min-height: 38px; }
+.mar-renew-locked { background: var(--mar-soft); color: var(--mar-fg); border-color: var(--mar-line2); }
+.mar-renew-tag { font-weight: 700; color: var(--mar-fg); word-break: break-word; }
+.mar-renew-note { color: var(--mar-sub); }
+@media (max-width: 480px) {
+  .mar-tl-li { grid-template-columns: 1fr; }
+  .mar-tl-meta { grid-column: 1; }
+  .mar-bell-list { padding: 4px 8px 10px; }
+  .mar-btn-tl, .mar-btn-norenew, .mar-btn-reopen { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .mar-bell-sum, .mar-bell-row, .mar-bell-openpage { transition: none; } }
